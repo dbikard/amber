@@ -153,18 +153,24 @@
   }
 
   /* ---------------- fog-filtered snapshots (host → each viewer) ----------------
-   * Public: road units, storms, castle HP, slot OCCUPANCY. Private: enemy essence,
-   * powers, building types/levels. A started Pattern walk reveals that shrine + progress. */
+   * v0.2: TRUE fog of war. Units/storms only where the viewer has vision; sites as the
+   * viewer's explored memory; enemy essence/powers/banner never sent; enemy city slots
+   * veiled. A started Pattern walk reveals that shrine + progress. */
   Net.snapFor = function (world, viewer, events) {
+    const World = global.World, C = global.CONST;
+    const see = (x, y) => World.canSee(world, viewer, x, y);
     const players = world.players.map((pl, pi) => {
       const mine = pi === viewer;
       return {
         castleHp: Math.round(pl.castleHp),
+        wallHp: Math.round(pl.wallHp),
         essence: mine ? pl.essence : null,
+        incomeRate: mine ? pl.incomeRate : null,
         pattern: mine || pl.revealed ? pl.pattern : 0,
         walking: mine || pl.revealed ? pl.walking : false,
         revealed: pl.revealed,
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
+        banner: mine ? pl.banner : -1,   // the banner is a strategic secret
         slots: pl.slots.map((s) => {
           if (!s) return null;
           if (mine) return { bt: s.bt, level: s.level };
@@ -173,13 +179,28 @@
         })
       };
     });
+    /* sites through the viewer's fog: live truth if visible, memory if explored, else absent */
+    const mem = world.players[viewer].explored;
+    const sites = world.map.sites.map((s) => {
+      if (see(s.x, s.y)) return { id: s.id, live: true, owner: s.owner,
+                                  post: s.post ? { bt: s.post.bt, level: s.post.level, hp: Math.round(s.post.hp), maxHp: s.post.maxHp } : null };
+      const m = mem[s.id];
+      return m ? { id: s.id, live: false, owner: m.owner, post: m.post ? { bt: m.post.bt, level: m.post.level } : null } : null;
+    });
     return {
       t: world.t, winner: world.winner, winReason: world.winReason,
-      players,
-      units: world.units.map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, p: Math.round(u.p), x: Math.round(u.x), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp) })),
-      storms: world.storms.map((s) => ({ owner: s.owner, p: s.p, delay: s.delay, tLeft: s.tLeft })),
-      /* events: drop the rival's private build/upgrade news; the road is public */
-      events: (events || []).filter((ev) => !((ev.e === 'build' || ev.e === 'up') && ev.pi !== viewer))
+      players, sites,
+      units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
+        .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp) })),
+      storms: world.storms.filter((s) => see(s.x, s.y))
+        .map((s) => ({ owner: s.owner, x: s.x, y: s.y, delay: s.delay, tLeft: s.tLeft })),
+      /* events: own always; global always; positional only where seen; rival city news never */
+      events: (events || []).filter((ev) => {
+        if (ev.pi === viewer) return true;
+        if (ev.e === 'build' || ev.e === 'up' || ev.e === 'shot' || ev.e === 'banner') return false;
+        if (ev.x != null) return see(ev.x, ev.y);
+        return true;   // walk/pattern/surge/win/trump — power echoes through Shadow
+      })
     };
   };
 

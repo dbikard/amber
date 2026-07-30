@@ -1,5 +1,7 @@
-/* game.js — orchestration: modes, fixed-timestep loop, input routing, campaign,
- * and LAN duel wiring (QR pairing flow ported from Perils; host-authoritative sync). */
+/* game.js — orchestration (v0.2): modes, fixed-timestep loop, camera drag + tap routing,
+ * campaign, and LAN duel wiring (QR pairing from Perils; host-authoritative fogged sync).
+ * Builds the source-agnostic `view` render.js consumes: live world (sp/host) or
+ * snapshot + seed-rebuilt map geometry (guest). */
 (function (global) {
   'use strict';
 
@@ -12,15 +14,13 @@
   const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
 
   const game = {
-    mode: null,        // 'sp' | 'host' | 'guest'
-    world: null, viewer: 0, bot: null,
+    mode: null, world: null, viewer: 0, bot: null,
     names: ['', ''], campaign: false,
-    targeting: false, over: false,
-    lastRiftBanner: -99
+    targeting: false, over: false, lastRiftBanner: -99
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
-  let snapPrev = null, snapCur = null, snapAt = 0;
+  let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null;
 
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
@@ -35,6 +35,7 @@
     game.bot = AI.make(kind, opts);
     game.names = ['Corwin', AI.HEIRS[kind].title];
     game.targeting = false;
+    Render.resize();
     UI.startMatch(AI.HEIRS[kind].title);
   }
   function startMP(seed) {
@@ -44,6 +45,8 @@
     game.names = ['Corwin', 'Eric'];
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null;
     game.world = Net.isHost ? World.createWorld(seed) : null;
+    refWorld = Net.isHost ? null : World.createWorld(seed);   // guest: map geometry only
+    Render.resize();
     UI.startMatch(Net.isHost ? 'Eric' : 'Corwin');
   }
   function toMenu() {
@@ -73,29 +76,79 @@
   function issue(cmd) {
     if (game.mode === 'guest') { Net.send({ t: 'cmd', c: cmd }); return { ok: true }; }
     const r = World.applyCommand(game.world, game.viewer, cmd);
-    if (!r.ok && r.err === 'essence') UI.banner('Not enough Essence', 'warn');
+    if (!r.ok) {
+      if (r.err === 'essence') UI.banner('Not enough Essence', 'warn');
+      else if (r.err === 'presence') UI.banner('A unit of yours must stand there — plant the banner first', 'warn');
+      else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
+      else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
+    }
     return r;
   }
 
-  /* ---------------- event routing (banners + canvas fx) ---------------- */
+  /* ---------------- view assembly (render-ready, fog applied) ---------------- */
+  function hostView() {
+    const world = game.world, viewer = game.viewer;
+    const see = (x, y) => World.canSee(world, viewer, x, y);
+    const mem = world.players[viewer].explored;
+    return {
+      t: world.t, map: world.map, players: world.players,
+      sites: world.map.sites.map((s) => {
+        if (see(s.x, s.y)) return { id: s.id, live: true, owner: s.owner,
+                                    post: s.post ? { bt: s.post.bt, level: s.post.level, hp: s.post.hp, maxHp: s.post.maxHp } : null };
+        const m = mem[s.id];
+        return m ? { id: s.id, live: false, owner: m.owner, post: m.post } : null;
+      }),
+      units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y)),
+      storms: world.storms.filter((s) => see(s.x, s.y)),
+      visSources: World.visionSources(world, viewer),
+      see
+    };
+  }
+  function guestView() {
+    const snap = snapCur;
+    /* vision sources rebuilt client-side from own visible assets */
+    const src = [];
+    const city = refWorld.map.sites[refWorld.map.cities[1]];
+    src.push([city.x, city.y, C.VISION.city]);
+    for (const s of refWorld.map.sites) {
+      const st = snap.sites[s.id];
+      if (st && st.live && st.owner === 1 && st.post)
+        src.push([s.x, s.y, st.post.bt === 'watch' ? C.OUTPOSTS.watch.vision : C.VISION.post]);
+    }
+    /* interpolate own+visible units between the last two snapshots */
+    const alpha = Math.min(1, (performance.now() - snapAt) / 100);
+    let units = snap.units;
+    if (snapPrev) {
+      const prev = new Map(snapPrev.units.map((u) => [u.id, u]));
+      units = snap.units.map((u) => {
+        const q = prev.get(u.id);
+        return q ? { ...u, x: q.x + (u.x - q.x) * alpha, y: q.y + (u.y - q.y) * alpha } : u;
+      });
+    }
+    for (const u of units) if (u.owner === 1) src.push([u.x, u.y, C.VISION.unit]);
+    const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
+    return { t: snap.t, map: refWorld.map, players: snap.players, sites: snap.sites,
+             units, storms: snap.storms, visSources: src, see };
+  }
+
+  /* ---------------- event routing (banners + canvas fx; fog respected) ---------------- */
   function routeEvents(evs, view) {
-    Render.addEvents(evs, view, game.viewer);
-    for (const ev of evs) {
+    const seen = evs.filter((ev) => ev.pi === game.viewer || ev.x == null || !view.see || view.see(ev.x, ev.y));
+    Render.addEvents(seen, view, game.viewer);
+    const siteName = (id) => view.map.sites[id] ? view.map.sites[id].name : 'a far place';
+    for (const ev of seen) {
       if (ev.e === 'walk') UI.banner(game.names[ev.pi] + ' has set foot upon the Pattern!', 'alert');
       else if (ev.e === 'pattern' && ev.idx > 0) UI.banner(game.names[ev.pi] + C.PATTERN_ALERTS[ev.idx].msg, 'alert');
-      else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 25) { game.lastRiftBanner = view.t; UI.banner('Chaos tears the black road open', 'chaos'); }
+      else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner('Chaos tears open a rift in the black road', 'chaos'); }
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
       else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
+      else if (ev.e === 'hurtpost' && ev.pi === game.viewer) UI.banner('Your outpost at ' + siteName(ev.site) + ' is under attack!', 'warn');
+      else if (ev.e === 'postdie') UI.banner(ev.pi === game.viewer ? 'Your outpost at ' + siteName(ev.site) + ' has fallen' : 'An outpost at ' + siteName(ev.site) + ' falls', ev.pi === game.viewer ? 'warn' : '');
+      else if (ev.e === 'post' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' raises works at ' + siteName(ev.site), '');
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
     }
   }
-
-  const incomeRate = (view, pi) => {
-    let r = C.BASE_INCOME;
-    for (const s of view.players[pi].slots) if (s && s.bt === 'gate') r += C.BUILDINGS.gate.income[s.level - 1];
-    return r;
-  };
 
   /* ---------------- the loop ---------------- */
   function frame(now) {
@@ -115,8 +168,9 @@
           World.update(game.world, C.SIM_DT);
         }
       }
+      const view = hostView();
       const evs = game.world.events.splice(0);
-      if (evs.length) { routeEvents(evs, game.world); if (game.mode === 'host') pendingGuestEvents.push(...evs); }
+      if (evs.length) { routeEvents(evs, view); if (game.mode === 'host') pendingGuestEvents.push(...evs); }
       if (game.mode === 'host') {
         snapTimer -= dtReal;
         if (snapTimer <= 0) {
@@ -124,44 +178,68 @@
           Net.send({ t: 'snap', s: Net.snapFor(game.world, 1, pendingGuestEvents.splice(0)) });
         }
       }
-      Render.frame(game.world, game.viewer, dtReal);
-      UI.hud(game.world, game.viewer, incomeRate(game.world, game.viewer), game.targeting);
+      Render.frame(view, game.viewer, dtReal);
+      UI.hud(view, game.viewer, game.world.players[game.viewer].incomeRate || 0, game.targeting);
     } else if (game.mode === 'guest' && snapCur) {
-      /* interpolate unit positions between the last two snapshots */
-      const alpha = Math.min(1, (performance.now() - snapAt) / 100);
-      let units = snapCur.units;
-      if (snapPrev) {
-        const prev = new Map(snapPrev.units.map((u) => [u.id, u]));
-        units = snapCur.units.map((u) => {
-          const q = prev.get(u.id);
-          return q ? { ...u, p: q.p + (u.p - q.p) * alpha, x: q.x + (u.x - q.x) * alpha } : u;
-        });
-      }
-      const view = { t: snapCur.t, players: snapCur.players, units, storms: snapCur.storms };
+      const view = guestView();
       Render.frame(view, 1, dtReal);
-      UI.hud(view, 1, incomeRate(view, 1), game.targeting);
+      UI.hud(view, 1, snapCur.players[1].incomeRate || 0, game.targeting);
     }
   }
 
-  /* ---------------- input ---------------- */
-  function onTap(e) {
-    if (!game.mode || game.over) return;
+  /* ---------------- input: drag pans, tap acts ---------------- */
+  let pDown = null, dragging = false, miniScrub = false;
+  function onDown(e) {
+    if (!game.mode) return;
+    pDown = { x: e.clientX, y: e.clientY };
+    dragging = false;
+    miniScrub = Render.hitMinimap(e.clientX);
+    if (miniScrub) Render.minimapJump(e.clientY);
+  }
+  function onMove(e) {
+    Render.pointer = { x: e.clientX, y: e.clientY };
+    if (!pDown) return;
+    if (miniScrub) { Render.minimapJump(e.clientY); return; }
+    const dy2 = e.clientY - pDown.y;
+    if (dragging || Math.abs(dy2) > 12) {
+      dragging = true;
+      Render.pan(e.clientY - (onMove._ly != null ? onMove._ly : pDown.y));
+    }
+    onMove._ly = e.clientY;
+  }
+  function onUp(e) {
+    const wasTap = pDown && !dragging && !miniScrub;
+    pDown = null; dragging = false; miniScrub = false; onMove._ly = null;
+    if (!wasTap || !game.mode || game.over) return;
     const x = e.clientX, y = e.clientY;
-    const view = game.mode === 'guest' ? snapCur : game.world;
+    const view = game.mode === 'guest' ? (snapCur ? guestView() : null) : hostView();
     if (!view) return;
     if (game.targeting) {
       game.targeting = false;
-      issue({ c: 'power', k: 'storm', p: Render.yToLane(y, game.viewer) });
+      const w = Render.toWorld(x, y, game.viewer);
+      if (!view.see(w.x, w.y)) { UI.banner('You cannot storm what you cannot see', 'warn'); return; }
+      issue({ c: 'power', k: 'storm', x: w.x, y: w.y });
       return;
     }
-    const slot = Render.hitSlot(x, y, game.viewer);
+    /* own city grid first (it overlaps the map), then map sites */
+    const slot = Render.hitSlot(x, y);
     if (slot >= 0) {
       const me = view.players[game.viewer];
       const s = me.slots[slot];
       Render.selected = slot;
       if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'));
       else UI.upSheet(slot, s, me.essence, me.walking);
-    } else if (UI.sheetOpen()) UI.closeSheet();
+      return;
+    }
+    const siteId = Render.hitSite(x, y, view, game.viewer);
+    if (siteId >= 0) {
+      const site = view.map.sites[siteId];
+      if (site.kind !== 'city' || view.map.cities[game.viewer] === siteId) {
+        UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence);
+        return;
+      }
+    }
+    if (UI.sheetOpen()) UI.closeSheet();
   }
 
   /* ---------------- LAN pairing (QR flow ported from Perils) ---------------- */
@@ -205,7 +283,7 @@
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
         } catch (e) { reject(new Error('camera blocked — allow camera access')); return; }
-        try {   // continuous autofocus, or the camera never locks onto a nearby screen
+        try {
           const track = stream.getVideoTracks()[0];
           const caps = track.getCapabilities ? track.getCapabilities() : {};
           if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
@@ -291,7 +369,7 @@
     Net.onCmd = (c) => guestCmdQueue.push(c);
     Net.onSnap = (s) => {
       snapPrev = snapCur; snapCur = s; snapAt = performance.now();
-      if (s.events && s.events.length) routeEvents(s.events, s);
+      if (s.events && s.events.length && refWorld) routeEvents(s.events, guestView());
       if (s.winner !== null && s.winner !== undefined) endMatch(s.winner, s.winReason);
     };
     Net.onClose = () => {
@@ -316,11 +394,15 @@
       onBuild: (slot, bt) => issue({ c: 'build', slot, bt }),
       onUp: (slot) => issue({ c: 'up', slot }),
       onWalk: (on) => issue({ c: 'walk', on }),
+      onBanner: (site) => issue({ c: 'banner', site }),
+      onPost: (site, bt) => issue({ c: 'post', site, bt }),
+      onPostUp: (site) => issue({ c: 'postup', site }),
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
         if (!view) return;
-        const cd = view.players[game.viewer].powers[k];
-        if (cd > 0) return;
+        const me = view.players[game.viewer];
+        if (me.powers[k] > 0) return;
+        if (me.essence < C.POWERS[k].cost) { UI.banner('Not enough Essence', 'warn'); return; }
         if (k === 'storm') game.targeting = !game.targeting;
         else issue({ c: 'power', k: 'trump' });
       },
@@ -333,8 +415,9 @@
       onEndMenu: toMenu
     });
     const cvs = $('game');
-    cvs.addEventListener('pointerdown', onTap);
-    cvs.addEventListener('pointermove', (e) => { Render.pointer = { x: e.clientX, y: e.clientY }; });
+    cvs.addEventListener('pointerdown', onDown);
+    cvs.addEventListener('pointermove', onMove);
+    cvs.addEventListener('pointerup', onUp);
     setupLan();
     $('version').textContent = 'v' + (global.GAME_VERSION || '?');
     UI.showMenu(campaignLabel());

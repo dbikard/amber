@@ -168,10 +168,91 @@
     g.beginPath(); g.arc(11, 15, 1.7, 0, 7); g.arc(18, 15, 1.7, 0, 7); g.fill();   // eyes
   }
 
+  /* ---------------- map sites & outposts (v0.2) ---------------- */
+  const sitePainters = {
+    spring(g, rng) {   // a pool of living Shadow
+      g.beginPath(); g.ellipse(34, 40, 22, 11, 0, 0, 7);
+      g.fillStyle = vgrad(g, 0, 30, 22, '#1e3444', '#0a1420'); g.fill();
+      g.strokeStyle = '#3a5a70'; g.lineWidth = 1.5; g.stroke();
+      for (let i = 0; i < 3; i++) {
+        g.beginPath(); g.ellipse(34, 40, 16 - i * 5, 8 - i * 2.6, 0, 0, 7);
+        g.strokeStyle = 'rgba(140,200,255,' + (0.25 + i * 0.15) + ')'; g.lineWidth = 1; g.stroke();
+      }
+      glowOrb(g, 34, 40, 16, 'rgba(120,190,255,0.30)');
+      g.fillStyle = '#4a4034';
+      g.beginPath(); g.ellipse(14, 48, 5, 3, 0.5, 0, 7); g.ellipse(55, 46, 4, 2.5, -0.4, 0, 7); g.fill();
+      speckle(g, B, B, rng, '#8fc2ff', 12, 0.35);
+    },
+    vantage(g, rng) {   // high grey stone over Shadow
+      g.beginPath(); g.moveTo(10, 56); g.lineTo(22, 26); g.lineTo(30, 38); g.lineTo(38, 16);
+      g.lineTo(48, 34); g.lineTo(58, 56); g.closePath();
+      g.fillStyle = vgrad(g, 0, 16, 40, '#6a6276', '#2c2836'); g.fill();
+      g.strokeStyle = '#221d2b'; g.lineWidth = 1.5; g.stroke();
+      g.beginPath(); g.moveTo(22, 27); g.lineTo(37, 17.5);
+      g.strokeStyle = '#cfc6d8'; g.globalAlpha = 0.7; g.lineWidth = 1.6; g.stroke(); g.globalAlpha = 1;
+      speckle(g, B, B, rng, '#9a90aa', 20, 0.3);
+    },
+    road(g, rng) {   // a black milestone of the road
+      g.beginPath(); g.ellipse(34, 52, 20, 7, 0, 0, 7);
+      g.fillStyle = '#141018'; g.fill();
+      stone(g, { base: '#2c2433', light: '#5a4a68', dark: '#120e18', line: '#000' }, 26, 22, 16, 32, 3);
+      g.strokeStyle = PAL.chaos.glow; g.globalAlpha = 0.45; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(30, 30); g.lineTo(38, 30); g.moveTo(34, 26); g.lineTo(34, 44); g.stroke();
+      g.globalAlpha = 1;
+      speckle(g, B, B, rng, '#5ad584', 8, 0.3);
+    }
+  };
+  const postPainters = {
+    sgate(g, rng) {   // a claimed spring: standing stones and a working gate of Shadow
+      g.beginPath(); g.ellipse(34, 46, 24, 11, 0, 0, 7);
+      g.fillStyle = '#10202e'; g.fill(); g.strokeStyle = '#3a5a70'; g.stroke();
+      stone(g, PAL.stone, 12, 24, 9, 26, 3); stone(g, PAL.stone, 47, 24, 9, 26, 3);
+      stone(g, PAL.stone, 10, 18, 48, 8, 3);
+      for (let i = 0; i < 3; i++) {
+        g.beginPath(); g.arc(34, 40, 11 - i * 3.5, 0.5 + i, 3.7 + i);
+        g.strokeStyle = i % 2 ? '#7fb4ff' : '#b48eff'; g.globalAlpha = 0.85; g.lineWidth = 2.2; g.stroke();
+      }
+      g.globalAlpha = 1; glowOrb(g, 34, 40, 15, 'rgba(140,160,255,0.5)');
+      speckle(g, B, B, rng, PAL.pattern.light, 12, 0.3);
+    },
+    watch(g, rng) {   // a far-seeing post on the high ground
+      g.beginPath(); g.moveTo(14, 58); g.lineTo(24, 34); g.lineTo(44, 34); g.lineTo(54, 58); g.closePath();
+      g.fillStyle = vgrad(g, 0, 34, 24, '#5a5266', '#242030'); g.fill(); g.strokeStyle = '#1a1622'; g.stroke();
+      stone(g, PAL.stone, 26, 12, 16, 30, 3);
+      for (let i = 0; i < 2; i++) { g.fillStyle = PAL.stone.dark; g.fillRect(27 + i * 9, 7, 5, 6); }
+      glowOrb(g, 34, 22, 6, 'rgba(255,225,150,0.75)');
+      g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(34, 22, 2, 0, 7); g.fill();
+      speckle(g, B, B, rng, PAL.stone.light, 16, 0.28);
+    },
+    rampart(g, rng) {   // a wall across the way
+      stone(g, PAL.stone, 4, 30, 60, 22, 4);
+      for (let x = 6; x < 60; x += 9) { g.fillStyle = PAL.stone.dark; g.fillRect(x, 24, 6, 7); }
+      g.strokeStyle = PAL.stone.line; g.lineWidth = 1;
+      for (let y = 36; y < 50; y += 6) { g.beginPath(); g.moveTo(6, y); g.lineTo(62, y); g.stroke(); }
+      g.beginPath(); g.arc(34, 52, 8, Math.PI, 0); g.lineTo(42, 52); g.lineTo(26, 52); g.closePath();
+      g.fillStyle = '#0d0812'; g.fill();
+      speckle(g, B, B, rng, PAL.stone.light, 20, 0.3);
+    }
+  };
+  function paintFlag(p) {   // the war banner
+    const { c, g } = mk(30, 40);
+    g.strokeStyle = '#d8c8a8'; g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(8, 38); g.lineTo(8, 3); g.stroke();
+    g.beginPath(); g.moveTo(9, 4); g.quadraticCurveTo(20, 8, 27, 5); g.lineTo(24, 14);
+    g.quadraticCurveTo(18, 17, 9, 13); g.closePath();
+    g.fillStyle = p.base; g.fill(); g.strokeStyle = p.line; g.lineWidth = 1.2; g.stroke();
+    g.fillStyle = p.glow; g.fillRect(11, 6.5, 5, 5);
+    return c;
+  }
+
   S.init = function () {
     if (typeof document === 'undefined' || S._done) return;
     S._done = true;
     const rng = global.RNG.make(42);
+    S.site = {}; S.post = {};
+    for (const k of Object.keys(sitePainters)) { const { c, g } = mk(B, B); sitePainters[k](g, rng); S.site[k] = c; }
+    for (const k of Object.keys(postPainters)) { const { c, g } = mk(B, B); postPainters[k](g, rng); S.post[k] = c; }
+    S.flag = paintFlag(PAL.gold);
     for (const bt of Object.keys(painters)) {
       const { c, g } = mk(B, B);
       painters[bt](g, rng);

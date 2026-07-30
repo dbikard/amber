@@ -13,8 +13,19 @@
 - [x] Playwright smoke test (boots, menu → match, no console errors)
 - [x] Deploy: repo + GitHub Pages
 
+## Phase 0.5 — "The Shadow March" (v0.2)  ✅ DONE
+- [x] Site-graph Shadow map (700×2400, mirrored, seeded jitter) — scrollable, portrait
+- [x] Fog of war: vision from city/units/outposts; explored-memory; geography stays public
+- [x] Outposts: Shadow Gates on springs (map economy), Watchposts (vision+arrows), Ramparts (path-blocking walls)
+- [x] City Walls building (ring HP absorbs siege first, self-mends) + war-banner army control
+- [x] Economy rework: units + powers cost essence (no more idle 20k banks — sim-verified)
+- [x] AI heirs: expansion missions + banner strategy; suite re-balanced (triangle intact)
+- [x] Vision-filtered MP snapshots (banner secret, units fogged) — loopback PASS
+- [x] Minimap with alert pings + camera drag
+
 ## Phase 1 — Feel & fairness
-- [ ] Human playtest pass: tune essence pacing, tower efficiency, chaos curve
+- [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
+- [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play
 - [ ] Mechanic ablation runs (each building/power must move win rates)
 - [ ] Guest-side interpolation polish; reconnect/disconnect UX
 - [ ] Victory/defeat presentation (Pattern blaze / castle fall)

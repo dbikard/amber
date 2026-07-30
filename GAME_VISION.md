@@ -26,21 +26,40 @@ open along it and spew fiends at both sides, escalating until someone wins — t
 5. **The AI heirs are the content.** Each rival sibling is a distinct strategy personality;
    the single-player campaign is the succession ladder through the family.
 
-## The Board (portrait phone, one screen)
+## The Board (v0.2 — "The Shadow March": a scrollable map of Shadow)
+
+A portrait map ~3 screens tall you drag to explore. Cities at the ends; between them a
+**web of shadow-paths** — the black road as the central spine, winding side routes through
+named sites. Units march the paths; fights happen where armies meet.
 
 ```
-┌──────────────────────────┐
-│  RIVAL CITY (veiled)     │  ← their slots shrouded in Shadow; castle + HP visible
-│  ═══ their castle ═══    │
-│                          │
-│      THE BLACK ROAD      │  ← units march & fight here; Chaos rifts open here
-│   (rifts, fiends, war)   │
-│                          │
-│  ═══ your castle ═══     │
-│  YOUR CITY (3×3 slots)   │  ← tap a slot to build; tap a building to upgrade
-│ [essence] [⚡powers] [⏱]  │  ← HUD
-└──────────────────────────┘
+        [RIVAL CITY]  (veiled)
+         /    |    \
+   (spring) (road) (spring)
+       |      |      |
+  (vantage)—(road)—(vantage)
+       |   ⚔  |  ⚔   |
+   (spring)—(road)—(spring)     ← contested middle: the eco war
+       |      |      |
+  (vantage)—(road)—(vantage)
+       |      |      |
+   (spring) (road) (spring)
+         \    |    /
+        [YOUR CITY]  (3×3 grid + walls)
 ```
+
+- **Fog of war**: you see around your city, units, and outposts. Explored sites are
+  remembered (dimmed, last-known state); enemy armies move unseen otherwise.
+- **Sites**: **springs** (build a Shadow Gate → income — the reason to fight),
+  **vantages** (high ground for Watchposts), **road stones** (the spine; Chaos rifts here).
+- **Outposts**: claim a site by standing a unit on it, then build: Shadow Gate (eco),
+  Watchpost (vision + arrows), **Rampart** (a wall across the path — enemies must break it).
+- **The War Banner**: one royal banner; tap any site to plant it and your whole army
+  marches there. Defend home, seize a spring, assault their gate — one tap, zero micro.
+- **City walls**: a Walls building in the city grid raises a rampart ring around your
+  castle — attackers chew the wall before the keep. Walls and outposts slowly self-mend.
+- Essence always has somewhere to go: outposts, upgrades, walls — and whoever holds the
+  springs out-scales the other. Map control breaks stalemates by design.
 
 ## Buildings (tap an empty slot)
 

@@ -116,6 +116,53 @@
     el.classList.remove('hidden');
   };
 
+  /* ---------------- map site sheet (v0.2) ---------------- */
+  const KIND_BLURB = {
+    spring: 'A spring of living Shadow. Hold it with a Shadow Gate and it will pay for wars.',
+    vantage: 'High ground over the paths. A Watchpost here sees far and shoots farther.',
+    road: 'A milestone of the black road. Chaos favors this ground — a Rampart can wall the way.',
+    city: 'A Seat of Power.'
+  };
+  UI.siteSheet = function (site, st, viewer, essence) {
+    const el = $('sheet');
+    const ownerTxt = !st ? 'unexplored' : st.owner === -1 || st.owner == null ? 'unclaimed'
+      : st.owner === viewer ? 'yours' : 'the rival’s';
+    el.innerHTML = `<div class="sheet-title">${site.name}</div>` +
+                   `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
+    /* plant the banner — the one army order */
+    const bb = document.createElement('button');
+    bb.className = 'card walkbtn';
+    bb.innerHTML = '<span class="c-name">⚑ Plant the War Banner</span><span class="c-blurb">Your whole army marches here</span>';
+    bb.addEventListener('click', () => { H.onBanner(site.id); UI.closeSheet(); });
+    el.appendChild(bb);
+    /* build an outpost (a unit of yours must stand there — the host validates) */
+    if (site.kind !== 'city' && (!st || !st.post)) {
+      for (const bt of Object.keys(C.OUTPOSTS)) {
+        const d = C.OUTPOSTS[bt];
+        if (d.only && site.kind !== d.only) continue;
+        const can = essence >= d.cost;
+        const card = document.createElement('button');
+        card.className = 'card' + (can ? '' : ' locked');
+        card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
+                         `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb} — needs a unit standing here</span>`;
+        if (can) card.addEventListener('click', () => { H.onPost(site.id, bt); UI.closeSheet(); });
+        el.appendChild(card);
+      }
+    }
+    /* upgrade your outpost */
+    if (st && st.post && st.owner === viewer && st.post.level < C.MAX_LEVEL) {
+      const cost = global.World.postUpCost(st.post.bt, st.post.level);
+      const can = essence >= cost;
+      const b = document.createElement('button');
+      b.className = 'card' + (can ? '' : ' locked');
+      b.innerHTML = `<span class="c-name">Upgrade ${C.OUTPOSTS[st.post.bt].name} to level ${st.post.level + 1}</span><span class="c-cost">◆ ${cost}</span>`;
+      if (can) b.addEventListener('click', () => { H.onPostUp(site.id); UI.closeSheet(); });
+      el.appendChild(b);
+    }
+    addCancel(el);
+    el.classList.remove('hidden');
+  };
+
   function addCancel(el) {
     const c = document.createElement('button');
     c.className = 'card cancel'; c.textContent = 'Close';
