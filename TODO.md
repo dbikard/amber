@@ -11,7 +11,7 @@
 - [x] Browser: sprites, render, HUD, build/upgrade sheets, powers, single-player vs AI
 - [x] LAN: perils pairing ported + host-authoritative snapshot sync (2P duel)
 - [x] Playwright smoke test (boots, menu → match, no console errors)
-- [ ] Deploy: repo + GitHub Pages
+- [x] Deploy: repo + GitHub Pages
 
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: tune essence pacing, tower efficiency, chaos curve
