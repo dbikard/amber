@@ -31,6 +31,17 @@
 - [x] Retained scene graph: unit pools, per-site caches, march bob, banner wave
 - [x] Same render.js API — sim/AI/netcode/UI untouched; MP loopback re-verified
 
+## Phase 0.7 — "The Raised World" (v0.4)  ✅ DONE
+- [x] Three.js renderer (vendored r158) — true 3D, AoE2-pitch perspective camera
+- [x] Painterly terrain bake draped over rolling ground mesh (flattened along paths/sites)
+- [x] Procedural low-poly models: castles, all buildings/outposts, instanced units (+bob/facing)
+      and ~500 instanced forest trees — merged geometry, phone-friendly draw calls
+- [x] Screen-space projected fog of war (perspective-correct soft holes); overlay canvas for
+      HP bars / nameplates / minimap / storm targeting
+- [x] Guest = camera on the other side of the table (no world mirroring)
+- [x] Renderer selector: 3D default, ?r=2d or no-WebGL falls back to the Pixi painted map
+- [x] Smoke + MP loopback PASS on 3D
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

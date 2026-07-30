@@ -141,3 +141,6 @@ body {
   width: 44px; height: 44px; border-radius: 50%; border: 1px solid #c9a44f;
   background: #000a; color: #ffe9a8; font-size: 20px;
 }
+
+/* 3D renderer overlay (bars / labels / minimap) — input passes through */
+#overlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
