@@ -123,16 +123,18 @@
     road: 'A milestone of the black road. Chaos favors this ground — a Rampart can wall the way.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity) {
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.owner === -1 || st.owner == null ? 'unclaimed'
       : st.owner === viewer ? 'yours' : 'the rival’s';
     el.innerHTML = `<div class="sheet-title">${site.name}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
-    /* plant the banner — the one army order */
+    /* plant the banner — the one army order; at the rival's gates it is the assault */
     const bb = document.createElement('button');
-    bb.className = 'card walkbtn';
-    bb.innerHTML = '<span class="c-name">⚑ Plant the War Banner</span><span class="c-blurb">Your whole army marches here</span>';
+    bb.className = 'card walkbtn' + (foeCity ? ' assault' : '');
+    bb.innerHTML = foeCity
+      ? '<span class="c-name">⚔ Sound the Assault</span><span class="c-blurb">Plant the Banner at their gates — every blade marches on the Seat of Power</span>'
+      : '<span class="c-name">⚑ Plant the War Banner</span><span class="c-blurb">Your whole army marches here</span>';
     bb.addEventListener('click', () => { H.onBanner(site.id); UI.closeSheet(); });
     el.appendChild(bb);
     /* build an outpost (a unit of yours must stand there — the host validates) */

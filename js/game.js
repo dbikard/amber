@@ -35,6 +35,16 @@
     game.bot = AI.make(kind, opts);
     game.names = ['Corwin', AI.HEIRS[kind].title];
     game.targeting = false;
+    /* first-matches onboarding: teach the banner, the springs, the assault */
+    const seenHints = +localStorage.getItem('amber_hints') || 0;
+    if (seenHints < 3) {
+      localStorage.setItem('amber_hints', String(seenHints + 1));
+      game.hints = [
+        [6, '⚑ Your army rallies to the War Banner — tap any site to march there', 'alert'],
+        [24, 'Hold springs: march troops to one, then tap it to raise a Shadow Gate', 'alert'],
+        [45, '⚔ To win by force, plant the Banner on the rival city itself', 'alert']
+      ];
+    } else game.hints = [];
     Render.resize();
     UI.startMatch(AI.HEIRS[kind].title);
   }
@@ -171,6 +181,10 @@
       const view = hostView();
       const evs = game.world.events.splice(0);
       if (evs.length) { routeEvents(evs, view); if (game.mode === 'host') pendingGuestEvents.push(...evs); }
+      if (game.hints && game.hints.length && game.world.t >= game.hints[0][0]) {
+        const h = game.hints.shift();
+        UI.banner(h[1], h[2]);
+      }
       if (game.mode === 'host') {
         snapTimer -= dtReal;
         if (snapTimer <= 0) {
@@ -233,11 +247,11 @@
     }
     const siteId = Render.hitSite(x, y, view, game.viewer);
     if (siteId >= 0) {
+      /* every site opens a sheet — including the rival's city (the assault order) */
       const site = view.map.sites[siteId];
-      if (site.kind !== 'city' || view.map.cities[game.viewer] === siteId) {
-        UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence);
-        return;
-      }
+      const foeCity = view.map.cities[1 - game.viewer] === siteId;
+      UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity);
+      return;
     }
     if (UI.sheetOpen()) UI.closeSheet();
   }

@@ -473,11 +473,14 @@
         }
         continue;
       }
-      /* siege the enemy city if the goal is a city we've reached */
-      const goalSite = world.map.sites[u.goal];
-      if (goalSite && goalSite.kind === 'city') {
-        const target = world.map.cities[0] === goalSite.id ? 0 : 1;
-        if (target !== u.owner && d2(u.x, u.y, goalSite.x, goalSite.y) < (C.CASTLE_ZONE + 30) * (C.CASTLE_ZONE + 30)) {
+      /* siege: ANY unit standing before a hostile Seat of Power attacks it —
+       * you don't idle in sight of the enemy's gates because your banner is a step away */
+      let target = -1;
+      if (u.owner !== 2) target = 1 - u.owner;
+      else { const gs = world.map.sites[u.goal]; if (gs && gs.kind === 'city') target = world.map.cities.indexOf(gs.id); }
+      if (target >= 0 && target !== u.owner) {
+        const cs = world.map.sites[world.map.cities[target]];
+        if (d2(u.x, u.y, cs.x, cs.y) < (C.CASTLE_ZONE + 30) * (C.CASTLE_ZONE + 30)) {
           if (u.cd <= 0) {
             const tp = world.players[target];
             if (tp.wallHp > 0) { tp.wallHp -= u.dmg; tp.wallHurt = t; }   // the walls take it first
