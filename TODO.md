@@ -23,6 +23,14 @@
 - [x] Vision-filtered MP snapshots (banner secret, units fogged) — loopback PASS
 - [x] Minimap with alert pings + camera drag
 
+## Phase 0.6 — "The Painted World" (v0.3)  ✅ DONE
+- [x] PixiJS v8 renderer (vendored, no build step) — WebGL, additive glows, soft fog holes
+- [x] Procedural painterly terrain bake: biomes (golden Arden → shadow midlands → ashen north),
+      ~500 forest trees, corruption bleeding from the black road, cobbled paths, cliff vantages,
+      mirror-pool springs with shimmer, baked site nameplates, city auras + vignette
+- [x] Retained scene graph: unit pools, per-site caches, march bob, banner wave
+- [x] Same render.js API — sim/AI/netcode/UI untouched; MP loopback re-verified
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

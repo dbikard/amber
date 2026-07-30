@@ -91,7 +91,7 @@
     const see = (x, y) => World.canSee(world, viewer, x, y);
     const mem = world.players[viewer].explored;
     return {
-      t: world.t, map: world.map, players: world.players,
+      t: world.t, map: world.map, mapSeed: world.seed, players: world.players,
       sites: world.map.sites.map((s) => {
         if (see(s.x, s.y)) return { id: s.id, live: true, owner: s.owner,
                                     post: s.post ? { bt: s.post.bt, level: s.post.level, hp: s.post.hp, maxHp: s.post.maxHp } : null };
@@ -127,8 +127,8 @@
     }
     for (const u of units) if (u.owner === 1) src.push([u.x, u.y, C.VISION.unit]);
     const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
-    return { t: snap.t, map: refWorld.map, players: snap.players, sites: snap.sites,
-             units, storms: snap.storms, visSources: src, see };
+    return { t: snap.t, map: refWorld.map, mapSeed: refWorld.seed, players: snap.players,
+             sites: snap.sites, units, storms: snap.storms, visSources: src, see };
   }
 
   /* ---------------- event routing (banners + canvas fx; fog respected) ---------------- */
@@ -381,9 +381,9 @@
   }
 
   /* ---------------- boot ---------------- */
-  function boot() {
+  async function boot() {
     S.init();
-    Render.init($('game'));
+    await Render.init($('game'));   // PixiJS app init is async
     window.addEventListener('resize', Render.resize);
     UI.init({
       onCampaign: () => {
