@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d0b18">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Amber — The Succession</title>
+<script>window.GAME_VERSION = '0.1.0';</script>
+<link rel="stylesheet" href="styles.css?v=0.1.0">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="banner-wrap"></div>
+
+<div id="hud" class="hidden">
+  <div id="hud-top">
+    <span id="rival-name"></span>
+    <span id="rival-pattern" class="hidden"></span>
+    <span id="timer"></span>
+  </div>
+  <div id="hud-bottom">
+    <div id="essence"><span class="ess-ico">◆</span> <b id="ess-n">0</b> <span id="ess-rate"></span></div>
+    <span id="my-pattern" class="hidden"></span>
+    <div id="powers">
+      <button id="pw-storm" class="pw" title="Jewel of Judgment"><span class="pw-ico">⛈</span><span class="pw-cd"></span></button>
+      <button id="pw-trump" class="pw" title="Trump of Benedict"><span class="pw-ico">🃏</span><span class="pw-cd"></span></button>
+    </div>
+  </div>
+</div>
+
+<div id="sheet" class="hidden"></div>
+
+<div id="menu">
+  <h1>AMBER</h1>
+  <div class="sub">— The Succession —</div>
+  <p class="lore">Oberon is gone. The black road reaches for the one true city.<br>
+     Raise your works, walk in Shadow, and take the throne — by siege, or by the Pattern.</p>
+  <button id="btn-campaign" class="mbtn"></button>
+  <button id="btn-skirmish" class="mbtn">SKIRMISH</button>
+  <div id="skirmish-row" class="hidden"></div>
+  <button id="btn-lan" class="mbtn">LAN DUEL — CORWIN vs ERIC</button>
+  <div id="lan-panel" class="hidden">
+    <div id="lan-status">same Wi-Fi · no server · pair by QR</div>
+    <canvas id="qr-display" class="hidden"></canvas>
+    <div class="lan-row">
+      <button id="qr-host" class="mbtn small">HOST (CORWIN)</button>
+      <button id="qr-join" class="mbtn small">JOIN (ERIC)</button>
+      <button id="qr-scan-reply" class="mbtn small hidden">SCAN REPLY</button>
+    </div>
+    <button id="lan-start" class="mbtn hidden">BEGIN THE DUEL</button>
+    <pre id="lan-diag" class="hidden"></pre>
+  </div>
+  <div id="version"></div>
+</div>
+
+<div id="end" class="hidden">
+  <h2 id="end-title"></h2>
+  <p id="end-sub"></p>
+  <button id="end-next" class="mbtn"></button>
+  <button id="end-menu" class="mbtn">MENU</button>
+</div>
+
+<div id="scanner" class="hidden">
+  <video id="scan-video" playsinline muted></video>
+  <div id="scan-hint"></div>
+  <button id="scan-cancel">✕</button>
+</div>
+
+<script src="js/rng.js?v=0.1.0"></script>
+<script src="js/const.js?v=0.1.0"></script>
+<script src="js/world.js?v=0.1.0"></script>
+<script src="js/ai.js?v=0.1.0"></script>
+<script src="js/sprites.js?v=0.1.0"></script>
+<script src="js/render.js?v=0.1.0"></script>
+<script src="js/qrcode.js?v=0.1.0"></script>
+<script src="js/net.js?v=0.1.0"></script>
+<script src="js/ui.js?v=0.1.0"></script>
+<script src="js/game.js?v=0.1.0"></script>
+</body>
+</html>

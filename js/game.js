@@ -1,0 +1,348 @@
+/* game.js — orchestration: modes, fixed-timestep loop, input routing, campaign,
+ * and LAN duel wiring (QR pairing flow ported from Perils; host-authoritative sync). */
+(function (global) {
+  'use strict';
+
+  const C = global.CONST, World = global.World, AI = global.AI;
+  const Render = global.Render, UI = global.UI, Net = global.Net, S = global.SPRITES;
+  const $ = (id) => document.getElementById(id);
+
+  const LADDER = ['julian', 'bleys', 'brand', 'benedict'];
+  const RUNG_OPTS = [{ slow: 1.5, noise: 0.4 }, { slow: 1.3, noise: 0.28 }, { slow: 1.15, noise: 0.15 }, { slow: 1.0, noise: 0.05 }];
+  const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
+
+  const game = {
+    mode: null,        // 'sp' | 'host' | 'guest'
+    world: null, viewer: 0, bot: null,
+    names: ['', ''], campaign: false,
+    targeting: false, over: false,
+    lastRiftBanner: -99
+  };
+  let acc = 0, lastFrame = 0;
+  let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
+  let snapPrev = null, snapCur = null, snapAt = 0;
+
+  /* ---------------- campaign ladder ---------------- */
+  const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
+  const campaignLabel = () =>
+    rung() >= LADDER.length ? 'THRONE CLAIMED — WALK AGAIN'
+                            : 'CAMPAIGN — FACE ' + firstName(LADDER[rung()]).toUpperCase();
+
+  /* ---------------- match lifecycle ---------------- */
+  function startSP(kind, opts, isCampaign) {
+    game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
+    game.world = World.createWorld((Math.random() * 0xffffffff) >>> 0);
+    game.bot = AI.make(kind, opts);
+    game.names = ['Corwin', AI.HEIRS[kind].title];
+    game.targeting = false;
+    UI.startMatch(AI.HEIRS[kind].title);
+  }
+  function startMP(seed) {
+    game.mode = Net.isHost ? 'host' : 'guest';
+    game.viewer = Net.isHost ? 0 : 1;
+    game.campaign = false; game.over = false; game.targeting = false;
+    game.names = ['Corwin', 'Eric'];
+    guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null;
+    game.world = Net.isHost ? World.createWorld(seed) : null;
+    UI.startMatch(Net.isHost ? 'Eric' : 'Corwin');
+  }
+  function toMenu() {
+    game.mode = null; game.world = null; game.over = false;
+    if (Net.active) Net.close();
+    UI.showMenu(campaignLabel());
+  }
+  function endMatch(winner, reason) {
+    if (game.over) return;
+    game.over = true;
+    const won = winner === game.viewer;
+    const other = game.names[1 - game.viewer];
+    const sub = reason === 'pattern'
+      ? (won ? 'You have walked the Pattern to its blazing heart and spoken your name.'
+             : other + ' has walked the Pattern to its heart. The universe rearranges.')
+      : (won ? 'The rival Seat of Power lies in ruin along the black road.'
+             : 'Your Seat of Power lies in ruin. The road took it.');
+    let nextLabel = 'REMATCH';
+    if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
+      localStorage.setItem('amber_rung', String(rung() + 1));
+      nextLabel = rung() >= LADDER.length ? 'THE THRONE AWAITS' : 'FACE ' + firstName(LADDER[rung()]).toUpperCase();
+    }
+    UI.end(won, sub, nextLabel);
+  }
+
+  /* ---------------- commands ---------------- */
+  function issue(cmd) {
+    if (game.mode === 'guest') { Net.send({ t: 'cmd', c: cmd }); return { ok: true }; }
+    const r = World.applyCommand(game.world, game.viewer, cmd);
+    if (!r.ok && r.err === 'essence') UI.banner('Not enough Essence', 'warn');
+    return r;
+  }
+
+  /* ---------------- event routing (banners + canvas fx) ---------------- */
+  function routeEvents(evs, view) {
+    Render.addEvents(evs, view, game.viewer);
+    for (const ev of evs) {
+      if (ev.e === 'walk') UI.banner(game.names[ev.pi] + ' has set foot upon the Pattern!', 'alert');
+      else if (ev.e === 'pattern' && ev.idx > 0) UI.banner(game.names[ev.pi] + C.PATTERN_ALERTS[ev.idx].msg, 'alert');
+      else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 25) { game.lastRiftBanner = view.t; UI.banner('Chaos tears the black road open', 'chaos'); }
+      else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
+      else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
+      else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
+      else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
+    }
+  }
+
+  const incomeRate = (view, pi) => {
+    let r = C.BASE_INCOME;
+    for (const s of view.players[pi].slots) if (s && s.bt === 'gate') r += C.BUILDINGS.gate.income[s.level - 1];
+    return r;
+  };
+
+  /* ---------------- the loop ---------------- */
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dtReal = Math.min(0.1, (now - lastFrame) / 1000 || 0);
+    lastFrame = now;
+    Render.targeting = game.targeting;
+
+    if (game.mode === 'sp' || game.mode === 'host') {
+      acc += dtReal;
+      let steps = 0;
+      while (acc >= C.SIM_DT && steps++ < 6) {
+        acc -= C.SIM_DT;
+        if (!game.over) {
+          if (game.mode === 'sp') game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
+          if (game.mode === 'host') { for (const c of guestCmdQueue.splice(0)) World.applyCommand(game.world, 1, c); }
+          World.update(game.world, C.SIM_DT);
+        }
+      }
+      const evs = game.world.events.splice(0);
+      if (evs.length) { routeEvents(evs, game.world); if (game.mode === 'host') pendingGuestEvents.push(...evs); }
+      if (game.mode === 'host') {
+        snapTimer -= dtReal;
+        if (snapTimer <= 0) {
+          snapTimer = 0.1;
+          Net.send({ t: 'snap', s: Net.snapFor(game.world, 1, pendingGuestEvents.splice(0)) });
+        }
+      }
+      Render.frame(game.world, game.viewer, dtReal);
+      UI.hud(game.world, game.viewer, incomeRate(game.world, game.viewer), game.targeting);
+    } else if (game.mode === 'guest' && snapCur) {
+      /* interpolate unit positions between the last two snapshots */
+      const alpha = Math.min(1, (performance.now() - snapAt) / 100);
+      let units = snapCur.units;
+      if (snapPrev) {
+        const prev = new Map(snapPrev.units.map((u) => [u.id, u]));
+        units = snapCur.units.map((u) => {
+          const q = prev.get(u.id);
+          return q ? { ...u, p: q.p + (u.p - q.p) * alpha, x: q.x + (u.x - q.x) * alpha } : u;
+        });
+      }
+      const view = { t: snapCur.t, players: snapCur.players, units, storms: snapCur.storms };
+      Render.frame(view, 1, dtReal);
+      UI.hud(view, 1, incomeRate(view, 1), game.targeting);
+    }
+  }
+
+  /* ---------------- input ---------------- */
+  function onTap(e) {
+    if (!game.mode || game.over) return;
+    const x = e.clientX, y = e.clientY;
+    const view = game.mode === 'guest' ? snapCur : game.world;
+    if (!view) return;
+    if (game.targeting) {
+      game.targeting = false;
+      issue({ c: 'power', k: 'storm', p: Render.yToLane(y, game.viewer) });
+      return;
+    }
+    const slot = Render.hitSlot(x, y, game.viewer);
+    if (slot >= 0) {
+      const me = view.players[game.viewer];
+      const s = me.slots[slot];
+      Render.selected = slot;
+      if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'));
+      else UI.upSheet(slot, s, me.essence, me.walking);
+    } else if (UI.sheetOpen()) UI.closeSheet();
+  }
+
+  /* ---------------- LAN pairing (QR flow ported from Perils) ---------------- */
+  function setupLan() {
+    const say = (t2) => { $('lan-status').textContent = t2; };
+    Net.onDiag = (lines) => { const d = $('lan-diag'); d.textContent = lines.slice(-12).join('\n'); };
+    $('lan-status').addEventListener('click', () => $('lan-diag').classList.toggle('hidden'));
+
+    const qrDisplay = $('qr-display'), qrJoin = $('qr-join'), qrScanReply = $('qr-scan-reply');
+    let pairStop = null;
+
+    /* stream a payload as small cycling QR frames — dense single QRs defeat phone autofocus */
+    function startPairStream(payload) {
+      if (!global.QR) return false;
+      const CHUNK = 80;
+      const chunks = [];
+      for (let i2 = 0; i2 < payload.length; i2 += CHUNK) chunks.push(payload.slice(i2, i2 + CHUNK));
+      const id = Math.random().toString(36).slice(2, 6), n = chunks.length;
+      let i = 0, timer = null;
+      const drawFrame = () => {
+        try { global.QR.render(qrDisplay, 'AQ|' + id + '|' + i + '|' + n + '|' + chunks[i], { size: 560, quiet: 4, dark: '#000000', light: '#ffffff' }); } catch (e) {}
+        i = (i + 1) % n;
+      };
+      qrDisplay.classList.remove('hidden');
+      drawFrame();
+      if (n > 1) timer = setInterval(drawFrame, 420);
+      pairStop = () => { if (timer) clearInterval(timer); qrDisplay.classList.add('hidden'); };
+      return true;
+    }
+
+    /* open the camera, scan one (possibly streamed) QR, resolve its full text */
+    function scanQR() {
+      return new Promise(async (resolve, reject) => {
+        const overlay = $('scanner'), video = $('scan-video'), cancel = $('scan-cancel'), hint = $('scan-hint');
+        if (!('BarcodeDetector' in window)) { reject(new Error('this browser can’t scan QR codes')); return; }
+        let supported = [];
+        try { supported = await window.BarcodeDetector.getSupportedFormats(); } catch (e) {}
+        if (supported.indexOf('qr_code') < 0) { reject(new Error('QR scanning unsupported here')); return; }
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
+        } catch (e) { reject(new Error('camera blocked — allow camera access')); return; }
+        try {   // continuous autofocus, or the camera never locks onto a nearby screen
+          const track = stream.getVideoTracks()[0];
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        } catch (e) {}
+        video.srcObject = stream; try { await video.play(); } catch (e) {}
+        overlay.classList.remove('hidden');
+        hint.textContent = 'Point at your rival’s Trump';
+        let done = false;
+        const snap = document.createElement('canvas'), sctx = snap.getContext('2d');
+        const cleanup = () => { done = true; overlay.classList.add('hidden'); stream.getTracks().forEach((t2) => t2.stop()); video.srcObject = null; };
+        cancel.onclick = () => { cleanup(); reject(new Error('scan cancelled')); };
+        const parts = {}; let pid = null, need = 0, have = 0;
+        const tick = async () => {
+          if (done) return;
+          try {
+            let src = video;
+            if (video.videoWidth) { snap.width = video.videoWidth; snap.height = video.videoHeight; sctx.drawImage(video, 0, 0); src = snap; }
+            const codes = await detector.detect(src);
+            for (const code of codes || []) {
+              const v = code.rawValue; if (!v) continue;
+              if (v.slice(0, 3) !== 'AQ|') { cleanup(); resolve(v); return; }
+              const p = v.split('|');
+              if (p.length < 5) continue;
+              const id = p[1], idx = +p[2], total = +p[3];
+              if (pid !== id) { pid = id; need = total; have = 0; for (const k in parts) delete parts[k]; }
+              if (parts[idx] == null) { parts[idx] = p.slice(4).join('|'); have++; hint.textContent = 'reading the Trump… ' + have + '/' + need; }
+              if (need > 0 && have >= need) {
+                let full = '', ok = true;
+                for (let k = 0; k < need; k++) { if (parts[k] == null) { ok = false; break; } full += parts[k]; }
+                if (ok) { cleanup(); resolve(full); return; }
+              }
+            }
+          } catch (e) { /* transient detect error — keep scanning */ }
+          if (!done) setTimeout(() => requestAnimationFrame(tick), 60);
+        };
+        requestAnimationFrame(tick);
+      });
+    }
+
+    $('qr-host').addEventListener('click', async () => {
+      Net.diagReset();
+      say('drawing your Trump…');
+      try {
+        const offer = await Net.host();
+        if (!startPairStream(offer)) { say('could not draw the QR'); return; }
+        qrJoin.classList.add('hidden');
+        qrScanReply.classList.remove('hidden');
+        say('1) Eric scans this  2) tap SCAN REPLY');
+      } catch (e) { say('failed: ' + (e.message || e)); }
+    });
+    qrScanReply.addEventListener('click', async () => {
+      try {
+        if (pairStop) { pairStop(); pairStop = null; }
+        const answer = await scanQR();
+        say('the Trumps touch…');
+        await Net.acceptAnswer(answer);
+      } catch (e) { say(e.message); }
+    });
+    qrJoin.addEventListener('click', async () => {
+      Net.diagReset();
+      try {
+        const offer = await scanQR();
+        say('drawing your reply…');
+        const answer = await Net.join(offer);
+        if (!startPairStream(answer)) { say('could not draw the reply QR'); return; }
+        say('show this reply to Corwin — linking…');
+      } catch (e) { say(e.message); }
+    });
+
+    Net.onOpen = () => {
+      if (pairStop) { pairStop(); pairStop = null; }
+      qrScanReply.classList.add('hidden'); qrJoin.classList.remove('hidden');
+      if (Net.isHost) { $('lan-start').classList.remove('hidden'); say('LINKED — begin when ready'); }
+      else say('LINKED — awaiting Corwin…');
+    };
+    $('lan-start').addEventListener('click', () => {
+      const seed = (Math.random() * 0xffffffff) >>> 0;
+      Net.send({ t: 'start', seed });
+      $('lan-start').classList.add('hidden');
+      startMP(seed);
+    });
+    Net.onStart = (m) => startMP(m.seed);
+    Net.onCmd = (c) => guestCmdQueue.push(c);
+    Net.onSnap = (s) => {
+      snapPrev = snapCur; snapCur = s; snapAt = performance.now();
+      if (s.events && s.events.length) routeEvents(s.events, s);
+      if (s.winner !== null && s.winner !== undefined) endMatch(s.winner, s.winReason);
+    };
+    Net.onClose = () => {
+      if (game.mode === 'host' || game.mode === 'guest') {
+        UI.banner('The Trump link is severed', 'warn');
+        if (game.mode === 'guest' && !game.over) setTimeout(toMenu, 2500);
+      } else say('link lost');
+    };
+  }
+
+  /* ---------------- boot ---------------- */
+  function boot() {
+    S.init();
+    Render.init($('game'));
+    window.addEventListener('resize', Render.resize);
+    UI.init({
+      onCampaign: () => {
+        const r = Math.min(rung(), LADDER.length - 1);
+        startSP(LADDER[r], RUNG_OPTS[r], true);
+      },
+      onSkirmish: (kind) => startSP(kind, {}, false),
+      onBuild: (slot, bt) => issue({ c: 'build', slot, bt }),
+      onUp: (slot) => issue({ c: 'up', slot }),
+      onWalk: (on) => issue({ c: 'walk', on }),
+      onPower: (k) => {
+        const view = game.mode === 'guest' ? snapCur : game.world;
+        if (!view) return;
+        const cd = view.players[game.viewer].powers[k];
+        if (cd > 0) return;
+        if (k === 'storm') game.targeting = !game.targeting;
+        else issue({ c: 'power', k: 'trump' });
+      },
+      onEndNext: () => {
+        if (game.mode === 'sp') {
+          if (game.campaign) { const r = Math.min(rung(), LADDER.length - 1); startSP(LADDER[r], RUNG_OPTS[r], true); }
+          else startSP(game.bot.kind, {}, false);
+        } else toMenu();
+      },
+      onEndMenu: toMenu
+    });
+    const cvs = $('game');
+    cvs.addEventListener('pointerdown', onTap);
+    cvs.addEventListener('pointermove', (e) => { Render.pointer = { x: e.clientX, y: e.clientY }; });
+    setupLan();
+    $('version').textContent = 'v' + (global.GAME_VERSION || '?');
+    UI.showMenu(campaignLabel());
+    requestAnimationFrame((t2) => { lastFrame = t2; requestAnimationFrame(frame); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+
+  global.Game = { game, startSP, startMP, toMenu };
+})(typeof window !== 'undefined' ? window : globalThis);
