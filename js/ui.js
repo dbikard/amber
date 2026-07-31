@@ -121,9 +121,10 @@
   };
 
   /* ---------------- build / upgrade sheets ---------------- */
-  UI.buildSheet = function (slot, essence, hasShrine, wallLevel) {
+  const trChip = (essence) => `<span class="tr-chip">◆ <b>${Math.floor(essence)}</b></span>`;
+  UI.buildSheet = function (slot, essence, hasShrine) {
     const el = $('sheet');
-    el.innerHTML = '<div class="sheet-title">Raise a work of Amber</div>';
+    el.innerHTML = `<div class="sheet-title">Raise a work of Amber ${trChip(essence)}</div>`;
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
       if (d.unique && hasShrine && bt === 'shrine') continue;
@@ -136,18 +137,6 @@
       card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(slot, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
-    /* the walls are built from any plot menu too — it's where builders go looking */
-    if (wallLevel != null && wallLevel < C.MAX_LEVEL) {
-      const wcost = wallLevel === 0 ? C.WALL.cost : C.WALL.up[wallLevel - 1];
-      const can = essence >= wcost;
-      const wc = document.createElement('button');
-      wc.className = 'card' + (can ? '' : ' locked');
-      wc.dataset.cost = wcost;
-      wc.innerHTML = `<span class="c-ico">🧱</span><span class="c-name">${wallLevel === 0 ? 'City Walls (ramparts)' : 'Strengthen the City Walls'}</span>` +
-                     `<span class="c-cost">◆ ${wcost}</span><span class="c-blurb">A ring around the whole city — no enemy passes while it stands. Takes no plot.</span>`;
-      wc.addEventListener('click', () => { if (wc.classList.contains('locked')) return; H.onWall(); UI.closeSheet(); });
-      el.appendChild(wc);
-    }
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
@@ -156,7 +145,7 @@
   UI.upSheet = function (slot, s, essence, walking) {
     const d = C.BUILDINGS[s.bt];
     const el = $('sheet');
-    el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — level ${s.level}</div>` +
+    el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — level ${s.level} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${d.blurb}</div>`;
     if (s.level < C.MAX_LEVEL) {
       const cost = global.World.upgradeCost(s.bt, s.level);
@@ -200,7 +189,7 @@
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.owner === -1 || st.owner == null ? 'unclaimed'
       : st.owner === viewer ? 'yours' : 'the rival’s';
-    el.innerHTML = `<div class="sheet-title">${site.name}</div>` +
+    el.innerHTML = `<div class="sheet-title">${site.name} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
 
     /* ---- the Seat of Power: city status + city-wide commands ---- */
@@ -296,6 +285,8 @@
     if (el.classList.contains('hidden')) return;
     for (const card of el.querySelectorAll('.card[data-cost]'))
       card.classList.toggle('locked', essence < +card.dataset.cost);
+    const chip = el.querySelector('.tr-chip b');
+    if (chip) chip.textContent = Math.floor(essence);
   };
 
   UI.closeSheet = function () { $('sheet').classList.add('hidden'); if (global.Render) global.Render.selected = -1; };

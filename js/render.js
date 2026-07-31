@@ -86,10 +86,10 @@
     }
     return best;
   };
-  R.hitSite = function (px, py, view, viewer) {
+  R.hitSite = function (px, py, view, viewer, forFlag) {
     let best = -1, bd = Infinity;
     for (const s of view.map.sites) {
-      const r2 = (s.kind === 'city' ? C.CITY.r + 20 : 62) * scale;   // a city's whole court is tappable
+      const r2 = (s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : 122) : 62) * scale;   // sheets stop at the wall; flags take the whole court
       const X = dx(s.x, viewer) * scale, Y = (dy(s.y, viewer) - R.camY) * scale;
       const dd = (px - X) * (px - X) + (py - Y) * (py - Y);
       if (dd < r2 * r2 && dd < bd) { bd = dd; best = s.id; }

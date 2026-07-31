@@ -166,3 +166,7 @@ body {
   color: #ffe9a8; background: #1c1626ee; border: 1px solid #c9a44f88; border-radius: 14px;
   padding: 6px 12px;
 }
+
+/* live treasury readout inside sheets */
+.tr-chip { float: right; font-size: 13px; color: #ffe9a8; font-style: normal; }
+.tr-chip b { font-variant-numeric: tabular-nums; }

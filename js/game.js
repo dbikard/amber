@@ -275,7 +275,7 @@
     if (game.armedFlag != null) {
       const id = game.armedFlag;
       game.armedFlag = null;
-      const siteId = Render.hitSite(x, y, view, game.viewer);
+      const siteId = Render.hitSite(x, y, view, game.viewer, true);   // flags: whole court counts
       if (siteId < 0) UI.banner('The standard needs ground to stand on — tap a site', 'warn');
       else if (id === 'royal') issue({ c: 'banner', site: siteId });
       else issue({ c: 'rally', slot: id, site: siteId });
@@ -294,7 +294,7 @@
       const me = view.players[game.viewer];
       const s = me.slots[slot];
       Render.selected = slot;
-      if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'), me.wallLevel);
+      if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'));
       else UI.upSheet(slot, s, me.essence, me.walking);
       return;
     }
