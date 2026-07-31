@@ -71,6 +71,10 @@ human could see (see `AI.view()`).
 
 - **Do not push after every commit.** Batch; push when the user asks.
 - Version in `index.html` as `GAME_VERSION` + `?v=X.Y.Z` cache-bust queries on all assets.
+  `.githooks/pre-commit` (core.hooksPath) auto-bumps the PATCH version on shipping commits
+  and re-stamps index.html + sw.js + manifest.json — this is what triggers installed PWAs
+  to auto-update. For minor/major bumps sed all three yourself (hook still +1s patch after).
+  Skip with AMBER_NO_BUMP=1. sw.js precaches per-version; update flow lives in game.js setupPWA().
 - Balance changes: run `node sim.js` before and after; keep the targets in
   DESIGN_PRINCIPLES.md green. `node sim.js --a=brand --b=julian --n=40` for a matchup.
 - Colors: gold=player, crimson=rival, green=Chaos, blue-white=Pattern. Don't drift.

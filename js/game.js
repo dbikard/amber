@@ -62,7 +62,40 @@
   function toMenu() {
     game.mode = null; game.world = null; game.over = false;
     if (Net.active) Net.close();
+    if (game.updateReady) { applyUpdate(); return; }   // a new version waited politely for match end
     UI.showMenu(campaignLabel());
+  }
+
+  /* ---------------- PWA: install + live auto-update ----------------
+   * The SW precaches each version under its own cache. When a new sw.js (new VERSION)
+   * is found: at the menu we apply it instantly; mid-match we wait for the match to end.
+   * 'controllerchange' after skipWaiting → reload into the new build. */
+  let waitingSW = null, reloading = false;
+  function applyUpdate() { if (waitingSW) waitingSW.postMessage({ t: 'skip' }); }
+  function setupPWA() {
+    if (!('serviceWorker' in navigator)) return;
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading || !hadController) return;
+      reloading = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' }).then((reg) => {
+      const onWaiting = () => {
+        if (!reg.waiting || !navigator.serviceWorker.controller) return;
+        waitingSW = reg.waiting;
+        if (!game.mode) applyUpdate();
+        else { game.updateReady = true; UI.banner('A new shadow of Amber is drawn — it settles after this match', 'alert'); }
+      };
+      if (reg.waiting) onWaiting();
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (sw) sw.addEventListener('statechange', onWaiting);
+      });
+      /* look for updates when the app comes back to the foreground, and periodically */
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+      setInterval(() => reg.update().catch(() => {}), 15 * 60 * 1000);
+    }).catch(() => {});
   }
   function endMatch(winner, reason) {
     if (game.over) return;
@@ -440,6 +473,7 @@
     cvs.addEventListener('pointermove', onMove);
     cvs.addEventListener('pointerup', onUp);
     setupLan();
+    setupPWA();
     $('version').textContent = 'v' + (global.GAME_VERSION || '?');
     UI.showMenu(campaignLabel());
     requestAnimationFrame((t2) => { lastFrame = t2; requestAnimationFrame(frame); });

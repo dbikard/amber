@@ -1,0 +1,13 @@
+#!/bin/sh
+# Auto-bump the patch version whenever shipping files are committed.
+# Every push then carries a new version → caches invalidate → installed PWAs
+# see a byte-different sw.js and auto-update. Skip with AMBER_NO_BUMP=1.
+[ -n "$AMBER_NO_BUMP" ] && exit 0
+git diff --cached --name-only | grep -qE '\.(js|css|html|json|png)$' || exit 0
+cur=$(grep -o "GAME_VERSION = '[0-9][0-9.]*'" index.html | grep -o '[0-9][0-9.]*')
+[ -z "$cur" ] && exit 0
+maj=${cur%%.*}; rest=${cur#*.}; min=${rest%%.*}; pat=${rest#*.}
+next="$maj.$min.$((pat+1))"
+sed -i "s/$cur/$next/g" index.html sw.js manifest.json
+git add index.html sw.js manifest.json
+echo "amber: version $cur → $next"

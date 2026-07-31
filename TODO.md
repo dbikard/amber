@@ -52,6 +52,15 @@
 - [x] HUD shows NET essence rate (income − muster/walk upkeep), crimson when negative
 - [x] Sheets/renderers/netcode updated; wall-siege scenario + smoke + MP loopback PASS
 
+## Phase 0.9 — Installable + self-updating (v0.6)  ✅ DONE
+- [x] PWA: manifest (portrait/standalone), Seat-tower icons (PIL-generated), apple-touch
+- [x] Service worker (refined from perils): versioned precache = offline from first visit;
+      old caches purged on activate; network-first navigations, cache-first ?v assets
+- [x] LIVE auto-update: new sw.js detected while app is open → applied instantly at the
+      menu, or deferred to match end ("a new shadow of Amber is drawn") — verified e2e
+- [x] .githooks/pre-commit bumps the patch version on every shipping commit (the update
+      trigger); core.hooksPath configured; AMBER_NO_BUMP=1 to skip
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play
