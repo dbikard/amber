@@ -428,7 +428,7 @@
       let income = C.BASE_INCOME;
       for (const s of world.map.sites)
         if (s.owner === pi && s.post && s.post.bt === 'sgate') income += C.OUTPOSTS.sgate.income[s.post.level - 1];
-      let drain = pl.walking ? C.BUILDINGS.shrine.drain[(pl.slots.find((q) => q && q.bt === 'shrine') || { level: 1 }).level - 1] : 0;
+      let drain = 0;   // ACTUAL spend rate this tick — the HUD never lies again
       for (let si = 0; si < C.SLOTS; si++) {
         const b = pl.slots[si];
         if (!b) continue;
@@ -438,15 +438,20 @@
         if (b.bt === 'gate') income += def.income[b.level - 1];
         else if (def.spawns) {
           if (pl.musterPaused) { b.cd = Math.max(b.cd, 0.5); continue; }
-          drain += C.UNITS[def.spawns].cost / def.period[b.level - 1];
+          const price = C.UNITS[def.spawns].cost;
+          const per = def.period[b.level - 1];
+          b.paid = b.paid || 0;
+          /* recruits are paid for CONTINUOUSLY: the treasury drains smoothly, and a poor
+           * treasury slows the muster instead of silently skipping it */
+          const pay = Math.min((price / per) * dt, Math.max(0, price - b.paid), pl.essence);
+          if (pay > 0) { pl.essence -= pay; b.paid += pay; drain += pay / dt; }
           b.cd -= dt;
           if (b.cd <= 0) {
-            const price = C.UNITS[def.spawns].cost;
-            if (pl.essence >= price) {   // every soldier is paid for — the treasury feeds the war
-              pl.essence -= price;
+            if (b.paid >= price - 1e-6) {
+              b.paid -= price;
               spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, si);
-              b.cd += def.period[b.level - 1];
-            } else b.cd = 0.5;           // muster waits on the war chest
+              b.cd += per;
+            } else b.cd = 0;   // timer ready; the recruit marches the moment he's paid
           }
         } else if (b.bt === 'tower') {
           b.cd -= dt;
@@ -481,6 +486,7 @@
           const drain = def.drain[shrine.level - 1] * dt;
           if (pl.essence >= drain) {
             pl.essence -= drain;
+            pl.drainRate += def.drain[shrine.level - 1];   // actual, not theoretical
             pl.pattern += def.rate[shrine.level - 1] * dt;
             while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
               emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
