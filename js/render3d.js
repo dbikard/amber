@@ -268,10 +268,11 @@
   };
   R.hitSite = function (px, py, view) {
     const w2 = R.toWorld(px, py);
-    let best = -1, bd = 62 * 62;
+    let best = -1, bd = Infinity;
     for (const s of view.map.sites) {
+      const r2 = s.kind === 'city' ? C.CITY.r + 20 : 62;   // a city's whole court is tappable
       const dd = (w2.x - s.x) * (w2.x - s.x) + (w2.y - s.y) * (w2.y - s.y);
-      if (dd < bd) { bd = dd; best = s.id; }
+      if (dd < r2 * r2 && dd < bd) { bd = dd; best = s.id; }
     }
     return best;
   };
