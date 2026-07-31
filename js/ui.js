@@ -11,6 +11,10 @@
 
   UI.init = function (handlers) {
     H = handlers;
+    const sheet = $('sheet');
+    sheet.addEventListener('click', (e) => {
+      if (performance.now() - (sheet._openedAt || 0) < 320) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
     $('btn-skirmish').addEventListener('click', () => $('skirmish-row').classList.toggle('hidden'));
     $('btn-lan').addEventListener('click', () => $('lan-panel').classList.toggle('hidden'));
@@ -90,6 +94,7 @@
       el.appendChild(card);
     }
     addCancel(el);
+    el._openedAt = performance.now();
     el.classList.remove('hidden');
   };
 
@@ -138,6 +143,7 @@
       el.appendChild(b);
     }
     addCancel(el);
+    el._openedAt = performance.now();
     el.classList.remove('hidden');
   };
 
@@ -201,6 +207,7 @@
       el.appendChild(b);
     }
     addCancel(el);
+    el._openedAt = performance.now();
     el.classList.remove('hidden');
   };
 

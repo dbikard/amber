@@ -484,6 +484,9 @@
     cvs.addEventListener('pointerdown', onDown);
     cvs.addEventListener('pointermove', onMove);
     cvs.addEventListener('pointerup', onUp);
+    /* kill the synthetic mouse click that follows a touch — it lands on whatever
+     * sheet just opened under the finger and 'chooses' a card the player never tapped */
+    cvs.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
     setupLan();
     setupPWA();
     $('version').textContent = 'v' + (global.GAME_VERSION || '?');
