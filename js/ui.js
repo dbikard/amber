@@ -99,7 +99,7 @@
     const me = view.players[viewer], en = view.players[1 - viewer];
     $('ess-n').textContent = Math.floor(me.essence);
     const er = $('ess-rate');
-    er.textContent = (incomeRate >= 0 ? '+' : '') + incomeRate.toFixed(1) + '/s';
+    er.textContent = (incomeRate >= 0 ? '+' : '') + incomeRate.toFixed(1) + '/s' + (me.musterPaused ? ' ⏸' : '');
     er.style.color = incomeRate >= 0 ? '' : '#ff8a96';
     $('timer').textContent = mmss(view.t);
     const rp = $('rival-pattern');
@@ -196,12 +196,50 @@
     road: 'A milestone of the black road. Chaos favors this ground — a Rampart can wall the way.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel, pinfo, foeInfo) {
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.owner === -1 || st.owner == null ? 'unclaimed'
       : st.owner === viewer ? 'yours' : 'the rival’s';
     el.innerHTML = `<div class="sheet-title">${site.name}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
+
+    /* ---- the Seat of Power: city status + city-wide commands ---- */
+    if (site.kind === 'city') {
+      const p2 = foeCity ? foeInfo : pinfo;
+      if (p2) {
+        const stat = document.createElement('div');
+        stat.className = 'sheet-blurb';
+        const wl = foeCity ? (p2.wallHp > 0 ? Math.round(p2.wallHp) + ' hp' : 'none')
+          : (p2.wallLevel > 0 ? 'L' + p2.wallLevel + ' · ' + Math.round(p2.wallHp) + '/' + C.WALL.hp[p2.wallLevel - 1] : 'none');
+        stat.innerHTML = `🗼 Seat ${Math.round(p2.castleHp)}/${C.CASTLE_HP} &nbsp; 🧱 Walls ${wl}`;
+        el.appendChild(stat);
+      }
+      if (!foeCity && pinfo) {
+        const shrine = (pinfo.slots || []).find((q) => q && q.bt === 'shrine');
+        const walkDrain = pinfo.walking && shrine ? C.BUILDINGS.shrine.drain[shrine.level - 1] : 0;
+        const muster = Math.max(0, (pinfo.drainRate || 0) - walkDrain);
+        const eco = document.createElement('div');
+        eco.className = 'sheet-blurb';
+        eco.textContent = `+${(pinfo.incomeRate || 0).toFixed(1)}/s income · −${muster.toFixed(1)}/s muster` +
+                          (walkDrain ? ` · −${walkDrain.toFixed(1)}/s the walk` : '');
+        el.appendChild(eco);
+        /* Sound the Recall — every blade comes home */
+        const rc = document.createElement('button');
+        rc.className = 'card walkbtn';
+        rc.innerHTML = '<span class="c-name">🛡 Sound the Recall</span>' +
+                       '<span class="c-blurb">The War Banner returns home and every company folds back — defend the city</span>';
+        rc.addEventListener('click', () => { H.onRecall(); UI.closeSheet(); });
+        el.appendChild(rc);
+        /* the muster valve */
+        const mu = document.createElement('button');
+        mu.className = 'card';
+        mu.innerHTML = pinfo.musterPaused
+          ? '<span class="c-name">▶ Resume the Muster</span><span class="c-blurb">Barracks and spires pay for troops again</span>'
+          : '<span class="c-name">⏸ Halt the Muster</span><span class="c-blurb">Stop paying for new troops while the treasury gathers</span>';
+        mu.addEventListener('click', () => { H.onMuster(!pinfo.musterPaused); UI.closeSheet(); });
+        el.appendChild(mu);
+      }
+    }
     /* your own city: raise or strengthen the walls */
     if (site.kind === 'city' && !foeCity && wallLevel != null && wallLevel < C.MAX_LEVEL) {
       const cost = wallLevel === 0 ? C.WALL.cost : C.WALL.up[wallLevel - 1];

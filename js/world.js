@@ -79,6 +79,7 @@
         powers: { storm: 0, trump: 0 },
         championId: 0,
         banner: -1,             // site id the army marches on; -1 = defend home
+        musterPaused: false,    // the Seat can halt the muster to hoard essence
         explored: {}            // siteId -> last-known {kind, owner, post:{bt,level}|null}
       })),
       units: [], storms: [], events: [],
@@ -221,6 +222,11 @@
       if (!pl.slots.some((s) => s && s.bt === 'shrine')) return { ok: false, err: 'shrine' };
       pl.walking = !!cmd.on;
       if (pl.walking && !pl.revealed) { pl.revealed = true; emit(world, { e: 'walk', pi }); }
+      return { ok: true };
+    }
+    if (cmd.c === 'muster') {
+      pl.musterPaused = !!cmd.pause;
+      emit(world, { e: 'muster', pi, pause: pl.musterPaused });
       return { ok: true };
     }
     if (cmd.c === 'rally') {
@@ -431,6 +437,7 @@
         if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
         if (b.bt === 'gate') income += def.income[b.level - 1];
         else if (def.spawns) {
+          if (pl.musterPaused) { b.cd = Math.max(b.cd, 0.5); continue; }
           drain += C.UNITS[def.spawns].cost / def.period[b.level - 1];
           b.cd -= dt;
           if (b.cd <= 0) {

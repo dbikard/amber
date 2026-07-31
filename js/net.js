@@ -173,6 +173,7 @@
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
         banner: mine ? pl.banner : -1,   // the banner is a strategic secret
         wallLevel: mine ? pl.wallLevel : 0,
+        musterPaused: mine ? pl.musterPaused : false,
         slots: pl.slots.map((s) => {
           if (!s) return null;
           /* damage state is public — you can see what burns */
@@ -202,7 +203,7 @@
       /* events: own always; global always; positional only where seen; rival city news never */
       events: (events || []).filter((ev) => {
         if (ev.pi === viewer) return true;
-        if (ev.e === 'build' || ev.e === 'up' || ev.e === 'shot' || ev.e === 'banner' || ev.e === 'rally') return false;
+        if (ev.e === 'build' || ev.e === 'up' || ev.e === 'shot' || ev.e === 'banner' || ev.e === 'rally' || ev.e === 'muster') return false;
         if (ev.x != null) return see(ev.x, ev.y);
         return true;   // walk/pattern/surge/win/trump — power echoes through Shadow
       })

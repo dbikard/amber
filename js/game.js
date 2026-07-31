@@ -188,6 +188,7 @@
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
       else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
       else if (ev.e === 'hurtpost' && ev.pi === game.viewer) UI.banner('Your outpost at ' + siteName(ev.site) + ' is under attack!', 'warn');
+      else if (ev.e === 'muster') { if (ev.pi === game.viewer) UI.banner(ev.pause ? '⏸ The muster is halted — essence gathers' : '▶ The muster resumes', ''); }
       else if (ev.e === 'rally') { if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site) : '⚑ The company rejoins the War Banner', ''); }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
       else if (ev.e === 'breach') UI.banner(ev.pi === game.viewer ? 'Your walls are BREACHED — they are inside!' : 'The walls of ' + game.names[1 - game.viewer] + '’s city are breached!', ev.pi === game.viewer ? 'warn' : 'alert');
@@ -303,7 +304,7 @@
       const site = view.map.sites[siteId];
       const foeCity = view.map.cities[1 - game.viewer] === siteId;
       UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
-                   view.players[game.viewer].wallLevel);
+                   view.players[game.viewer].wallLevel, view.players[game.viewer], view.players[1 - game.viewer]);
       return;
     }
     if (UI.sheetOpen()) UI.closeSheet();
@@ -471,6 +472,19 @@
           UI.banner(id === 'royal' ? '⚑ Tap where the army should march' : '⚐ Tap where this company should stand', 'alert');
       },
       onRejoin: (slot) => { game.armedFlag = null; issue({ c: 'rally', slot, site: -1 }); },
+      onRecall: () => {
+        const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
+        if (!view) return;
+        issue({ c: 'banner', site: view.map.cities[game.viewer] });
+        const me = view.players[game.viewer];
+        for (let i = 0; i < C.SLOTS; i++) {
+          const s = me.slots[i];
+          if (s && C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns && s.rally != null && s.rally >= 0)
+            issue({ c: 'rally', slot: i, site: -1 });
+        }
+        UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
+      },
+      onMuster: (pause) => issue({ c: 'muster', pause }),
       onPostUp: (site) => issue({ c: 'postup', site }),
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
