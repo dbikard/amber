@@ -15,6 +15,18 @@
   let W = 0, H = 0, scale = 1, viewH = 0;
   let curViewer = 0, curView = null, lastKey = '', T = 0;
   let ground = null;
+  let groundGrid = null, gridW = 0, gridH = 0;
+  const GRES = 10;
+  function groundH(x, z) {
+    if (!groundGrid) return 0;
+    const fx = Math.max(0, Math.min(gridW - 1.001, x / GRES)), fz = Math.max(0, Math.min(gridH - 1.001, z / GRES));
+    const x0 = fx | 0, z0 = fz | 0, tx = fx - x0, tz = fz - z0;
+    const i = z0 * gridW + x0;
+    const a = groundGrid[i] * (1 - tx) + groundGrid[i + 1] * tx;
+    const b = groundGrid[i + gridW] * (1 - tx) + groundGrid[i + gridW + 1] * tx;
+    return a * (1 - tz) + b * tz;
+  }
+  R.groundH = (x, z) => groundH(x, z);
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
   let fx = [];
@@ -291,24 +303,36 @@
     const bumps = [];
     for (let i = 0; i < 70; i++) bumps.push([rngH.next() * C.MAP.W, rngH.next() * C.MAP.H, rngH.range(90, 220), rngH.range(6, 22)]);
     const flatPts = bake.pathPts.map((p) => [dx(p[0], viewer), dy(p[1], viewer)]);
-    for (const s of view.map.sites) flatPts.push([s.x, s.y]);
-    for (let i = 0; i < pp.count; i++) {
-      const x = pp.getX(i), z = pp.getZ(i);
+    for (const s of view.map.sites) if (s.kind !== 'city') flatPts.push([s.x, s.y]);
+    const cityPts = view.map.cities.map((id) => [view.map.sites[id].x, view.map.sites[id].y]);
+    /* ONE height truth, shared by the mesh and everything that stands on it */
+    const hFn = (x, z) => {
       let h = 0;
       for (const [bx2, bz, br, bh] of bumps) {
         const dd = (x - bx2) * (x - bx2) + (z - bz) * (z - bz);
         if (dd < br * br) h += bh * (1 - Math.sqrt(dd) / br);
       }
       let flat = 1;
-      for (let j = 0; j < flatPts.length; j += 1) {
-        const p = flatPts[j];
+      for (const p of cityPts) {   // cities are levelled ground, wall to wall
+        const dd = (x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]);
+        if (dd < 180 * 180) return 0;
+        if (dd < 250 * 250) flat = Math.min(flat, (Math.sqrt(dd) - 180) / 70);
+      }
+      for (const p of flatPts) {
         const dd = (x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]);
         if (dd < 3600) { flat = 0; break; }
         if (dd < 12100) flat = Math.min(flat, (Math.sqrt(dd) - 60) / 50);
       }
-      pp.setY(i, h * flat);
-    }
+      return h * flat;
+    };
+    for (let i = 0; i < pp.count; i++) pp.setY(i, hFn(pp.getX(i), pp.getZ(i)));
     geo.computeVertexNormals();
+    /* sample into a grid for cheap per-frame lookups */
+    gridW = Math.ceil(C.MAP.W / GRES) + 1; gridH = Math.ceil(C.MAP.H / GRES) + 1;
+    groundGrid = new Float32Array(gridW * gridH);
+    for (let gz = 0; gz < gridH; gz++)
+      for (let gx = 0; gx < gridW; gx++)
+        groundGrid[gz * gridW + gx] = hFn(gx * GRES, gz * GRES);
     const tex2 = new THREE.CanvasTexture(bake.canvas);
     tex2.colorSpace = THREE.SRGBColorSpace;
     if (viewer === 1) { tex2.center.set(0.5, 0.5); tex2.rotation = Math.PI; }
@@ -327,7 +351,7 @@
       if (!list.length) continue;
       const im = new THREE.InstancedMesh(treeGeo(pals[k]), MAT, list.length);
       list.forEach(([x, z, r2, v], i) => {
-        dum.position.set(x, 0, z);
+        dum.position.set(x, groundH(x, z) - 0.5, z);
         dum.rotation.set(0, v * Math.PI * 2, 0);
         const s2 = 0.7 + r2 * 0.06;
         dum.scale.set(s2, s2 * (0.9 + v * 0.35), s2);
@@ -343,7 +367,7 @@
     for (const s of view.map.sites) {
       if (s.kind === 'city') continue;
       const holder = new THREE.Group();
-      holder.position.set(s.x, 0.5, s.y);
+      holder.position.set(s.x, groundH(s.x, s.y) + 0.5, s.y);
       if (s.kind === 'spring') {
         const water = new THREE.Mesh(new THREE.CircleGeometry(26, 18).rotateX(-Math.PI / 2),
           new THREE.MeshLambertMaterial({ color: 0x2c5a7c, emissive: 0x14283c }));
@@ -428,12 +452,12 @@
   function ringFx(x, z, color, ttl, big, ping) {
     const m = new THREE.Mesh(new THREE.RingGeometry(6, 9, 20).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
-    m.position.set(x, 2, z);
+    m.position.set(x, groundH(x, z) + 2, z);
     worldG.add(m);
     fx.push({ k: 'ring', obj: m, ttl, max: ttl, big: big || 40, x, z, ping });
   }
   function boltFx(x1, z1, x2, z2, color, ttl) {
-    const gline = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, 16, z1), new THREE.Vector3(x2, 12, z2)]);
+    const gline = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, groundH(x1, z1) + 16, z1), new THREE.Vector3(x2, groundH(x2, z2) + 12, z2)]);
     const m = new THREE.Line(gline, new THREE.LineBasicMaterial({ color, transparent: true }));
     worldG.add(m);
     fx.push({ k: 'bolt', obj: m, ttl, max: ttl, x: x1, z: z1 });
@@ -521,7 +545,7 @@
         const mvx = u.x - f.x, mvy = u.y - f.y;
         if (mvx * mvx + mvy * mvy > 0.5) f.a = Math.atan2(mvx, mvy);
         f.x = u.x; f.y = u.y;
-        dum.position.set(u.x, Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
+        dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
         dum.rotation.set(0, f.a, 0);
         const s2 = u.kind === 'champion' ? 1.25 : 1;
         dum.scale.set(s2, s2, s2);
@@ -598,7 +622,7 @@
     bannerG.visible = b >= 0;
     if (b >= 0) {
       const s = view.map.sites[b];
-      bannerG.position.set(s.x + (viewer === 0 ? 26 : -26), 0, s.y);
+      bannerG.position.set(s.x + (viewer === 0 ? 26 : -26), groundH(s.x, s.y), s.y);
       bannerG.rotation.y = curViewerRotOwn();
       bannerG._flag.rotation.y = Math.sin(T * 2.6) * 0.25;
     }
@@ -623,7 +647,7 @@
         worldG.add(ss.lines);
       }
       ss.disc.visible = true;
-      ss.disc.position.set(st.x, 3, st.y);
+      ss.disc.position.set(st.x, groundH(st.x, st.y) + 3, st.y);
       ss.light.position.set(st.x, 120, st.y);
       if (st.delay > 0) {
         ss.disc.material.opacity = 0.15 + 0.1 * Math.sin(st.delay * 18);
@@ -688,7 +712,7 @@
     /* unit hp slivers */
     for (const u of view.units) {
       if (u.hp >= u.maxHp) continue;
-      const p = proj(u.x, 26, u.y);
+      const p = proj(u.x, groundH(u.x, u.y) + 26, u.y);
       if (!p.ok) continue;
       g.fillStyle = '#000a'; g.fillRect(p.x - 10, p.y, 20, 3);
       g.fillStyle = u.owner === 2 ? '#7dff9e' : (u.owner === viewer ? '#ffd98a' : '#ff8a96');
