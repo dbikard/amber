@@ -97,7 +97,9 @@
   /* building plots ring the Seat-tower — real places that can be reached and razed */
   function slotPos(world, pi, idx) {
     const c2 = cityOf(world, pi);
-    const a = (idx / C.SLOTS) * Math.PI * 2 + (pi === 0 ? -Math.PI / 2 : Math.PI / 2);
+    /* half-step ring offset: no plot sits dead behind the Seat-tower on the camera axis —
+     * the road arrives between a flanking PAIR of front plots instead */
+    const a = (idx / C.SLOTS) * Math.PI * 2 + (pi === 0 ? -Math.PI / 2 : Math.PI / 2) + Math.PI / C.SLOTS;
     return { x: c2.x + Math.cos(a) * C.CITY.slotR, y: c2.y + Math.sin(a) * C.CITY.slotR };
   }
 
