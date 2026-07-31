@@ -145,3 +145,24 @@ body {
 
 /* 3D renderer overlay (bars / labels / minimap) — input passes through */
 #overlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+
+/* ---------------- flag tray (army orders, bottom-left) ---------------- */
+#hud-left { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+#flag-tray { display: flex; gap: 8px; align-items: flex-end; pointer-events: auto; }
+.fbtn {
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 2px solid #c9a44f; background: radial-gradient(circle at 35% 30%, #3a2f1a, #14100a);
+  font-size: 20px; position: relative; color: #ffe9a8;
+  box-shadow: 0 0 10px rgba(255, 220, 150, 0.2), inset 0 0 8px #000;
+}
+.fbtn.co { border-color: #8a8098; }
+.fbtn.armed { border-color: #ffe9a8; box-shadow: 0 0 16px rgba(255, 233, 168, 0.8); transform: scale(1.08); }
+.fbtn .dot {
+  position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%;
+  border: 1.5px solid #0d0b18;
+}
+#flag-rejoin {
+  pointer-events: auto; font-family: inherit; font-size: 12px; letter-spacing: 1px;
+  color: #ffe9a8; background: #1c1626ee; border: 1px solid #c9a44f88; border-radius: 14px;
+  padding: 6px 12px;
+}

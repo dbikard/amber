@@ -69,6 +69,14 @@
 - [x] Pennant flags per company (both renderers); rally orders fog-safe (never leak to rival)
 - [x] Onboarding hint #4; headless + browser flow verified
 
+## Phase 0.11 — The Flag Tray (v0.6.6)  ✅ DONE
+- [x] Movement and building are separate grammars: flags = arm-then-tap from a bottom-left
+      tray (royal ⚑ + one pennant ⚐ per mustering building); sheets = pure build/info menus
+- [x] Royal flag on the rival city = the assault; company flags auto-detach; ⟲ REJOIN chip
+- [x] Mustering halls fly their company pennant in-world; tray dots mark detached companies
+- [x] Hints teach the tray; storm arming and flag arming cancel each other
+- [x] Full touch-emulated flow verified (arm/plant/split/rejoin/sheet-purity)
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

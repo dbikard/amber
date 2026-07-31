@@ -607,6 +607,14 @@
           while (slotG.children.length) { const m = slotG.children.pop(); m.geometry && m.geometry.dispose(); }
           if (want) {
             slotG.add(buildingModel(want));
+            if (g.own && C.BUILDINGS[want] && C.BUILDINGS[want].spawns) {
+              /* the company's pennant flies over its mustering hall */
+              const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
+              const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
+                new THREE.MeshBasicMaterial({ color: PENNANT[i % PENNANT.length], side: THREE.DoubleSide }));
+              pf.position.set(14, 38, 8);
+              slotG.add(pole, pf);
+            }
             if (want === 'shrine') {
               const spiral = new THREE.Mesh(new THREE.CircleGeometry(17, 18).rotateX(-Math.PI / 2),
                 new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 }));

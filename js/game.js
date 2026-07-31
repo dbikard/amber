@@ -16,7 +16,7 @@
   const game = {
     mode: null, world: null, viewer: 0, bot: null,
     names: ['', ''], campaign: false,
-    targeting: false, over: false, lastRiftBanner: -99, placingCo: null
+    targeting: false, over: false, lastRiftBanner: -99, armedFlag: null
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
@@ -40,10 +40,10 @@
     if (seenHints < 3) {
       localStorage.setItem('amber_hints', String(seenHints + 1));
       game.hints = [
-        [6, '⚑ Your army rallies to the War Banner — tap any site to march there', 'alert'],
-        [24, 'Hold springs: march troops to one, then tap it to raise a Shadow Gate', 'alert'],
-        [45, '⚔ To win by force, plant the Banner on the rival city itself', 'alert'],
-        [70, '⚐ Tap a Barracks to detach its company — an army can hold two fronts', 'alert']
+        [6, '⚑ Arm the gold flag (bottom-left), then tap any site — the army marches there', 'alert'],
+        [24, 'Hold springs: march troops to one, then tap the spring to raise a Shadow Gate', 'alert'],
+        [45, '⚔ To win by force, plant the gold flag on the rival city itself', 'alert'],
+        [70, '⚐ Every barracks adds a company flag to the tray — arm one to split your forces', 'alert']
       ];
     } else game.hints = [];
     Render.resize();
@@ -52,7 +52,7 @@
   function startMP(seed) {
     game.mode = Net.isHost ? 'host' : 'guest';
     game.viewer = Net.isHost ? 0 : 1;
-    game.campaign = false; game.over = false; game.targeting = false; game.placingCo = null;
+    game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
     game.names = ['Corwin', 'Eric'];
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null;
     game.world = Net.isHost ? World.createWorld(seed) : null;
@@ -234,11 +234,13 @@
       Render.frame(view, game.viewer, dtReal);
       UI.hud(view, game.viewer, (game.world.players[game.viewer].incomeRate || 0) - (game.world.players[game.viewer].drainRate || 0), game.targeting);
       UI.tick(game.world.players[game.viewer].essence);
+      UI.flags(view, game.viewer, game.armedFlag);
     } else if (game.mode === 'guest' && snapCur) {
       const view = guestView();
       Render.frame(view, 1, dtReal);
       UI.hud(view, 1, (snapCur.players[1].incomeRate || 0) - (snapCur.players[1].drainRate || 0), game.targeting);
       UI.tick(snapCur.players[1].essence || 0);
+      UI.flags(view, 1, game.armedFlag);
     }
   }
 
@@ -269,12 +271,13 @@
     const x = e.clientX, y = e.clientY;
     const view = game.mode === 'guest' ? (snapCur ? guestView() : null) : hostView();
     if (!view) return;
-    if (game.placingCo != null) {
-      const co = game.placingCo;
-      game.placingCo = null;
+    if (game.armedFlag != null) {
+      const id = game.armedFlag;
+      game.armedFlag = null;
       const siteId = Render.hitSite(x, y, view, game.viewer);
-      if (siteId >= 0) issue({ c: 'rally', slot: co, site: siteId });
-      else UI.banner('The standard needs ground to stand on — tap a site', 'warn');
+      if (siteId < 0) UI.banner('The standard needs ground to stand on — tap a site', 'warn');
+      else if (id === 'royal') issue({ c: 'banner', site: siteId });
+      else issue({ c: 'rally', slot: id, site: siteId });
       return;
     }
     if (game.targeting) {
@@ -460,8 +463,13 @@
       onBanner: (site) => issue({ c: 'banner', site }),
       onPost: (site, bt) => issue({ c: 'post', site, bt }),
       onWall: () => issue({ c: 'wall' }),
-      onRally: (slot) => { game.placingCo = slot; UI.banner('⚐ Tap a site — the company will hold it', 'alert'); },
-      onRejoin: (slot) => issue({ c: 'rally', slot, site: -1 }),
+      onFlagArm: (id) => {
+        game.targeting = false;
+        game.armedFlag = game.armedFlag === id ? null : id;
+        if (game.armedFlag != null)
+          UI.banner(id === 'royal' ? '⚑ Tap where the army should march' : '⚐ Tap where this company should stand', 'alert');
+      },
+      onRejoin: (slot) => { game.armedFlag = null; issue({ c: 'rally', slot, site: -1 }); },
       onPostUp: (site) => issue({ c: 'postup', site }),
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
@@ -469,7 +477,7 @@
         const me = view.players[game.viewer];
         if (me.powers[k] > 0) return;
         if (me.essence < C.POWERS[k].cost) { UI.banner('Not enough Essence', 'warn'); return; }
-        if (k === 'storm') game.targeting = !game.targeting;
+        if (k === 'storm') { game.armedFlag = null; game.targeting = !game.targeting; }
         else issue({ c: 'power', k: 'trump' });
       },
       onEndNext: () => {

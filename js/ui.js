@@ -50,6 +50,49 @@
     $('rival-pattern').classList.add('hidden');
   };
 
+  /* ---------------- flag tray: the army's orders, always at thumb's reach ---------------- */
+  const PENNANT_CSS = ['#e8ecff', '#64d8d8', '#c48eff', '#ff9ad8', '#9adcff', '#ffc27a', '#b0e8a0', '#d8b0ff'];
+  let trayHash = '';
+  UI.flags = function (view, viewer, armed) {
+    const tray = $('flag-tray');
+    const me = view.players[viewer];
+    const rows = [];
+    for (let i = 0; i < C.SLOTS; i++) {
+      const s = me.slots[i];
+      if (s && C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) rows.push([i, s.rally != null && s.rally >= 0]);
+    }
+    const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
+    if (hash === trayHash) return;
+    trayHash = hash;
+    tray.innerHTML = '';
+    const mk = (id, glyph, cls, color) => {
+      const b = document.createElement('button');
+      b.className = 'fbtn ' + cls + (armed === id ? ' armed' : '');
+      b.innerHTML = glyph;
+      if (color) b.style.color = color;
+      b.addEventListener('click', () => H.onFlagArm(id));
+      tray.appendChild(b);
+      return b;
+    };
+    mk('royal', '⚑', '', '#ffd98a');
+    for (const [i, detached] of rows) {
+      const b = mk(i, '⚐', 'co', PENNANT_CSS[i % PENNANT_CSS.length]);
+      if (detached) {
+        const d = document.createElement('span');
+        d.className = 'dot';
+        d.style.background = PENNANT_CSS[i % PENNANT_CSS.length];
+        b.appendChild(d);
+      }
+    }
+    if (typeof armed === 'number') {
+      const rj = document.createElement('button');
+      rj.id = 'flag-rejoin';
+      rj.textContent = '⟲ REJOIN';
+      rj.addEventListener('click', () => H.onRejoin(armed));
+      tray.appendChild(rj);
+    }
+  };
+
   /* ---------------- HUD ---------------- */
   const mmss = (t) => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
   UI.hud = function (view, viewer, incomeRate, targeting) {
@@ -114,25 +157,12 @@
       el.appendChild(b);
     }
     if (d.spawns) {
-      /* company orders: this building's troops as an independent force */
       const detached = s.rally != null && s.rally >= 0;
       const info = document.createElement('div');
       info.className = 'sheet-blurb';
-      info.textContent = detached ? '⚐ This company holds its own standard' : '⚑ This company follows the War Banner';
+      info.textContent = detached ? '⚐ Its company holds a standard afield — see the flag tray'
+                                  : '⚑ Its company follows the War Banner — its flag waits in the tray';
       el.appendChild(info);
-      const mv = document.createElement('button');
-      mv.className = 'card walkbtn';
-      mv.innerHTML = '<span class="c-name">⚐ Post the Company Standard</span>' +
-                     '<span class="c-blurb">Then tap a site — this company (and its future musters) holds it, whatever the War Banner does</span>';
-      mv.addEventListener('click', () => { H.onRally(slot); UI.closeSheet(); });
-      el.appendChild(mv);
-      if (detached) {
-        const rj = document.createElement('button');
-        rj.className = 'card';
-        rj.innerHTML = '<span class="c-name">⚑ Rejoin the War Banner</span><span class="c-blurb">The company folds back into the army</span>';
-        rj.addEventListener('click', () => { H.onRejoin(slot); UI.closeSheet(); });
-        el.appendChild(rj);
-      }
     }
     if (s.bt === 'shrine') {
       const b = document.createElement('button');
@@ -160,14 +190,6 @@
       : st.owner === viewer ? 'yours' : 'the rival’s';
     el.innerHTML = `<div class="sheet-title">${site.name}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
-    /* plant the banner — the one army order; at the rival's gates it is the assault */
-    const bb = document.createElement('button');
-    bb.className = 'card walkbtn' + (foeCity ? ' assault' : '');
-    bb.innerHTML = foeCity
-      ? '<span class="c-name">⚔ Sound the Assault</span><span class="c-blurb">Plant the Banner at their gates — every blade marches on the Seat of Power</span>'
-      : '<span class="c-name">⚑ Plant the War Banner</span><span class="c-blurb">Your whole army marches here</span>';
-    bb.addEventListener('click', () => { H.onBanner(site.id); UI.closeSheet(); });
-    el.appendChild(bb);
     /* your own city: raise or strengthen the walls */
     if (site.kind === 'city' && !foeCity && wallLevel != null && wallLevel < C.MAX_LEVEL) {
       const cost = wallLevel === 0 ? C.WALL.cost : C.WALL.up[wallLevel - 1];
