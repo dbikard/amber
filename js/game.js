@@ -16,7 +16,7 @@
   const game = {
     mode: null, world: null, viewer: 0, bot: null,
     names: ['', ''], campaign: false,
-    targeting: false, over: false, lastRiftBanner: -99
+    targeting: false, over: false, lastRiftBanner: -99, placingCo: null
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
@@ -42,7 +42,8 @@
       game.hints = [
         [6, '⚑ Your army rallies to the War Banner — tap any site to march there', 'alert'],
         [24, 'Hold springs: march troops to one, then tap it to raise a Shadow Gate', 'alert'],
-        [45, '⚔ To win by force, plant the Banner on the rival city itself', 'alert']
+        [45, '⚔ To win by force, plant the Banner on the rival city itself', 'alert'],
+        [70, '⚐ Tap a Barracks to detach its company — an army can hold two fronts', 'alert']
       ];
     } else game.hints = [];
     Render.resize();
@@ -51,7 +52,7 @@
   function startMP(seed) {
     game.mode = Net.isHost ? 'host' : 'guest';
     game.viewer = Net.isHost ? 0 : 1;
-    game.campaign = false; game.over = false; game.targeting = false;
+    game.campaign = false; game.over = false; game.targeting = false; game.placingCo = null;
     game.names = ['Corwin', 'Eric'];
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null;
     game.world = Net.isHost ? World.createWorld(seed) : null;
@@ -187,6 +188,7 @@
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
       else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
       else if (ev.e === 'hurtpost' && ev.pi === game.viewer) UI.banner('Your outpost at ' + siteName(ev.site) + ' is under attack!', 'warn');
+      else if (ev.e === 'rally') { if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site) : '⚑ The company rejoins the War Banner', ''); }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
       else if (ev.e === 'breach') UI.banner(ev.pi === game.viewer ? 'Your walls are BREACHED — they are inside!' : 'The walls of ' + game.names[1 - game.viewer] + '’s city are breached!', ev.pi === game.viewer ? 'warn' : 'alert');
       else if (ev.e === 'hurtwall') { if (ev.pi === game.viewer) UI.banner('Your walls are under attack', 'warn'); }
@@ -267,6 +269,14 @@
     const x = e.clientX, y = e.clientY;
     const view = game.mode === 'guest' ? (snapCur ? guestView() : null) : hostView();
     if (!view) return;
+    if (game.placingCo != null) {
+      const co = game.placingCo;
+      game.placingCo = null;
+      const siteId = Render.hitSite(x, y, view, game.viewer);
+      if (siteId >= 0) issue({ c: 'rally', slot: co, site: siteId });
+      else UI.banner('The standard needs ground to stand on — tap a site', 'warn');
+      return;
+    }
     if (game.targeting) {
       game.targeting = false;
       const w = Render.toWorld(x, y, game.viewer);
@@ -450,6 +460,8 @@
       onBanner: (site) => issue({ c: 'banner', site }),
       onPost: (site, bt) => issue({ c: 'post', site, bt }),
       onWall: () => issue({ c: 'wall' }),
+      onRally: (slot) => { game.placingCo = slot; UI.banner('⚐ Tap a site — the company will hold it', 'alert'); },
+      onRejoin: (slot) => issue({ c: 'rally', slot, site: -1 }),
       onPostUp: (site) => issue({ c: 'postup', site }),
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;

@@ -340,6 +340,21 @@
       flag.position.set(dx(s.x, viewer) + 20, dy(s.y, viewer) - 8);
       flag.rotation = Math.sin(T * 2.4) * 0.06;
     }
+    /* company pennants */
+    const PENNANT = [0xe8ecff, 0x64d8d8, 0xc48eff, 0xff9ad8, 0x9adcff, 0xffc27a, 0xb0e8a0, 0xd8b0ff];
+    let coG = stage.banner._coG;
+    if (!coG || !coG.parent) { coG = new PIXI.Graphics(); stage.banner.addChild(coG); stage.banner._coG = coG; }
+    coG.clear();
+    const me = view.players[viewer];
+    for (let i = 0; i < C.SLOTS; i++) {
+      const s2 = me.slots[i];
+      if (!s2 || s2.rally == null || s2.rally < 0) continue;
+      const site = view.map.sites[s2.rally];
+      const a = (i / C.SLOTS) * Math.PI * 2;
+      const X = dx(site.x, viewer) + Math.cos(a) * 32, Y = dy(site.y, viewer) + Math.sin(a) * 32;
+      coG.moveTo(X, Y).lineTo(X, Y - 26).stroke({ width: 2, color: 0xd8c8a8 });
+      coG.poly([X, Y - 26, X + 14, Y - 21, X, Y - 16]).fill(PENNANT[i % PENNANT.length]);
+    }
   }
 
   function updateUnits(view, viewer, dt) {

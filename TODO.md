@@ -61,6 +61,14 @@
 - [x] .githooks/pre-commit bumps the patch version on every shipping commit (the update
       trigger); core.hooksPath configured; AMBER_NO_BUMP=1 to skip
 
+## Phase 0.10 — Companies (v0.6.4)  ✅ DONE
+- [x] Independent troop groups, mobile-first: each mustering building (barracks/spire) is a
+      COMPANY; tap it → "Post the Company Standard" → tap any site: its troops (present and
+      future) hold that front regardless of the War Banner; "Rejoin" folds them back
+- [x] Razed building = fallen standard: survivors rally back to the royal banner
+- [x] Pennant flags per company (both renderers); rally orders fog-safe (never leak to rival)
+- [x] Onboarding hint #4; headless + browser flow verified
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

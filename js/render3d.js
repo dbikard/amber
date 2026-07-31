@@ -29,6 +29,8 @@
   R.groundH = (x, z) => groundH(x, z);
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
+  const PENNANT = [0xe8ecff, 0x64d8d8, 0xc48eff, 0xff9ad8, 0x9adcff, 0xffc27a, 0xb0e8a0, 0xd8b0ff];
+  let coFlags = new Map();
   let fx = [];
   const dummy = () => new THREE.Object3D();
   const dum = typeof THREE !== 'undefined' ? new THREE.Object3D() : null;
@@ -288,7 +290,7 @@
       c2.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
       worldG.remove(c2);
     }
-    siteObjs.clear(); unitIM = {}; unitFace.clear();
+    siteObjs.clear(); unitIM = {}; unitFace.clear(); coFlags.clear();
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
     fx = [];
 
@@ -626,6 +628,32 @@
       bannerG.rotation.y = curViewerRotOwn();
       bannerG._flag.rotation.y = Math.sin(T * 2.6) * 0.25;
     }
+    /* company standards: one pennant per detached company, ringed around its post */
+    const me = view.players[viewer];
+    const active = new Set();
+    for (let i = 0; i < C.SLOTS; i++) {
+      const s = me.slots[i];
+      if (!s || s.rally == null || s.rally < 0) continue;
+      active.add(i);
+      let f = coFlags.get(i);
+      if (!f) {
+        f = new THREE.Group();
+        const pole = meshOf([part(cyl(0.7, 0.7, 30, 5), 0xd8c8a8, 0, 15, 0)]);
+        const pf = new THREE.Mesh(new THREE.PlaneGeometry(13, 8).translate(6.5, 0, 0),
+          new THREE.MeshBasicMaterial({ color: PENNANT[i % PENNANT.length], side: THREE.DoubleSide }));
+        pf.position.set(0, 26, 0);
+        f.add(pole, pf); f._flag = pf;
+        worldG.add(f);
+        coFlags.set(i, f);
+      }
+      const site = view.map.sites[s.rally];
+      const a2 = (i / C.SLOTS) * Math.PI * 2;
+      const fx2 = site.x + Math.cos(a2) * 32, fz2 = site.y + Math.sin(a2) * 32;
+      f.position.set(fx2, groundH(fx2, fz2), fz2);
+      f.rotation.y = curViewerRotOwn();
+      f._flag.rotation.y = Math.sin(T * 2.2 + i) * 0.3;
+    }
+    for (const [i, f] of [...coFlags]) if (!active.has(i)) { f.removeFromParent(); coFlags.delete(i); }
   }
 
   function updateStorms(view, viewer) {

@@ -189,7 +189,8 @@
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       pl.essence -= def.cost;
       pl.slots[cmd.slot] = { bt: cmd.bt, level: 1, cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
-                             hp: C.BUILDING_HP[cmd.bt], maxHp: C.BUILDING_HP[cmd.bt], lastHurt: -99 };
+                             hp: C.BUILDING_HP[cmd.bt], maxHp: C.BUILDING_HP[cmd.bt], lastHurt: -99,
+                             rally: -1 };   // -1 = the company follows the royal War Banner
       emit(world, { e: 'build', pi, slot: cmd.slot, bt: cmd.bt });
       return { ok: true };
     }
@@ -218,6 +219,15 @@
       if (!pl.slots.some((s) => s && s.bt === 'shrine')) return { ok: false, err: 'shrine' };
       pl.walking = !!cmd.on;
       if (pl.walking && !pl.revealed) { pl.revealed = true; emit(world, { e: 'walk', pi }); }
+      return { ok: true };
+    }
+    if (cmd.c === 'rally') {
+      /* company orders: a mustering building's troops hold their own front */
+      const b = pl.slots[cmd.slot];
+      if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'slot' };
+      if (cmd.site >= 0 && !world.map.sites[cmd.site]) return { ok: false, err: 'site' };
+      b.rally = cmd.site;
+      emit(world, { e: 'rally', pi, slot: cmd.slot, site: cmd.site });
       return { ok: true };
     }
     if (cmd.c === 'banner') {
@@ -287,7 +297,7 @@
   }
 
   /* ---------------- units ---------------- */
-  function spawnUnit(world, owner, kind, atX, atY, goal) {
+  function spawnUnit(world, owner, kind, atX, atY, goal, co) {
     if (world.units.length > 240) return 0;
     const def = C.UNITS[kind];
     const scale = owner === 2 ? C.CHAOS.hpScale(world.t) : 1;
@@ -300,7 +310,8 @@
       hp: def.hp * scale, maxHp: def.hp * scale,
       dmg: def.dmg * (owner === 2 ? C.CHAOS.dmgScale(world.t) : 1),
       cd: 0, step: -1,
-      goal: goal != null ? goal : (owner === 2 ? world.map.cities[world.chaosParity++ % 2] : world.players[owner].banner)
+      goal: goal != null ? goal : (owner === 2 ? world.map.cities[world.chaosParity++ % 2] : world.players[owner].banner),
+      co: co != null ? co : -1   // company = mustering slot; -1 marches with the royal banner
     };
     world.units.push(u);
     return u.id;
@@ -424,7 +435,7 @@
             const price = C.UNITS[def.spawns].cost;
             if (pl.essence >= price) {   // every soldier is paid for — the treasury feeds the war
               pl.essence -= price;
-              spawnUnit(world, pi, def.spawns, sp.x, sp.y);
+              spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, si);
               b.cd += def.period[b.level - 1];
             } else b.cd = 0.5;           // muster waits on the war chest
           }
@@ -526,8 +537,10 @@
       u.cd -= dt;
       /* the banner moves the army */
       if (u.owner !== 2) {
-        const b = world.players[u.owner].banner;
-        if (u.goal !== b) { u.goal = b; u.step = -1; }
+        const pl2 = world.players[u.owner];
+        const cb = u.co >= 0 ? pl2.slots[u.co] : null;
+        const want = cb && cb.rally != null && cb.rally >= 0 ? cb.rally : pl2.banner;
+        if (u.goal !== want) { u.goal = want; u.step = -1; }
       }
       /* garrisons man the walls: units standing in their own city see farther out */
       const home = u.owner !== 2 && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;

@@ -177,7 +177,7 @@
           if (!s) return null;
           /* damage state is public — you can see what burns */
           const hp = { hp: Math.round(s.hp), maxHp: s.maxHp };
-          if (mine) return { bt: s.bt, level: s.level, ...hp };
+          if (mine) return { bt: s.bt, level: s.level, rally: s.rally != null ? s.rally : -1, ...hp };
           if (s.bt === 'shrine' && pl.revealed) return { bt: 'shrine', level: s.level, ...hp };
           return { bt: 'veiled', level: 0, ...hp };
         })
@@ -195,13 +195,14 @@
       t: world.t, winner: world.winner, winReason: world.winReason,
       players, sites,
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
-        .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp) })),
+        .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
+                       ...(u.owner === viewer ? { co: u.co } : {}) })),
       storms: world.storms.filter((s) => see(s.x, s.y))
         .map((s) => ({ owner: s.owner, x: s.x, y: s.y, delay: s.delay, tLeft: s.tLeft })),
       /* events: own always; global always; positional only where seen; rival city news never */
       events: (events || []).filter((ev) => {
         if (ev.pi === viewer) return true;
-        if (ev.e === 'build' || ev.e === 'up' || ev.e === 'shot' || ev.e === 'banner') return false;
+        if (ev.e === 'build' || ev.e === 'up' || ev.e === 'shot' || ev.e === 'banner' || ev.e === 'rally') return false;
         if (ev.x != null) return see(ev.x, ev.y);
         return true;   // walk/pattern/surge/win/trump — power echoes through Shadow
       })

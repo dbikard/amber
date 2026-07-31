@@ -108,6 +108,27 @@
       b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot); UI.closeSheet(); });
       el.appendChild(b);
     }
+    if (d.spawns) {
+      /* company orders: this building's troops as an independent force */
+      const detached = s.rally != null && s.rally >= 0;
+      const info = document.createElement('div');
+      info.className = 'sheet-blurb';
+      info.textContent = detached ? '⚐ This company holds its own standard' : '⚑ This company follows the War Banner';
+      el.appendChild(info);
+      const mv = document.createElement('button');
+      mv.className = 'card walkbtn';
+      mv.innerHTML = '<span class="c-name">⚐ Post the Company Standard</span>' +
+                     '<span class="c-blurb">Then tap a site — this company (and its future musters) holds it, whatever the War Banner does</span>';
+      mv.addEventListener('click', () => { H.onRally(slot); UI.closeSheet(); });
+      el.appendChild(mv);
+      if (detached) {
+        const rj = document.createElement('button');
+        rj.className = 'card';
+        rj.innerHTML = '<span class="c-name">⚑ Rejoin the War Banner</span><span class="c-blurb">The company folds back into the army</span>';
+        rj.addEventListener('click', () => { H.onRejoin(slot); UI.closeSheet(); });
+        el.appendChild(rj);
+      }
+    }
     if (s.bt === 'shrine') {
       const b = document.createElement('button');
       b.className = 'card walkbtn';
