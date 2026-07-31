@@ -170,3 +170,9 @@ body {
 /* live treasury readout inside sheets */
 .tr-chip { float: right; font-size: 13px; color: #ffe9a8; font-style: normal; }
 .tr-chip b { font-variant-numeric: tabular-nums; }
+
+/* essence-flow impact tags on build/upgrade cards */
+.c-rate { grid-column: 3; text-align: right; font-size: 11px; font-style: normal; }
+.c-rate.wide { grid-column: 2 / 4; }
+.c-rate.up { color: #b0e8a0; }
+.c-rate.dn { color: #ff9a9f; }

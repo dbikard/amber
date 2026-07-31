@@ -122,6 +122,15 @@
 
   /* ---------------- build / upgrade sheets ---------------- */
   const trChip = (essence) => `<span class="tr-chip">◆ <b>${Math.floor(essence)}</b></span>`;
+  /* what a building does to the essence flow, at a given level */
+  function rateTag(bt, level) {
+    const d = C.BUILDINGS[bt];
+    if (!d) return '';
+    if (d.income) return `<span class="c-rate up">+${d.income[level - 1]}◆/s</span>`;
+    if (d.spawns) { const u = C.UNITS[d.spawns]; return `<span class="c-rate dn">−${(u.cost / d.period[level - 1]).toFixed(1)}◆/s muster</span>`; }
+    if (bt === 'shrine') return `<span class="c-rate dn">−${d.drain[level - 1]}◆/s while walking</span>`;
+    return '';
+  }
   UI.buildSheet = function (slot, essence, hasShrine) {
     const el = $('sheet');
     el.innerHTML = `<div class="sheet-title">Raise a work of Amber ${trChip(essence)}</div>`;
@@ -133,7 +142,7 @@
       card.className = 'card' + (can ? '' : ' locked');
       card.dataset.cost = d.cost;   // live affordability: UI.tick unlocks it when income catches up
       card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
-                       `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb}</span>`;
+                       `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb}</span>${rateTag(bt, 1)}`;
       card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(slot, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
@@ -153,7 +162,9 @@
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
       b.dataset.cost = cost;
-      b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>`;
+      const rt = rateTag(s.bt, s.level + 1);
+      b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>` +
+                    (rt ? rt.replace('c-rate', 'c-rate wide') : '');
       b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot); UI.closeSheet(); });
       el.appendChild(b);
     }
@@ -250,8 +261,9 @@
         const card = document.createElement('button');
         card.className = 'card' + (can ? '' : ' locked');
         card.dataset.cost = d.cost;
+        const orate = d.income ? `<span class="c-rate up">+${d.income[0]}◆/s</span>` : '';
         card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
-                         `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb} — needs a unit standing here</span>`;
+                         `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb} — needs a unit standing here</span>${orate}`;
         card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onPost(site.id, bt); UI.closeSheet(); });
         el.appendChild(card);
       }
@@ -263,7 +275,9 @@
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
       b.dataset.cost = cost;
-      b.innerHTML = `<span class="c-name">Upgrade ${C.OUTPOSTS[st.post.bt].name} to level ${st.post.level + 1}</span><span class="c-cost">◆ ${cost}</span>`;
+      const od = C.OUTPOSTS[st.post.bt];
+      const orate2 = od.income ? `<span class="c-rate up wide">+${od.income[st.post.level]}◆/s</span>` : '';
+      b.innerHTML = `<span class="c-name">Upgrade ${od.name} to level ${st.post.level + 1}</span><span class="c-cost">◆ ${cost}</span>${orate2}`;
       b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onPostUp(site.id); UI.closeSheet(); });
       el.appendChild(b);
     }
