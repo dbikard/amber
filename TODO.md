@@ -42,6 +42,16 @@
 - [x] Renderer selector: 3D default, ?r=2d or no-WebGL falls back to the Pixi painted map
 - [x] Smoke + MP loopback PASS on 3D
 
+## Phase 0.8 — "The Walled City" (v0.5)  ✅ DONE
+- [x] Cities are real places: court disc, Seat-TOWER at the heart, 8 building plots on a ring
+- [x] City Walls = a true perimeter (city sheet purchase, L1-3): enemies cannot enter while it
+      stands — they batter the ring from whichever path they came; breach event when it falls
+- [x] Buildings have HP and can be RAZED (economy/defense losses are real; shrine raze stops a walk)
+- [x] Towers guard their own plot (placement matters); AI doctrine: military mans the front arc,
+      economy shelters behind the Seat; emergency walls under raid; garrison aggro mans the walls
+- [x] HUD shows NET essence rate (income − muster/walk upkeep), crimson when negative
+- [x] Sheets/renderers/netcode updated; wall-siege scenario + smoke + MP loopback PASS
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

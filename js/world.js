@@ -73,7 +73,7 @@
       map: buildMap(rng),
       players: [0, 1].map(() => ({
         essence: C.START_ESSENCE,
-        castleHp: C.CASTLE_HP, wallHp: 0,
+        castleHp: C.CASTLE_HP, wallHp: 0, wallLevel: 0, wallHurt: -99, wallAlert: -99,
         pattern: 0, walking: false, revealed: false, alertIdx: 0,
         slots: new Array(C.SLOTS).fill(null),
         powers: { storm: 0, trump: 0 },
@@ -94,6 +94,12 @@
   }
 
   const cityOf = (world, pi) => world.map.sites[world.map.cities[pi]];
+  /* building plots ring the Seat-tower — real places that can be reached and razed */
+  function slotPos(world, pi, idx) {
+    const c2 = cityOf(world, pi);
+    const a = (idx / C.SLOTS) * Math.PI * 2 + (pi === 0 ? -Math.PI / 2 : Math.PI / 2);
+    return { x: c2.x + Math.cos(a) * C.CITY.slotR, y: c2.y + Math.sin(a) * C.CITY.slotR };
+  }
 
   /* ---------------- vision & exploration ---------------- */
   function visionSources(world, pi) {
@@ -182,9 +188,19 @@
       if (def.unique && pl.slots.some((s) => s && s.bt === cmd.bt)) return { ok: false, err: 'unique' };
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       pl.essence -= def.cost;
-      pl.slots[cmd.slot] = { bt: cmd.bt, level: 1, cd: def.period ? def.period[0] * 0.5 : (def.atk || 0) };
-      if (cmd.bt === 'wall') pl.wallHp = C.WALL_HP[0];
+      pl.slots[cmd.slot] = { bt: cmd.bt, level: 1, cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
+                             hp: C.BUILDING_HP[cmd.bt], maxHp: C.BUILDING_HP[cmd.bt], lastHurt: -99 };
       emit(world, { e: 'build', pi, slot: cmd.slot, bt: cmd.bt });
+      return { ok: true };
+    }
+    if (cmd.c === 'wall') {
+      if (pl.wallLevel >= C.MAX_LEVEL) return { ok: false, err: 'max' };
+      const cost = pl.wallLevel === 0 ? C.WALL.cost : C.WALL.up[pl.wallLevel - 1];
+      if (pl.essence < cost) return { ok: false, err: 'essence' };
+      pl.essence -= cost;
+      pl.wallLevel++;
+      pl.wallHp = C.WALL.hp[pl.wallLevel - 1];
+      emit(world, { e: 'wallup', pi, level: pl.wallLevel });
       return { ok: true };
     }
     if (cmd.c === 'up') {
@@ -195,7 +211,6 @@
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;
       s.level++;
-      if (s.bt === 'wall') pl.wallHp = Math.max(pl.wallHp, C.WALL_HP[s.level - 1]);
       emit(world, { e: 'up', pi, slot: cmd.slot, level: s.level });
       return { ok: true };
     }
@@ -311,20 +326,73 @@
     }
   }
 
-  /* nearest hostile unit OR enemy structure within radius */
+  /* nearest hostile target within radius: units, outposts, and — at a city —
+   * the wall (from outside), or its buildings and the Seat-tower (once inside). */
   function acquire(world, u, radius) {
-    let best = null, bestD = radius * radius, kind = null;
+    let best = null, bestD = radius, kind = null, bx = 0, by = 0;
+    const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
     for (const v of world.units) {
       if (v.hp <= 0 || v.owner === u.owner) continue;
-      const dd = d2(u.x, u.y, v.x, v.y);
-      if (dd < bestD) { bestD = dd; best = v; kind = 'unit'; }
+      consider(Math.sqrt(d2(u.x, u.y, v.x, v.y)), v, 'unit', v.x, v.y);
     }
     for (const s of world.map.sites) {
       if (!s.post || s.owner === u.owner || s.owner === -1) continue;
-      const dd = d2(u.x, u.y, s.x, s.y);
-      if (dd < bestD) { bestD = dd; best = s; kind = 'post'; }
+      consider(Math.sqrt(d2(u.x, u.y, s.x, s.y)), s, 'post', s.x, s.y);
     }
-    return best ? { t: best, kind, d: Math.sqrt(bestD) } : null;
+    for (let ci = 0; ci < 2; ci++) {
+      if (ci === u.owner) continue;
+      const tp = world.players[ci];
+      const cs = world.map.sites[world.map.cities[ci]];
+      const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
+      if (dc > C.CITY.r + radius) continue;
+      if (tp.wallHp > 0) {
+        /* the wall bars the way — batter it where you stand */
+        const k2 = C.CITY.r / (dc || 1);
+        consider(Math.max(0, dc - C.CITY.r), { pi: ci }, 'wall', cs.x + (u.x - cs.x) * k2, cs.y + (u.y - cs.y) * k2);
+      } else {
+        for (let si = 0; si < C.SLOTS; si++) {
+          if (!tp.slots[si]) continue;
+          const sp = slotPos(world, ci, si);
+          consider(Math.sqrt(d2(u.x, u.y, sp.x, sp.y)), { pi: ci, slot: si }, 'slot', sp.x, sp.y);
+        }
+        consider(Math.sqrt(d2(u.x, u.y, cs.x, cs.y)), { pi: ci }, 'tower', cs.x, cs.y);
+      }
+    }
+    return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
+  }
+
+  function hurtSlot(world, pi, idx, dmg) {
+    const pl = world.players[pi], b = pl.slots[idx];
+    if (!b) return;
+    b.hp -= dmg; b.lastHurt = world.t;
+    if (b.hp <= 0) {
+      const sp = slotPos(world, pi, idx);
+      emit(world, { e: 'raze', pi, slot: idx, bt: b.bt, x: sp.x, y: sp.y });
+      pl.slots[idx] = null;
+      if (b.bt === 'shrine') pl.walking = false;
+    } else if (world.t - (pl.slotAlert || -99) > 12) {
+      pl.slotAlert = world.t;
+      const sp = slotPos(world, pi, idx);
+      emit(world, { e: 'hurtcity', pi, x: sp.x, y: sp.y });
+    }
+  }
+  function hurtWall(world, pi, dmg) {
+    const pl = world.players[pi];
+    pl.wallHp -= dmg; pl.wallHurt = world.t;
+    if (pl.wallHp <= 0) { pl.wallHp = 0; emit(world, { e: 'breach', pi }); }
+    else if (world.t - pl.wallAlert > 12) { pl.wallAlert = world.t; emit(world, { e: 'hurtwall', pi }); }
+  }
+  /* no hostile sets foot inside a walled city */
+  function clampWalls(world, u) {
+    for (let ci = 0; ci < 2; ci++) {
+      if (ci === u.owner || world.players[ci].wallHp <= 0) continue;
+      const cs = world.map.sites[world.map.cities[ci]];
+      const dd = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
+      if (dd < C.CITY.r + 3) {
+        const k2 = (C.CITY.r + 3) / (dd || 1);
+        u.x = cs.x + (u.x - cs.x) * k2; u.y = cs.y + (u.y - cs.y) * k2;
+      }
+    }
   }
 
   /* ---------------- update ---------------- */
@@ -341,18 +409,22 @@
       let income = C.BASE_INCOME;
       for (const s of world.map.sites)
         if (s.owner === pi && s.post && s.post.bt === 'sgate') income += C.OUTPOSTS.sgate.income[s.post.level - 1];
+      let drain = pl.walking ? C.BUILDINGS.shrine.drain[(pl.slots.find((q) => q && q.bt === 'shrine') || { level: 1 }).level - 1] : 0;
       for (let si = 0; si < C.SLOTS; si++) {
         const b = pl.slots[si];
         if (!b) continue;
         const def = C.BUILDINGS[b.bt];
+        const sp = slotPos(world, pi, si);
+        if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
         if (b.bt === 'gate') income += def.income[b.level - 1];
         else if (def.spawns) {
+          drain += C.UNITS[def.spawns].cost / def.period[b.level - 1];
           b.cd -= dt;
           if (b.cd <= 0) {
             const price = C.UNITS[def.spawns].cost;
             if (pl.essence >= price) {   // every soldier is paid for — the treasury feeds the war
               pl.essence -= price;
-              spawnUnit(world, pi, def.spawns);
+              spawnUnit(world, pi, def.spawns, sp.x, sp.y);
               b.cd += def.period[b.level - 1];
             } else b.cd = 0.5;           // muster waits on the war chest
           }
@@ -363,7 +435,7 @@
             let best = null, bd = range * range;
             for (const u of world.units) {
               if (u.hp <= 0 || u.owner === pi) continue;
-              const dd = d2(u.x, u.y, city.x, city.y);
+              const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
               if (dd < bd) { bd = dd; best = u; }
             }
             if (best) { hurt(world, best, def.dmg[b.level - 1], pi); emit(world, { e: 'shot', pi, slot: si, to: { x: best.x, y: best.y } }); b.cd = def.atk; }
@@ -373,13 +445,13 @@
       }
       pl.essence += income * dt;
       pl.incomeRate = income;
+      pl.drainRate = drain;   // muster + walk upkeep — the HUD tells the truth
       if (pl.powers.storm > 0) pl.powers.storm -= dt;
       if (pl.powers.trump > 0) pl.powers.trump -= dt;
 
       /* walls self-mend when unbothered */
-      const wall = pl.slots.find((s) => s && s.bt === 'wall');
-      if (wall && t - (pl.wallHurt || -99) > 10)
-        pl.wallHp = Math.min(C.WALL_HP[wall.level - 1], pl.wallHp + C.STRUCT_REGEN * dt);
+      if (pl.wallLevel > 0 && pl.wallHp > 0 && t - pl.wallHurt > 10)
+        pl.wallHp = Math.min(C.WALL.hp[pl.wallLevel - 1], pl.wallHp + C.STRUCT_REGEN * dt);
 
       if (pl.walking) {
         const shrine = pl.slots.find((s) => s && s.bt === 'shrine');
@@ -457,40 +529,37 @@
         const b = world.players[u.owner].banner;
         if (u.goal !== b) { u.goal = b; u.step = -1; }
       }
-      const foe = acquire(world, u, def.aggro);
+      /* garrisons man the walls: units standing in their own city see farther out */
+      const home = u.owner !== 2 && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
+      const foe = acquire(world, u, def.aggro + (home ? 140 : 0));
       if (foe) {
-        const reach = def.range + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size : 30);
+        const reach = def.range + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
+          : foe.kind === 'wall' ? 6 : foe.kind === 'tower' ? 36 : foe.kind === 'slot' ? 24 : 30);
         if (foe.d <= reach) {
           if (u.cd <= 0) {
             if (foe.kind === 'unit') hurt(world, foe.t, u.dmg, u.owner);
-            else hurtPost(world, foe.t, u.dmg, u.owner);
+            else if (foe.kind === 'post') hurtPost(world, foe.t, u.dmg, u.owner);
+            else if (foe.kind === 'slot') hurtSlot(world, foe.t.pi, foe.t.slot, u.dmg);
+            else if (foe.kind === 'wall') { hurtWall(world, foe.t.pi, u.dmg); emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y }); }
+            else if (foe.kind === 'tower') {
+              const tp = world.players[foe.t.pi];
+              tp.castleHp -= u.dmg;
+              emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y });
+              if (tp.castleHp <= 0) {
+                /* a player toppling the Seat wins; Chaos toppling it crowns the survivor */
+                win(world, u.owner === 2 ? 1 - foe.t.pi : u.owner, 'castle');
+                return;
+              }
+            }
             u.cd = def.atk;
-            if (def.range > 40) emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.t.x, y: foe.t.y } });
+            if (def.range > 40) emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
           }
         } else {
           const mv = def.speed * dt / (foe.d || 1);
-          u.x += (foe.t.x - u.x) * mv; u.y += (foe.t.y - u.y) * mv;
+          u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
+          clampWalls(world, u);
         }
         continue;
-      }
-      /* siege: ANY unit standing before a hostile Seat of Power attacks it —
-       * you don't idle in sight of the enemy's gates because your banner is a step away */
-      let target = -1;
-      if (u.owner !== 2) target = 1 - u.owner;
-      else { const gs = world.map.sites[u.goal]; if (gs && gs.kind === 'city') target = world.map.cities.indexOf(gs.id); }
-      if (target >= 0 && target !== u.owner) {
-        const cs = world.map.sites[world.map.cities[target]];
-        if (d2(u.x, u.y, cs.x, cs.y) < (C.CASTLE_ZONE + 30) * (C.CASTLE_ZONE + 30)) {
-          if (u.cd <= 0) {
-            const tp = world.players[target];
-            if (tp.wallHp > 0) { tp.wallHp -= u.dmg; tp.wallHurt = t; }   // the walls take it first
-            else tp.castleHp -= u.dmg;
-            u.cd = def.atk;
-            emit(world, { e: 'siege', pi: target, x: u.x, y: u.y });
-            if (tp.castleHp <= 0) { win(world, u.owner === 2 ? 1 - target : u.owner, 'castle'); return; }
-          }
-          continue;
-        }
       }
       /* march */
       if (u.step === -1 || d2(u.x, u.y, world.map.sites[u.step].x + u.ox, world.map.sites[u.step].y + u.oy) < 34 * 34)
@@ -502,6 +571,7 @@
         const mv = def.speed * dt / dd;
         u.x += (tx - u.x) * mv; u.y += (ty - u.y) * mv;
       }
+      clampWalls(world, u);
     }
 
     /* bury the dead */
@@ -519,6 +589,6 @@
     emit(world, { e: 'win', winner, reason });
   }
 
-  global.World = { createWorld, applyCommand, update, upgradeCost, postUpCost, canSee, cityOf, visionSources };
+  global.World = { createWorld, applyCommand, update, upgradeCost, postUpCost, canSee, cityOf, visionSources, slotPos };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

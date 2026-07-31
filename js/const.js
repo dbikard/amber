@@ -5,7 +5,11 @@
   const CONST = {};
 
   CONST.SIM_DT = 1 / 30;          // fixed timestep (browser + sim identical)
-  CONST.SLOTS = 9;                // 3x3 city grid per player
+  CONST.SLOTS = 8;                // building plots ringing the Seat-tower
+  /* the city is a real place: a walled disc with the Tower of the Seat at its heart */
+  CONST.CITY = { r: 150, slotR: 104 };
+  CONST.WALL = { cost: 150, up: [140, 230], hp: [900, 1500, 2200] };   // a wall is a WALL
+  CONST.BUILDING_HP = { gate: 300, barracks: 360, tower: 480, spire: 320, shrine: 450 };
   CONST.CASTLE_HP = 1000;
   CONST.START_ESSENCE = 180;
   CONST.BASE_INCOME = 2.5;        // essence/sec before any Shadow Gate
@@ -52,8 +56,6 @@
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
   CONST.VISION = { city: 420, unit: 260, post: 300 };   // watchposts override via .vision
 
-  /* City walls (city-grid building, see BUILDINGS.wall): ring HP absorbs castle damage */
-  CONST.WALL_HP = [420, 750, 1100];
 
   /* Buildings. up = upgrade costs to L2/L3; per-level effect arrays are [L1,L2,L3]. */
   CONST.BUILDINGS = {
@@ -69,13 +71,11 @@
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180],
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1,
                 blurb: 'Rains arrows on foes nearing your castle' },
-    wall:     { name: 'City Walls',    icon: '🧱', cost: 150, up: [130, 220], unique: true,
-                blurb: 'A rampart ring around your castle — attackers break it first. Self-mends.' },
     shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 340, up: [250, 400], unique: true,
                 drain: [12, 14, 16], rate: [0.28, 0.37, 0.48],  // essence/sec → %/sec (L1 walk ≈ 6 min)
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
   };
-  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'wall', 'shrine'];
+  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
 
   /* Units. Every mustered soldier is PAID FOR — essence is a war chest, never a high score.
    * speed in world-units/sec; aggro = acquire radius; bounty paid to the killer's player. */

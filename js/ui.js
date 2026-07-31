@@ -51,7 +51,9 @@
   UI.hud = function (view, viewer, incomeRate, targeting) {
     const me = view.players[viewer], en = view.players[1 - viewer];
     $('ess-n').textContent = Math.floor(me.essence);
-    $('ess-rate').textContent = '+' + incomeRate.toFixed(1) + '/s';
+    const er = $('ess-rate');
+    er.textContent = (incomeRate >= 0 ? '+' : '') + incomeRate.toFixed(1) + '/s';
+    er.style.color = incomeRate >= 0 ? '' : '#ff8a96';
     $('timer').textContent = mmss(view.t);
     const rp = $('rival-pattern');
     if (en.revealed) {
@@ -125,7 +127,7 @@
     road: 'A milestone of the black road. Chaos favors this ground — a Rampart can wall the way.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel) {
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.owner === -1 || st.owner == null ? 'unclaimed'
       : st.owner === viewer ? 'yours' : 'the rival’s';
@@ -139,6 +141,18 @@
       : '<span class="c-name">⚑ Plant the War Banner</span><span class="c-blurb">Your whole army marches here</span>';
     bb.addEventListener('click', () => { H.onBanner(site.id); UI.closeSheet(); });
     el.appendChild(bb);
+    /* your own city: raise or strengthen the walls */
+    if (site.kind === 'city' && !foeCity && wallLevel != null && wallLevel < C.MAX_LEVEL) {
+      const cost = wallLevel === 0 ? C.WALL.cost : C.WALL.up[wallLevel - 1];
+      const can = essence >= cost;
+      const wc = document.createElement('button');
+      wc.className = 'card' + (can ? '' : ' locked');
+      wc.dataset.cost = cost;
+      wc.innerHTML = `<span class="c-ico">🧱</span><span class="c-name">${wallLevel === 0 ? 'Raise the City Walls' : 'Strengthen the Walls (level ' + (wallLevel + 1) + ')'}</span>` +
+                     `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">A ring no enemy passes while it stands. Self-mends.</span>`;
+      wc.addEventListener('click', () => { if (wc.classList.contains('locked')) return; H.onWall(); UI.closeSheet(); });
+      el.appendChild(wc);
+    }
     /* build an outpost (a unit of yours must stand there — the host validates) */
     if (site.kind !== 'city' && (!st || !st.post)) {
       for (const bt of Object.keys(C.OUTPOSTS)) {

@@ -79,17 +79,23 @@
   const wantWatch = (n) => ({ bt: 'watch', pick: (v) => ownVantages(v).filter((s) => !s.post).slice(0, n)[0] || null });
   const wantRampart = () => ({ bt: 'rampart', pick: (v) => { const s = ownChoke(v); return s && !s.post ? s : null; } });
 
-  const SLOT_ORDER = [4, 1, 3, 5, 7, 0, 2, 6, 8];
+  /* ring placement doctrine: slot 0 faces the road. Military mans the front arc;
+   * the economy shelters behind the Seat. */
+  const FRONT_ORDER = [0, 1, 7, 2, 6, 3, 5, 4];
+  const BACK_ORDER = [4, 3, 5, 2, 6, 1, 7, 0];
+  const slotFor = (v, bt) =>
+    (bt === 'gate' || bt === 'shrine' ? BACK_ORDER : FRONT_ORDER).find((s2) => !v.pl.slots[s2]);
 
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
     julian: {
       title: 'Julian, Warden of Arden',
       interval: 2.2, noise: 0.30,
-      plan: () => ['gate', 'tower', 'gate', 'wall', 'barracks', 'tower', 'barracks', 'tower', 'shrine'],
-      upPref: ['tower', 'gate', 'wall', 'barracks', 'shrine'],
+      plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine'],
+      upPref: ['tower', 'gate', 'barracks', 'shrine'],
       missions: (v) => [wantSgates('own', 2), wantWatch(2), wantRampart(), wantSgates('mid', 1)],
       banner: (v) => v.enemyWalking && v.army >= 7 ? v.enCity.id : v.myCity.id,
+      wall: (v) => v.t > 60,
       walk: (v) => v.have.shrine && v.threats.length === 0 && v.essence > 220,
       pauseWalk: (v) => v.threats.length >= 4,
       storm: stormDefend(3),
@@ -98,10 +104,11 @@
     bleys: {
       title: 'Bleys of the Flame',
       interval: 1.8, noise: 0.20,
-      plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire', 'tower'],
+      plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire'],
       upPref: ['barracks', 'spire', 'gate', 'tower'],
       missions: (v) => v.t < 200 ? [wantSgates('own', 2)] : [],
       banner: (v) => v.army >= 6 ? v.enCity.id : ownChoke(v).id,   // stage, then storm the gates
+      wall: (v) => v.myCastle < 800 || v.t > 260,
       walk: () => false, pauseWalk: () => false,
       storm: stormPush(4),
       trump: (v) => v.push >= 2 || v.threats.length >= 5
@@ -109,10 +116,11 @@
     brand: {
       title: 'Brand the Unmaker',
       interval: 1.5, noise: 0.12,
-      plan: () => ['gate', 'tower', 'gate', 'wall', 'shrine', 'tower', 'barracks', 'spire', 'gate'],
-      upPref: ['wall', 'tower', 'gate', 'shrine', 'barracks'],
+      plan: () => ['gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire', 'gate'],
+      upPref: ['tower', 'gate', 'shrine', 'barracks'],
       missions: (v) => [wantSgates('own', 2), wantRampart(), wantSgates('mid', 1)],
       banner: (v) => v.myCity.id,   // the army exists to buy him time
+      wall: (v) => v.t > 120 || !!v.have.shrine,   // Brand walls early — the walk needs a keep
       walk: (v) => v.have.shrine && v.essence > 240,
       pauseWalk: () => false,
       storm: stormDefend(2),
@@ -121,12 +129,13 @@
     corwin: {
       title: 'Corwin of Amber',
       interval: 1.4, noise: 0.10,
-      plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'wall', 'spire', 'shrine', 'barracks'],
+      plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks'],
       upPref: ['barracks', 'gate', 'spire', 'tower', 'shrine'],
       missions: (v) => [wantSgates('own', 2), wantSgates('mid', 2), wantWatch(1)],
       banner: (v) => (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle)
         ? v.enCity.id
         : (nearestOf(v, v.springs.mid)[0] || ownChoke(v)).id,   // contest the middle, assault from strength
+      wall: (v) => v.t > 150,
       walk: (v) => v.have.shrine && v.essence > 260 && (v.enemyCastle < v.myCastle || v.threats.length === 0),
       pauseWalk: (v) => v.threats.length >= 4,
       storm: stormPush(3),
@@ -138,14 +147,14 @@
       plan: (v) => {
         const wants = ['gate', 'barracks'];
         wants.push(v.t > 150 ? 'gate' : 'tower');
-        wants.push('tower', 'wall');
+        wants.push('tower');
         if (v.threats.length >= 3) wants.push('tower');
         wants.push('barracks', 'gate');
         if (v.enemyWalking) wants.push(...(v.enemyArmy >= 2 ? ['shrine', 'barracks', 'spire'] : ['barracks', 'spire', 'barracks']));
         else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
         return wants.slice(0, C.SLOTS);
       },
-      upPref: ['gate', 'shrine', 'barracks', 'tower', 'wall', 'spire'],
+      upPref: ['gate', 'shrine', 'barracks', 'tower', 'spire'],
       missions: (v) => [wantSgates('own', 2), wantWatch(1),
                         ...(v.enemyArmy <= 3 ? [wantSgates('mid', 1)] : []),
                         ...(v.threats.length >= 2 ? [wantRampart()] : [])],
@@ -154,6 +163,7 @@
         if (v.army >= 6) return v.enCity.id;
         return ownChoke(v).id;
       },
+      wall: (v) => v.threats.length >= 1 || v.t > 110,
       walk: (v) => v.have.shrine && v.essence > 200 &&
                    (v.threats.length <= 1 || (v.enemyWalking && v.enemyPattern > v.myPattern)),
       pauseWalk: (v) => v.threats.length >= 3,
@@ -180,7 +190,7 @@
     },
     greedy: {
       title: 'A grasping shadow-lord', interval: 1.6, noise: 0,
-      plan: () => ['gate', 'gate', 'gate', 'gate', 'barracks', 'barracks', 'barracks', 'barracks', 'barracks'],
+      plan: () => ['gate', 'gate', 'gate', 'gate', 'barracks', 'barracks', 'barracks', 'barracks'],
       upPref: ['gate', 'barracks'],
       missions: () => [], banner: (v) => v.enCity.id,
       walk: () => false, pauseWalk: () => false,
@@ -210,6 +220,9 @@
       if (!v.walking && P.walk(v)) issue({ c: 'walk', on: true });
       else if (v.walking && P.pauseWalk(v)) issue({ c: 'walk', on: false });
 
+      /* raiders at the gates: walls before anything else */
+      if (v.pl.wallLevel === 0 && v.threats.length >= 2 && v.essence >= C.WALL.cost) issue({ c: 'wall' });
+
       /* city: first unmet want in the plan (save up for it) */
       let saving = false;
       const wants = P.plan(v), seenW = {};
@@ -217,11 +230,16 @@
         seenW[bt] = (seenW[bt] || 0) + 1;
         if ((v.have[bt] || 0) < seenW[bt]) {
           if (v.free > 0 && v.essence >= C.BUILDINGS[bt].cost) {
-            const slot = SLOT_ORDER.find((s2) => !v.pl.slots[s2]);
-            issue({ c: 'build', slot, bt });
+            issue({ c: 'build', slot: slotFor(v, bt), bt });
           } else saving = v.free > 0;
           break;
         }
+      }
+
+      /* the city walls: personality-timed; re-raised to the next level when rich */
+      if (P.wall && v.pl.wallLevel < C.MAX_LEVEL && P.wall(v)) {
+        const wcost = v.pl.wallLevel === 0 ? C.WALL.cost : C.WALL.up[v.pl.wallLevel - 1];
+        if (v.essence >= wcost + (v.pl.wallLevel ? 160 : 0)) issue({ c: 'wall' });
       }
 
       /* expansion missions: pick one, march the banner there, build on arrival */

@@ -166,16 +166,20 @@
         wallHp: Math.round(pl.wallHp),
         essence: mine ? pl.essence : null,
         incomeRate: mine ? pl.incomeRate : null,
+        drainRate: mine ? pl.drainRate : null,
         pattern: mine || pl.revealed ? pl.pattern : 0,
         walking: mine || pl.revealed ? pl.walking : false,
         revealed: pl.revealed,
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
         banner: mine ? pl.banner : -1,   // the banner is a strategic secret
+        wallLevel: mine ? pl.wallLevel : 0,
         slots: pl.slots.map((s) => {
           if (!s) return null;
-          if (mine) return { bt: s.bt, level: s.level };
-          if (s.bt === 'shrine' && pl.revealed) return { bt: 'shrine', level: s.level };
-          return { bt: 'veiled', level: 0 };
+          /* damage state is public — you can see what burns */
+          const hp = { hp: Math.round(s.hp), maxHp: s.maxHp };
+          if (mine) return { bt: s.bt, level: s.level, ...hp };
+          if (s.bt === 'shrine' && pl.revealed) return { bt: 'shrine', level: s.level, ...hp };
+          return { bt: 'veiled', level: 0, ...hp };
         })
       };
     });

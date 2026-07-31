@@ -69,20 +69,22 @@
   };
   R.pan = function (dpx) { R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - dpx / scale)); };
 
-  /* ---------------- hit-testing (unchanged math) ---------------- */
-  R.slotRect = function (idx) {
-    const col = idx % 3, row = Math.floor(idx / 3);
-    const gw = 460, cw = gw / 3, gh = 240 / 3;
-    const gx = (C.MAP.W - gw) / 2, gy = C.MAP.H - 250;
-    return { x: gx + col * cw + 4, y: gy + row * gh + 3, w: cw - 8, h: gh - 6 };
+  /* ---------------- hit-testing (ring city) ---------------- */
+  R.slotRect = function (idx) {   // display-space center box of a ring plot (own city)
+    const sp = global.World.slotPos(curView, curViewer, idx);
+    const x = dx(sp.x, curViewer), y = dy(sp.y, curViewer);
+    return { x: x - 26, y: y - 26, w: 52, h: 52 };
   };
   R.hitSlot = function (px, py) {
+    if (!curView) return -1;
+    const wx = px / scale, wy = py / scale + R.camY;
+    let best = -1, bd = 30 * 30;
     for (let i = 0; i < C.SLOTS; i++) {
-      const r = R.slotRect(i);
-      const x = r.x * scale, y = (r.y - R.camY) * scale, w = r.w * scale, h = r.h * scale;
-      if (px >= x && px <= x + w && py >= y && py <= y + h) return i;
+      const sp = global.World.slotPos(curView, curViewer, i);
+      const dd = (wx - dx(sp.x, curViewer)) ** 2 + (wy - dy(sp.y, curViewer)) ** 2;
+      if (dd < bd) { bd = dd; best = i; }
     }
-    return -1;
+    return best;
   };
   R.hitSite = function (px, py, view, viewer) {
     let best = -1, bd = 44 * 44;
@@ -431,8 +433,8 @@
       const s = en.slots[i], sp = foe.mounds[i];
       sp.visible = !!s;
       if (!s) continue;
-      const col = i % 3, row = Math.floor(i / 3);
-      const X = foe.cx - 150 + col * 150, Y = foe.cy - 152 - row * 78;
+      const spw = global.World.slotPos(curView, 1 - curViewer, i);
+      const X = dx(spw.x, curViewer), Y = dy(spw.y, curViewer);
       const revealed = s.bt === 'shrine' && en.revealed;
       sp.texture = tex(revealed ? S.b.shrine : S.b.veiled);
       sp.width = sp.height = 62;

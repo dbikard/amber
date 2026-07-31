@@ -13,7 +13,7 @@
   let renderer = null, scene, cam, rig, worldG;
   let overlay = null, octx = null;
   let W = 0, H = 0, scale = 1, viewH = 0;
-  let curViewer = 0, lastKey = '', T = 0;
+  let curViewer = 0, curView = null, lastKey = '', T = 0;
   let ground = null;
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
@@ -64,6 +64,26 @@
   function meshOf(parts) { return new THREE.Mesh(merge(parts), MAT); }
 
   /* models */
+  function towerModel(gold) {
+    const wall = gold ? 0xb99a4e : 0x9a4a56, light = gold ? 0xe6d391 : 0xd18a94,
+      dark = gold ? 0x6e5322 : 0x521c26, roof = gold ? 0x8a6a2a : 0x6e2833;
+    const p = [];
+    p.push(part(cyl(30, 38, 26, 9), dark, 0, 13, 0));            // plinth
+    p.push(part(cyl(22, 27, 96, 9), wall, 0, 74, 0));            // the great shaft
+    p.push(part(cyl(26, 22, 10, 9), light, 0, 126, 0));          // corbelled crown
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2;
+      p.push(part(box(7, 9, 7), dark, Math.cos(a) * 24, 136, Math.sin(a) * 24));
+    }
+    p.push(part(cyl(12, 16, 26, 8), wall, 0, 148, 0));           // watch turret
+    p.push(part(cone(15, 24, 8), roof, 0, 172, 0));
+    for (const a of [0.4, 2.1, 3.8, 5.5])                         // arrow lights
+      p.push(part(box(3, 8, 1.6), gold ? 0xffe9a8 : 0xff9aa8, Math.cos(a) * 25.5, 90, Math.sin(a) * 25.5, a));
+    p.push(part(box(16, 22, 5), dark, 0, 11, 34));               // the tower gate
+    p.push(part(cyl(0.9, 0.9, 26, 5), light, 0, 196, 0));
+    p.push(part(box(15, 9, 0.8), gold ? 0xffe9a8 : 0xff9aa8, 8.5, 204, 0));
+    return meshOf(p);
+  }
   function castleModel(gold) {
     const wall = gold ? 0xb99a4e : 0x9a4a56, light = gold ? 0xe6d391 : 0xd18a94,
       dark = gold ? 0x6e5322 : 0x521c26, roof = gold ? 0x8a6a2a : 0x6e2833;
@@ -221,20 +241,16 @@
     if (rc.ray.intersectPlane(groundPlane, hitV)) return { x: hitV.x, y: hitV.z };
     return { x: 350, y: 1200 };
   };
-  R.slotRectD = function (idx) {   // display-space rect (same layout numbers as 2D)
-    const col = idx % 3, row = Math.floor(idx / 3);
-    const gw = 460, cw = gw / 3, gh = 240 / 3;
-    const gx = (C.MAP.W - gw) / 2, gy = C.MAP.H - 250;
-    return { x: gx + col * cw + 4, y: gy + row * gh + 3, w: cw - 8, h: gh - 6 };
-  };
   R.hitSlot = function (px, py) {
+    if (!curView) return -1;
     const w2 = R.toWorld(px, py);
-    const dxp = dx(w2.x, curViewer), dyp = dy(w2.y, curViewer);
+    let best = -1, bd = 34 * 34;
     for (let i = 0; i < C.SLOTS; i++) {
-      const r = R.slotRectD(i);
-      if (dxp >= r.x && dxp <= r.x + r.w && dyp >= r.y && dyp <= r.y + r.h) return i;
+      const sp = global.World.slotPos(curView, curViewer, i);
+      const dd = (w2.x - sp.x) * (w2.x - sp.x) + (w2.y - sp.y) * (w2.y - sp.y);
+      if (dd < bd) { bd = dd; best = i; }
     }
-    return -1;
+    return best;
   };
   R.hitSite = function (px, py, view) {
     const w2 = R.toWorld(px, py);
@@ -366,51 +382,41 @@
     const own = pi === viewer;
     const city = view.map.sites[view.map.cities[pi]];
     const g = { cx: city.x, cy: city.y, own, group: new THREE.Group() };
-    g.group.position.set(0, 0, 0);
-    g.castle = castleModel(own);
-    g.castle.position.set(city.x, 0, city.y);
-    g.castle.rotation.y = (own ? curViewerRotOwn() : curViewerRotOwn() + Math.PI);
-    g.group.add(g.castle);
-    /* wall ring */
+    /* worked ground disc */
+    const court = new THREE.Mesh(new THREE.CircleGeometry(C.CITY.r + 14, 30).rotateX(-Math.PI / 2),
+      new THREE.MeshLambertMaterial({ color: own ? 0x2e2416 : 0x2a161a, transparent: true, opacity: 0.85 }));
+    court.position.set(city.x, 0.6, city.y);
+    g.group.add(court);
+    g.tower = towerModel(own);
+    g.tower.position.set(city.x, 0, city.y);
+    g.group.add(g.tower);
+    /* full wall ring with gate gaps toward the approaches */
     const wallParts = [];
-    for (let i = 0; i < 12; i++) {
-      const a = i / 12 * Math.PI * 2;
-      wallParts.push(part(box(30, 14, 8), own ? 0xcbb076 : 0xc88a94, 0, 7, 0, 0)
-        .rotateY(-a).translate(Math.cos(a) * 104, 0, Math.sin(a) * 104));
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * Math.PI * 2;
+      wallParts.push(part(box(46, 22, 10), own ? 0xcbb076 : 0xc88a94, 0, 11, 0, 0)
+        .rotateY(-a).translate(Math.cos(a) * C.CITY.r, 0, Math.sin(a) * C.CITY.r));
+      wallParts.push(part(box(10, 28, 14), own ? 0x8a6c3c : 0x7c3e4a, 0, 14, 0, 0)
+        .rotateY(-(a + Math.PI / 18)).translate(Math.cos(a + Math.PI / 18) * C.CITY.r, 0, Math.sin(a + Math.PI / 18) * C.CITY.r));
     }
     g.wall = new THREE.Mesh(merge(wallParts), MAT);
     g.wall.position.set(city.x, 0, city.y);
     g.wall.visible = false;
     g.group.add(g.wall);
-    if (own) {
-      g.pads = []; g.slotMeshes = []; g.slotBt = [];
-      for (let i = 0; i < C.SLOTS; i++) {
-        const r = R.slotRectD(i);
-        const cx2 = dx(r.x + r.w / 2, curViewer), cy2 = dy(r.y + r.h / 2, curViewer);
-        const pad = new THREE.Mesh(box(r.w - 8, 2.5, r.h - 8), new THREE.MeshLambertMaterial({ color: 0x46382a }));
-        pad.position.set(cx2, 1.2, cy2);
-        g.group.add(pad);
-        g.pads.push(pad);
-        const slotG = new THREE.Group();
-        slotG.position.set(cx2, 2, cy2);
-        slotG.rotation.y = curViewerRotOwn();
-        g.group.add(slotG);
-        g.slotMeshes.push(slotG); g.slotBt.push('');
-      }
-      /* shrine glow disc (shared) */
-      g.shrineGlow = null;
-    } else {
-      g.mounds = []; g.moundBt = [];
-      for (let i = 0; i < C.SLOTS; i++) {
-        const col = i % 3, row = Math.floor(i / 3);
-        const mx = dx(dx(g.cx, curViewer) - 150 + col * 150, curViewer);
-        const mz = dy(dy(g.cy, curViewer) - 152 - row * 78, curViewer);
-        const slotG = new THREE.Group();
-        slotG.position.set(mx, 0, mz);
-        slotG.visible = false;
-        g.group.add(slotG);
-        g.mounds.push(slotG); g.moundBt.push('');
-      }
+    /* eight plots on the ring; buildings rise (and fall) on them */
+    g.pads = []; g.slotG = []; g.slotBt = [];
+    for (let i = 0; i < C.SLOTS; i++) {
+      const sp = global.World.slotPos(view, pi, i);
+      const pad = new THREE.Mesh(new THREE.CircleGeometry(26, 12).rotateX(-Math.PI / 2),
+        new THREE.MeshLambertMaterial({ color: own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
+      pad.position.set(sp.x, 1.1, sp.y);
+      g.group.add(pad);
+      g.pads.push(pad);
+      const slotG = new THREE.Group();
+      slotG.position.set(sp.x, 1.5, sp.y);
+      slotG.rotation.y = curViewerRotOwn();
+      g.group.add(slotG);
+      g.slotG.push(slotG); g.slotBt.push('');
     }
     worldG.add(g.group);
     return g;
@@ -433,8 +439,8 @@
     fx.push({ k: 'bolt', obj: m, ttl, max: ttl, x: x1, z: z1 });
   }
   function slotCenterWorld(idx) {
-    const r = R.slotRectD(idx);
-    return { x: dx(r.x + r.w / 2, curViewer), z: dy(r.y + r.h / 2, curViewer) };
+    const sp = global.World.slotPos(curView, curViewer, idx);
+    return { x: sp.x, z: sp.y };
   }
   R.addEvents = function (events, view, viewer) {
     if (!R.ready) return;
@@ -452,6 +458,16 @@
       else if (ev.e === 'postdie') ringFx(ev.x, ev.y, 0xcfc6d8, 0.8, 44, ev.pi === viewer ? 0xff5a4a : null);
       else if (ev.e === 'build' || ev.e === 'up') {
         if (ev.pi === viewer) { const c2 = slotCenterWorld(ev.slot); ringFx(c2.x, c2.z, 0xffe9a8, 0.6, 30); }
+      } else if (ev.e === 'raze') ringFx(ev.x, ev.y, 0xff7a4a, 1.1, 52, ev.pi === viewer ? 0xff5a4a : null);
+      else if (ev.e === 'hurtcity' || ev.e === 'hurtwall') {
+        const city = view.map.sites[view.map.cities[ev.pi]];
+        if (ev.pi === viewer) ringFx(ev.x != null ? ev.x : city.x, ev.y != null ? ev.y : city.y, 0xff8a5a, 1.0, 40, 0xff8a5a);
+      } else if (ev.e === 'breach') {
+        const city = view.map.sites[view.map.cities[ev.pi]];
+        ringFx(city.x, city.y, 0xffb090, 1.6, 150, ev.pi === viewer ? 0xff5a4a : null);
+      } else if (ev.e === 'wallup') {
+        const city = view.map.sites[view.map.cities[ev.pi]];
+        if (ev.pi === viewer) ringFx(city.x, city.y, 0xcbb076, 1.2, 150);
       } else if (ev.e === 'walk' || ev.e === 'pattern' || ev.e === 'trump') {
         const city = view.map.sites[view.map.cities[ev.pi]];
         ringFx(city.x, city.y, ev.e === 'trump' ? 0xe8ecff : 0x9cc8ff, 1.3, 90);
@@ -463,7 +479,7 @@
   R.frame = function (view, viewer, dt) {
     if (!R.ready) return;
     T += dt;
-    curViewer = viewer;
+    curViewer = viewer; curView = view;
     if (mapKey(view, viewer) !== lastKey) buildWorld(view, viewer);
 
     /* camera: stand on your side of the table, look down the road.
@@ -552,40 +568,31 @@
   }
 
   function updateCities(view, viewer) {
-    const me = view.players[viewer], en = view.players[1 - viewer];
-    const own = cityObjs.own, foe = cityObjs.foe;
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s = me.slots[i], slotG = own.slotMeshes[i], want = s ? s.bt : '';
-      if (own.slotBt[i] !== want) {
-        own.slotBt[i] = want;
-        while (slotG.children.length) { const m = slotG.children.pop(); m.geometry && m.geometry.dispose(); }
-        if (s) {
-          const m = buildingModel(s.bt);
-          slotG.add(m);
-          if (s.bt === 'shrine') {
-            const spiral = new THREE.Mesh(new THREE.CircleGeometry(17, 18).rotateX(-Math.PI / 2),
-              new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 }));
-            spiral.position.y = 11;
-            slotG.add(spiral);
+    for (const g of [cityObjs.own, cityObjs.foe]) {
+      const pi = g.own ? viewer : 1 - viewer;
+      const pl = view.players[pi];
+      g.wall.visible = pl.wallHp > 0;
+      for (let i = 0; i < C.SLOTS; i++) {
+        const s = pl.slots[i], slotG = g.slotG[i];
+        let want = s ? s.bt : '';
+        if (!g.own && want && !(want === 'shrine' && pl.revealed)) want = 'veiled';
+        if (g.slotBt[i] !== want) {
+          g.slotBt[i] = want;
+          while (slotG.children.length) { const m = slotG.children.pop(); m.geometry && m.geometry.dispose(); }
+          if (want) {
+            slotG.add(buildingModel(want));
+            if (want === 'shrine') {
+              const spiral = new THREE.Mesh(new THREE.CircleGeometry(17, 18).rotateX(-Math.PI / 2),
+                new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 }));
+              spiral.position.y = 11;
+              slotG.add(spiral);
+            }
           }
         }
-      }
-      own.pads[i].material.color.setHex(R.selected === i ? 0x8a6c3c : 0x46382a);
-    }
-    own.wall.visible = me.wallHp > 0;
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s = en.slots[i], slotG = foe.mounds[i];
-      const want = s ? ((s.bt === 'shrine' && en.revealed) ? 'shrine' : 'veiled') : '';
-      slotG.visible = !!s;
-      if (foe.moundBt[i] !== want) {
-        foe.moundBt[i] = want;
-        while (slotG.children.length) { const m = slotG.children.pop(); m.geometry && m.geometry.dispose(); }
-        if (want) slotG.add(buildingModel(want));
+        if (g.own) g.pads[i].material.color.setHex(R.selected === i ? 0x8a6c3c : 0x46382a);
       }
     }
-    foe.wall.visible = en.wallHp > 0;
   }
-
   function updateBanner(view, viewer) {
     const b = view.players[viewer].banner;
     bannerG.visible = b >= 0;
@@ -716,7 +723,7 @@
     for (const pi of [viewer, 1 - viewer]) {
       const pl = view.players[pi];
       const cs = view.map.sites[view.map.cities[pi]];
-      const p = proj(cs.x, 118, cs.y);
+      const p = proj(cs.x, 186, cs.y);
       if (!p.ok) continue;
       g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y - 4, 92, 8);
       g.fillStyle = pi === viewer ? '#ffd98a' : '#ff8a96';
@@ -724,7 +731,7 @@
       if (pl.wallHp > 0) {
         g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y + 6, 92, 5);
         g.fillStyle = '#cbb076';
-        g.fillRect(p.x - 45, p.y + 7, 90 * Math.min(1, pl.wallHp / C.WALL_HP[2]), 3);
+        g.fillRect(p.x - 45, p.y + 7, 90 * Math.min(1, pl.wallHp / C.WALL.hp[2]), 3);
       }
     }
     /* minimap (same math as 2D, display space) */
