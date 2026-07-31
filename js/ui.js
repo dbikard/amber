@@ -121,7 +121,7 @@
   };
 
   /* ---------------- build / upgrade sheets ---------------- */
-  UI.buildSheet = function (slot, essence, hasShrine) {
+  UI.buildSheet = function (slot, essence, hasShrine, wallLevel) {
     const el = $('sheet');
     el.innerHTML = '<div class="sheet-title">Raise a work of Amber</div>';
     for (const bt of C.BUILD_ORDER_UI) {
@@ -135,6 +135,18 @@
                        `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb}</span>`;
       card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(slot, bt); UI.closeSheet(); });
       el.appendChild(card);
+    }
+    /* the walls are built from any plot menu too — it's where builders go looking */
+    if (wallLevel != null && wallLevel < C.MAX_LEVEL) {
+      const wcost = wallLevel === 0 ? C.WALL.cost : C.WALL.up[wallLevel - 1];
+      const can = essence >= wcost;
+      const wc = document.createElement('button');
+      wc.className = 'card' + (can ? '' : ' locked');
+      wc.dataset.cost = wcost;
+      wc.innerHTML = `<span class="c-ico">🧱</span><span class="c-name">${wallLevel === 0 ? 'City Walls (ramparts)' : 'Strengthen the City Walls'}</span>` +
+                     `<span class="c-cost">◆ ${wcost}</span><span class="c-blurb">A ring around the whole city — no enemy passes while it stands. Takes no plot.</span>`;
+      wc.addEventListener('click', () => { if (wc.classList.contains('locked')) return; H.onWall(); UI.closeSheet(); });
+      el.appendChild(wc);
     }
     addCancel(el);
     el._openedAt = performance.now();

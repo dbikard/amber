@@ -293,7 +293,7 @@
       const me = view.players[game.viewer];
       const s = me.slots[slot];
       Render.selected = slot;
-      if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'));
+      if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'), me.wallLevel);
       else UI.upSheet(slot, s, me.essence, me.walking);
       return;
     }
@@ -302,7 +302,8 @@
       /* every site opens a sheet — including the rival's city (the assault order) */
       const site = view.map.sites[siteId];
       const foeCity = view.map.cities[1 - game.viewer] === siteId;
-      UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity);
+      UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
+                   view.players[game.viewer].wallLevel);
       return;
     }
     if (UI.sheetOpen()) UI.closeSheet();
