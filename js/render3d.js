@@ -417,14 +417,46 @@
     g.tower = towerModel(own);
     g.tower.position.set(city.x, 0, city.y);
     g.group.add(g.tower);
-    /* full wall ring with gate gaps toward the approaches */
+    /* a proper medieval curtain wall: continuous crenellated ring, interval towers with
+     * conical roofs, and gatehouses where the actual roads meet the city */
+    const stW = 0x8f8898, stL = 0xbdb6c8, stD = 0x555064, roofC = 0x5a4a68;
+    const gateAngs = view.map.adj[city.id].map((nb) => {
+      const n = view.map.sites[nb];
+      return Math.atan2(n.y - city.y, n.x - city.x);
+    });
+    const nearGate = (a) => gateAngs.some((ga) => {
+      let d = Math.abs(a - ga) % (Math.PI * 2);
+      if (d > Math.PI) d = Math.PI * 2 - d;
+      return d < 0.16;
+    });
     const wallParts = [];
-    for (let i = 0; i < 18; i++) {
-      const a = i / 18 * Math.PI * 2;
-      wallParts.push(part(box(46, 22, 10), own ? 0xcbb076 : 0xc88a94, 0, 11, 0, 0)
-        .rotateY(-a).translate(Math.cos(a) * C.CITY.r, 0, Math.sin(a) * C.CITY.r));
-      wallParts.push(part(box(10, 28, 14), own ? 0x8a6c3c : 0x7c3e4a, 0, 14, 0, 0)
-        .rotateY(-(a + Math.PI / 18)).translate(Math.cos(a + Math.PI / 18) * C.CITY.r, 0, Math.sin(a + Math.PI / 18) * C.CITY.r));
+    const N = 40, R2 = C.CITY.r, segLen = 2 * Math.PI * R2 / N + 1.5;
+    for (let i = 0; i < N; i++) {
+      const a = (i + 0.5) / N * Math.PI * 2;
+      if (nearGate(a)) continue;   // the road passes through the gatehouse
+      /* curtain segment (tangential) + merlons on the outer lip */
+      const seg = [part(box(segLen, 24, 9), stW, 0, 12, 0)];
+      seg.push(part(box(segLen, 3, 11), stL, 0, 25.5, 0));
+      for (const mx of [-segLen / 3, segLen / 3]) seg.push(part(box(5.5, 6, 3), stD, mx, 30, 4));
+      for (const geo of seg) wallParts.push(geo.rotateY(-a - Math.PI / 2).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
+    }
+    for (let i = 0; i < 6; i++) {   // interval towers
+      const a = i / 6 * Math.PI * 2 + 0.26;
+      if (nearGate(a)) continue;
+      wallParts.push(part(cyl(11, 13, 40, 7), stW, 0, 20, 0).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
+      wallParts.push(part(cyl(13, 11, 5, 7), stL, 0, 43, 0).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
+      wallParts.push(part(cone(12, 16, 7), roofC, 0, 53, 0).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
+    }
+    for (const ga of gateAngs) {    // gatehouse: twin drum towers + lintel over the road
+      for (const off of [-0.14, 0.14]) {
+        const gx = Math.cos(ga + off) * R2, gz = Math.sin(ga + off) * R2;
+        wallParts.push(part(cyl(9, 11, 36, 7), stW, 0, 18, 0).translate(gx, 0, gz));
+        wallParts.push(part(cone(10.5, 13, 7), roofC, 0, 42, 0).translate(gx, 0, gz));
+        /* the faction's banner on each drum */
+        wallParts.push(part(box(1.2, 10, 0.5), own ? 0xffd98a : 0xff8a96, 0, 42, 0).translate(gx * 1.04, 0, gz * 1.04));
+      }
+      wallParts.push(part(box(30, 6, 8), stL, 0, 30, 0)
+        .rotateY(-ga - Math.PI / 2).translate(Math.cos(ga) * R2, 0, Math.sin(ga) * R2));
     }
     g.wall = new THREE.Mesh(merge(wallParts), MAT);
     g.wall.position.set(city.x, 0, city.y);
@@ -533,6 +565,18 @@
   function updateUnits(view, viewer, dt) {
     const byKind = { soldier: [], sorcerer: [], champion: [], fiend: [] };
     for (const u of view.units) byKind[u.kind].push(u);
+    /* garrison elevation: a walled owner's unit standing in the rampart band is on the walk */
+    const cityBand = [0, 1].map((pi) => {
+      const cs = view.map.sites[view.map.cities[pi]];
+      return { x: cs.x, y: cs.y, up: view.players[pi].wallHp > 0 };
+    });
+    const walkY = (u) => {
+      if (u.owner !== 0 && u.owner !== 1) return 0;
+      const cb = cityBand[u.owner];
+      if (!cb || !cb.up) return 0;
+      const dd = Math.sqrt((u.x - cb.x) ** 2 + (u.y - cb.y) ** 2);
+      return dd > C.CITY.r - 20 && dd < C.CITY.r + 2 ? 24 : 0;
+    };
     for (const kind of Object.keys(byKind)) {
       let im = unitIM[kind];
       if (!im) {
@@ -548,7 +592,7 @@
         const mvx = u.x - f.x, mvy = u.y - f.y;
         if (mvx * mvx + mvy * mvy > 0.5) f.a = Math.atan2(mvx, mvy);
         f.x = u.x; f.y = u.y;
-        dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
+        dum.position.set(u.x, groundH(u.x, u.y) + walkY(u) + Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
         dum.rotation.set(0, f.a, 0);
         const s2 = u.kind === 'champion' ? 1.25 : 1;
         dum.scale.set(s2, s2, s2);

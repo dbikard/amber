@@ -551,7 +551,30 @@
         const want = cb && cb.rally != null && cb.rally >= 0 ? cb.rally : pl2.banner;
         if (u.goal !== want) { u.goal = want; u.step = -1; }
       }
-      /* garrisons man the walls: units standing in their own city see farther out */
+      /* garrison duty: flag home + walls standing → man the ramparts. Take a post on the
+       * ring, mass toward the threatened arc, hurl from the parapet — and NEVER step
+       * outside. Sortying is a choice the player makes by moving the flag. */
+      if (u.owner !== 2) {
+        const plG = world.players[u.owner];
+        if (plG.wallHp > 0 && u.goal === world.map.cities[u.owner]) {
+          const cs = cityOf(world, u.owner);
+          const foe = acquire(world, u, def.aggro + 160);
+          if (foe && u.cd <= 0 && foe.kind === 'unit' &&
+              foe.d <= Math.max(def.range, 85) + C.UNITS[foe.t.kind].size) {
+            hurt(world, foe.t, u.dmg, u.owner);
+            u.cd = def.atk;
+            emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
+          }
+          const ang = foe ? Math.atan2(foe.y - cs.y, foe.x - cs.x) : Math.atan2(u.oy || 1, u.ox || 1);
+          const px2 = cs.x + Math.cos(ang) * (C.CITY.r - 10), py2 = cs.y + Math.sin(ang) * (C.CITY.r - 10);
+          const dd2 = Math.sqrt(d2(u.x, u.y, px2, py2));
+          if (dd2 > 6) { const mv = def.speed * dt / dd2; u.x += (px2 - u.x) * mv; u.y += (py2 - u.y) * mv; }
+          const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
+          if (dc > C.CITY.r - 4) { const k2 = (C.CITY.r - 4) / (dc || 1); u.x = cs.x + (u.x - cs.x) * k2; u.y = cs.y + (u.y - cs.y) * k2; }
+          continue;
+        }
+      }
+      /* garrisons of an open city still see farther out */
       const home = u.owner !== 2 && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
       const foe = acquire(world, u, def.aggro + (home ? 140 : 0));
       if (foe) {
