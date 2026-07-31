@@ -81,9 +81,10 @@
       const can = essence >= d.cost;
       const card = document.createElement('button');
       card.className = 'card' + (can ? '' : ' locked');
+      card.dataset.cost = d.cost;   // live affordability: UI.tick unlocks it when income catches up
       card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
                        `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb}</span>`;
-      if (can) card.addEventListener('click', () => { H.onBuild(slot, bt); UI.closeSheet(); });
+      card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(slot, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
     addCancel(el);
@@ -100,8 +101,9 @@
       const can = essence >= cost;
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
+      b.dataset.cost = cost;
       b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>`;
-      if (can) b.addEventListener('click', () => { H.onUp(slot); UI.closeSheet(); });
+      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot); UI.closeSheet(); });
       el.appendChild(b);
     }
     if (s.bt === 'shrine') {
@@ -145,9 +147,10 @@
         const can = essence >= d.cost;
         const card = document.createElement('button');
         card.className = 'card' + (can ? '' : ' locked');
+        card.dataset.cost = d.cost;
         card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
                          `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb} — needs a unit standing here</span>`;
-        if (can) card.addEventListener('click', () => { H.onPost(site.id, bt); UI.closeSheet(); });
+        card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onPost(site.id, bt); UI.closeSheet(); });
         el.appendChild(card);
       }
     }
@@ -157,8 +160,9 @@
       const can = essence >= cost;
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
+      b.dataset.cost = cost;
       b.innerHTML = `<span class="c-name">Upgrade ${C.OUTPOSTS[st.post.bt].name} to level ${st.post.level + 1}</span><span class="c-cost">◆ ${cost}</span>`;
-      if (can) b.addEventListener('click', () => { H.onPostUp(site.id); UI.closeSheet(); });
+      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onPostUp(site.id); UI.closeSheet(); });
       el.appendChild(b);
     }
     addCancel(el);
@@ -171,6 +175,15 @@
     c.addEventListener('click', UI.closeSheet);
     el.appendChild(c);
   }
+  /* live affordability: called every frame with the viewer's current essence —
+   * a card locked when the sheet opened unlocks the moment the war chest reaches its cost */
+  UI.tick = function (essence) {
+    const el = $('sheet');
+    if (el.classList.contains('hidden')) return;
+    for (const card of el.querySelectorAll('.card[data-cost]'))
+      card.classList.toggle('locked', essence < +card.dataset.cost);
+  };
+
   UI.closeSheet = function () { $('sheet').classList.add('hidden'); if (global.Render) global.Render.selected = -1; };
   UI.sheetOpen = () => !$('sheet').classList.contains('hidden');
 

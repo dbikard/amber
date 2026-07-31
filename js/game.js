@@ -194,10 +194,12 @@
       }
       Render.frame(view, game.viewer, dtReal);
       UI.hud(view, game.viewer, game.world.players[game.viewer].incomeRate || 0, game.targeting);
+      UI.tick(game.world.players[game.viewer].essence);
     } else if (game.mode === 'guest' && snapCur) {
       const view = guestView();
       Render.frame(view, 1, dtReal);
       UI.hud(view, 1, snapCur.players[1].incomeRate || 0, game.targeting);
+      UI.tick(snapCur.players[1].essence || 0);
     }
   }
 
