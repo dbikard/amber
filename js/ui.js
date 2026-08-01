@@ -57,10 +57,9 @@
     const tray = $('flag-tray');
     const me = view.players[viewer];
     const rows = [];
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s = me.slots[i];
-      if (s && C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) rows.push([i, s.rally != null && s.rally >= 0]);
-    }
+    me.buildings.forEach((s, i) => {
+      if (C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) rows.push([s.id, s.rally != null && s.rally >= 0, i]);
+    });
     const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
     if (hash === trayHash) return;
     trayHash = hash;
@@ -75,8 +74,8 @@
       return b;
     };
     mk('royal', '⚑', '', '#ffd98a');
-    for (const [i, detached] of rows) {
-      const b = mk(i, '⚐', 'co', PENNANT_CSS[i % PENNANT_CSS.length]);
+    for (const [id, detached, i] of rows) {
+      const b = mk(id, '⚐', 'co', PENNANT_CSS[i % PENNANT_CSS.length]);
       if (detached) {
         const d = document.createElement('span');
         d.className = 'dot';
@@ -126,24 +125,36 @@
   function rateTag(bt, level) {
     const d = C.BUILDINGS[bt];
     if (!d) return '';
-    if (d.income) return `<span class="c-rate up">+${d.income[level - 1]}◆/s</span>`;
+    if (d.income) return `<span class="c-rate up">+${d.income[level - 1]}◆/s · +${d.nodeIncome[level - 1]}◆/s on a spring</span>`;
     if (d.spawns) { const u = C.UNITS[d.spawns]; return `<span class="c-rate dn">−${(u.cost / d.period[level - 1]).toFixed(1)}◆/s muster</span>`; }
     if (bt === 'shrine') return `<span class="c-rate dn">−${d.drain[level - 1]}◆/s while walking</span>`;
     return '';
   }
-  UI.buildSheet = function (slot, essence, hasShrine) {
+  /* why the ground refuses a work — said plainly, because free placement fails silently otherwise */
+  const WHY = {
+    ground: 'the ground will not bear it — wood, rock or water',
+    crowded: 'too close to another work',
+    claim: 'beyond your writ — hold a Gate nearer, or take a spring',
+    taken: 'that spring is already drawn upon',
+    presence: 'no troops of yours stand there to claim it',
+    contested: 'the enemy stands there',
+    full: 'you hold as many works as you can keep',
+    unique: 'you have one already'
+  };
+  UI.buildSheet = function (at, essence, why) {
     const el = $('sheet');
-    el.innerHTML = `<div class="sheet-title">Raise a work of Amber ${trChip(essence)}</div>`;
+    el.innerHTML = `<div class="sheet-title">Raise a work here ${trChip(essence)}</div>`;
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
-      if (d.unique && hasShrine && bt === 'shrine') continue;
-      const can = essence >= d.cost;
+      const bad = why ? why(bt) : null;
+      const can = essence >= d.cost && !bad;
       const card = document.createElement('button');
       card.className = 'card' + (can ? '' : ' locked');
-      card.dataset.cost = d.cost;   // live affordability: UI.tick unlocks it when income catches up
+      if (!bad) card.dataset.cost = d.cost;   // live affordability: UI.tick unlocks it when income catches up
       card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
-                       `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb}</span>${rateTag(bt, 1)}`;
-      card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(slot, bt); UI.closeSheet(); });
+                       `<span class="c-cost">◆ ${d.cost}</span>` +
+                       `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}</span>${bad ? '' : rateTag(bt, 1)}`;
+      card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(at.x, at.y, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
     addCancel(el);
@@ -164,7 +175,7 @@
            (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
   }
 
-  UI.upSheet = function (slot, s, essence, walking) {
+  UI.upSheet = function (s, essence, walking) {
     const d = C.BUILDINGS[s.bt], face = towerFace(s);
     const el = $('sheet');
     el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
@@ -185,7 +196,7 @@
         b.innerHTML = `<span class="c-ico">${b2.icon}</span><span class="c-name">${b2.name}</span>` +
                       `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">${b2.blurb}</span>` +
                       towerStatLine(key, C.BUILDINGS.tower.fork);
-        b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot, key); UI.closeSheet(); });
+        b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, key); UI.closeSheet(); });
         el.appendChild(b);
       }
     } else if (s.level < C.MAX_LEVEL) {
@@ -198,7 +209,7 @@
       const rt = forked ? towerStatLine(s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
       b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>` +
                     (rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '');
-      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot, s.br); UI.closeSheet(); });
+      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, s.br); UI.closeSheet(); });
       el.appendChild(b);
     }
     if (d.spawns) {
@@ -224,15 +235,15 @@
 
   /* ---------------- map site sheet (v0.2) ---------------- */
   const KIND_BLURB = {
-    spring: 'A spring of living Shadow. Hold it with a Shadow Gate and it will pay for wars.',
-    vantage: 'High ground over the paths. A Watchpost here sees far and shoots farther.',
-    road: 'A milestone of the black road. Chaos favors this ground — a Rampart can wall the way.',
+    node: 'A spring of living Shadow. Raise a Gate on it — your troops must be standing here — and it will pay for wars.',
+    vantage: 'High ground over the paths. A Watchtower here sees far and shoots farther.',
+    road: 'A milestone of the black road. Chaos favors this ground — a Rampart can bar the way.',
     city: 'A Seat of Power.'
   };
   UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel, pinfo, foeInfo) {
     const el = $('sheet');
-    const ownerTxt = !st ? 'unexplored' : st.owner === -1 || st.owner == null ? 'unclaimed'
-      : st.owner === viewer ? 'yours' : 'the rival’s';
+    const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder === -1 ? 'unclaimed'
+      : st.holder === viewer ? 'yours' : 'the rival’s';
     el.innerHTML = `<div class="sheet-title">${site.name} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
 
@@ -248,7 +259,7 @@
         el.appendChild(stat);
       }
       if (!foeCity && pinfo) {
-        const shrine = (pinfo.slots || []).find((q) => q && q.bt === 'shrine');
+        const shrine = (pinfo.buildings || []).find((q) => q.bt === 'shrine');
         const walkDrain = pinfo.walking && shrine ? C.BUILDINGS.shrine.drain[shrine.level - 1] : 0;
         const muster = Math.max(0, (pinfo.drainRate || 0) - walkDrain);
         const eco = document.createElement('div');
@@ -284,35 +295,6 @@
                      `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">A ring no enemy passes while it stands. Self-mends.</span>`;
       wc.addEventListener('click', () => { if (wc.classList.contains('locked')) return; H.onWall(); UI.closeSheet(); });
       el.appendChild(wc);
-    }
-    /* build an outpost (a unit of yours must stand there — the host validates) */
-    if (site.kind !== 'city' && (!st || !st.post)) {
-      for (const bt of Object.keys(C.OUTPOSTS)) {
-        const d = C.OUTPOSTS[bt];
-        if (d.only && site.kind !== d.only) continue;
-        const can = essence >= d.cost;
-        const card = document.createElement('button');
-        card.className = 'card' + (can ? '' : ' locked');
-        card.dataset.cost = d.cost;
-        const orate = d.income ? `<span class="c-rate up">+${d.income[0]}◆/s</span>` : '';
-        card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
-                         `<span class="c-cost">◆ ${d.cost}</span><span class="c-blurb">${d.blurb} — needs a unit standing here</span>${orate}`;
-        card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onPost(site.id, bt); UI.closeSheet(); });
-        el.appendChild(card);
-      }
-    }
-    /* upgrade your outpost */
-    if (st && st.post && st.owner === viewer && st.post.level < C.MAX_LEVEL) {
-      const cost = global.World.postUpCost(st.post.bt, st.post.level);
-      const can = essence >= cost;
-      const b = document.createElement('button');
-      b.className = 'card' + (can ? '' : ' locked');
-      b.dataset.cost = cost;
-      const od = C.OUTPOSTS[st.post.bt];
-      const orate2 = od.income ? `<span class="c-rate up wide">+${od.income[st.post.level]}◆/s</span>` : '';
-      b.innerHTML = `<span class="c-name">Upgrade ${od.name} to level ${st.post.level + 1}</span><span class="c-cost">◆ ${cost}</span>${orate2}`;
-      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onPostUp(site.id); UI.closeSheet(); });
-      el.appendChild(b);
     }
     addCancel(el);
     el._openedAt = performance.now();

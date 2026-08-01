@@ -199,8 +199,15 @@ AI simultaneously, leaving nothing trustworthy to measure against.
    with the opposite hand, so terrain, nav and both renderers sample one curve.
    Wood, rock and water are also what the renderers draw — there is no decorative forest any
    more; what you see is what blocks you.
-4. **Free placement** inside claim areas; essence nodes replace springs; building ids replace
-   slots; fog rule swap.
+4. ~~**Free placement**~~ — DONE, with the balance caveat below. Works carry ids and
+   positions; `OUTPOSTS` merged into `BUILDINGS` (free placement left the distinction with
+   nothing to mean). Claim = Seat ∪ every Gate; a Gate may be raised outside it only on a
+   free spring your troops hold. Springs carry the economy and a Gate elsewhere trickles —
+   without that, five home gates replace map control and the whole anti-stall model dies.
+   Fog swapped to see-it-or-remember-it.
+   **The field polarised and stage 6 must repair it** (Brand at 12 wins, median match ~8 min
+   against the 15–30 target). Recorded rather than papered over — the sim is the referee,
+   and this is what it said.
 5. **Walls and siege** — drag-a-line segments, towers joining curtains, the Siege Works line,
    and the Chaos repurposing of §2.
 6. **Retune** — match length to 15–30 min, Chaos cadence, heir rebalance, ablation runs.

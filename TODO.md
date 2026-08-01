@@ -100,11 +100,21 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       being authored. Mirror-generated; `NAV.audit` proves no site is ever stranded. Both
       renderers now draw the sim's own terrain (real crags in 3D) — no decorative forest.
       Path bends live on the map as world truth so sim and paint agree on where a road is.
-- [ ] **Free placement** in claim areas; essence nodes replace springs; building ids replace
-      slots; fog rule → "visible in vision, remembered as ghosts"
+- [x] **Free placement** — works are placed things with ids and positions; the 8-slot ring is
+      gone. Outposts and city works unified into ONE table (a Watchpost was always a tower).
+      Your writ = the Seat's country plus every Shadow Gate's; a Gate may be raised beyond it
+      only on a free spring your troops are standing on. Springs are the economy — a Gate
+      elsewhere merely trickles. Fog rule swapped: a rival's work is visible only while seen,
+      and remembered as a ghost otherwise.
+      **Balance is RED and stage 6 must fix it** — see the note below.
 - [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
       Chaos repurposed as the price of the best ground
-- [ ] **Retune** — match length, Chaos cadence, heir rebalance, ablation runs
+- [ ] **Retune** — match length, Chaos cadence, heir rebalance, ablation runs. Carrying in:
+      - Brand (greed) has no viable line under the new economy: 12 wins, 0% vs Bleys, Corwin
+        and Benedict. Pillar 2 wants greed to beat turtle; it currently beats nobody.
+      - Corwin still has no >60% counter (best is Bleys at 43%) — the oldest open item.
+      - Median match ~8 min against the 15–30 target; node income and build costs are the
+        levers, and MAX_BUILDINGS=14 has never been tuned, only chosen.
 
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map

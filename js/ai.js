@@ -13,8 +13,8 @@
     const pl = world.players[me], en = world.players[1 - me];
     const myCity = World.cityOf(world, me), enCity = World.cityOf(world, 1 - me);
     const have = {};
-    let free = 0;
-    for (const s of pl.slots) { if (s) have[s.bt] = (have[s.bt] || 0) + 1; else free++; }
+    for (const b of pl.buildings) have[b.bt] = (have[b.bt] || 0) + 1;
+    const free = C.MAX_BUILDINGS - pl.buildings.length;
 
     const myUnits = [], visHostiles = [], threats = [];
     let push = 0;
@@ -27,13 +27,13 @@
         if (d2(u.x, u.y, myCity.x, myCity.y) < 600 * 600) threats.push(u);
       }
     }
-    /* site knowledge: live truth where owned/visible, memory elsewhere */
-    const springs = { own: [], mid: [], enemy: [] };
+    /* the essence nodes, bucketed by whose half of Shadow they lie in */
+    const nodes = { own: [], mid: [], enemy: [] };
     for (const s of world.map.sites) {
-      if (s.kind !== 'spring') continue;
+      if (s.kind !== 'node') continue;
       const dMe = d2(s.x, s.y, myCity.x, myCity.y), dEn = d2(s.x, s.y, enCity.x, enCity.y);
       const bucket = Math.abs(Math.sqrt(dMe) - Math.sqrt(dEn)) < 260 ? 'mid' : (dMe < dEn ? 'own' : 'enemy');
-      springs[bucket].push(s);
+      nodes[bucket].push(s);
     }
     const enemyArmy = visHostiles.filter((u) => u.owner === 1 - me).length;
     return {
@@ -41,7 +41,7 @@
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
       visHostiles, threats, push, enemyArmy,
-      springs,
+      nodes,
       myPattern: pl.pattern, walking: pl.walking,
       enemyWalking: en.revealed && en.walking, enemyPattern: en.revealed ? en.pattern : 0,
       powers: pl.powers, banner: pl.banner
@@ -74,17 +74,52 @@
   const ownChoke = (v) => nearestOf(v, v.world.map.roads.map((id) => v.world.map.sites[id]))[0];
   const ownVantages = (v) => nearestOf(v, v.world.map.sites.filter((s) => s.kind === 'vantage')).slice(0, 2);
 
-  /* expansion mission wants, in priority order. Each: {bt, pick(v) → site|null} */
-  const wantSgates = (bucket, n) => ({ bt: 'sgate', pick: (v) => nearestOf(v, v.springs[bucket]).filter((s) => !s.post).slice(0, n)[0] || null });
-  const wantWatch = (n) => ({ bt: 'watch', pick: (v) => ownVantages(v).filter((s) => !s.post).slice(0, n)[0] || null });
-  const wantRampart = () => ({ bt: 'rampart', pick: (v) => { const s = ownChoke(v); return s && !s.post ? s : null; } });
+  const held = (v, site) => global.World.nodeHolder(v.world, site) !== -1;
+  const worksNear = (v, x, y, bt, r) =>
+    v.pl.buildings.some((b) => b.bt === bt && d2(b.x, b.y, x, y) < r * r);
 
-  /* ring placement doctrine: slot 0 faces the road. Military mans the front arc;
-   * the economy shelters behind the Seat. */
-  const FRONT_ORDER = [0, 1, 7, 2, 6, 3, 5, 4];
-  const BACK_ORDER = [4, 3, 5, 2, 6, 1, 7, 0];
-  const slotFor = (v, bt) =>
-    (bt === 'gate' || bt === 'shrine' ? BACK_ORDER : FRONT_ORDER).find((s2) => !v.pl.slots[s2]);
+  /* expansion mission wants, in priority order. Each: {bt, pick(v) → site|null} */
+  const wantGates = (bucket, n) => ({ bt: 'gate', pick: (v) => nearestOf(v, v.nodes[bucket]).filter((s) => !held(v, s)).slice(0, n)[0] || null });
+  const wantWatch = (n) => ({ bt: 'tower', pick: (v) => ownVantages(v).filter((s) => !worksNear(v, s.x, s.y, 'tower', 120)).slice(0, n)[0] || null });
+  const wantRampart = () => ({ bt: 'rampart', pick: (v) => { const s = ownChoke(v); return s && !worksNear(v, s.x, s.y, 'rampart', 130) ? s : null; } });
+
+  /* ---------------- placement doctrine ----------------
+   * Free ground means an heir must choose WHERE, not just what. The doctrine is the old
+   * ring doctrine made continuous: soldiery and towers face the road the enemy will come
+   * down, the economy and the shrine shelter on the far side of the Seat. Candidates are
+   * swept outward in widening arcs and the first legal one is taken. */
+  function sweep(v, bt, cx, cy, base, r0, step, rings) {
+    const W = global.World;
+    for (let ring = 0; ring < rings; ring++) {
+      const r = r0 + ring * step;
+      for (let k = 0; k < 13; k++) {
+        const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.40;
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+        if (!W.placementError(v.world, v.me, x, y, bt)) return { x, y };
+      }
+    }
+    return null;
+  }
+  function spotFor(v, bt) {
+    const c = v.myCity, toFoe = Math.atan2(v.enCity.y - c.y, v.enCity.x - c.x);
+    /* a Gate belongs on a spring. Only when every reachable one is held does an heir
+     * settle for a waystone behind the Seat — the trickle is not worth much. */
+    if (bt === 'gate') {
+      const free = nearestOf(v, v.nodes.own.concat(v.nodes.mid)).filter((s) => !held(v, s));
+      for (const site of free) {
+        const at = spotAt(v, site, 'gate');
+        if (at) return at;
+      }
+    }
+    const rear = bt === 'gate' || bt === 'shrine' || bt === 'spire';
+    return sweep(v, bt, c.x, c.y, rear ? toFoe + Math.PI : toFoe, 92, 58, 6);
+  }
+  /* a work raised out on the map, at the site the mission marched to */
+  function spotAt(v, site, bt) {
+    const W = global.World;
+    if (!W.placementError(v.world, v.me, site.x, site.y, bt)) return { x: site.x, y: site.y };
+    return sweep(v, bt, site.x, site.y, Math.atan2(v.myCity.y - site.y, v.myCity.x - site.x), 46, 34, 3);
+  }
 
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
@@ -94,7 +129,7 @@
       plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine'],
       upPref: ['tower', 'gate', 'barracks', 'shrine'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
-      missions: (v) => [wantSgates('own', 2), wantWatch(2), wantRampart(), wantSgates('mid', 1)],
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2), wantRampart()],
       banner: (v) => v.enemyWalking && v.army >= 7 ? v.enCity.id : v.myCity.id,
       wall: (v) => v.t > 60,
       walk: (v) => v.have.shrine && v.threats.length === 0 && v.essence > 220,
@@ -108,7 +143,7 @@
       plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire'],
       upPref: ['barracks', 'spire', 'gate', 'tower'],
       towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
-      missions: (v) => v.t < 200 ? [wantSgates('own', 2)] : [],
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 2)],   // he marches past them anyway
       banner: (v) => v.army >= 6 ? v.enCity.id : ownChoke(v).id,   // stage, then storm the gates
       wall: (v) => v.myCastle < 800 || v.t > 260,
       walk: () => false, pauseWalk: () => false,
@@ -121,7 +156,10 @@
       plan: () => ['gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire', 'gate'],
       upPref: ['tower', 'gate', 'shrine', 'barracks'],
       towerBranch: () => 'cannon',   // the walk is answered by an army, and an army is a crowd
-      missions: (v) => [wantSgates('own', 2), wantRampart(), wantSgates('mid', 1)],
+      /* Greed must still MINE. Keeping Brand's army home to guard the walk was tried and
+       * measured: it starves him (2 wins across the field) because the walk's drain has to
+       * come from somewhere, and under the new economy that somewhere is the springs. */
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantRampart()],
       banner: (v) => v.myCity.id,   // the army exists to buy him time
       wall: (v) => v.t > 120 || !!v.have.shrine,   // Brand walls early — the walk needs a keep
       walk: (v) => v.have.shrine && v.essence > 240,
@@ -135,10 +173,10 @@
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks'],
       upPref: ['barracks', 'gate', 'spire', 'tower', 'shrine'],
       towerBranch: () => 'bolt',
-      missions: (v) => [wantSgates('own', 2), wantSgates('mid', 2), wantWatch(1)],
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
       banner: (v) => (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle)
         ? v.enCity.id
-        : (nearestOf(v, v.springs.mid)[0] || ownChoke(v)).id,   // contest the middle, assault from strength
+        : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id,   // contest the middle, assault from strength
       wall: (v) => v.t > 150,
       walk: (v) => v.have.shrine && v.essence > 260 && (v.enemyCastle < v.myCastle || v.threats.length === 0),
       pauseWalk: (v) => v.threats.length >= 4,
@@ -156,12 +194,12 @@
         wants.push('barracks', 'gate');
         if (v.enemyWalking) wants.push(...(v.enemyArmy >= 2 ? ['shrine', 'barracks', 'spire'] : ['barracks', 'spire', 'barracks']));
         else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
-        return wants.slice(0, C.SLOTS);
+        return wants.slice(0, C.MAX_BUILDINGS);
       },
       upPref: ['gate', 'shrine', 'barracks', 'tower', 'spire'],
       towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
-      missions: (v) => [wantSgates('own', 2), wantWatch(1),
-                        ...(v.enemyArmy <= 3 ? [wantSgates('mid', 1)] : []),
+      missions: (v) => [wantGates('own', 2), wantWatch(1),
+                        ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : []),
                         ...(v.threats.length >= 2 ? [wantRampart()] : [])],
       banner: (v) => {
         if (v.enemyWalking && (v.enemyArmy < 2 || v.army >= 6)) return v.enCity.id;
@@ -185,7 +223,9 @@
         const r = rng.next();
         if (r < 0.35) {
           const types = Object.keys(C.BUILDINGS);
-          issue({ c: 'build', slot: Math.floor(rng.next() * C.SLOTS), bt: types[Math.floor(rng.next() * types.length)] });
+          /* the random ghost flings works at Shadow and mostly misses legal ground */
+          const c2 = v.myCity, a = rng.next() * Math.PI * 2, r = rng.range(80, 420);
+          issue({ c: 'build', x: c2.x + Math.cos(a) * r, y: c2.y + Math.sin(a) * r, bt: types[Math.floor(rng.next() * types.length)] });
         } else if (r < 0.45) {
           issue({ c: 'banner', site: Math.floor(rng.next() * v.world.map.sites.length) });
         } else if (r < 0.55) {
@@ -235,7 +275,8 @@
         seenW[bt] = (seenW[bt] || 0) + 1;
         if ((v.have[bt] || 0) < seenW[bt]) {
           if (v.free > 0 && v.essence >= C.BUILDINGS[bt].cost) {
-            issue({ c: 'build', slot: slotFor(v, bt), bt });
+            const at = spotFor(v, bt);
+            if (at) issue({ c: 'build', x: at.x, y: at.y, bt });
           } else saving = v.free > 0;
           break;
         }
@@ -251,10 +292,11 @@
       const homeThreat = v.threats.length >= 3;
       if (mission) {
         const s = world.map.sites[mission.site];
-        if (!s || s.post || v.t - mission.since > 75) mission = null;   // done, lost, or stale
-        else if (v.essence >= C.OUTPOSTS[mission.bt].cost) {
-          const r = issue({ c: 'post', site: mission.site, bt: mission.bt });
-          if (r && r.ok) mission = null;
+        const done = !s || (mission.bt === 'gate' ? held(v, s) : worksNear(v, s.x, s.y, mission.bt, 130));
+        if (done || v.t - mission.since > 75) mission = null;   // taken, lost, or stale
+        else if (v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
+          const at = spotAt(v, s, mission.bt);
+          if (at) { const r = issue({ c: 'build', x: at.x, y: at.y, bt: mission.bt }); if (r && r.ok) mission = null; }
         }
       }
       if (!mission && !homeThreat) {
@@ -268,25 +310,19 @@
       const want = homeThreat ? v.myCity.id : (mission ? mission.site : P.banner(v));
       if (want !== v.banner) issue({ c: 'banner', site: want });
 
-      /* upgrades: city then outposts, keeping a war chest, never past an unmet city want */
+      /* upgrades: by doctrine, keeping a war chest, never past an unmet want.
+       * Gates drawing on a node come first — that is where the essence actually is. */
       if (saving) return;
-      for (const bt of P.upPref) {
-        for (let s2 = 0; s2 < C.SLOTS; s2++) {
-          const b = v.pl.slots[s2];
-          if (!b || b.bt !== bt || b.level >= C.MAX_LEVEL) continue;
+      for (const bt of P.upPref.concat(['rampart'])) {
+        const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL)
+                       .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
+        for (const b of cands) {
           /* the Watchtower fork: an heir's doctrine picks the branch, and keeps it after */
           const br = bt === 'tower' ? (b.br || (P.towerBranch ? P.towerBranch(v) : 'bolt')) : undefined;
           if (v.essence > global.World.upgradeCost(bt, b.level, br) + 130) {
-            issue({ c: 'up', slot: s2, br });
+            issue({ c: 'up', id: b.id, br });
             return;
           }
-        }
-      }
-      for (const s of world.map.sites) {
-        if (s.owner === v.me && s.post && s.post.level < C.MAX_LEVEL &&
-            v.essence > global.World.postUpCost(s.post.bt, s.post.level) + 160) {
-          issue({ c: 'postup', site: s.id });
-          return;
         }
       }
     }
@@ -295,7 +331,14 @@
       kind, title: P.title,
       reset() { timer = interval * 0.5; mission = null; },
       step(world, me, issue, dt) {
-        if (!rng) rng = global.RNG.make((world.seed ^ (me * 0x9E37)) >>> 0);
+        if (!rng) {
+          rng = global.RNG.make((world.seed ^ (me * 0x9E37)) >>> 0);
+          /* Independent phase per seat. Two identical heirs used to tick in lockstep, so
+           * whichever seat the harness polled first always acted first — and with free
+           * placement, acting first means taking the ground. Measured at +7 points to
+           * seat 0 in a greedy mirror; a seeded phase removes it without favouring either. */
+          timer = interval * rng.next();
+        }
         timer -= dt;
         if (timer <= 0) { timer += interval; decide(world, me, issue); }
       }

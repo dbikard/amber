@@ -41,7 +41,7 @@
       localStorage.setItem('amber_hints', String(seenHints + 1));
       game.hints = [
         [6, '⚑ Arm the gold flag (bottom-left), then tap any site — the army marches there', 'alert'],
-        [24, 'Hold springs: march troops to one, then tap the spring to raise a Shadow Gate', 'alert'],
+        [24, 'Essence is out on the map: march troops to a spring, then tap the ground there to raise a Gate', 'alert'],
         [45, '⚔ To win by force, plant the gold flag on the rival city itself', 'alert'],
         [70, '⚐ Every barracks adds a company flag to the tray — arm one to split your forces', 'alert']
       ];
@@ -123,6 +123,10 @@
     if (!r.ok) {
       if (r.err === 'essence') UI.banner('Not enough Essence', 'warn');
       else if (r.err === 'presence') UI.banner('A unit of yours must stand there — plant the banner first', 'warn');
+      else if (r.err === 'claim') UI.banner('Beyond your writ — your Gates carry it outward', 'warn');
+      else if (r.err === 'ground') UI.banner('The ground will not bear it', 'warn');
+      else if (r.err === 'crowded') UI.banner('Too close to another work', 'warn');
+      else if (r.err === 'full') UI.banner('You hold as many works as you can keep', 'warn');
       else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
       else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
     }
@@ -135,12 +139,19 @@
     const see = (x, y) => World.canSee(world, viewer, x, y);
     const mem = world.players[viewer].explored;
     return {
-      t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed, players: world.players,
+      t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed,
+      /* the SAME fog the wire applies: a rival's works only where you can see them, and
+       * ghosts (id-keyed in the world, listed on the view) for the ones you cannot */
+      players: world.players.map((pl, pi) => pi === viewer
+        ? { ...pl, ghosts: [] }
+        : { ...pl,
+            buildings: pl.buildings.filter((b) => see(b.x, b.y)),
+            ghosts: Object.entries(world.players[viewer].ghosts)
+              .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
+              .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: g.x, y: g.y })) }),
       sites: world.map.sites.map((s) => {
-        if (see(s.x, s.y)) return { id: s.id, live: true, owner: s.owner,
-                                    post: s.post ? { bt: s.post.bt, level: s.post.level, hp: s.post.hp, maxHp: s.post.maxHp } : null };
-        const m = mem[s.id];
-        return m ? { id: s.id, live: false, owner: m.owner, post: m.post } : null;
+        if (see(s.x, s.y)) return { id: s.id, live: true, holder: World.nodeHolder(world, s) };
+        return mem[s.id] ? { id: s.id, live: false, holder: -1 } : null;
       }),
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y)),
       storms: world.storms.filter((s) => see(s.x, s.y)),
@@ -154,11 +165,9 @@
     const src = [];
     const city = refWorld.map.sites[refWorld.map.cities[1]];
     src.push([city.x, city.y, C.VISION.city]);
-    for (const s of refWorld.map.sites) {
-      const st = snap.sites[s.id];
-      if (st && st.live && st.owner === 1 && st.post)
-        src.push([s.x, s.y, st.post.bt === 'watch' ? C.OUTPOSTS.watch.vision : C.VISION.post]);
-    }
+    /* your own works see for you — the snapshot always carries them in full */
+    for (const b of snap.players[1].buildings)
+      src.push([b.x, b.y, (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].vision) || C.VISION.build]);
     /* interpolate own+visible units between the last two snapshots */
     const alpha = Math.min(1, (performance.now() - snapAt) / 100);
     let units = snap.units;
@@ -289,15 +298,12 @@
       issue({ c: 'power', k: 'storm', x: w.x, y: w.y });
       return;
     }
-    /* own city grid first (it overlaps the map), then map sites */
-    const slot = Render.hitSlot(x, y);
-    if (slot >= 0) {
+    /* one of your own works first (they overlap everything), then sites, then bare ground */
+    const bid = Render.hitBuilding(x, y);
+    if (bid >= 0) {
       const me = view.players[game.viewer];
-      const s = me.slots[slot];
-      Render.selected = slot;
-      if (!s) UI.buildSheet(slot, me.essence, me.slots.some((q) => q && q.bt === 'shrine'));
-      else UI.upSheet(slot, s, me.essence, me.walking);
-      return;
+      const b = me.buildings.find((q) => q.id === bid);
+      if (b) { Render.selected = bid; UI.upSheet(b, me.essence, me.walking); return; }
     }
     const siteId = Render.hitSite(x, y, view, game.viewer);
     if (siteId >= 0) {
@@ -306,6 +312,15 @@
       const foeCity = view.map.cities[1 - game.viewer] === siteId;
       UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
                    view.players[game.viewer].wallLevel, view.players[game.viewer], view.players[1 - game.viewer]);
+      return;
+    }
+    /* bare ground: free placement. The sim owns the rules — we just ask it, per card, so
+     * the sheet can say WHY a work will not stand here instead of failing silently. */
+    if (game.mode !== 'guest') {
+      const w2 = Render.toWorld(x, y, game.viewer);
+      const me = view.players[game.viewer];
+      Render.selected = -1;
+      UI.buildSheet(w2, me.essence, (bt) => World.placementError(game.world, game.viewer, w2.x, w2.y, bt));
       return;
     }
     if (UI.sheetOpen()) UI.closeSheet();
@@ -460,11 +475,10 @@
         startSP(LADDER[r], RUNG_OPTS[r], true);
       },
       onSkirmish: (kind) => startSP(kind, {}, false),
-      onBuild: (slot, bt) => issue({ c: 'build', slot, bt }),
-      onUp: (slot, br) => issue({ c: 'up', slot, br }),
+      onBuild: (x, y, bt) => issue({ c: 'build', x, y, bt }),
+      onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
       onBanner: (site) => issue({ c: 'banner', site }),
-      onPost: (site, bt) => issue({ c: 'post', site, bt }),
       onWall: () => issue({ c: 'wall' }),
       onFlagArm: (id) => {
         game.targeting = false;
@@ -472,21 +486,18 @@
         if (game.armedFlag != null)
           UI.banner(id === 'royal' ? '⚑ Tap where the army should march' : '⚐ Tap where this company should stand', 'alert');
       },
-      onRejoin: (slot) => { game.armedFlag = null; issue({ c: 'rally', slot, site: -1 }); },
+      onRejoin: (id) => { game.armedFlag = null; issue({ c: 'rally', id, site: -1 }); },
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
         issue({ c: 'banner', site: view.map.cities[game.viewer] });
         const me = view.players[game.viewer];
-        for (let i = 0; i < C.SLOTS; i++) {
-          const s = me.slots[i];
-          if (s && C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns && s.rally != null && s.rally >= 0)
-            issue({ c: 'rally', slot: i, site: -1 });
-        }
+        for (const b of me.buildings)
+          if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.rally != null && b.rally >= 0)
+            issue({ c: 'rally', id: b.id, site: -1 });
         UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },
       onMuster: (pause) => issue({ c: 'muster', pause }),
-      onPostUp: (site) => issue({ c: 'postup', site }),
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
         if (!view) return;

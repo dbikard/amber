@@ -70,19 +70,18 @@
   R.pan = function (dpx) { R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - dpx / scale)); };
 
   /* ---------------- hit-testing (ring city) ---------------- */
-  R.slotRect = function (idx) {   // display-space center box of a ring plot (own city)
-    const sp = global.World.slotPos(curView, curViewer, idx);
-    const x = dx(sp.x, curViewer), y = dy(sp.y, curViewer);
+  R.bldRect = function (b) {   // display-space box of a placed work
+    const x = dx(b.x, curViewer), y = dy(b.y, curViewer);
     return { x: x - 26, y: y - 26, w: 52, h: 52 };
   };
-  R.hitSlot = function (px, py) {
+  /* the id of the viewer's own work under the finger, or -1 */
+  R.hitBuilding = function (px, py) {
     if (!curView) return -1;
     const wx = px / scale, wy = py / scale + R.camY;
-    let best = -1, bd = 30 * 30;
-    for (let i = 0; i < C.SLOTS; i++) {
-      const sp = global.World.slotPos(curView, curViewer, i);
-      const dd = (wx - dx(sp.x, curViewer)) ** 2 + (wy - dy(sp.y, curViewer)) ** 2;
-      if (dd < bd) { bd = dd; best = i; }
+    let best = -1, bd = 34 * 34;
+    for (const b of curView.players[curViewer].buildings) {
+      const dd = (wx - dx(b.x, curViewer)) ** 2 + (wy - dy(b.y, curViewer)) ** 2;
+      if (dd < bd) { bd = dd; best = b.id; }
     }
     return best;
   };
@@ -136,7 +135,7 @@
 
     /* springs shimmer forever */
     for (const s of view.map.sites) {
-      if (s.kind !== 'spring') continue;
+      if (s.kind !== 'node') continue;
       const sh = new PIXI.Sprite(holeTex);
       sh.anchor.set(0.5); sh.tint = 0x5a9ac8; sh.blendMode = 'add';
       sh.position.set(dx(s.x, viewer), dy(s.y, viewer));
@@ -170,19 +169,10 @@
 
   function buildCityOwn(view, viewer) {
     const g = {};
-    g.plots = new PIXI.Graphics();
-    stage.city.addChild(g.plots);
-    for (let i = 0; i < C.SLOTS; i++) {
-      const r = R.slotRect(i);
-      g.plots.roundRect(r.x, r.y, r.w, r.h, 10).fill({ color: 0x46382a, alpha: 0.55 })
-        .stroke({ width: 1.5, color: 0xdcb46e, alpha: 0.4 });
-    }
+    g.claim = new PIXI.Graphics(); stage.city.addChild(g.claim);
     g.sel = new PIXI.Graphics(); stage.city.addChild(g.sel);
-    g.bSprites = [];
-    for (let i = 0; i < C.SLOTS; i++) {
-      const sp = new PIXI.Sprite(); sp.anchor.set(0.5); sp.visible = false;
-      stage.city.addChild(sp); g.bSprites.push(sp);
-    }
+    g.pool = new Map();   // building id -> sprite, pooled across frames
+    g.layer = new PIXI.Container(); stage.city.addChild(g.layer);
     g.deco = new PIXI.Graphics(); stage.city.addChild(g.deco);
     const city = view.map.sites[view.map.cities[viewer]];
     g.cx = dx(city.x, viewer); g.cy = dy(city.y, viewer);
@@ -202,11 +192,6 @@
     const g = {};
     const city = view.map.sites[view.map.cities[1 - viewer]];
     g.cx = dx(city.x, viewer); g.cy = dy(city.y, viewer);
-    g.mounds = [];
-    for (let i = 0; i < C.SLOTS; i++) {
-      const sp = new PIXI.Sprite(); sp.anchor.set(0.5); sp.visible = false; sp.width = 62; sp.height = 62;
-      stage.city.addChild(sp); g.mounds.push(sp);
-    }
     const aura = new PIXI.Sprite(holeTex);
     aura.anchor.set(0.5); aura.tint = 0xc84856; aura.blendMode = 'add'; aura.alpha = 0.12;
     aura.width = 520; aura.height = 380; aura.position.set(g.cx, g.cy);
@@ -240,10 +225,9 @@
     for (const ev of events) {
       const ex = ev.x != null ? dx(ev.x, viewer) : 0, ey = ev.y != null ? dy(ev.y, viewer) : 0;
       if (ev.e === 'shot' && ev.pi === viewer) {
-        const r = R.slotRect(ev.slot);
         const tx = dx(ev.to.x, viewer), ty = dy(ev.to.y, viewer);
         /* the ballista throws a heavier line; the cannon bursts where it lands */
-        lineFx(r.x + r.w / 2, r.y + r.h / 2, tx, ty, 0xe8d8a8, ev.br === 'bolt' ? 2.6 : 1.5, 0.22);
+        lineFx(ex, ey, tx, ty, 0xe8d8a8, ev.br === 'bolt' ? 2.6 : 1.5, 0.22);
         if (ev.splash > 0) ringFx(tx, ty, 0xffb070, 0.32, ev.splash * 0.9);
       } else if (ev.e === 'wshot') {
         lineFx(ex, ey - 16, dx(ev.to.x, viewer), dy(ev.to.y, viewer), 0xe8d8a8, 1.5, 0.22);
@@ -270,7 +254,7 @@
       } else if (ev.e === 'postdie') {
         ringFx(ex, ey, 0xcfc6d8, 0.8, 44, ev.pi === viewer ? 0xff5a4a : null);
       } else if (ev.e === 'build' || ev.e === 'up') {
-        if (ev.pi === viewer) { const r = R.slotRect(ev.slot); ringFx(r.x + r.w / 2, r.y + r.h / 2, 0xffe9a8, 0.6, 34); }
+        if (ev.pi === viewer) ringFx(ex, ey, 0xffe9a8, 0.6, 34);
       } else if (ev.e === 'walk' || ev.e === 'pattern' || ev.e === 'trump') {
         const city = view.map.sites[view.map.cities[ev.pi]];
         ringFx(dx(city.x, viewer), dy(city.y, viewer), ev.e === 'trump' ? 0xe8ecff : 0x9cc8ff, 1.3, 70);
@@ -350,15 +334,14 @@
     if (!coG || !coG.parent) { coG = new PIXI.Graphics(); stage.banner.addChild(coG); stage.banner._coG = coG; }
     coG.clear();
     const me = view.players[viewer];
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s2 = me.slots[i];
-      if (!s2 || s2.rally == null || s2.rally < 0) continue;
+    me.buildings.forEach((s2, i) => {
+      if (s2.rally == null || s2.rally < 0) return;
       const site = view.map.sites[s2.rally];
-      const a = (i / C.SLOTS) * Math.PI * 2;
+      const a = (i / Math.max(1, me.buildings.length)) * Math.PI * 2;
       const X = dx(site.x, viewer) + Math.cos(a) * 32, Y = dy(site.y, viewer) + Math.sin(a) * 32;
       coG.moveTo(X, Y).lineTo(X, Y - 26).stroke({ width: 2, color: 0xd8c8a8 });
       coG.poly([X, Y - 26, X + 14, Y - 21, X, Y - 16]).fill(PENNANT[i % PENNANT.length]);
-    }
+    });
   }
 
   function updateUnits(view, viewer, dt) {
@@ -421,50 +404,48 @@
   function updateCities(view, viewer) {
     const own = cityFx.own, foe = cityFx.foe;
     const me = view.players[viewer], en = view.players[1 - viewer];
-    /* selection pulse */
-    own.sel.clear();
-    if (R.selected >= 0) {
-      const r = R.slotRect(R.selected);
-      own.sel.roundRect(r.x, r.y, r.w, r.h, 10)
-        .stroke({ width: 3, color: 0xffe9a8, alpha: 0.55 + 0.4 * Math.sin(T * 5.5) });
+    /* the writ: the ground you may raise a work on */
+    own.claim.clear();
+    if (R.placing) {
+      own.claim.circle(own.cx, own.cy, C.CLAIM.seat).fill({ color: 0xffd98a, alpha: 0.05 });
+      for (const b of me.buildings)
+        if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].claim)
+          own.claim.circle(dx(b.x, viewer), dy(b.y, viewer), C.CLAIM.gate).fill({ color: 0xffd98a, alpha: 0.05 });
     }
-    /* own buildings + shrine arc */
+    /* every work of both sides, drawn where it actually stands */
     own.deco.clear();
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s = me.slots[i], sp = own.bSprites[i], r = R.slotRect(i);
-      sp.visible = !!s;
-      if (!s) continue;
-      sp.texture = tex(s.bt === 'wall' ? S.post.rampart : S.b[s.bt]);
-      /* the 2D fallback has one tower sprite — the branch reads as its metal */
-      sp.tint = s.bt === 'tower' && s.br ? (s.br === 'cannon' ? 0xffb090 : 0xbcd8ff) : 0xffffff;
-      const sz = Math.min(r.w, r.h) * 1.04;
-      sp.width = sz; sp.height = sz;
-      sp.position.set(r.x + r.w / 2, r.y + r.h / 2);
-      for (let lv = 1; lv < s.level; lv++)
-        own.deco.circle(r.x + r.w / 2 - 12 + lv * 12, r.y + r.h - 8, 3).fill(0xffe9a8);
-      if (s.bt === 'shrine' && me.pattern > 0) {
-        own.deco.arc(r.x + r.w / 2, r.y + r.h / 2, Math.min(r.w, r.h) * 0.52, -Math.PI / 2, -Math.PI / 2 + (me.pattern / 100) * Math.PI * 2)
-          .stroke({ width: 3.5, color: 0x9cc8ff });
-      }
-    }
-    drawWallsBars(own, me, viewer, true);
-    /* rival mounds + revealed shrine */
+    own.sel.clear();
     foe.shrineRing.clear();
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s = en.slots[i], sp = foe.mounds[i];
-      sp.visible = !!s;
-      if (!s) continue;
-      const spw = global.World.slotPos(curView, 1 - curViewer, i);
-      const X = dx(spw.x, curViewer), Y = dy(spw.y, curViewer);
-      const revealed = s.bt === 'shrine' && en.revealed;
-      sp.texture = tex(revealed ? S.b.shrine : S.b.veiled);
-      sp.width = sp.height = 62;
+    const live = new Set();
+    const drawWork = (g, b, mine, ghost) => {
+      live.add(b.id);
+      let sp = g.pool.get(b.id);
+      if (!sp) { sp = new PIXI.Sprite(); sp.anchor.set(0.5); g.layer.addChild(sp); g.pool.set(b.id, sp); }
+      const X = dx(b.x, curViewer), Y = dy(b.y, curViewer);
+      sp.visible = true;
+      sp.texture = tex(S.b[b.bt] || S.b.gate);
+      sp.width = sp.height = 54;
       sp.position.set(X, Y);
-      if (revealed && en.pattern > 0) {
-        foe.shrineRing.arc(X, Y, 36, -Math.PI / 2, -Math.PI / 2 + (en.pattern / 100) * Math.PI * 2)
+      sp.alpha = ghost ? 0.38 : 1;
+      /* the 2D fallback has one tower sprite — the branch reads as its metal */
+      sp.tint = mine ? (b.bt === 'tower' && b.br ? (b.br === 'cannon' ? 0xffb090 : 0xbcd8ff) : 0xffffff) : 0xd08a94;
+      if (mine) {
+        for (let lv = 1; lv < b.level; lv++) own.deco.circle(X - 12 + lv * 12, Y + 24, 3).fill(0xffe9a8);
+        if (b.id === R.selected)
+          own.sel.circle(X, Y, 30).stroke({ width: 3, color: 0xffe9a8, alpha: 0.55 + 0.4 * Math.sin(T * 5.5) });
+        if (b.bt === 'shrine' && me.pattern > 0)
+          own.deco.arc(X, Y, 30, -Math.PI / 2, -Math.PI / 2 + (me.pattern / 100) * Math.PI * 2)
+            .stroke({ width: 3.5, color: 0x9cc8ff });
+      } else if (b.bt === 'shrine' && en.revealed && en.pattern > 0) {
+        foe.shrineRing.arc(X, Y, 30, -Math.PI / 2, -Math.PI / 2 + (en.pattern / 100) * Math.PI * 2)
           .stroke({ width: 3, color: 0x9cc8ff });
       }
-    }
+    };
+    for (const b of me.buildings) drawWork(own, b, true, false);
+    for (const b of en.buildings) drawWork(own, b, false, false);
+    for (const gh of (en.ghosts || [])) if (!live.has(gh.id)) drawWork(own, gh, false, true);
+    for (const [id, sp] of own.pool) if (!live.has(id)) { sp.destroy(); own.pool.delete(id); }
+    drawWallsBars(own, me, viewer, true);
     drawWallsBars(foe, en, viewer, false);
   }
   function drawWallsBars(g, pl, viewer, own) {

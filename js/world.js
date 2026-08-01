@@ -42,7 +42,7 @@
         add(key + '_m', C.MAP.W - src.x, C.MAP.H - src.y, kind);
       } else if (key === 'sm0') {
         const src = byKey[key];
-        add('sm0_m', C.MAP.W - src.x, C.MAP.H - src.y, 'spring');
+        add('sm0_m', C.MAP.W - src.x, C.MAP.H - src.y, 'node');
       }
     }
     byKey.city0.owner = 0; byKey.city0_m.owner = 1;
@@ -91,12 +91,13 @@
         essence: C.START_ESSENCE,
         castleHp: C.CASTLE_HP, wallHp: 0, wallLevel: 0, wallHurt: -99, wallAlert: -99,
         pattern: 0, walking: false, revealed: false, alertIdx: 0,
-        slots: new Array(C.SLOTS).fill(null),
+        buildings: [],          // free placement: every work knows where it stands
         powers: { storm: 0, trump: 0 },
         championId: 0,
         banner: -1,             // site id the army marches on; -1 = defend home
         musterPaused: false,    // the Seat can halt the muster to hoard essence
-        explored: {}            // siteId -> last-known {kind, owner, post:{bt,level}|null}
+        explored: {},           // siteId -> last-known {kind, owner}
+        ghosts: {}              // buildingId -> last-seen {bt, level, x, y, owner} (fog memory)
       })),
       units: [], storms: [], events: [],
       nav: null, navVersion: 0,   // movement grid; the version counts changes to what blocks
@@ -113,13 +114,68 @@
   }
 
   const cityOf = (world, pi) => world.map.sites[world.map.cities[pi]];
-  /* building plots ring the Seat-tower — real places that can be reached and razed */
-  function slotPos(world, pi, idx) {
-    const c2 = cityOf(world, pi);
-    /* half-step ring offset: no plot sits dead behind the Seat-tower on the camera axis —
-     * the road arrives between a flanking PAIR of front plots instead */
-    const a = (idx / C.SLOTS) * Math.PI * 2 + (pi === 0 ? -Math.PI / 2 : Math.PI / 2) + Math.PI / C.SLOTS;
-    return { x: c2.x + Math.cos(a) * C.CITY.slotR, y: c2.y + Math.sin(a) * C.CITY.slotR };
+  const bldOf = (world, pi, id) => world.players[pi].buildings.find((b) => b.id === id) || null;
+  const nodeAt = (world, x, y) => {
+    for (const s of world.map.sites)
+      if (s.kind === 'node' && d2(x, y, s.x, s.y) < C.NODE.r * C.NODE.r) return s;
+    return null;
+  };
+  /* which player, if any, already draws from this node */
+  function nodeHolder(world, site) {
+    for (let pi = 0; pi < 2; pi++)
+      for (const b of world.players[pi].buildings)
+        if (b.bt === 'gate' && b.node === site.id) return pi;
+    return -1;
+  }
+
+  /* ---------------- where a work may stand ----------------
+   * Your writ runs from the Seat and from every Shadow Gate you hold. Inside it, on ground
+   * that will bear a building, clear of other works — that is the whole rule. A Gate is the
+   * exception: it may be raised at an unheld essence node you have troops standing on and
+   * the enemy does not, which is how a claim grows in the first place. */
+  function inClaim(world, pi, x, y) {
+    const c = cityOf(world, pi);
+    if (d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat) return true;
+    for (const b of world.players[pi].buildings)
+      if (C.BUILDINGS[b.bt].claim && d2(x, y, b.x, b.y) < C.CLAIM.gate * C.CLAIM.gate) return true;
+    return false;
+  }
+  function groundBears(world, x, y) {
+    if (x < 0 || y < 0 || x > C.MAP.W || y > C.MAP.H) return false;
+    const nav = world.nav, c = NAV.cellOf(nav, x, y);
+    if (c < 0) return false;
+    const t = nav.terra[c];
+    return t === NAV.T.ROAD || t === NAV.T.OPEN;   // no building in wood, rock or water
+  }
+  function clearOfWorks(world, x, y) {
+    const need = C.BUILD.foot * 2 + C.BUILD.gap;
+    for (let pi = 0; pi < 2; pi++)
+      for (const b of world.players[pi].buildings)
+        if (d2(x, y, b.x, b.y) < need * need) return false;
+    for (let pi = 0; pi < 2; pi++) {   // and never inside the Seat itself
+      const c = cityOf(world, pi);
+      if (d2(x, y, c.x, c.y) < 74 * 74) return false;
+    }
+    return true;
+  }
+  /* the single answer the sim, the UI and the AI all ask. Returns null if legal. */
+  function placementError(world, pi, x, y, bt) {
+    const def = C.BUILDINGS[bt];
+    if (!def) return 'type';
+    const pl = world.players[pi];
+    if (pl.buildings.length >= C.MAX_BUILDINGS) return 'full';
+    if (def.unique && pl.buildings.some((b) => b.bt === bt)) return 'unique';
+    if (!groundBears(world, x, y)) return 'ground';
+    if (!clearOfWorks(world, x, y)) return 'crowded';
+    if (inClaim(world, pi, x, y)) return null;
+    /* outside the writ: only a Gate, only at a free node, only where your troops stand */
+    if (!def.claim) return 'claim';
+    const site = nodeAt(world, x, y);
+    if (!site) return 'claim';
+    if (nodeHolder(world, site) !== -1) return 'taken';
+    if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'presence';
+    if (world.units.some((u) => u.owner !== pi && u.owner !== 2 && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
+    return null;
   }
 
   /* ---------------- vision & exploration ---------------- */
@@ -127,9 +183,8 @@
     const src = [];
     const city = cityOf(world, pi);
     src.push([city.x, city.y, C.VISION.city]);
-    for (const s of world.map.sites)
-      if (s.post && s.owner === pi)
-        src.push([s.x, s.y, s.post.bt === 'watch' ? C.OUTPOSTS.watch.vision : C.VISION.post]);
+    for (const b of world.players[pi].buildings)
+      src.push([b.x, b.y, C.BUILDINGS[b.bt].vision || C.VISION.build]);
     for (const u of world.units)
       if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
     return src;
@@ -148,10 +203,14 @@
   function exploreAround(world, pi) {
     const src = world.vis ? world.vis[pi] : visionSources(world, pi);
     const pl = world.players[pi];
-    for (const s of world.map.sites) {
-      if (seen(src, s.x, s.y)) {
-        pl.explored[s.id] = { kind: s.kind, owner: s.owner,
-                              post: s.post ? { bt: s.post.bt, level: s.post.level } : null };
+    for (const s of world.map.sites)
+      if (seen(src, s.x, s.y)) pl.explored[s.id] = { kind: s.kind };
+    /* the new fog rule: a rival's work is visible only while you can SEE it, and remembered
+     * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
+    for (let o = 0; o < 2; o++) {
+      for (const b of world.players[o].buildings) {
+        if (o === pi) { pl.ghosts[b.id] = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o }; continue; }
+        if (seen(src, b.x, b.y)) pl.ghosts[b.id] = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o };
       }
     }
   }
@@ -162,17 +221,16 @@
   }
 
   /* ---------------- pathfinding: the nav grid does the walking ---------------- */
-  function blockedFor(world, u, siteId) {
-    const s = world.map.sites[siteId];
-    return !!(s.post && s.post.bt === 'rampart' && s.owner !== u.owner && s.owner !== -1);
-  }
   /* the flow field said "no way through": find the wall that is in the way */
   function nearestBlocker(world, u) {
     let target = null, bd = Infinity;
-    for (const s of world.map.sites) {
-      if (!blockedFor(world, u, s.id)) continue;
-      const dd = d2(u.x, u.y, s.x, s.y);
-      if (dd < bd) { bd = dd; target = s; }
+    for (let pi = 0; pi < 2; pi++) {
+      if (pi === u.owner) continue;
+      for (const b of world.players[pi].buildings) {
+        if (b.bt !== 'rampart') continue;
+        const dd = d2(u.x, u.y, b.x, b.y);
+        if (dd < bd) { bd = dd; target = b; }
+      }
     }
     return target;
   }
@@ -196,7 +254,6 @@
     }
     return C.BUILDINGS[bt].up[level - 1];
   }
-  function postUpCost(bt, level) { return C.OUTPOSTS[bt].up[level - 1]; }
 
   function applyCommand(world, pi, cmd) {
     if (world.winner !== null) return { ok: false, err: 'over' };
@@ -205,15 +262,21 @@
 
     if (cmd.c === 'build') {
       const def = C.BUILDINGS[cmd.bt];
-      if (!def) return { ok: false, err: 'type' };
-      if (cmd.slot < 0 || cmd.slot >= C.SLOTS || pl.slots[cmd.slot]) return { ok: false, err: 'slot' };
-      if (def.unique && pl.slots.some((s) => s && s.bt === cmd.bt)) return { ok: false, err: 'unique' };
+      const x = +cmd.x, y = +cmd.y;
+      if (!def || !isFinite(x) || !isFinite(y)) return { ok: false, err: 'type' };
+      const bad = placementError(world, pi, x, y, cmd.bt);
+      if (bad) return { ok: false, err: bad };
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       pl.essence -= def.cost;
-      pl.slots[cmd.slot] = { bt: cmd.bt, level: 1, cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
-                             hp: C.BUILDING_HP[cmd.bt], maxHp: C.BUILDING_HP[cmd.bt], lastHurt: -99,
-                             rally: -1 };   // -1 = the company follows the royal War Banner
-      emit(world, { e: 'build', pi, slot: cmd.slot, bt: cmd.bt });
+      const site = def.claim ? nodeAt(world, x, y) : null;
+      const b = { id: world.nextId++, bt: cmd.bt, level: 1, x, y,
+                  cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
+                  hp: def.hp, maxHp: def.hp, lastHurt: -99,
+                  node: site && nodeHolder(world, site) === -1 ? site.id : -1,
+                  rally: -1 };   // -1 = the company follows the royal War Banner
+      pl.buildings.push(b);
+      if (cmd.bt === 'rampart') world.navVersion++;   // the ways through Shadow have changed
+      emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y });
       return { ok: true };
     }
     if (cmd.c === 'wall') {
@@ -227,8 +290,8 @@
       return { ok: true };
     }
     if (cmd.c === 'up') {
-      const s = pl.slots[cmd.slot];
-      if (!s) return { ok: false, err: 'slot' };
+      const s = bldOf(world, pi, cmd.id);
+      if (!s) return { ok: false, err: 'id' };
       if (s.level >= C.MAX_LEVEL) return { ok: false, err: 'max' };
       /* the Watchtower fork: the level-2 upgrade must name a branch, and it is forever */
       let br = s.br;
@@ -241,11 +304,15 @@
       pl.essence -= cost;
       s.level++;
       if (br) s.br = br;
-      emit(world, { e: 'up', pi, slot: cmd.slot, level: s.level, br: s.br || null });
+      if (s.bt === 'rampart') {
+        s.maxHp = C.BUILDINGS.rampart.hpUp[s.level - 2];
+        s.hp = s.maxHp;
+      }
+      emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
       return { ok: true };
     }
     if (cmd.c === 'walk') {
-      if (!pl.slots.some((s) => s && s.bt === 'shrine')) return { ok: false, err: 'shrine' };
+      if (!pl.buildings.some((b) => b.bt === 'shrine')) return { ok: false, err: 'shrine' };
       pl.walking = !!cmd.on;
       if (pl.walking && !pl.revealed) { pl.revealed = true; emit(world, { e: 'walk', pi }); }
       return { ok: true };
@@ -257,11 +324,11 @@
     }
     if (cmd.c === 'rally') {
       /* company orders: a mustering building's troops hold their own front */
-      const b = pl.slots[cmd.slot];
-      if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'slot' };
+      const b = bldOf(world, pi, cmd.id);
+      if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'id' };
       if (cmd.site >= 0 && !world.map.sites[cmd.site]) return { ok: false, err: 'site' };
       b.rally = cmd.site;
-      emit(world, { e: 'rally', pi, slot: cmd.slot, site: cmd.site });
+      emit(world, { e: 'rally', pi, id: b.id, site: cmd.site });
       return { ok: true };
     }
     if (cmd.c === 'banner') {
@@ -269,39 +336,6 @@
       if (!site) return { ok: false, err: 'site' };
       pl.banner = site.id;
       emit(world, { e: 'banner', pi, site: site.id });
-      return { ok: true };
-    }
-    if (cmd.c === 'post') {
-      const site = world.map.sites[cmd.site], def = C.OUTPOSTS[cmd.bt];
-      if (!site || !def || site.kind === 'city') return { ok: false, err: 'site' };
-      if (site.post) return { ok: false, err: 'taken' };
-      if (def.only && site.kind !== def.only) return { ok: false, err: 'terrain' };
-      if (pl.essence < def.cost) return { ok: false, err: 'essence' };
-      /* claiming Shadow means standing in it: a unit of yours must hold the site */
-      if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 80 * 80))
-        return { ok: false, err: 'presence' };
-      if (world.units.some((u) => u.owner !== pi && u.owner !== 2 && d2(u.x, u.y, site.x, site.y) < 80 * 80))
-        return { ok: false, err: 'contested' };
-      pl.essence -= def.cost;
-      site.owner = pi;
-      site.post = { bt: cmd.bt, level: 1, hp: def.hp, maxHp: def.hp, cd: 0 };
-      if (cmd.bt === 'rampart') world.navVersion++;   // the ways through Shadow have changed
-      emit(world, { e: 'post', pi, site: site.id, bt: cmd.bt, x: site.x, y: site.y });
-      return { ok: true };
-    }
-    if (cmd.c === 'postup') {
-      const site = world.map.sites[cmd.site];
-      if (!site || !site.post || site.owner !== pi) return { ok: false, err: 'site' };
-      if (site.post.level >= C.MAX_LEVEL) return { ok: false, err: 'max' };
-      const cost = postUpCost(site.post.bt, site.post.level);
-      if (pl.essence < cost) return { ok: false, err: 'essence' };
-      pl.essence -= cost;
-      site.post.level++;
-      if (site.post.bt === 'rampart') {
-        site.post.maxHp = C.OUTPOSTS.rampart.hpUp[site.post.level - 2];
-        site.post.hp = site.post.maxHp;
-      }
-      emit(world, { e: 'postup', pi, site: site.id, x: site.x, y: site.y });
       return { ok: true };
     }
     if (cmd.c === 'power') {
@@ -346,7 +380,7 @@
       dmg: def.dmg * (owner === 2 ? C.CHAOS.dmgScale(world.t) : 1),
       cd: 0,
       goal: goal != null ? goal : (owner === 2 ? world.map.cities[world.chaosParity++ % 2] : world.players[owner].banner),
-      co: co != null ? co : -1   // company = mustering slot; -1 marches with the royal banner
+      co: co != null ? co : -1   // company = its mustering hall's id; -1 follows the royal banner
     };
     world.units.push(u);
     return u.id;
@@ -360,21 +394,9 @@
       emit(world, { e: 'die', x: victim.x, y: victim.y, kind: victim.kind, owner: victim.owner });
     }
   }
-  function hurtPost(world, site, dmg, byOwner) {
-    site.post.hp -= dmg;
-    site.lastHurt = world.t;
-    if (site.post.hp <= 0) {
-      emit(world, { e: 'postdie', pi: site.owner, site: site.id, x: site.x, y: site.y, bt: site.post.bt });
-      if (site.post.bt === 'rampart') world.navVersion++;   // the road is open again
-      site.post = null; site.owner = -1;
-    } else if (world.t - (site.alerted || -99) > 12) {
-      site.alerted = world.t;
-      emit(world, { e: 'hurtpost', pi: site.owner, site: site.id, x: site.x, y: site.y });
-    }
-  }
-
-  /* nearest hostile target within radius: units, outposts, and — at a city —
-   * the wall (from outside), or its buildings and the Seat-tower (once inside). */
+  /* nearest hostile target within radius: units, any standing work, and — at a city —
+   * the wall (from outside), or the Seat-tower (once inside). Works are just places now,
+   * so a barracks out on the map is besieged exactly like one in the court. */
   function acquire(world, u, radius) {
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
     const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
@@ -382,45 +404,44 @@
       if (v.hp <= 0 || v.owner === u.owner) continue;
       consider(Math.sqrt(d2(u.x, u.y, v.x, v.y)), v, 'unit', v.x, v.y);
     }
-    for (const s of world.map.sites) {
-      if (!s.post || s.owner === u.owner || s.owner === -1) continue;
-      consider(Math.sqrt(d2(u.x, u.y, s.x, s.y)), s, 'post', s.x, s.y);
-    }
     for (let ci = 0; ci < 2; ci++) {
       if (ci === u.owner) continue;
       const tp = world.players[ci];
       const cs = world.map.sites[world.map.cities[ci]];
       const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
+      const walled = tp.wallHp > 0;
+      for (const b of tp.buildings) {
+        /* a work sheltering inside a standing wall cannot be reached from outside */
+        if (walled && d2(b.x, b.y, cs.x, cs.y) < C.CITY.r * C.CITY.r) continue;
+        consider(Math.sqrt(d2(u.x, u.y, b.x, b.y)), { pi: ci, id: b.id }, 'work', b.x, b.y);
+      }
       if (dc > C.CITY.r + radius) continue;
-      if (tp.wallHp > 0) {
+      if (walled) {
         /* the wall bars the way — batter it where you stand */
         const k2 = C.CITY.r / (dc || 1);
         consider(Math.max(0, dc - C.CITY.r), { pi: ci }, 'wall', cs.x + (u.x - cs.x) * k2, cs.y + (u.y - cs.y) * k2);
       } else {
-        for (let si = 0; si < C.SLOTS; si++) {
-          if (!tp.slots[si]) continue;
-          const sp = slotPos(world, ci, si);
-          consider(Math.sqrt(d2(u.x, u.y, sp.x, sp.y)), { pi: ci, slot: si }, 'slot', sp.x, sp.y);
-        }
-        consider(Math.sqrt(d2(u.x, u.y, cs.x, cs.y)), { pi: ci }, 'tower', cs.x, cs.y);
+        consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
       }
     }
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
 
-  function hurtSlot(world, pi, idx, dmg) {
-    const pl = world.players[pi], b = pl.slots[idx];
-    if (!b) return;
+  function hurtBuilding(world, pi, id, dmg) {
+    const pl = world.players[pi], i = pl.buildings.findIndex((b2) => b2.id === id);
+    if (i < 0) return;
+    const b = pl.buildings[i];
     b.hp -= dmg; b.lastHurt = world.t;
     if (b.hp <= 0) {
-      const sp = slotPos(world, pi, idx);
-      emit(world, { e: 'raze', pi, slot: idx, bt: b.bt, x: sp.x, y: sp.y });
-      pl.slots[idx] = null;
+      emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
+      pl.buildings.splice(i, 1);
       if (b.bt === 'shrine') pl.walking = false;
+      if (b.bt === 'rampart') world.navVersion++;   // the road is open again
+      /* a fallen mustering hall is a fallen standard: its company rallies to the banner */
+      delete world.players[0].ghosts[b.id]; delete world.players[1].ghosts[b.id];
     } else if (world.t - (pl.slotAlert || -99) > 12) {
       pl.slotAlert = world.t;
-      const sp = slotPos(world, pi, idx);
-      emit(world, { e: 'hurtcity', pi, x: sp.x, y: sp.y });
+      emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y });
     }
   }
   function hurtWall(world, pi, dmg) {
@@ -459,16 +480,13 @@
       const pl = world.players[pi];
       const city = cityOf(world, pi);
       let income = C.BASE_INCOME;
-      for (const s of world.map.sites)
-        if (s.owner === pi && s.post && s.post.bt === 'sgate') income += C.OUTPOSTS.sgate.income[s.post.level - 1];
       let drain = 0;   // ACTUAL spend rate this tick — the HUD never lies again
-      for (let si = 0; si < C.SLOTS; si++) {
-        const b = pl.slots[si];
-        if (!b) continue;
+      for (const b of pl.buildings) {
         const def = C.BUILDINGS[b.bt];
-        const sp = slotPos(world, pi, si);
+        const sp = b;
         if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
-        if (b.bt === 'gate') income += def.income[b.level - 1];
+        /* a Gate on a spring of Shadow draws far more than one that merely stands about */
+        if (b.bt === 'gate') income += (b.node >= 0 ? def.nodeIncome : def.income)[b.level - 1];
         else if (def.spawns) {
           if (pl.musterPaused) { b.cd = Math.max(b.cd, 0.5); continue; }
           const price = C.UNITS[def.spawns].cost;
@@ -482,7 +500,7 @@
           if (b.cd <= 0) {
             if (b.paid >= price - 1e-6) {
               b.paid -= price;
-              spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, si);
+              spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.id);
               b.cd += per;
             } else b.cd = 0;   // timer ready; the recruit marches the moment he's paid
           }
@@ -507,7 +525,7 @@
                   if (d2(u.x, u.y, best.x, best.y) < r2) hurt(world, u, st.splashDmg, pi);
                 }
               }
-              emit(world, { e: 'shot', pi, slot: si, to: { x: best.x, y: best.y }, br: b.br || null, splash: st.splash });
+              emit(world, { e: 'shot', pi, id: b.id, x: b.x, y: b.y, to: { x: best.x, y: best.y }, br: b.br || null, splash: st.splash });
               b.cd = st.atk;
             } else b.cd = 0.15;
           }
@@ -524,7 +542,7 @@
         pl.wallHp = Math.min(C.WALL.hp[pl.wallLevel - 1], pl.wallHp + C.STRUCT_REGEN * dt);
 
       if (pl.walking) {
-        const shrine = pl.slots.find((s) => s && s.bt === 'shrine');
+        const shrine = pl.buildings.find((b) => b.bt === 'shrine');
         if (!shrine) pl.walking = false;
         else {
           const def = C.BUILDINGS.shrine;
@@ -542,30 +560,10 @@
       }
     }
 
-    /* outposts: regen + watchpost arrows */
-    for (const s of world.map.sites) {
-      if (!s.post) continue;
-      if (s.post.hp < s.post.maxHp && t - s.lastHurt > 10) s.post.hp = Math.min(s.post.maxHp, s.post.hp + C.STRUCT_REGEN * dt);
-      if (s.post.bt === 'watch') {
-        const def = C.OUTPOSTS.watch;
-        s.post.cd -= dt;
-        if (s.post.cd <= 0) {
-          let best = null, bd = def.range * def.range;
-          for (const u of world.units) {
-            if (u.hp <= 0 || u.owner === s.owner) continue;
-            const dd = d2(u.x, u.y, s.x, s.y);
-            if (dd < bd) { bd = dd; best = u; }
-          }
-          if (best) { hurt(world, best, def.dmg[s.post.level - 1], s.owner); emit(world, { e: 'wshot', site: s.id, x: s.x, y: s.y, to: { x: best.x, y: best.y } }); s.post.cd = def.atk; }
-          else s.post.cd = 0.2;
-        }
-      }
-    }
-
     /* chaos director: rifts at road sites (springs too, once surging) */
     if (t >= world.chaosNext) {
       const pool = world.surged
-        ? world.map.roads.concat(world.map.sites.filter((s) => s.kind === 'spring').map((s) => s.id))
+        ? world.map.roads.concat(world.map.sites.filter((s) => s.kind === 'node').map((s) => s.id))
         : world.map.roads;
       const at = world.map.sites[pool[Math.floor(world.rng.next() * pool.length)]];
       const n = C.CHAOS.count(t);
@@ -598,7 +596,7 @@
       /* the banner moves the army */
       if (u.owner !== 2) {
         const pl2 = world.players[u.owner];
-        const cb = u.co >= 0 ? pl2.slots[u.co] : null;
+        const cb = u.co >= 0 ? bldOf(world, u.owner, u.co) : null;   // its mustering hall, if it still stands
         const want = cb && cb.rally != null && cb.rally >= 0 ? cb.rally : pl2.banner;
         if (u.goal !== want) u.goal = want;
       }
@@ -630,12 +628,11 @@
       const foe = acquire(world, u, def.aggro + (home ? 140 : 0));
       if (foe) {
         const reach = def.range + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
-          : foe.kind === 'wall' ? 6 : foe.kind === 'tower' ? 36 : foe.kind === 'slot' ? 24 : 30);
+          : foe.kind === 'wall' ? 6 : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
         if (foe.d <= reach) {
           if (u.cd <= 0) {
             if (foe.kind === 'unit') hurt(world, foe.t, u.dmg, u.owner);
-            else if (foe.kind === 'post') hurtPost(world, foe.t, u.dmg, u.owner);
-            else if (foe.kind === 'slot') hurtSlot(world, foe.t.pi, foe.t.slot, u.dmg);
+            else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, u.dmg);
             else if (foe.kind === 'wall') { hurtWall(world, foe.t.pi, u.dmg); emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y }); }
             else if (foe.kind === 'tower') {
               const tp = world.players[foe.t.pi];
@@ -697,6 +694,7 @@
     emit(world, { e: 'win', winner, reason });
   }
 
-  global.World = { createWorld, applyCommand, update, upgradeCost, postUpCost, towerStats, canSee, cityOf, visionSources, slotPos };
+  global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
+                   visionSources, placementError, inClaim, nodeAt, nodeHolder, bldOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -153,9 +153,10 @@
   }
 
   /* ---------------- fog-filtered snapshots (host → each viewer) ----------------
-   * v0.2: TRUE fog of war. Units/storms only where the viewer has vision; sites as the
-   * viewer's explored memory; enemy essence/powers/banner never sent; enemy city slots
-   * veiled. A started Pattern walk reveals that shrine + progress. */
+   * TRUE fog of war. Units/storms only where the viewer has vision; enemy essence, powers
+   * and banner never sent. Works follow the open-world rule: your own always, a rival's
+   * only while you can SEE it — otherwise the ghost you last saw, at the place it stood.
+   * A started Pattern walk reveals that shrine + progress. */
   Net.snapFor = function (world, viewer, events) {
     const World = global.World, C = global.CONST;
     const see = (x, y) => World.canSee(world, viewer, x, y);
@@ -174,25 +175,24 @@
         banner: mine ? pl.banner : -1,   // the banner is a strategic secret
         wallLevel: mine ? pl.wallLevel : 0,
         musterPaused: mine ? pl.musterPaused : false,
-        slots: pl.slots.map((s) => {
-          if (!s) return null;
-          /* damage state is public — you can see what burns */
-          const hp = { hp: Math.round(s.hp), maxHp: s.maxHp };
-          /* the tower branch is yours to know and the rival's to guess — it never leaves
-           * the veil, because 'veiled' slots carry no type at all */
-          if (mine) return { bt: s.bt, level: s.level, br: s.br || null, rally: s.rally != null ? s.rally : -1, ...hp };
-          if (s.bt === 'shrine' && pl.revealed) return { bt: 'shrine', level: s.level, ...hp };
-          return { bt: 'veiled', level: 0, ...hp };
-        })
+        buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)).map((b) => ({
+          id: b.id, bt: b.bt, level: b.level, x: Math.round(b.x), y: Math.round(b.y),
+          hp: Math.round(b.hp), maxHp: b.maxHp, node: b.node,
+          /* the tower branch is yours to know and the rival's to guess */
+          br: mine ? (b.br || null) : null,
+          rally: mine && b.rally != null ? b.rally : -1
+        })),
+        /* what the viewer remembers of works they can no longer see */
+        ghosts: mine ? [] : Object.entries(world.players[viewer].ghosts)
+          .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
+          .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: Math.round(g.x), y: Math.round(g.y) }))
       };
     });
     /* sites through the viewer's fog: live truth if visible, memory if explored, else absent */
     const mem = world.players[viewer].explored;
     const sites = world.map.sites.map((s) => {
-      if (see(s.x, s.y)) return { id: s.id, live: true, owner: s.owner,
-                                  post: s.post ? { bt: s.post.bt, level: s.post.level, hp: Math.round(s.post.hp), maxHp: s.post.maxHp } : null };
-      const m = mem[s.id];
-      return m ? { id: s.id, live: false, owner: m.owner, post: m.post ? { bt: m.post.bt, level: m.post.level } : null } : null;
+      if (see(s.x, s.y)) return { id: s.id, live: true, holder: World.nodeHolder(world, s) };
+      return mem[s.id] ? { id: s.id, live: false, holder: -1 } : null;
     });
     return {
       t: world.t, winner: world.winner, winReason: world.winReason,

@@ -191,7 +191,7 @@
         g.strokeStyle = 'rgba(200,190,220,0.35)'; g.lineWidth = 2;
         g.beginPath(); g.arc(X, Y - 4, 40, 1.1 * Math.PI, 1.9 * Math.PI); g.stroke();
       }
-      if (s.kind === 'spring') {
+      if (s.kind === 'node') {
         g.globalAlpha = 0.5; g.fillStyle = '#000';
         g.beginPath(); g.ellipse(X + 3, Y + 8, 40, 15, 0, 0, 7); g.fill(); g.globalAlpha = 1;
         const gr = g.createRadialGradient(X, Y, 2, X, Y, 34);
@@ -202,7 +202,7 @@
         g.beginPath(); g.ellipse(X, Y, 20, 8, 0, 0, 7); g.stroke();
       }
       const spr = s.kind !== 'city' && S && S.site ? S.site[s.kind] : null;
-      if (spr && s.kind !== 'spring' && opts.siteSprites !== false) g.drawImage(spr, X - 34, Y - 40, 68, 68);
+      if (spr && s.kind !== 'node' && opts.siteSprites !== false) g.drawImage(spr, X - 34, Y - 40, 68, 68);
       if (s.kind !== 'city' && opts.labels !== false) {
         g.font = '600 13px Georgia, serif'; g.textAlign = 'center';
         g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 3; g.strokeText(s.name, X, Y + 44);

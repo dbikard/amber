@@ -19,8 +19,12 @@ function playMatch(aKind, bKind, seed, opts) {
   const issue = (pi) => (cmd) => World.applyCommand(world, pi, cmd);
   const issuers = [issue(0), issue(1)];
   while (world.winner === null && world.t < MAX_T) {
-    bots[0].step(world, 0, issuers[0], DT);
-    bots[1].step(world, 1, issuers[1], DT);
+    /* alternate which bot is polled first. With free placement, acting first means
+     * claiming the ground first — stepping seat 0 ahead of seat 1 every tick is a bias
+     * in the REFEREE, not in the game, and a mirror match will show it. */
+    const first = world.tick % 2 === 0 ? 0 : 1;
+    bots[first].step(world, first, issuers[first], DT);
+    bots[1 - first].step(world, 1 - first, issuers[1 - first], DT);
     World.update(world, DT);
     world.events.length = 0;   // headless: nobody drains the render queue
   }

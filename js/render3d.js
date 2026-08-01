@@ -281,14 +281,14 @@
     if (rc.ray.intersectPlane(groundPlane, hitV)) return { x: hitV.x, y: hitV.z };
     return { x: 350, y: 1200 };
   };
-  R.hitSlot = function (px, py) {
+  /* the id of the viewer's own work under the finger, or -1 */
+  R.hitBuilding = function (px, py) {
     if (!curView) return -1;
     const w2 = R.toWorld(px, py);
-    let best = -1, bd = 34 * 34;
-    for (let i = 0; i < C.SLOTS; i++) {
-      const sp = global.World.slotPos(curView, curViewer, i);
-      const dd = (w2.x - sp.x) * (w2.x - sp.x) + (w2.y - sp.y) * (w2.y - sp.y);
-      if (dd < bd) { bd = dd; best = i; }
+    let best = -1, bd = 38 * 38;
+    for (const b of curView.players[curViewer].buildings) {
+      const dd = (w2.x - b.x) * (w2.x - b.x) + (w2.y - b.y) * (w2.y - b.y);
+      if (dd < bd) { bd = dd; best = b.id; }
     }
     return best;
   };
@@ -411,7 +411,7 @@
       if (s.kind === 'city') continue;
       const holder = new THREE.Group();
       holder.position.set(s.x, groundH(s.x, s.y) + 0.5, s.y);
-      if (s.kind === 'spring') {
+      if (s.kind === 'node') {
         const water = new THREE.Mesh(new THREE.CircleGeometry(26, 18).rotateX(-Math.PI / 2),
           new THREE.MeshLambertMaterial({ color: 0x2c5a7c, emissive: 0x14283c }));
         water.position.y = 0.8; water._water = true;
@@ -502,21 +502,8 @@
     g.wall.position.set(city.x, 0, city.y);
     g.wall.visible = false;
     g.group.add(g.wall);
-    /* eight plots on the ring; buildings rise (and fall) on them */
-    g.pads = []; g.slotG = []; g.slotBt = [];
-    for (let i = 0; i < C.SLOTS; i++) {
-      const sp = global.World.slotPos(view, pi, i);
-      const pad = new THREE.Mesh(new THREE.CircleGeometry(26, 12).rotateX(-Math.PI / 2),
-        new THREE.MeshLambertMaterial({ color: own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
-      pad.position.set(sp.x, 1.1, sp.y);
-      g.group.add(pad);
-      g.pads.push(pad);
-      const slotG = new THREE.Group();
-      slotG.position.set(sp.x, 1.5, sp.y);
-      slotG.rotation.y = curViewerRotOwn();
-      g.group.add(slotG);
-      g.slotG.push(slotG); g.slotBt.push('');
-    }
+    /* works are placed things now: their groups are made and destroyed as they rise and fall */
+    g.works = new Map();   // building id -> { grp, key, pad }
     worldG.add(g.group);
     return g;
   }
@@ -537,16 +524,12 @@
     worldG.add(m);
     fx.push({ k: 'bolt', obj: m, ttl, max: ttl, x: x1, z: z1 });
   }
-  function slotCenterWorld(idx) {
-    const sp = global.World.slotPos(curView, curViewer, idx);
-    return { x: sp.x, z: sp.y };
-  }
+
   R.addEvents = function (events, view, viewer) {
     if (!R.ready) return;
     for (const ev of events) {
       if (ev.e === 'shot' && ev.pi === viewer) {
-        const c2 = slotCenterWorld(ev.slot);
-        boltFx(c2.x, c2.z, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22);
+        boltFx(ev.x, ev.y, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22);
         if (ev.splash > 0) ringFx(ev.to.x, ev.to.y, 0xffb070, 0.32, ev.splash * 0.9);   // the burst
       } else if (ev.e === 'wshot') boltFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
       else if (ev.e === 'bolt') boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, TINT[ev.from.owner], 0.3);
@@ -684,33 +667,54 @@
       const pi = g.own ? viewer : 1 - viewer;
       const pl = view.players[pi];
       g.wall.visible = pl.wallHp > 0;
-      for (let i = 0; i < C.SLOTS; i++) {
-        const s = pl.slots[i], slotG = g.slotG[i];
-        /* a forked Watchtower is a different silhouette — key the model by branch too */
-        let want = s ? (s.bt === 'tower' && s.br ? 'tower:' + s.br : s.bt) : '';
-        if (!g.own && want && !(want === 'shrine' && pl.revealed)) want = 'veiled';
-        if (g.slotBt[i] !== want) {
-          g.slotBt[i] = want;
-          while (slotG.children.length) { const m = slotG.children.pop(); m.geometry && m.geometry.dispose(); }
-          if (want) {
-            slotG.add(buildingModel(want));
-            if (g.own && s && C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) {
-              /* the company's pennant flies over its mustering hall */
-              const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
-              const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
-                new THREE.MeshBasicMaterial({ color: PENNANT[i % PENNANT.length], side: THREE.DoubleSide }));
-              pf.position.set(14, 38, 8);
-              slotG.add(pole, pf);
-            }
-            if (want === 'shrine') {
-              const spiral = new THREE.Mesh(new THREE.CircleGeometry(17, 18).rotateX(-Math.PI / 2),
-                new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 }));
-              spiral.position.y = 11;
-              slotG.add(spiral);
-            }
+      /* works stand where they were placed. A rival's work you can no longer see is a
+       * ghost — drawn faint, at the place you last saw it. */
+      const want = new Map();
+      for (const b of pl.buildings) want.set(b.id, { b, ghost: false });
+      if (!g.own) for (const gh of (pl.ghosts || [])) if (!want.has(gh.id)) want.set(gh.id, { b: gh, ghost: true });
+
+      for (const [id, { b, ghost }] of want) {
+        const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + (ghost ? '~' : '');
+        let w = g.works.get(id);
+        if (!w || w.key !== key) {
+          if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
+          const grp = new THREE.Group();
+          grp.rotation.y = curViewerRotOwn();
+          const pad = new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
+            new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
+          pad.position.y = -0.4;
+          grp.add(pad, buildingModel(b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt));
+          if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
+            /* the company's pennant flies over its mustering hall */
+            const idx = pl.buildings.indexOf(b);
+            const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
+            const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
+              new THREE.MeshBasicMaterial({ color: PENNANT[Math.max(0, idx) % PENNANT.length], side: THREE.DoubleSide }));
+            pf.position.set(14, 38, 8);
+            grp.add(pole, pf);
           }
+          if (b.bt === 'shrine') {
+            const spiral = new THREE.Mesh(new THREE.CircleGeometry(17, 18).rotateX(-Math.PI / 2),
+              new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 }));
+            spiral.position.y = 11;
+            grp.add(spiral);
+          }
+          if (ghost) grp.traverse((o) => {
+            if (!o.material) return;
+            o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.34;
+          });
+          worldG.add(grp);
+          w = { grp, key, pad };
+          g.works.set(id, w);
         }
-        if (g.own) g.pads[i].material.color.setHex(R.selected === i ? 0x8a6c3c : 0x46382a);
+        w.grp.position.set(b.x, groundH(b.x, b.y) + 1.5, b.y);
+        w.seen = true;
+        if (g.own) w.pad.material.color.setHex(R.selected === id ? 0x8a6c3c : 0x46382a);
+      }
+      for (const [id, w] of [...g.works]) {
+        if (w.seen) { w.seen = false; continue; }
+        w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+        w.grp.removeFromParent(); g.works.delete(id);
       }
     }
   }
@@ -726,11 +730,10 @@
     /* company standards: one pennant per detached company, ringed around its post */
     const me = view.players[viewer];
     const active = new Set();
-    for (let i = 0; i < C.SLOTS; i++) {
-      const s = me.slots[i];
-      if (!s || s.rally == null || s.rally < 0) continue;
-      active.add(i);
-      let f = coFlags.get(i);
+    me.buildings.forEach((s, i) => {
+      if (s.rally == null || s.rally < 0) return;
+      active.add(s.id);
+      let f = coFlags.get(s.id);
       if (!f) {
         f = new THREE.Group();
         const pole = meshOf([part(cyl(0.7, 0.7, 30, 5), 0xd8c8a8, 0, 15, 0)]);
@@ -739,15 +742,15 @@
         pf.position.set(0, 26, 0);
         f.add(pole, pf); f._flag = pf;
         worldG.add(f);
-        coFlags.set(i, f);
+        coFlags.set(s.id, f);
       }
       const site = view.map.sites[s.rally];
-      const a2 = (i / C.SLOTS) * Math.PI * 2;
+      const a2 = (i / Math.max(1, me.buildings.length)) * Math.PI * 2;
       const fx2 = site.x + Math.cos(a2) * 32, fz2 = site.y + Math.sin(a2) * 32;
       f.position.set(fx2, groundH(fx2, fz2), fz2);
       f.rotation.y = curViewerRotOwn();
       f._flag.rotation.y = Math.sin(T * 2.2 + i) * 0.3;
-    }
+    });
     for (const [i, f] of [...coFlags]) if (!active.has(i)) { f.removeFromParent(); coFlags.delete(i); }
   }
 

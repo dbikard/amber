@@ -5,11 +5,19 @@
   const CONST = {};
 
   CONST.SIM_DT = 1 / 30;          // fixed timestep (browser + sim identical)
-  CONST.SLOTS = 8;                // building plots ringing the Seat-tower
+  CONST.MAX_BUILDINGS = 14;       // works a single heir may hold standing at once
   /* the city is a real place: a walled disc with the Tower of the Seat at its heart */
   CONST.CITY = { r: 150, slotR: 104 };
+
+  /* ---- Free placement (open world, stage 4) ----
+   * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is
+   * the Seat's own country plus the country around every Shadow Gate you hold — so expanding
+   * what you can build IS taking the map, which is the anti-stall model in one rule. */
+  CONST.CLAIM = { seat: 430, gate: 300 };
+  CONST.BUILD = { foot: 34, gap: 10 };   // footprint radius, and clearance between works
+  /* a Shadow Gate within this of an essence node draws from it (and claims it) */
+  CONST.NODE = { r: 96 };
   CONST.WALL = { cost: 150, up: [140, 230], hp: [900, 1500, 2200] };   // a wall is a WALL
-  CONST.BUILDING_HP = { gate: 300, barracks: 360, tower: 480, spire: 320, shrine: 450 };
   CONST.CASTLE_HP = 1000;
   CONST.START_ESSENCE = 180;
   CONST.BASE_INCOME = 2.5;        // essence/sec before any Shadow Gate
@@ -23,8 +31,8 @@
     /* [key, x, y, kind] — mirrored keys get '™' → their mirror twin '_m' */
     ['city0', 350, 2110, 'city'],
     ['r0', 350, 1780, 'road'], ['mid', 350, 1200, 'road'],
-    ['s0a', 110, 1850, 'spring'], ['s0b', 590, 1850, 'spring'],
-    ['sm0', 90, 1200, 'spring'],
+    ['s0a', 110, 1850, 'node'], ['s0b', 590, 1850, 'node'],
+    ['sm0', 90, 1200, 'node'],
     ['v0', 170, 1520, 'vantage'], ['v1', 530, 1520, 'vantage']
   ];
   CONST.EDGE_TEMPLATE = [
@@ -35,24 +43,14 @@
     ['mid', 'sm0']
   ];
   CONST.SITE_NAMES = {
-    spring: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn', 'the Deep Font', 'the Still Water'],
+    node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn', 'the Deep Font', 'the Still Water'],
     vantage: ['the Grey Crag', 'the Watcher’s Tor', 'the Broken Stair', 'the High Shoulder'],
     road: ['the First Milestone', 'the Mid-Reach', 'the Last Milestone']
   };
 
-  /* Outposts — structures built on map sites (a friendly unit must stand there).
-   * The essence sink and the reason to fight for the map. */
-  CONST.OUTPOSTS = {
-    sgate:   { name: 'Shadow Gate', icon: '🌀', only: 'spring', cost: 140, up: [130, 220],
-               income: [5, 8, 12], hp: 300,
-               blurb: 'Draw Essence from this spring of Shadow' },
-    watch:   { name: 'Watchpost',   icon: '🏹', cost: 120, up: [100, 170],
-               dmg: [9, 13, 18], range: 190, atk: 1.1, vision: 620, hp: 280,
-               blurb: 'Far sight over Shadow, and arrows for trespassers' },
-    rampart: { name: 'Rampart',     icon: '🛡', cost: 160, up: [140, 240],
-               hp: 700, hpUp: [1050, 1500],
-               blurb: 'Walls the path. Enemies must break it to pass' }
-  };
+  CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
+  CONST.VISION = { city: 420, unit: 260, build: 240 };   // a work may override via def.vision
+
   /* ---- Navigation (open world, stage 2): units move continuously over a cost grid ----
    * The site web is baked in as corridors — free within freeR of a path or site, ramping
    * to maxCost, impassable past edgeR. Stage 3 replaces this with real terrain.
@@ -76,29 +74,34 @@
     cacheMax: 48       // flow fields held before the cache is dropped
   };
 
-  CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
-  CONST.VISION = { city: 420, unit: 260, post: 300 };   // watchposts override via .vision
-
-
-  /* Buildings. up = upgrade costs to L2/L3; per-level effect arrays are [L1,L2,L3]. */
+  /* Buildings — ONE table now. Outposts and city works were always the same idea: a thing
+   * you pay for, that stands somewhere, that can be broken. With free placement the
+   * distinction had nothing left to mean. up = upgrade costs to L2/L3; effect arrays are
+   * [L1,L2,L3]. `claim` marks a work whose country you may build in. */
   CONST.BUILDINGS = {
-    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 100, up: [90, 160],
-                income: [3, 4.5, 6.5],   // modest: the real economy is springs on the map
-                blurb: '+Essence per second, drawn from Shadow' },
-    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200],
+    /* A Gate away from a spring is a WAYSTONE: it extends your writ and watches the road,
+     * and it trickles. The essence is in the springs, and the springs are out on the map —
+     * that is the whole anti-stall model, and it only holds if home gates cannot replace it. */
+    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true,
+                income: [1, 1.5, 2], nodeIncome: [5, 8, 12], hp: 300, vision: 300,
+                blurb: 'On a spring of Shadow it draws deep. Anywhere else it merely trickles — but your writ runs where your Gates stand.' },
+    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },
-    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300],
+    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320,
                 spawns: 'sorcerer', period: [11, 8.8, 7.0],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
-    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180],
-                dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2,
-                blurb: 'Rains arrows on foes nearing your castle. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 340, up: [250, 400], unique: true,
+    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480,
+                dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
+                blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
+    rampart:  { name: 'Rampart',       icon: '🛡', cost: 160, up: [140, 240],
+                hp: 700, hpUp: [1050, 1500], vision: 200,
+                blurb: 'Bars the way. Enemies must break it to pass' },
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 340, up: [250, 400], unique: true, hp: 450,
                 drain: [12, 14, 16], rate: [0.28, 0.37, 0.48],  // essence/sec → %/sec (L1 walk ≈ 6 min)
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
   };
-  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
+  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'rampart', 'spire', 'shrine'];
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].
