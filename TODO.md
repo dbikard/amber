@@ -77,6 +77,25 @@
 - [x] Hints teach the tray; storm arming and flag arming cancel each other
 - [x] Full touch-emulated flow verified (arm/plant/split/rejoin/sheet-purity)
 
+## Phase 0.12 — Watchtower fork (v0.7)
+- [x] The level-2 Watchtower upgrade FORKS: **Ballista** (long range, heavy single bolt —
+      elites and fiends) vs **Cannon** (splash, shorter range — swarms and columns). Permanent
+      choice, branch-specific upgrade costs.
+- [x] Branch never leaks through fog (rival slots stay veiled); heirs pick a branch,
+      Benedict picks adaptively off the rival's army size.
+
+## Phase 0.13+ — The Open World  ← see `OPEN_WORLD_PLAN.md`
+The site graph gives way to a continuous map. Anti-stall moves from Chaos escalation to the
+essence race; match length moves to 15–30 min. Staged, sim-green at every step:
+- [ ] **Continuous movement** under the existing graph — nav grid + flow fields, sites become
+      waypoints. Mirror symmetry must stay ≈50/50.
+- [ ] **Terrain** — obstacle grid, corridor-driven generation (~3 routes), sites → anchors
+- [ ] **Free placement** in claim areas; essence nodes replace springs; building ids replace
+      slots; fog rule → "visible in vision, remembered as ghosts"
+- [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
+      Chaos repurposed as the price of the best ground
+- [ ] **Retune** — match length, Chaos cadence, heir rebalance, ablation runs
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

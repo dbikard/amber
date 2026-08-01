@@ -176,7 +176,24 @@
   }
 
   /* ---------------- commands ---------------- */
-  function upgradeCost(bt, level) { return C.BUILDINGS[bt].up[level - 1]; }
+  /* a tower's live stats: shared until the level-2 fork, per-branch after it */
+  function towerStats(b) {
+    const def = C.BUILDINGS.tower;
+    const br = b.level >= def.fork && b.br ? C.TOWER_BRANCHES[b.br] : null;
+    if (!br) return { dmg: def.dmg[b.level - 1], range: def.range[b.level - 1], atk: def.atk, splash: 0 };
+    const i = b.level - def.fork;
+    return { dmg: br.dmg[i], range: br.range[i], atk: br.atk[i],
+             splash: br.splash[i], splashDmg: br.dmg[i] * (br.splashFrac || 0) };
+  }
+  /* `br` is the branch the tower is being upgraded INTO (or already holds) */
+  function upgradeCost(bt, level, br) {
+    if (bt === 'tower') {
+      const b2 = C.TOWER_BRANCHES[br];
+      if (!b2) return C.BUILDINGS.tower.up[level - 1];          // unforked fallback
+      return level < C.BUILDINGS.tower.fork ? b2.cost : b2.up[level - C.BUILDINGS.tower.fork];
+    }
+    return C.BUILDINGS[bt].up[level - 1];
+  }
   function postUpCost(bt, level) { return C.OUTPOSTS[bt].up[level - 1]; }
 
   function applyCommand(world, pi, cmd) {
@@ -211,11 +228,18 @@
       const s = pl.slots[cmd.slot];
       if (!s) return { ok: false, err: 'slot' };
       if (s.level >= C.MAX_LEVEL) return { ok: false, err: 'max' };
-      const cost = upgradeCost(s.bt, s.level);
+      /* the Watchtower fork: the level-2 upgrade must name a branch, and it is forever */
+      let br = s.br;
+      if (s.bt === 'tower' && s.level + 1 === C.BUILDINGS.tower.fork) {
+        br = cmd.br;
+        if (!C.TOWER_BRANCHES[br]) return { ok: false, err: 'branch' };
+      }
+      const cost = upgradeCost(s.bt, s.level, br);
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;
       s.level++;
-      emit(world, { e: 'up', pi, slot: cmd.slot, level: s.level });
+      if (br) s.br = br;
+      emit(world, { e: 'up', pi, slot: cmd.slot, level: s.level, br: s.br || null });
       return { ok: true };
     }
     if (cmd.c === 'walk') {
@@ -456,15 +480,27 @@
         } else if (b.bt === 'tower') {
           b.cd -= dt;
           if (b.cd <= 0) {
-            const range = def.range[b.level - 1];
-            let best = null, bd = range * range;
+            const st = towerStats(b);
+            let best = null, bd = st.range * st.range;
             for (const u of world.units) {
               if (u.hp <= 0 || u.owner === pi) continue;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
               if (dd < bd) { bd = dd; best = u; }
             }
-            if (best) { hurt(world, best, def.dmg[b.level - 1], pi); emit(world, { e: 'shot', pi, slot: si, to: { x: best.x, y: best.y } }); b.cd = def.atk; }
-            else b.cd = 0.15;
+            if (best) {
+              hurt(world, best, st.dmg, pi);
+              /* the cannon answers the column, not the man: the burst falls off away
+               * from the ball, so a crowd bleeds but no single foe dies to the splash */
+              if (st.splash > 0 && st.splashDmg > 0) {
+                const r2 = st.splash * st.splash;
+                for (const u of world.units) {
+                  if (u.hp <= 0 || u.owner === pi || u === best) continue;
+                  if (d2(u.x, u.y, best.x, best.y) < r2) hurt(world, u, st.splashDmg, pi);
+                }
+              }
+              emit(world, { e: 'shot', pi, slot: si, to: { x: best.x, y: best.y }, br: b.br || null, splash: st.splash });
+              b.cd = st.atk;
+            } else b.cd = 0.15;
           }
         }
       }
@@ -640,6 +676,6 @@
     emit(world, { e: 'win', winner, reason });
   }
 
-  global.World = { createWorld, applyCommand, update, upgradeCost, postUpCost, canSee, cityOf, visionSources, slotPos };
+  global.World = { createWorld, applyCommand, update, upgradeCost, postUpCost, towerStats, canSee, cityOf, visionSources, slotPos };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -241,7 +241,10 @@
       const ex = ev.x != null ? dx(ev.x, viewer) : 0, ey = ev.y != null ? dy(ev.y, viewer) : 0;
       if (ev.e === 'shot' && ev.pi === viewer) {
         const r = R.slotRect(ev.slot);
-        lineFx(r.x + r.w / 2, r.y + r.h / 2, dx(ev.to.x, viewer), dy(ev.to.y, viewer), 0xe8d8a8, 1.5, 0.22);
+        const tx = dx(ev.to.x, viewer), ty = dy(ev.to.y, viewer);
+        /* the ballista throws a heavier line; the cannon bursts where it lands */
+        lineFx(r.x + r.w / 2, r.y + r.h / 2, tx, ty, 0xe8d8a8, ev.br === 'bolt' ? 2.6 : 1.5, 0.22);
+        if (ev.splash > 0) ringFx(tx, ty, 0xffb070, 0.32, ev.splash * 0.9);
       } else if (ev.e === 'wshot') {
         lineFx(ex, ey - 16, dx(ev.to.x, viewer), dy(ev.to.y, viewer), 0xe8d8a8, 1.5, 0.22);
       } else if (ev.e === 'bolt') {
@@ -432,6 +435,8 @@
       sp.visible = !!s;
       if (!s) continue;
       sp.texture = tex(s.bt === 'wall' ? S.post.rampart : S.b[s.bt]);
+      /* the 2D fallback has one tower sprite — the branch reads as its metal */
+      sp.tint = s.bt === 'tower' && s.br ? (s.br === 'cannon' ? 0xffb090 : 0xbcd8ff) : 0xffffff;
       const sz = Math.min(r.w, r.h) * 1.04;
       sp.width = sz; sp.height = sz;
       sp.position.set(r.x + r.w / 2, r.y + r.h / 2);

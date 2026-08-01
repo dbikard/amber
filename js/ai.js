@@ -93,6 +93,7 @@
       interval: 2.2, noise: 0.30,
       plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine'],
       upPref: ['tower', 'gate', 'barracks', 'shrine'],
+      towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantSgates('own', 2), wantWatch(2), wantRampart(), wantSgates('mid', 1)],
       banner: (v) => v.enemyWalking && v.army >= 7 ? v.enCity.id : v.myCity.id,
       wall: (v) => v.t > 60,
@@ -106,6 +107,7 @@
       interval: 1.8, noise: 0.20,
       plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire'],
       upPref: ['barracks', 'spire', 'gate', 'tower'],
+      towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
       missions: (v) => v.t < 200 ? [wantSgates('own', 2)] : [],
       banner: (v) => v.army >= 6 ? v.enCity.id : ownChoke(v).id,   // stage, then storm the gates
       wall: (v) => v.myCastle < 800 || v.t > 260,
@@ -118,6 +120,7 @@
       interval: 1.5, noise: 0.12,
       plan: () => ['gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire', 'gate'],
       upPref: ['tower', 'gate', 'shrine', 'barracks'],
+      towerBranch: () => 'cannon',   // the walk is answered by an army, and an army is a crowd
       missions: (v) => [wantSgates('own', 2), wantRampart(), wantSgates('mid', 1)],
       banner: (v) => v.myCity.id,   // the army exists to buy him time
       wall: (v) => v.t > 120 || !!v.have.shrine,   // Brand walls early — the walk needs a keep
@@ -131,6 +134,7 @@
       interval: 1.4, noise: 0.10,
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks'],
       upPref: ['barracks', 'gate', 'spire', 'tower', 'shrine'],
+      towerBranch: () => 'bolt',
       missions: (v) => [wantSgates('own', 2), wantSgates('mid', 2), wantWatch(1)],
       banner: (v) => (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle)
         ? v.enCity.id
@@ -155,6 +159,7 @@
         return wants.slice(0, C.SLOTS);
       },
       upPref: ['gate', 'shrine', 'barracks', 'tower', 'spire'],
+      towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
       missions: (v) => [wantSgates('own', 2), wantWatch(1),
                         ...(v.enemyArmy <= 3 ? [wantSgates('mid', 1)] : []),
                         ...(v.threats.length >= 2 ? [wantRampart()] : [])],
@@ -268,9 +273,11 @@
       for (const bt of P.upPref) {
         for (let s2 = 0; s2 < C.SLOTS; s2++) {
           const b = v.pl.slots[s2];
-          if (b && b.bt === bt && b.level < C.MAX_LEVEL &&
-              v.essence > global.World.upgradeCost(bt, b.level) + 130) {
-            issue({ c: 'up', slot: s2 });
+          if (!b || b.bt !== bt || b.level >= C.MAX_LEVEL) continue;
+          /* the Watchtower fork: an heir's doctrine picks the branch, and keeps it after */
+          const br = bt === 'tower' ? (b.br || (P.towerBranch ? P.towerBranch(v) : 'bolt')) : undefined;
+          if (v.essence > global.World.upgradeCost(bt, b.level, br) + 130) {
+            issue({ c: 'up', slot: s2, br });
             return;
           }
         }

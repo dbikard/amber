@@ -17,9 +17,12 @@ rush, greed beats turtle (roughly).
 Pattern progress is revealed. A walking player must be attackable and a stalling player must
 lose to Chaos. There is no passive path to victory.
 
-### 4. Shared threat escalates
-Chaos pressure ramps so that matches converge (~6–12 min target). Threat slightly outpaces a
-passive player's power curve — you must *build well*, not just build.
+### 4. The economy is the anti-stall
+Turtling inside your starting ground loses on its own: the rival claims more essence, buys a
+bigger army, and comes for you. Map control is the pressure behind both win conditions.
+Chaos is *the price of the best ground* — the richest nodes sit on the corrupt road, so
+expanding is exposure — not a doomsday timer. Convergence is guaranteed by the Pattern walk,
+never by PvE. Target: 15–30 min.
 
 ### 5. Readable chaos
 Color language is law: **gold = you**, **crimson = rival**, **sickly green = Chaos**,
@@ -42,12 +45,16 @@ Every balance question is answered with data:
   field must have a counter with >60% against it. Uncounterable = balance bug.
 - **Mechanic ablation** — ban one building/power for one bot; if win rates don't move, the
   mechanic is decoration: cut or redesign.
-- **Convergence** — passive-vs-passive must still end (Chaos kills someone) well under 20 min.
-- **Match length** — median 6–12 min across the matchup table.
+- **Convergence** — passive-vs-passive must still end (someone completes the Pattern) inside
+  the match-length ceiling. No two policies may draw forever.
+- **Match length** — median 15–30 min across the matchup table.
+- **Expansion pays** — a bot that claims map must beat an otherwise-identical bot that does
+  not, decisively. If turtling is competitive, the anti-stall model is broken at the root.
 
 ## Anti-patterns
 
-- Unit micro or continuous input on mobile.
+- Unit micro or continuous input on mobile. (Walls are built by *dragging a line*, not by
+  tapping each stone; economy is a drip from structures in range, never haulers.)
 - A "correct" first building. (Ablate; tune.)
 - Hidden information the AI secretly uses.
 - Stalemates: any two policies that can draw forever.

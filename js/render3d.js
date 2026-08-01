@@ -116,7 +116,9 @@
     p.push(part(box(14, 8, 0.8), gold ? 0xffe9a8 : 0xff9aa8, 8, 110, 0));
     return meshOf(p);
   }
-  function buildingModel(bt) {
+  /* key is 'bt' or, for a forked Watchtower, 'tower:bolt' / 'tower:cannon' */
+  function buildingModel(key) {
+    const cut = key.indexOf(':'), bt = cut < 0 ? key : key.slice(0, cut), br = cut < 0 ? '' : key.slice(cut + 1);
     const st = 0x8d8296, stD = 0x4a4258, stL = 0xcfc6d8, woodR = 0x6e4434;
     const p = [];
     if (bt === 'gate' || bt === 'sgate') {
@@ -137,7 +139,22 @@
         const a = i / 6 * Math.PI * 2;
         p.push(part(box(4, 5, 4), stD, Math.cos(a) * 11, 53, Math.sin(a) * 11));
       }
-      p.push(part(cone(12, 16, 8), 0x5a4a68, 0, 62, 0));
+      if (br === 'bolt') {
+        /* the great crossbow: an open deck, twin arms, a bolt in the groove */
+        p.push(part(box(4, 4, 30), woodR, 0, 59, 2));
+        p.push(part(box(36, 3, 3.5), woodR, 0, 61, -6));
+        p.push(part(box(2, 2, 22), stL, 0, 63, 8));
+        p.push(part(box(3, 11, 3), stD, -8, 56, 0));
+        p.push(part(box(3, 11, 3), stD, 8, 56, 0));
+      } else if (br === 'cannon') {
+        /* the gun deck: a dark barrel over the parapet, banded at the muzzle */
+        p.push(part(cyl(12, 12, 5, 8), stD, 0, 55, 0));
+        p.push(part(cyl(5.5, 5.5, 8, 6), 0x2e2a34, 0, 60, -5));
+        p.push(part(box(7, 7, 26), 0x2e2a34, 0, 60, 10));
+        p.push(part(box(9, 9, 4), stL, 0, 60, 22));
+      } else {
+        p.push(part(cone(12, 16, 8), 0x5a4a68, 0, 62, 0));
+      }
     } else if (bt === 'spire') {
       p.push(part(cyl(4, 9, 58, 7), 0x6a5a8a, 0, 29, 0));
       p.push(part(sph(5), 0xc48eff, 0, 62, 0));
@@ -506,7 +523,8 @@
     for (const ev of events) {
       if (ev.e === 'shot' && ev.pi === viewer) {
         const c2 = slotCenterWorld(ev.slot);
-        boltFx(c2.x, c2.z, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
+        boltFx(c2.x, c2.z, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22);
+        if (ev.splash > 0) ringFx(ev.to.x, ev.to.y, 0xffb070, 0.32, ev.splash * 0.9);   // the burst
       } else if (ev.e === 'wshot') boltFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
       else if (ev.e === 'bolt') boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, TINT[ev.from.owner], 0.3);
       else if (ev.e === 'die') ringFx(ev.x, ev.y, TINT[ev.owner], 0.5, 20);
@@ -645,14 +663,15 @@
       g.wall.visible = pl.wallHp > 0;
       for (let i = 0; i < C.SLOTS; i++) {
         const s = pl.slots[i], slotG = g.slotG[i];
-        let want = s ? s.bt : '';
+        /* a forked Watchtower is a different silhouette — key the model by branch too */
+        let want = s ? (s.bt === 'tower' && s.br ? 'tower:' + s.br : s.bt) : '';
         if (!g.own && want && !(want === 'shrine' && pl.revealed)) want = 'veiled';
         if (g.slotBt[i] !== want) {
           g.slotBt[i] = want;
           while (slotG.children.length) { const m = slotG.children.pop(); m.geometry && m.geometry.dispose(); }
           if (want) {
             slotG.add(buildingModel(want));
-            if (g.own && C.BUILDINGS[want] && C.BUILDINGS[want].spawns) {
+            if (g.own && s && C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) {
               /* the company's pennant flies over its mustering hall */
               const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
               const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),

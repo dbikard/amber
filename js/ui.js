@@ -151,21 +151,54 @@
     el.classList.remove('hidden');
   };
 
+  /* a forked tower shows what it BECAME, not the generic name it was raised under */
+  function towerFace(s) {
+    const br = s.bt === 'tower' && s.br ? C.TOWER_BRANCHES[s.br] : null;
+    return br ? { icon: br.icon, name: br.name, blurb: br.blurb } : C.BUILDINGS[s.bt];
+  }
+  /* what a level of a tower branch actually shoots — the numbers behind the bet */
+  function towerStatLine(br, level) {
+    const b2 = C.TOWER_BRANCHES[br], i = level - C.BUILDINGS.tower.fork;
+    const dps = (b2.dmg[i] / b2.atk[i]).toFixed(1);
+    return `<span class="c-rate wide">${b2.dmg[i]} dmg · ${dps}/s · ${b2.range[i]} range` +
+           (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
+  }
+
   UI.upSheet = function (slot, s, essence, walking) {
-    const d = C.BUILDINGS[s.bt];
+    const d = C.BUILDINGS[s.bt], face = towerFace(s);
     const el = $('sheet');
-    el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — level ${s.level} ${trChip(essence)}</div>` +
-                   `<div class="sheet-blurb">${d.blurb}</div>`;
-    if (s.level < C.MAX_LEVEL) {
-      const cost = global.World.upgradeCost(s.bt, s.level);
+    el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
+                   `<div class="sheet-blurb">${face.blurb}</div>`;
+    /* the Watchtower fork: the level-2 upgrade is a CHOICE, offered as two cards */
+    const forking = s.bt === 'tower' && !s.br && s.level + 1 === C.BUILDINGS.tower.fork;
+    if (forking) {
+      const hint = document.createElement('div');
+      hint.className = 'sheet-blurb';
+      hint.textContent = 'Rebuild the tower. Choose once — the choice does not come again.';
+      el.appendChild(hint);
+      for (const key of C.TOWER_BRANCH_UI) {
+        const b2 = C.TOWER_BRANCHES[key];
+        const cost = global.World.upgradeCost('tower', s.level, key);
+        const b = document.createElement('button');
+        b.className = 'card' + (essence >= cost ? '' : ' locked');
+        b.dataset.cost = cost;
+        b.innerHTML = `<span class="c-ico">${b2.icon}</span><span class="c-name">${b2.name}</span>` +
+                      `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">${b2.blurb}</span>` +
+                      towerStatLine(key, C.BUILDINGS.tower.fork);
+        b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot, key); UI.closeSheet(); });
+        el.appendChild(b);
+      }
+    } else if (s.level < C.MAX_LEVEL) {
+      const cost = global.World.upgradeCost(s.bt, s.level, s.br);
       const can = essence >= cost;
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
       b.dataset.cost = cost;
-      const rt = rateTag(s.bt, s.level + 1);
+      const forked = s.bt === 'tower' && !!s.br;
+      const rt = forked ? towerStatLine(s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
       b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>` +
-                    (rt ? rt.replace('c-rate', 'c-rate wide') : '');
-      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot); UI.closeSheet(); });
+                    (rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '');
+      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(slot, s.br); UI.closeSheet(); });
       el.appendChild(b);
     }
     if (d.spawns) {

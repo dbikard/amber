@@ -19,12 +19,20 @@ open along it and spew fiends at both sides, escalating until someone wins — t
    upgrade, and tap two royal powers. All depth is in *what you build and when*.
 2. **Two doors to the throne.** Military (break their castle) vs. transcendence (walk the
    Pattern). Every build order leans toward one and hedges the other.
-3. **Shared, escalating Chaos.** PvE pressure on both players is the anti-stall clock and the
-   third army on the board. Matches converge in ~6–12 minutes, never drag.
+3. **The economy is the clock.** Turtling loses because the rival claims more essence than you
+   can and buys an army you cannot answer — map control is the pressure behind both win
+   conditions. Chaos is the *price of the best ground*, not a doomsday timer (see
+   `OPEN_WORLD_PLAN.md` §2). The Pattern is the absolute clock: if nobody attacks, someone
+   walks and wins, so no match can draw.
 4. **The walk is a declaration.** Starting the Pattern walk is *revealed to the rival* —
    the ultimate greed play. It forces the defender to attack.
 5. **The AI heirs are the content.** Each rival sibling is a distinct strategy personality;
    the single-player campaign is the succession ladder through the family.
+
+> **Direction of travel:** the site graph below is being replaced by a continuous open world —
+> free movement over real terrain, free placement inside claimed ground, essence nodes, and
+> walls built piece by piece. See **`OPEN_WORLD_PLAN.md`**. This section describes what ships
+> today; it migrates stage by stage.
 
 ## The Board (v0.2 — "The Shadow March": a scrollable map of Shadow)
 
@@ -129,7 +137,9 @@ sustainable pipeline, richer than Perils' neon vectors. `render.js` stays isolat
 
 ## Match Targets
 
-~6–12 minutes. Chaos escalation guarantees convergence (surges after minute 10).
+**15–30 minutes.** Free placement, the claim race and piecewise walls are an attention budget
+a short match cannot spend. Convergence is guaranteed by the Pattern walk (an uncontested
+player always wins eventually) and driven by the essence race, not by a PvE timer.
 
 ## Later (post-MVP)
 

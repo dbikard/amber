@@ -69,13 +69,33 @@
                 spawns: 'sorcerer', period: [11, 8.8, 7.0],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180],
-                dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1,
-                blurb: 'Rains arrows on foes nearing your castle' },
+                dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2,
+                blurb: 'Rains arrows on foes nearing your castle. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
     shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 340, up: [250, 400], unique: true,
                 drain: [12, 14, 16], rate: [0.28, 0.37, 0.48],  // essence/sec → %/sec (L1 walk ≈ 6 min)
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
+
+  /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
+   * Per-branch arrays are indexed by (level - 2): [L2, L3].
+   * cost = the 1→2 rebuild; up = [2→3].
+   * Ballista trades rate of fire for reach and a bolt that kills anything big in three;
+   * the cannon trades reach for a burst that answers a crowd. Neither is the safe pick. */
+  CONST.TOWER_BRANCHES = {
+    bolt:   { name: 'Ballista Tower', short: 'Ballista', icon: '🎯',
+              cost: 120, up: [210],
+              dmg: [22, 31], range: [310, 350], atk: [2.0, 1.9], splash: [0, 0],
+              blurb: 'A giant crossbow: one bolt, far and heavy. Champions and fiends fall to it — a marching crowd walks straight past.' },
+    /* splashFrac: what a foe caught in the burst takes, as a fraction of the direct hit.
+     * At 1.0 the cannon simply deletes armies (sim-verified); the falloff is what makes it
+     * a counter to a column rather than a wall against one. */
+    cannon: { name: 'Cannon Tower',   short: 'Cannon',   icon: '💥',
+              cost: 140, up: [230],
+              dmg: [12, 18], range: [232, 252], atk: [2.2, 2.1], splash: [48, 58], splashFrac: 0.45,
+              blurb: 'Corwin’s trick — shadow-rouge that burns where Amber’s powder will not. It bursts over a column; against one great foe it is a firework.' }
+  };
+  CONST.TOWER_BRANCH_UI = ['bolt', 'cannon'];
 
   /* Units. Every mustered soldier is PAID FOR — essence is a war chest, never a high score.
    * speed in world-units/sec; aggro = acquire radius; bounty paid to the killer's player. */

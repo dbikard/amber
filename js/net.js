@@ -178,7 +178,9 @@
           if (!s) return null;
           /* damage state is public — you can see what burns */
           const hp = { hp: Math.round(s.hp), maxHp: s.maxHp };
-          if (mine) return { bt: s.bt, level: s.level, rally: s.rally != null ? s.rally : -1, ...hp };
+          /* the tower branch is yours to know and the rival's to guess — it never leaves
+           * the veil, because 'veiled' slots carry no type at all */
+          if (mine) return { bt: s.bt, level: s.level, br: s.br || null, rally: s.rally != null ? s.rally : -1, ...hp };
           if (s.bt === 'shrine' && pl.revealed) return { bt: 'shrine', level: s.level, ...hp };
           return { bt: 'veiled', level: 0, ...hp };
         })

@@ -460,7 +460,7 @@
       },
       onSkirmish: (kind) => startSP(kind, {}, false),
       onBuild: (slot, bt) => issue({ c: 'build', slot, bt }),
-      onUp: (slot) => issue({ c: 'up', slot }),
+      onUp: (slot, br) => issue({ c: 'up', slot, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
       onBanner: (site) => issue({ c: 'banner', site }),
       onPost: (site, bt) => issue({ c: 'post', site, bt }),
