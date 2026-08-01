@@ -205,6 +205,15 @@
     return merge(p);
   }
 
+  /* a crag: stacked, canted slabs — cheap, and unmistakably not walkable */
+  function rockGeo() {
+    const p = [];
+    p.push(part(cyl(11, 14, 9, 5), 0x453d4e, 0, 4.5, 0));
+    p.push(part(cyl(7.5, 10, 11, 5), 0x39323f, 1.5, 14, -1, 0.7));
+    p.push(part(cone(6.5, 12, 5), 0x4e4657, -1, 24, 1.5));
+    return merge(p);
+  }
+
   /* ---------------- boot / resize / camera ---------------- */
   R.init = async function (canvas) {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -379,6 +388,20 @@
         im.setMatrixAt(i, dum.matrix);
       });
       worldG.add(im);
+    }
+    /* crags: the impassable cells, raised so the eye reads the corridor the units path down */
+    if (bake.rocks && bake.rocks.length) {
+      const rim = new THREE.InstancedMesh(rockGeo(), MAT, bake.rocks.length);
+      bake.rocks.forEach(([rx, ry, rr, rv], i) => {
+        const x = dx(rx, viewer), z = dy(ry, viewer);
+        dum.position.set(x, groundH(x, z) - 1, z);
+        dum.rotation.set(0, rv * Math.PI * 2, 0);
+        const s2 = 0.8 + rr * 0.075;
+        dum.scale.set(s2, s2 * (0.7 + rv * 0.7), s2);
+        dum.updateMatrix();
+        rim.setMatrixAt(i, dum.matrix);
+      });
+      worldG.add(rim);
     }
 
     /* site props + dynamic holders */

@@ -95,7 +95,11 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       off-centre centre gave one player a shorter road (a real, pre-existing seat bias); and
       the grid cell size must divide MAP.W/MAP.H or the grid is half a cell out of step with
       the board's mirror.
-- [ ] **Terrain** — obstacle grid, corridor-driven generation (~3 routes), sites → anchors
+- [x] **Terrain** — ROAD/OPEN/FOREST passable at rising cost, ROCK/WATER impassable; the
+      country closes with distance from any way through, so ~3 corridors emerge rather than
+      being authored. Mirror-generated; `NAV.audit` proves no site is ever stranded. Both
+      renderers now draw the sim's own terrain (real crags in 3D) — no decorative forest.
+      Path bends live on the map as world truth so sim and paint agree on where a road is.
 - [ ] **Free placement** in claim areas; essence nodes replace springs; building ids replace
       slots; fog rule → "visible in vision, remembered as ghosts"
 - [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,

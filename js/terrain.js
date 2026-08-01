@@ -11,13 +11,16 @@
   const dx = (x, viewer) => (viewer === 0 ? x : C.MAP.W - x);
   const dy = (y, viewer) => (viewer === 0 ? y : C.MAP.H - y);
 
+  /* The bend of a path is WORLD truth (map.curves) — the same curve the terrain grid was
+   * carved along and the same one units walk. Drawing it from a private RNG, as this used
+   * to, put the painted road somewhere the sim had never heard of. */
   function edgeCurve(map, ei, viewer) {
     const [ai, bi] = map.edges[ei];
     const A = map.sites[ai], B2 = map.sites[bi];
-    const rng = global.RNG.make(1000 + ei * 17);
-    const jx = rng.range(-26, 26), jy = rng.range(-16, 16);
-    const ax = dx(A.x, viewer), ay = dy(A.y, viewer), bx = dx(B2.x, viewer), by = dy(B2.y, viewer);
-    return { ax, ay, bx, by, mx: (ax + bx) / 2 + (viewer === 0 ? jx : -jx), my: (ay + by) / 2 + (viewer === 0 ? jy : -jy) };
+    const c = map.curves ? map.curves[ei] : { jx: 0, jy: 0 };
+    const mxw = (A.x + B2.x) / 2 + c.jx, myw = (A.y + B2.y) / 2 + c.jy;
+    return { ax: dx(A.x, viewer), ay: dy(A.y, viewer), bx: dx(B2.x, viewer), by: dy(B2.y, viewer),
+             mx: dx(mxw, viewer), my: dy(myw, viewer) };
   }
   function sampleEdge(e, n) {
     const pts = [];
@@ -77,24 +80,55 @@
       }
     }
 
-    /* forests (kept off paths, sites, cities): painted flat in 2D, grown as meshes in 3D */
-    const cities = map.cities.map((id) => [dx(map.sites[id].x, viewer), dy(map.sites[id].y, viewer)]);
-    const sitesD = map.sites.map((s) => [dx(s.x, viewer), dy(s.y, viewer)]);
-    const clear = (x, y, rr) => {
-      for (const [cx2, cy2] of cities) if ((x - cx2) ** 2 + (y - cy2) ** 2 < 260 ** 2) return false;
-      for (const [sx2, sy2] of sitesD) if ((x - sx2) ** 2 + (y - sy2) ** 2 < 82 ** 2) return false;
-      for (let i = 0; i < pathPts.length; i += 2) {
-        const p = pathPts[i];
-        if ((x - p[0]) ** 2 + (y - p[1]) ** 2 < rr * rr) return false;
+    /* Wood, rock and water come straight off the SIM's terrain grid — the very cells units
+     * path over. What you see is what blocks you; there is no decorative forest any more. */
+    const nav = view.nav, T = global.NAV ? global.NAV.T : null;
+    const trees = [], rocks = [], waters = [];
+    if (nav && T) {
+      const trng = global.RNG.make((view.mapSeed || 7) ^ 0x7ee5), cw = nav.cw;
+      for (let gy = 0; gy < nav.H; gy++) {
+        for (let gx = 0; gx < nav.W; gx++) {
+          const t = nav.terra[gy * nav.W + gx];
+          if (t !== T.FOREST && t !== T.ROCK && t !== T.WATER) continue;
+          const X = dx((gx + 0.5) * cw, viewer), Y = dy((gy + 0.5) * cw, viewer);
+          if (t === T.FOREST) {
+            if (trng.next() < 0.62) trees.push([X + trng.range(-7, 7), Y + trng.range(-7, 7), trng.range(7, 13), trng.next()]);
+          } else if (t === T.ROCK) {
+            rocks.push([X + trng.range(-5, 5), Y + trng.range(-5, 5), trng.range(10, 17), trng.next()]);
+          } else waters.push([X, Y, cw * 0.95]);
+        }
       }
-      return true;
-    };
-    const trees = [];
-    for (let i = 0; i < 2200 && trees.length < 520; i++) {
-      const x = rng.range(14, MW - 14), y = rng.range(60, MH - 300);
-      if (clear(x, y, 52)) trees.push([x, y, rng.range(7, 13), rng.next()]);
+      trees.sort((a, b) => a[1] - b[1]);
     }
-    trees.sort((a, b) => a[1] - b[1]);
+
+    /* water first: soft overlapping pools read as one tarn, not a row of squares */
+    for (const [x, y, r] of waters) {
+      const gr = g.createRadialGradient(x, y, 0, x, y, r * 1.5);
+      gr.addColorStop(0, 'rgba(22,44,64,0.95)'); gr.addColorStop(0.65, 'rgba(16,32,50,0.8)');
+      gr.addColorStop(1, 'rgba(12,24,38,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 1.5, 0, 7); g.fill();
+    }
+    for (const [x, y, r] of waters) {
+      if (rng.next() > 0.35) continue;
+      g.strokeStyle = 'rgba(150,200,240,0.18)'; g.lineWidth = 1.2;
+      g.beginPath(); g.ellipse(x + rng.range(-6, 6), y + rng.range(-5, 5), r * 0.5, r * 0.2, 0, 0, 7); g.stroke();
+    }
+    /* rock: a shadowed crag per cell, cool grey against the wood.
+     * Painted flat for 2D; the 3D renderer asks for props:false and raises real ones. */
+    for (const [x, y, r, v] of (opts.trees === false ? [] : rocks)) {
+      g.globalAlpha = 0.5; g.fillStyle = '#000';
+      g.beginPath(); g.ellipse(x + r * 0.3, y + r * 0.5, r * 1.1, r * 0.42, 0, 0, 7); g.fill();
+      g.globalAlpha = 1;
+      g.fillStyle = '#39323f';
+      g.beginPath(); g.moveTo(x - r, y + r * 0.5); g.lineTo(x - r * 0.35, y - r * 0.85);
+      g.lineTo(x + r * 0.45, y - r * 0.6); g.lineTo(x + r, y + r * 0.5); g.closePath(); g.fill();
+      g.fillStyle = v > 0.5 ? '#4e4657' : '#453d4e';
+      g.beginPath(); g.moveTo(x - r * 0.35, y - r * 0.85); g.lineTo(x + r * 0.45, y - r * 0.6);
+      g.lineTo(x + r * 0.1, y + r * 0.2); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(190,180,205,0.22)';
+      g.beginPath(); g.moveTo(x - r * 0.35, y - r * 0.85); g.lineTo(x - r * 0.05, y - r * 0.3);
+      g.lineTo(x - r * 0.5, y - r * 0.1); g.closePath(); g.fill();
+    }
     if (opts.trees !== false) {
       for (const [x, y, r, v] of trees) {
         const gold = y > MH * 0.62, ash = y < MH * 0.34;
@@ -197,7 +231,7 @@
       g.fillRect(rng.next() * MW, rng.next() * MH, 1.6, 1.6);
     }
     g.globalAlpha = 1;
-    return { canvas: cv2, trees, pathPts };
+    return { canvas: cv2, trees, rocks, pathPts };
   }
 
   global.Terrain = { bake, edgeCurve, sampleEdge, dx, dy };

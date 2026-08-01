@@ -50,21 +50,32 @@
 
     const edges = [];   // adjacency by site id
     const adj = sites.map(() => []);
+    /* Paths BEND. The control offset is world truth (terrain, nav and both renderers all
+     * sample the same curve), so it is generated here — and a mirrored edge takes the
+     * NEGATED offset, which is what makes its curve the exact mirror of its twin's. */
+    const curves = [];
+    let bend = { jx: 0, jy: 0 };
     const link = (a, b) => {
       if (!a || !b || adj[a.id].includes(b.id)) return;
       adj[a.id].push(b.id); adj[b.id].push(a.id);
       edges.push([a.id, b.id]);
+      curves.push(bend);
+    };
+    /* an edge and its mirror twin, bent by equal and opposite hands */
+    const linkPair = (a1, b1, a2, b2) => {
+      bend = { jx: rng.range(-26, 26), jy: rng.range(-16, 16) };
+      link(a1, b1);
+      bend = { jx: -bend.jx, jy: -bend.jy };
+      link(a2, b2);
     };
     const m = (k) => byKey[k + '_m'] || byKey[k];   // mirror lookup ('mid' maps to itself)
-    for (const [a, b] of C.EDGE_TEMPLATE) {
-      link(byKey[a], byKey[b]);
-      link(m(a), m(b));   // the mirrored web ('mid' self-maps, stitching the halves)
-    }
+    for (const [a, b] of C.EDGE_TEMPLATE)
+      linkPair(byKey[a], byKey[b], m(a), m(b));    // the mirrored web
     /* stitch the halves: point-mirroring swaps east/west, so the west corridor's northern
      * continuation is v1's mirror (west-north), and the east corridor's southern leg is v1 */
-    link(byKey.sm0, byKey.v1_m);      // west middle spring → west-north vantage
-    link(byKey.sm0_m, byKey.v1);      // east middle spring → east-south vantage
-    return { sites, edges, adj, byKey,
+    linkPair(byKey.sm0, byKey.v1_m,               // west middle spring → west-north vantage
+             byKey.sm0_m, byKey.v1);              // east middle spring → east-south vantage
+    return { sites, edges, adj, curves, byKey,
              cities: [byKey.city0.id, byKey.city0_m.id],
              roads: sites.filter((s) => s.kind === 'road').map((s) => s.id) };
   }
@@ -93,7 +104,7 @@
       chaosNext: C.CHAOS.firstAt, chaosParity: 0, surged: false,
       vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
     };
-    world.nav = NAV.build(world.map);
+    world.nav = NAV.build(world.map, world.seed);
     for (let pi = 0; pi < 2; pi++) {
       world.players[pi].banner = world.map.cities[pi];
       exploreAround(world, pi);   // you know your own surroundings from the start
@@ -438,8 +449,13 @@
     const t = world.t;
     if (world.tick % 6 === 0 || !world.vis) refreshVision(world);   // 5 Hz vision refresh
 
-    /* players: income, city buildings, powers, walls, the walk */
-    for (let pi = 0; pi < 2; pi++) {
+    /* players: income, city buildings, powers, walls, the walk.
+     * Alternate which seat is served first — otherwise player 0's towers always shoot
+     * before player 1's within a tick, and player 0 wins every simultaneous finish. The
+     * unit loop below has always done this; the player loop should too. */
+    const pFwd = world.tick % 2 === 0;
+    for (let k = 0; k < 2; k++) {
+      const pi = pFwd ? k : 1 - k;
       const pl = world.players[pi];
       const city = cityOf(world, pi);
       let income = C.BASE_INCOME;

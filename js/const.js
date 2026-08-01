@@ -63,11 +63,14 @@
      * mirrored through its centre for fairness; a cell size that does not divide the map
      * puts the grid half a cell out of step with that mirror, which is a seat bias. */
     cell: 20,          // world units per grid cell (700×2400 → 35×120 cells)
-    freeR: 26,         // distance from a path/site that still costs 1
-    rampStep: 10,      // world units per extra point of cost beyond freeR
-    maxCost: 6,        // the ragged verge — passable, but you would rather not
-    edgeR: 56,         // beyond this from any path or site: impassable
-    siteR: 44,         // a site is open ground of this radius before the ramp starts
+    /* terrain: ROAD costs 1, OPEN 2, FOREST 4, ROCK/WATER are impassable. You may always
+     * leave the road — it is simply slower and more exposed out there. */
+    roadR: 20,         // within this of a path curve or site the ground is road/court
+    wildR: 100,        // by this far from any way through, the country has closed entirely
+    rockAt: 0.76,      // solidity above which the ground is rock or water
+    forestAt: 0.46,    // …and above which it is wood
+    noiseF: 0.15,      // noise frequency in cells (lower = broader masses)
+    siteR: 32,         // a site is open ground of this radius
     rampartR: 104,     // an enemy rampart seals its site: must be broken, not walked around
     arrive: 72,        // within this of the goal a unit steers to its own place in the line
     cacheMax: 48       // flow fields held before the cache is dropped

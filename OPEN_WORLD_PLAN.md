@@ -187,8 +187,18 @@ AI simultaneously, leaving nothing trustworthy to measure against.
    Two fairness bugs fell out of the mirror check: the self-mirroring `mid` site was jittered
    (pre-existing seat bias), and the grid cell must divide the map or it is half a cell out of
    step with the board's mirror. **Any future grid must keep both properties.**
-3. **Terrain** — obstacle grid, corridor-driven generation, sites become anchors, edges derived
-   from reachability rather than authored.
+3. ~~**Terrain**~~ — DONE. Real ground on the nav grid: ROAD (cost 1), OPEN (2), FOREST (4),
+   ROCK and WATER impassable. Distance to the nearest path curve or site decides the
+   character of the ground — roads and their shoulders open, the near country wood, the far
+   country closed — so corridors are not authored, they are what is left between the wilds
+   (~3 routes across a typical row, measured). Generated for one half and point-mirrored, and
+   `NAV.audit` asserts at world creation that no site is stranded.
+   *Deviation from the plan:* edges stay authored rather than derived from reachability.
+   They are now the corridor skeleton terrain is generated *from*, so deriving them back out
+   would be circular. Path bends moved onto the map (`map.curves`) as world truth, mirrored
+   with the opposite hand, so terrain, nav and both renderers sample one curve.
+   Wood, rock and water are also what the renderers draw — there is no decorative forest any
+   more; what you see is what blocks you.
 4. **Free placement** inside claim areas; essence nodes replace springs; building ids replace
    slots; fog rule swap.
 5. **Walls and siege** — drag-a-line segments, towers joining curtains, the Siege Works line,

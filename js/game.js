@@ -135,7 +135,7 @@
     const see = (x, y) => World.canSee(world, viewer, x, y);
     const mem = world.players[viewer].explored;
     return {
-      t: world.t, map: world.map, mapSeed: world.seed, players: world.players,
+      t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed, players: world.players,
       sites: world.map.sites.map((s) => {
         if (see(s.x, s.y)) return { id: s.id, live: true, owner: s.owner,
                                     post: s.post ? { bt: s.post.bt, level: s.post.level, hp: s.post.hp, maxHp: s.post.maxHp } : null };
@@ -171,7 +171,8 @@
     }
     for (const u of units) if (u.owner === 1) src.push([u.x, u.y, C.VISION.unit]);
     const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
-    return { t: snap.t, map: refWorld.map, mapSeed: refWorld.seed, players: snap.players,
+    /* the guest builds the same world from the same seed, so terrain needs no wire at all */
+    return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
              sites: snap.sites, units, storms: snap.storms, visSources: src, see };
   }
 
