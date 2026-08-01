@@ -141,9 +141,7 @@
     full: 'you hold as many works as you can keep',
     unique: 'you have one already'
   };
-  UI.buildSheet = function (at, essence, why) {
-    const el = $('sheet');
-    el.innerHTML = `<div class="sheet-title">Raise a work here ${trChip(essence)}</div>`;
+  function buildCards(el, at, essence, why) {
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
       const bad = why ? why(bt) : null;
@@ -157,6 +155,11 @@
       card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(at.x, at.y, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
+  }
+  UI.buildSheet = function (at, essence, why) {
+    const el = $('sheet');
+    el.innerHTML = `<div class="sheet-title">Raise a work here ${trChip(essence)}</div>`;
+    buildCards(el, at, essence, why);
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
@@ -240,7 +243,7 @@
     road: 'A milestone of the black road. Chaos favors this ground — a Rampart can bar the way.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel, pinfo, foeInfo) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel, pinfo, foeInfo, at, why) {
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder === -1 ? 'unclaimed'
       : st.holder === viewer ? 'yours' : 'the rival’s';
@@ -295,6 +298,14 @@
                      `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">A ring no enemy passes while it stands. Self-mends.</span>`;
       wc.addEventListener('click', () => { if (wc.classList.contains('locked')) return; H.onWall(); UI.closeSheet(); });
       el.appendChild(wc);
+    }
+    /* raise a work right here — this is how a spring gets claimed */
+    if (site.kind !== 'city' && at) {
+      const hdr = document.createElement('div');
+      hdr.className = 'sheet-blurb';
+      hdr.innerHTML = '<b>Raise a work here</b>';
+      el.appendChild(hdr);
+      buildCards(el, at, essence, why);
     }
     addCancel(el);
     el._openedAt = performance.now();

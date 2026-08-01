@@ -41,7 +41,7 @@
       localStorage.setItem('amber_hints', String(seenHints + 1));
       game.hints = [
         [6, '⚑ Arm the gold flag (bottom-left), then tap any site — the army marches there', 'alert'],
-        [24, 'Essence is out on the map: march troops to a spring, then tap the ground there to raise a Gate', 'alert'],
+        [24, 'Essence is out on the map: march troops to a spring, then TAP THE SPRING to raise a Gate', 'alert'],
         [45, '⚔ To win by force, plant the gold flag on the rival city itself', 'alert'],
         [70, '⚐ Every barracks adds a company flag to the tray — arm one to split your forces', 'alert']
       ];
@@ -288,7 +288,7 @@
       const siteId = Render.hitSite(x, y, view, game.viewer, true);   // flags: whole court counts
       if (siteId < 0) UI.banner('The standard needs ground to stand on — tap a site', 'warn');
       else if (id === 'royal') issue({ c: 'banner', site: siteId });
-      else issue({ c: 'rally', slot: id, site: siteId });
+      else issue({ c: 'rally', id, site: siteId });   // works carry ids now, not slots
       return;
     }
     if (game.targeting) {
@@ -311,20 +311,22 @@
       const site = view.map.sites[siteId];
       const foeCity = view.map.cities[1 - game.viewer] === siteId;
       UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
-                   view.players[game.viewer].wallLevel, view.players[game.viewer], view.players[1 - game.viewer]);
+                   view.players[game.viewer].wallLevel, view.players[game.viewer], view.players[1 - game.viewer],
+                   foeCity ? null : { x: site.x, y: site.y }, whyAt(site.x, site.y));
       return;
     }
     /* bare ground: free placement. The sim owns the rules — we just ask it, per card, so
      * the sheet can say WHY a work will not stand here instead of failing silently. */
-    if (game.mode !== 'guest') {
-      const w2 = Render.toWorld(x, y, game.viewer);
-      const me = view.players[game.viewer];
-      Render.selected = -1;
-      UI.buildSheet(w2, me.essence, (bt) => World.placementError(game.world, game.viewer, w2.x, w2.y, bt));
-      return;
-    }
-    if (UI.sheetOpen()) UI.closeSheet();
+    const w2 = Render.toWorld(x, y, game.viewer);
+    Render.selected = -1;
+    UI.buildSheet(w2, view.players[game.viewer].essence, whyAt(w2.x, w2.y));
   }
+
+  /* Why a work will not stand at a point, per type — asked of the sim itself so the sheet
+   * and the rules can never disagree. A guest has no local world: the host validates, and
+   * the cards simply go by price. */
+  const whyAt = (wx, wy) =>
+    game.world ? ((bt) => World.placementError(game.world, game.viewer, wx, wy, bt)) : null;
 
   /* ---------------- LAN pairing (QR flow ported from Perils) ---------------- */
   function setupLan() {
