@@ -17,8 +17,8 @@
   CONST.BUILD = { foot: 34, gap: 10 };   // footprint radius, and clearance between works
   /* a Shadow Gate within this of an essence node draws from it (and claims it) */
   CONST.NODE = { r: 96 };
-  CONST.WALL = { cost: 150, up: [140, 230], hp: [900, 1500, 2200] };   // a wall is a WALL
-  CONST.CASTLE_HP = 1000;
+  CONST.WALL = { cost: 150, up: [140, 230], hp: [1600, 2600, 3800] };   // a wall is a WALL
+  CONST.CASTLE_HP = 2500;         // retune: a Seat must not fall in ninety seconds of contact
   CONST.START_ESSENCE = 180;
   CONST.BASE_INCOME = 2.5;        // essence/sec before any Shadow Gate
   CONST.CASTLE_ZONE = 46;         // units closer than this to a castle attack it
@@ -83,7 +83,7 @@
      * and it trickles. The essence is in the springs, and the springs are out on the map —
      * that is the whole anti-stall model, and it only holds if home gates cannot replace it. */
     gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true,
-                income: [1, 1.5, 2], nodeIncome: [5, 8, 12], hp: 300, vision: 300,
+                income: [1, 1.5, 2], nodeIncome: [4.5, 7, 10.5], hp: 300, vision: 300,
                 blurb: 'On a spring of Shadow it draws deep. Anywhere else it merely trickles — but your writ runs where your Gates stand.' },
     barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
@@ -97,8 +97,8 @@
     rampart:  { name: 'Rampart',       icon: '🛡', cost: 160, up: [140, 240],
                 hp: 700, hpUp: [1050, 1500], vision: 200,
                 blurb: 'Bars the way. Enemies must break it to pass' },
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 340, up: [250, 400], unique: true, hp: 450,
-                drain: [12, 14, 16], rate: [0.28, 0.37, 0.48],  // essence/sec → %/sec (L1 walk ≈ 6 min)
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, up: [250, 400], unique: true, hp: 450,
+                drain: [12, 14, 16], rate: [0.22, 0.29, 0.38],  // essence/sec → %/sec (L1 walk ≈ 7.6 min)
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'rampart', 'spire', 'shrine'];

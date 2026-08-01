@@ -36,11 +36,12 @@
       nodes[bucket].push(s);
     }
     const enemyArmy = visHostiles.filter((u) => u.owner === 1 - me).length;
+    const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
     return {
       t: world.t, me, pl, world, have, free,
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
-      visHostiles, threats, push, enemyArmy,
+      visHostiles, threats, push, enemyArmy, mySprings,
       nodes,
       myPattern: pl.pattern, walking: pl.walking,
       enemyWalking: en.revealed && en.walking, enemyPattern: en.revealed ? en.pattern : 0,
@@ -111,8 +112,10 @@
         if (at) return at;
       }
     }
+    /* Works cluster. The old ring put every plot at r=104 and that tight knot is what made
+     * a defence a defence — spread over 380 of ground, towers are eaten one at a time. */
     const rear = bt === 'gate' || bt === 'shrine' || bt === 'spire';
-    return sweep(v, bt, c.x, c.y, rear ? toFoe + Math.PI : toFoe, 92, 58, 6);
+    return sweep(v, bt, c.x, c.y, rear ? toFoe + Math.PI : toFoe, 86, 30, 5);
   }
   /* a work raised out on the map, at the site the mission marched to */
   function spotAt(v, site, bt) {
@@ -126,24 +129,33 @@
     julian: {
       title: 'Julian, Warden of Arden',
       interval: 2.2, noise: 0.30,
-      plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine'],
+      /* The Warden walks only at the LAST. He was quietly out-walking Brand — a turtle that
+       * reaches for the Pattern early is just a slower greed, and it collapsed the triangle:
+       * every heir was winning the same way. Towers first, patience, the Pattern only after
+       * the grind has failed to finish it. */
+      plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine',
+                   'tower', 'barracks', 'tower', 'gate'],
       upPref: ['tower', 'gate', 'barracks', 'shrine'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2), wantRampart()],
-      banner: (v) => v.enemyWalking && v.army >= 7 ? v.enCity.id : v.myCity.id,
+      /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
+      banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? v.enCity.id : v.myCity.id,
       wall: (v) => v.t > 60,
-      walk: (v) => v.have.shrine && v.threats.length === 0 && v.essence > 220,
-      pauseWalk: (v) => v.threats.length >= 4,
+      /* the LAST resort, and it has to be genuinely last: at eight minutes he was simply
+       * out-walking Brand, which is greed's whole job. Matches run 14-20m now. */
+      walk: (v) => v.have.shrine && v.t > 900 && v.threats.length <= 2 && v.essence > 240,
+      pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 4,
       storm: stormDefend(3),
       trump: (v) => v.threats.length >= 4 || v.myCastle < 500
     },
     bleys: {
       title: 'Bleys of the Flame',
       interval: 1.8, noise: 0.20,
-      plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire'],
+      plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire',
+                   'barracks', 'spire', 'barracks', 'tower'],
       upPref: ['barracks', 'spire', 'gate', 'tower'],
       towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
-      missions: (v) => [wantGates('own', 2), wantGates('mid', 2)],   // he marches past them anyway
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
       banner: (v) => v.army >= 6 ? v.enCity.id : ownChoke(v).id,   // stage, then storm the gates
       wall: (v) => v.myCastle < 800 || v.t > 260,
       walk: () => false, pauseWalk: () => false,
@@ -153,7 +165,11 @@
     brand: {
       title: 'Brand the Unmaker',
       interval: 1.5, noise: 0.12,
-      plan: () => ['gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire', 'gate'],
+      /* GREED, not a shrine rush. Brand used to raise the Shrine fourth and start walking at
+       * three minutes on two springs, drain 17 against income 12 — permanently broke, so his
+       * economy never grew and he lost the race he had started. Mine first, then walk. */
+      plan: () => ['gate', 'gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire',
+                   'tower', 'barracks', 'spire', 'tower'],
       upPref: ['tower', 'gate', 'shrine', 'barracks'],
       towerBranch: () => 'cannon',   // the walk is answered by an army, and an army is a crowd
       /* Greed must still MINE. Keeping Brand's army home to guard the walk was tried and
@@ -162,7 +178,7 @@
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantRampart()],
       banner: (v) => v.myCity.id,   // the army exists to buy him time
       wall: (v) => v.t > 120 || !!v.have.shrine,   // Brand walls early — the walk needs a keep
-      walk: (v) => v.have.shrine && v.essence > 240,
+      walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > 360,
       pauseWalk: () => false,
       storm: stormDefend(2),
       trump: (v) => v.threats.length >= 3
@@ -170,7 +186,8 @@
     corwin: {
       title: 'Corwin of Amber',
       interval: 1.4, noise: 0.10,
-      plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks'],
+      plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks',
+                   'tower', 'barracks', 'spire', 'gate'],
       upPref: ['barracks', 'gate', 'spire', 'tower', 'shrine'],
       towerBranch: () => 'bolt',
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
@@ -179,7 +196,7 @@
         : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id,   // contest the middle, assault from strength
       wall: (v) => v.t > 150,
       walk: (v) => v.have.shrine && v.essence > 260 && (v.enemyCastle < v.myCastle || v.threats.length === 0),
-      pauseWalk: (v) => v.threats.length >= 4,
+      pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 4,
       storm: stormPush(3),
       trump: (v) => v.push >= 2 || v.threats.length >= 4
     },
@@ -209,7 +226,7 @@
       wall: (v) => v.threats.length >= 1 || v.t > 110,
       walk: (v) => v.have.shrine && v.essence > 200 &&
                    (v.threats.length <= 1 || (v.enemyWalking && v.enemyPattern > v.myPattern)),
-      pauseWalk: (v) => v.threats.length >= 3,
+      pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 3,
       storm: stormPush(3),
       trump: (v) => v.threats.length >= 3 || v.enemyWalking || v.push >= 3
     }
@@ -293,7 +310,13 @@
       if (mission) {
         const s = world.map.sites[mission.site];
         const done = !s || (mission.bt === 'gate' ? held(v, s) : worksNear(v, s.x, s.y, mission.bt, 130));
-        if (done || v.t - mission.since > 75) mission = null;   // taken, lost, or stale
+        /* Give the march time to actually GET there. A flat 75s was tuned for the old
+         * site-graph board; on the open map the middle springs are a 90s walk, so every
+         * mission to one expired before the troops arrived and the heir simply never
+         * expanded — measured as Julian sitting on 2 gates at six minutes while Bleys
+         * held four. The window now scales with the distance it is asking for. */
+        const far = Math.sqrt(d2(v.myCity.x, v.myCity.y, s ? s.x : 0, s ? s.y : 0));
+        if (done || v.t - mission.since > 70 + far / 30) mission = null;   // taken, lost, or stale
         else if (v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
           const at = spotAt(v, s, mission.bt);
           if (at) { const r = issue({ c: 'build', x: at.x, y: at.y, bt: mission.bt }); if (r && r.ok) mission = null; }

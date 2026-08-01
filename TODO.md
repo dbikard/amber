@@ -109,13 +109,25 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       **Balance is RED and stage 6 must fix it** — see the note below.
 - [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
       Chaos repurposed as the price of the best ground
-- [ ] **Retune** — match length, Chaos cadence, heir rebalance, ablation runs. Carrying in:
-      - Brand (greed) has no viable line under the new economy: 12 wins, 0% vs Bleys, Corwin
-        and Benedict. Pillar 2 wants greed to beat turtle; it currently beats nobody.
-      - Corwin still has no >60% counter (best is Bleys at 43%) — the oldest open item.
-      - Median match ~8 min against the 15–30 target; node income and build costs are the
-        levers, and MAX_BUILDINGS=14 has never been tuned, only chosen.
-
+- [x] **Retune** (pulled FORWARD, before walls — tuning siege against a broken triangle
+      would have been guesswork). Pacing: Seat 1000→2500 hp, walls 900/1500/2200→1600/2600/3800,
+      the walk 6min→7.6min at L1, spring income 5/8/12→4.5/7/10.5. Heir doctrine rewritten so
+      the strategies stop converging on one win route.
+      Field spread 89 → 45 points; 0% matchups 6 → 1; heir-match medians ~8m → 9–19m.
+      Three real bugs fell out, all of them invisible until the open map made them bite:
+      - Mission staleness was a flat 75s, tuned for the old small board. On the open map a
+        middle spring is a 90s march, so **every** forward mission expired before the troops
+        arrived — Julian sat on 2 springs at six minutes while Bleys held 4. Now scales with
+        distance.
+      - Plans were fixed 8-entry lists against MAX_BUILDINGS=14, so heirs stopped building and
+        **hoarded** (Bleys banked 9k idle essence — the exact anti-pattern this project fixed
+        once before). Plans extended with each personality's staple.
+      - A turtle with a Shrine is just a slower greed: Julian was out-walking Brand and every
+        heir was winning the same way. His walk is now a genuine last resort (t>900).
+      **Still red, carried to the next pass:** Bleys tops the field at 76 with no >60% counter
+      (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
+      draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
+      15–30 target rather than inside it.
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

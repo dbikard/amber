@@ -10,7 +10,7 @@ require('./js/world.js');
 require('./js/ai.js');
 
 const { CONST: C, World, AI } = globalThis;
-const DT = C.SIM_DT, MAX_T = 1500;   // 25 min hard cap (convergence target is well under)
+const DT = C.SIM_DT, MAX_T = 2700;   // 45 min hard cap — the target band is 15-30 min
 
 function playMatch(aKind, bKind, seed, opts) {
   opts = opts || {};
