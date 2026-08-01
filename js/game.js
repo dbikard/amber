@@ -261,23 +261,25 @@
     if (!game.mode) return;
     pDown = { x: e.clientX, y: e.clientY };
     dragging = false;
-    miniScrub = Render.hitMinimap(e.clientX);
-    if (miniScrub) Render.minimapJump(e.clientY);
+    miniScrub = Render.hitMinimap(e.clientX, e.clientY);
+    if (miniScrub) Render.minimapJump(e.clientX, e.clientY);
   }
   function onMove(e) {
     Render.pointer = { x: e.clientX, y: e.clientY };
     if (!pDown) return;
-    if (miniScrub) { Render.minimapJump(e.clientY); return; }
-    const dy2 = e.clientY - pDown.y;
-    if (dragging || Math.abs(dy2) > 12) {
+    if (miniScrub) { Render.minimapJump(e.clientX, e.clientY); return; }
+    /* the map is wider than the screen now — drag pans on BOTH axes */
+    const dx2 = e.clientX - pDown.x, dy2 = e.clientY - pDown.y;
+    if (dragging || Math.abs(dy2) > 12 || Math.abs(dx2) > 12) {
       dragging = true;
-      Render.pan(e.clientY - (onMove._ly != null ? onMove._ly : pDown.y));
+      Render.pan(e.clientX - (onMove._lx != null ? onMove._lx : pDown.x),
+                 e.clientY - (onMove._ly != null ? onMove._ly : pDown.y));
     }
-    onMove._ly = e.clientY;
+    onMove._lx = e.clientX; onMove._ly = e.clientY;
   }
   function onUp(e) {
     const wasTap = pDown && !dragging && !miniScrub;
-    pDown = null; dragging = false; miniScrub = false; onMove._ly = null;
+    pDown = null; dragging = false; miniScrub = false; onMove._lx = onMove._ly = null;
     if (!wasTap || !game.mode || game.over) return;
     const x = e.clientX, y = e.clientY;
     const view = game.mode === 'guest' ? (snapCur ? guestView() : null) : hostView();

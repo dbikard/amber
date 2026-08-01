@@ -7,8 +7,8 @@
   'use strict';
 
   const C = global.CONST, S = global.SPRITES;
-  const R = { targeting: false, selected: -1, pointer: null, camY: 0, ready: false };
-  let app = null, W = 0, H = 0, scale = 1, viewH = 0;
+  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, ready: false };
+  let app = null, W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
   let stage = {};            // named layers
   let texCache = new Map();  // canvas -> PIXI.Texture
   let fx = [];               // transient effects (own display objects)
@@ -52,22 +52,28 @@
     if (!app) return;
     W = window.innerWidth; H = window.innerHeight;
     app.renderer.resize(W, H);
-    scale = W / C.MAP.W;
-    viewH = H / scale;
-    R.camY = C.MAP.H - viewH;
+    /* the map is wider than one screenful now: this is a zoom, not a fit-to-width */
+    scale = W / C.VIEW_W;
+    viewW = W / scale; viewH = H / scale;
+    R.camX = R.maxCamX() / 2;              // start centred on the road
+    R.camY = R.maxCamY();                  // …and at your own gates
     if (fogRT) { fogRT.destroy(true); fogRT = null; }
     makeVignette();
   };
+  R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
 
   /* display space = world rotated 180° for viewer 1 */
   const dx = (x, viewer) => (viewer === 0 ? x : C.MAP.W - x);
   const dy = (y, viewer) => (viewer === 0 ? y : C.MAP.H - y);
   R.toWorld = function (px, py, viewer) {
-    const wx = px / scale, wy = py / scale + R.camY;
+    const wx = px / scale + R.camX, wy = py / scale + R.camY;
     return { x: dx(wx, viewer), y: dy(wy, viewer) };
   };
-  R.pan = function (dpx) { R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - dpx / scale)); };
+  R.pan = function (dpx, dpy) {
+    R.camX = Math.max(0, Math.min(R.maxCamX(), R.camX - (dpx || 0) / scale));
+    R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - (dpy || 0) / scale));
+  };
 
   /* ---------------- hit-testing (ring city) ---------------- */
   R.bldRect = function (b) {   // display-space box of a placed work
@@ -77,7 +83,7 @@
   /* the id of the viewer's own work under the finger, or -1 */
   R.hitBuilding = function (px, py) {
     if (!curView) return -1;
-    const wx = px / scale, wy = py / scale + R.camY;
+    const wx = px / scale + R.camX, wy = py / scale + R.camY;
     let best = -1, bd = 34 * 34;
     for (const b of curView.players[curViewer].buildings) {
       const dd = (wx - dx(b.x, curViewer)) ** 2 + (wy - dy(b.y, curViewer)) ** 2;
@@ -89,14 +95,27 @@
     let best = -1, bd = Infinity;
     for (const s of view.map.sites) {
       const r2 = (s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : 122) : 62) * scale;   // sheets stop at the wall; flags take the whole court
-      const X = dx(s.x, viewer) * scale, Y = (dy(s.y, viewer) - R.camY) * scale;
+      const X = (dx(s.x, viewer) - R.camX) * scale, Y = (dy(s.y, viewer) - R.camY) * scale;
       const dd = (px - X) * (px - X) + (py - Y) * (py - Y);
       if (dd < r2 * r2 && dd < bd) { bd = dd; best = s.id; }
     }
     return best;
   };
-  R.hitMinimap = (px) => px > W - 34;
-  R.minimapJump = function (py) { R.camY = Math.max(0, Math.min(R.maxCamY(), (py / H) * C.MAP.H - viewH / 2)); };
+  /* the minimap is a true rectangle of the world, and scrubbing it moves both axes */
+  const MINI = () => {
+    const mh = Math.min(H * 0.30, 240), mw = mh * (C.MAP.W / C.MAP.H);
+    return { mw, mh, mx: W - mw - 6, my: (H - mh) / 2 };
+  };
+  R.miniBox = MINI;
+  R.hitMinimap = (px, py) => {
+    const m = MINI();
+    return px >= m.mx - 4 && px <= m.mx + m.mw + 4 && py >= m.my - 4 && py <= m.my + m.mh + 4;
+  };
+  R.minimapJump = function (px, py) {
+    const m = MINI();
+    R.camX = Math.max(0, Math.min(R.maxCamX(), ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2));
+    R.camY = Math.max(0, Math.min(R.maxCamY(), ((py - m.my) / m.mh) * C.MAP.H - viewH / 2));
+  };
 
   /* ---------------- small texture helpers ---------------- */
   function makeRadialTex(size, stops) {
@@ -270,7 +289,7 @@
     if (mapKey(view, viewer) !== lastMapKey) rebuildScene(view, viewer);
 
     stage.world.scale.set(scale);
-    stage.world.position.set(0, -R.camY * scale);
+    stage.world.position.set(-R.camX * scale, -R.camY * scale);
 
     updateSites(view, viewer);
     updateBanner(view, viewer);
@@ -500,7 +519,7 @@
       const hs = fogScene._holes[i];
       if (i >= need) { hs.visible = false; continue; }
       const [x, y, r] = view.visSources[i];
-      const X = dx(x, viewer) * scale, Y = (dy(y, viewer) - R.camY) * scale, rr = r * scale;
+      const X = (dx(x, viewer) - R.camX) * scale, Y = (dy(y, viewer) - R.camY) * scale, rr = r * scale;
       hs.visible = !(Y < -rr || Y > H + rr);
       hs.position.set(X, Y);
       hs.width = hs.height = rr * 2;
@@ -512,7 +531,7 @@
   function updateMinimap(view, viewer) {
     const g = stage.mini;
     g.clear();
-    const mw = 26, mx = W - mw - 4, mh = Math.min(H * 0.6, 380), my = (H - mh) / 2;
+    const m = R.miniBox(), mw = m.mw, mh = m.mh, mx = m.mx, my = m.my;
     g.roundRect(mx, my, mw, mh, 6).fill({ color: 0x0a0812, alpha: 0.72 }).stroke({ width: 1, color: 0xc8a44f, alpha: 0.4 });
     const px = (x) => mx + (x / C.MAP.W) * mw, py = (y) => my + (y / C.MAP.H) * mh;
     for (const s of view.map.sites) {
@@ -522,16 +541,17 @@
         const pi2 = view.map.cities.indexOf(s.id);
         g.rect(X - 3, Y - 3, 6, 6).fill(pi2 === viewer ? 0xffd98a : 0xff8a96);
       } else {
-        const col = !st ? 0x3a3444 : (st.owner === -1 || st.owner == null ? 0x8a8098 : (st.owner === viewer ? 0xffd98a : 0xff8a96));
-        g.circle(X, Y, st && st.post ? 2.6 : 1.6).fill(col);
+        const col = !st ? 0x3a3444 : (st.holder == null || st.holder === -1 ? 0x8a8098 : (st.holder === viewer ? 0xffd98a : 0xff8a96));
+        g.circle(X, Y, st && st.holder >= 0 ? 2.6 : 1.6).fill(col);
       }
     }
     for (const f of fx) if (f.ping) {
       g.circle(px(f.x), py(f.y), 5 + (1 - f.ttl / f.max) * 5)
         .stroke({ width: 1.5, color: f.ping, alpha: f.ttl / f.max });
     }
+    const vx = mx + (R.camX / C.MAP.W) * mw, vw2 = (viewW / C.MAP.W) * mw;
     const vy = my + (R.camY / C.MAP.H) * mh, vh = (viewH / C.MAP.H) * mh;
-    g.rect(mx + 1.5, vy, mw - 3, vh).stroke({ width: 1.5, color: 0xffe9a8 });
+    g.rect(vx, vy, vw2, vh).stroke({ width: 1.5, color: 0xffe9a8 });
   }
   function updateTargeting() {
     const g = stage.target;

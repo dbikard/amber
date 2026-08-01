@@ -26,25 +26,32 @@
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle
    * and is mirrored through (350,1200) for fairness. jitter is applied per-seed. */
-  CONST.MAP = { W: 700, H: 2400 };
+  CONST.MAP = { W: 1400, H: 3000 };
+  /* How much world fits across the screen. The map is now WIDER than one screenful, so the
+   * camera pans on both axes and this is the zoom, not a fit-to-width. */
+  CONST.VIEW_W = 780;
   CONST.SITE_TEMPLATE = [
-    /* [key, x, y, kind] — mirrored keys get '™' → their mirror twin '_m' */
-    ['city0', 350, 2110, 'city'],
-    ['r0', 350, 1780, 'road'], ['mid', 350, 1200, 'road'],
-    ['s0a', 110, 1850, 'node'], ['s0b', 590, 1850, 'node'],
-    ['sm0', 90, 1200, 'node'],
-    ['v0', 170, 1520, 'vantage'], ['v1', 530, 1520, 'vantage']
+    /* [key, x, y, kind] — player 0's half plus the middle; everything is point-mirrored
+     * through the centre. 'mid' sits exactly at the centre and is never jittered. */
+    ['city0', 700, 2640, 'city'],
+    ['r0', 700, 2240, 'road'], ['mid', 700, 1500, 'road'],
+    ['s0a', 260, 2380, 'node'], ['s0b', 1140, 2380, 'node'],
+    ['sm0', 160, 1500, 'node'],
+    ['v0', 330, 1880, 'vantage'], ['v1', 1070, 1880, 'vantage'],
+    ['v2', 110, 2620, 'vantage']
   ];
   CONST.EDGE_TEMPLATE = [
     ['city0', 'r0'], ['r0', 'mid'],
     ['city0', 's0a'], ['city0', 's0b'],
     ['s0a', 'v0'], ['s0b', 'v1'],
     ['v0', 'sm0'], ['r0', 'v0'], ['r0', 'v1'],
-    ['mid', 'sm0']
+    ['mid', 'sm0'],
+    ['city0', 'v2'], ['v2', 's0a']    // the outer western shoulder
   ];
   CONST.SITE_NAMES = {
     node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn', 'the Deep Font', 'the Still Water'],
-    vantage: ['the Grey Crag', 'the Watcher’s Tor', 'the Broken Stair', 'the High Shoulder'],
+    vantage: ['the Grey Crag', 'the Watcher’s Tor', 'the Broken Stair', 'the High Shoulder',
+              'the Wind Scarp', 'the Old Barrow'],
     road: ['the First Milestone', 'the Mid-Reach', 'the Last Milestone']
   };
 
@@ -63,8 +70,10 @@
     cell: 20,          // world units per grid cell (700×2400 → 35×120 cells)
     /* terrain: ROAD costs 1, OPEN 2, FOREST 4, ROCK/WATER are impassable. You may always
      * leave the road — it is simply slower and more exposed out there. */
-    roadR: 20,         // within this of a path curve or site the ground is road/court
-    wildR: 100,        // by this far from any way through, the country has closed entirely
+    roadR: 24,         // within this of a path curve or site the ground is road/court
+    wildR: 170,        // by this far from any way through, the country has closed entirely
+                       // (scales with the map: a wider board needs wider corridors, or it
+                       //  is mostly rock — measured at 64% blocked before this moved)
     rockAt: 0.76,      // solidity above which the ground is rock or water
     forestAt: 0.46,    // …and above which it is wood
     noiseF: 0.15,      // noise frequency in cells (lower = broader masses)
@@ -126,10 +135,13 @@
   /* Units. Every mustered soldier is PAID FOR — essence is a war chest, never a high score.
    * speed in world-units/sec; aggro = acquire radius; bounty paid to the killer's player. */
   CONST.UNITS = {
-    soldier:  { hp: 70,  dmg: 9,  atk: 0.9, range: 18,  speed: 39, aggro: 140, bounty: 6,  size: 10, cost: 16 },
-    sorcerer: { hp: 40,  dmg: 15, atk: 1.4, range: 130, speed: 35, aggro: 170, bounty: 10, size: 9,  cost: 28 },
-    champion: { hp: 420, dmg: 34, atk: 0.8, range: 22,  speed: 44, aggro: 160, bounty: 40, size: 14, cost: 0 },
-    fiend:    { hp: 55,  dmg: 11, atk: 1.0, range: 16,  speed: 46, aggro: 260, bounty: 12, size: 10, cost: 0 }
+    /* speeds scale with the board. On the 1400x3000 map a soldier at the old 39 took 58s to
+     * cross, and armies died of old age before arriving — bleys/corwin drew 15 of 30 at the
+     * cap. These are the old speeds x1.35, which puts a crossing back near the old 45s. */
+    soldier:  { hp: 70,  dmg: 9,  atk: 0.9, range: 18,  speed: 53, aggro: 140, bounty: 6,  size: 10, cost: 16 },
+    sorcerer: { hp: 40,  dmg: 15, atk: 1.4, range: 130, speed: 47, aggro: 170, bounty: 10, size: 9,  cost: 28 },
+    champion: { hp: 420, dmg: 34, atk: 0.8, range: 22,  speed: 59, aggro: 160, bounty: 40, size: 14, cost: 0 },
+    fiend:    { hp: 55,  dmg: 11, atk: 1.0, range: 16,  speed: 62, aggro: 260, bounty: 12, size: 10, cost: 0 }
   };
 
   CONST.POWERS = {
@@ -154,6 +166,12 @@
     { at: 50,    msg: ' walks the Pattern — halfway to the throne' },
     { at: 90,    msg: ' nears the final veil of the Pattern!' }
   ];
+
+  /* Unit caps are PER OWNER. A single global cap of 240 deadlocked the game: one player's
+   * army filled it and then nobody could muster — including Chaos, which had 55,694 rift
+   * spawns silently refused in a measured 45-minute stall. A cap that can starve the third
+   * army is a cap that can freeze the board. */
+  CONST.CAP = { player: 110, chaos: 70 };
 
   CONST.MAX_LEVEL = 3;
   CONST.EVENT_CAP = 160;   // renderer-queue safety cap

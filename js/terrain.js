@@ -36,7 +36,9 @@
     opts = opts || {};
     const S = global.SPRITES;
     const map = view.map;
-    const px = Math.min(1.6, 4090 / C.MAP.H);
+    /* cap BOTH the longest edge (WebGL texture limits) and the total pixels, so a bigger
+     * board does not quietly ask a phone for a 30-megapixel canvas */
+    const px = Math.min(1.6, 4000 / Math.max(C.MAP.W, C.MAP.H), Math.sqrt(6.0e6 / (C.MAP.W * C.MAP.H)));
     const cv2 = document.createElement('canvas');
     cv2.width = Math.ceil(C.MAP.W * px); cv2.height = Math.ceil(C.MAP.H * px);
     const g = cv2.getContext('2d');

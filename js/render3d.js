@@ -9,10 +9,10 @@
   'use strict';
 
   const C = global.CONST;
-  const R = { targeting: false, selected: -1, pointer: null, camY: 0, ready: false };
+  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, ready: false };
   let renderer = null, scene, cam, rig, worldG;
   let overlay = null, octx = null;
-  let W = 0, H = 0, scale = 1, viewH = 0;
+  let W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
   let curViewer = 0, curView = null, lastKey = '', T = 0;
   let ground = null;
   let groundGrid = null, gridW = 0, gridH = 0;
@@ -261,14 +261,33 @@
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cam.aspect = W / H;
     cam.updateProjectionMatrix();
-    scale = W / C.MAP.W;
-    viewH = H / scale;
+    /* the map is wider than one screenful now: this is a zoom, not a fit-to-width */
+    scale = W / C.VIEW_W;
+    viewW = W / scale; viewH = H / scale;
+    R.camX = R.maxCamX() / 2;
     R.camY = R.maxCamY();
   };
+  R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
-  R.pan = function (dpx) { R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - dpx / scale)); };
-  R.hitMinimap = (px) => px > W - 34;
-  R.minimapJump = function (py) { R.camY = Math.max(0, Math.min(R.maxCamY(), (py / H) * C.MAP.H - viewH / 2)); };
+  R.pan = function (dpx, dpy) {
+    R.camX = Math.max(0, Math.min(R.maxCamX(), R.camX - (dpx || 0) / scale));
+    R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - (dpy || 0) / scale));
+  };
+  /* the minimap is a true rectangle of the world, and scrubbing it moves both axes */
+  const MINI = () => {
+    const mh = Math.min(H * 0.30, 240), mw = mh * (C.MAP.W / C.MAP.H);
+    return { mw, mh, mx: W - mw - 6, my: (H - mh) / 2 };
+  };
+  R.miniBox = MINI;
+  R.hitMinimap = (px, py) => {
+    const m = MINI();
+    return px >= m.mx - 4 && px <= m.mx + m.mw + 4 && py >= m.my - 4 && py <= m.my + m.mh + 4;
+  };
+  R.minimapJump = function (px, py) {
+    const m = MINI();
+    R.camX = Math.max(0, Math.min(R.maxCamX(), ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2));
+    R.camY = Math.max(0, Math.min(R.maxCamY(), ((py - m.my) / m.mh) * C.MAP.H - viewH / 2));
+  };
 
   /* screen ↔ world via raycast to the ground plane */
   const rc = typeof THREE !== 'undefined' ? new THREE.Raycaster() : null;
@@ -279,7 +298,7 @@
     ndc.set((px / W) * 2 - 1, -(py / H) * 2 + 1);
     rc.setFromCamera(ndc, cam);
     if (rc.ray.intersectPlane(groundPlane, hitV)) return { x: hitV.x, y: hitV.z };
-    return { x: 350, y: 1200 };
+    return { x: C.MAP.W / 2, y: C.MAP.H / 2 };
   };
   /* the id of the viewer's own work under the finger, or -1 */
   R.hitBuilding = function (px, py) {
@@ -568,9 +587,10 @@
     /* camera: stand on your side of the table, look down the road.
      * camY ∈ [0, maxCamY] remaps to a focus track anchored so both ends frame a city:
      * camY = max → own city + build grid at the bottom; camY = 0 → the rival's gates. */
-    const f0 = 480, f1 = 1780;
+    const f0 = C.MAP.H * 0.20, f1 = C.MAP.H * 0.74;
     const focus = f0 + (R.camY / Math.max(1, R.maxCamY())) * (f1 - f0);
-    rig.position.set(C.MAP.W / 2, 0, viewer === 0 ? focus : C.MAP.H - focus);
+    const cx = R.camX + viewW / 2;   // display-space centre of the view
+    rig.position.set(viewer === 0 ? cx : C.MAP.W - cx, 0, viewer === 0 ? focus : C.MAP.H - focus);
     rig.rotation.y = viewer === 0 ? 0 : Math.PI;
 
     updateUnits(view, viewer, dt);
@@ -885,7 +905,7 @@
       }
     }
     /* minimap (same math as 2D, display space) */
-    const mw = 26, mx = W - mw - 4, mh = Math.min(H * 0.6, 380), my = (H - mh) / 2;
+    const mb = R.miniBox(), mw = mb.mw, mx = mb.mx, mh = mb.mh, my = mb.my;
     g.fillStyle = 'rgba(10,8,18,0.72)'; g.strokeStyle = 'rgba(200,164,79,0.4)'; g.lineWidth = 1;
     g.beginPath();
     g.roundRect ? g.roundRect(mx, my, mw, mh, 6) : g.rect(mx, my, mw, mh);
@@ -899,8 +919,8 @@
         g.fillStyle = pi2 === viewer ? '#ffd98a' : '#ff8a96';
         g.fillRect(X - 3, Y - 3, 6, 6);
       } else {
-        g.fillStyle = !st ? '#3a3444' : (st.owner === -1 || st.owner == null ? '#8a8098' : (st.owner === viewer ? '#ffd98a' : '#ff8a96'));
-        g.beginPath(); g.arc(X, Y, st && st.post ? 2.6 : 1.6, 0, 7); g.fill();
+        g.fillStyle = !st ? '#3a3444' : (st.holder == null || st.holder === -1 ? '#8a8098' : (st.holder === viewer ? '#ffd98a' : '#ff8a96'));
+        g.beginPath(); g.arc(X, Y, st && st.holder >= 0 ? 2.6 : 1.6, 0, 7); g.fill();
       }
     }
     for (const f of fx) if (f.ping) {
@@ -910,8 +930,9 @@
       g.globalAlpha = 1;
     }
     g.strokeStyle = '#ffe9a8'; g.lineWidth = 1.5;
+    const vx = mx + (R.camX / C.MAP.W) * mw, vw2 = (viewW / C.MAP.W) * mw;
     const vy = my + (R.camY / C.MAP.H) * mh, vh2 = (viewH / C.MAP.H) * mh;
-    g.strokeRect(mx + 1.5, vy, mw - 3, vh2);
+    g.strokeRect(vx, vy, vw2, vh2);
     /* storm targeting */
     if (R.targeting) {
       g.fillStyle = 'rgba(255,90,74,0.06)'; g.fillRect(0, 0, W, H);

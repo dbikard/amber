@@ -367,7 +367,10 @@
 
   /* ---------------- units ---------------- */
   function spawnUnit(world, owner, kind, atX, atY, goal, co) {
-    if (world.units.length > 240) return 0;
+    /* per-owner, so a full army can never starve the muster of Chaos or of the other side */
+    let mine = 0;
+    for (const u of world.units) if (u.owner === owner) mine++;
+    if (mine >= (owner === 2 ? C.CAP.chaos : C.CAP.player)) return 0;
     const def = C.UNITS[kind];
     const scale = owner === 2 ? C.CHAOS.hpScale(world.t) : 1;
     const home = owner === 2 ? null : cityOf(world, owner);
@@ -546,11 +549,15 @@
         if (!shrine) pl.walking = false;
         else {
           const def = C.BUILDINGS.shrine;
-          const drain = def.drain[shrine.level - 1] * dt;
-          if (pl.essence >= drain) {
-            pl.essence -= drain;
-            pl.drainRate += def.drain[shrine.level - 1];   // actual, not theoretical
-            pl.pattern += def.rate[shrine.level - 1] * dt;
+          const want = def.drain[shrine.level - 1] * dt;
+          /* pay what you can and walk that far. All-or-nothing froze a poor walker at 1%
+           * forever — income 4/s against a drain of 12/s meant the Pattern, the game's
+           * absolute clock, simply stopped ticking. */
+          const pay = Math.min(want, pl.essence);
+          if (pay > 0) {
+            pl.essence -= pay;
+            pl.drainRate += pay / dt;   // actual, not theoretical
+            pl.pattern += def.rate[shrine.level - 1] * dt * (pay / want);
             while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
               emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
             }

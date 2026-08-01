@@ -23,14 +23,14 @@ body {
 #timer { color: #b8a878; font-variant-numeric: tabular-nums; }
 #hud-bottom {
   position: absolute; bottom: calc(env(safe-area-inset-bottom, 0) + 2px); left: 0; right: 0;
-  display: flex; justify-content: space-between; align-items: flex-end;
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;
   padding: 6px 10px; pointer-events: none;
 }
 #essence { font-size: 17px; text-shadow: 0 1px 3px #000; }
 .ess-ico { color: #ffe9a8; }
 #ess-rate { font-size: 12px; color: #b8a878; }
 #my-pattern { font-size: 12px; color: #9cc8ff; text-shadow: 0 1px 3px #000; }
-#powers { display: flex; gap: 10px; pointer-events: auto; }
+#powers { display: flex; gap: 10px; pointer-events: auto; flex: 0 0 auto; }
 .pw {
   width: 54px; height: 54px; border-radius: 50%;
   border: 2px solid #c9a44f; background: radial-gradient(circle at 35% 30%, #3a2f1a, #1a1408);
@@ -147,10 +147,18 @@ body {
 #overlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
 
 /* ---------------- flag tray (army orders, bottom-left) ---------------- */
-#hud-left { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-#flag-tray { display: flex; gap: 8px; align-items: flex-end; pointer-events: auto; }
+/* the tray must never push the royal powers off the screen: it wraps and scrolls
+ * inside whatever width is left, and the powers keep their own space */
+#hud-left { display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+            flex: 1 1 auto; min-width: 0; max-width: calc(100% - 138px); }
+#flag-tray {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; pointer-events: auto;
+  max-width: 100%; max-height: 100px; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+#flag-tray::-webkit-scrollbar { display: none; }
 .fbtn {
-  width: 46px; height: 46px; border-radius: 50%;
+  width: 42px; height: 42px; border-radius: 50%; flex: 0 0 auto;
   border: 2px solid #c9a44f; background: radial-gradient(circle at 35% 30%, #3a2f1a, #14100a);
   font-size: 20px; position: relative; color: #ffe9a8;
   box-shadow: 0 0 10px rgba(255, 220, 150, 0.2), inset 0 0 8px #000;

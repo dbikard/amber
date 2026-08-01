@@ -279,8 +279,12 @@
       if (v.powers.trump <= 0 && P.trump(v)) issue({ c: 'power', k: 'trump' });
 
       /* the walk */
-      if (!v.walking && P.walk(v)) issue({ c: 'walk', on: true });
-      else if (v.walking && P.pauseWalk(v)) issue({ c: 'walk', on: false });
+      /* The hour grows late. The Pattern is the game's absolute clock, and it only ticks if
+       * someone actually sets foot on it — two defensive lines with no shrine-walker between
+       * them drew 15 of 30 at the cap. Past this hour, any heir holding a Shrine commits. */
+      const late = v.t > 1500;
+      if (!v.walking && (P.walk(v) || (late && v.have.shrine))) issue({ c: 'walk', on: true });
+      else if (v.walking && !late && P.pauseWalk(v)) issue({ c: 'walk', on: false });
 
       /* raiders at the gates: walls before anything else */
       if (v.pl.wallLevel === 0 && v.threats.length >= 2 && v.essence >= C.WALL.cost) issue({ c: 'wall' });

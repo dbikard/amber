@@ -107,6 +107,16 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       elsewhere merely trickles. Fog rule swapped: a rival's work is visible only while seen,
       and remembered as a ghost otherwise.
       **Balance is RED and stage 6 must fix it** — see the note below.
+- [x] **A wider world + two-axis panning** (v0.7.6) — map 700x2400 -> 1400x3000 (2.5x area),
+      sites spread into the new width plus an outer western shoulder. Both renderers pan on
+      BOTH axes with a fixed visible width (`CONST.VIEW_W`) instead of fit-to-width, and the
+      minimap is a true rectangle of the world with a viewport box. Corridor width scales with
+      the board (`NAV.wildR`), unit speeds x1.35 so a crossing still takes ~45s.
+      Two deadlocks fell out, both real: the 240-unit cap was GLOBAL, so one full army starved
+      everyone's muster including Chaos (55,694 rift spawns refused in one measured stall);
+      and the Pattern walk was all-or-nothing, freezing a poor walker at 1% forever. Caps are
+      per-owner now and the walk pays what it can. Draws went from 15-of-30 in the worst
+      matchup to ZERO across the whole suite.
 - [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
       Chaos repurposed as the price of the best ground
 - [x] **Retune** (pulled FORWARD, before walls — tuning siege against a broken triangle
