@@ -87,8 +87,14 @@
 ## Phase 0.13+ — The Open World  ← see `OPEN_WORLD_PLAN.md`
 The site graph gives way to a continuous map. Anti-stall moves from Chaos escalation to the
 essence race; match length moves to 15–30 min. Staged, sim-green at every step:
-- [ ] **Continuous movement** under the existing graph — nav grid + flow fields, sites become
-      waypoints. Mirror symmetry must stay ≈50/50.
+- [x] **Continuous movement** (`js/nav.js`) — a cost grid over the world with the site web
+      baked in as corridors; per-(goal, owner) Dijkstra flow fields steer units cell to cell.
+      Enemy ramparts seal their site in the grid, so they must still be broken, not walked
+      around. Suite held to within noise; mirror symmetry improved (bleys 57% → 53%).
+      Fixed on the way: `mid` is the only self-mirroring site and was being jittered — an
+      off-centre centre gave one player a shorter road (a real, pre-existing seat bias); and
+      the grid cell size must divide MAP.W/MAP.H or the grid is half a cell out of step with
+      the board's mirror.
 - [ ] **Terrain** — obstacle grid, corridor-driven generation (~3 routes), sites → anchors
 - [ ] **Free placement** in claim areas; essence nodes replace springs; building ids replace
       slots; fog rule → "visible in vision, remembered as ghosts"

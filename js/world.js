@@ -7,6 +7,7 @@
 
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
   const RNG = global.RNG || (typeof require !== 'undefined' ? require('./rng.js') : null);
+  const NAV = global.NAV || (typeof require !== 'undefined' ? require('./nav.js') : null);
 
   function emit(world, ev) {
     world.events.push(ev);
@@ -30,7 +31,11 @@
       return s;
     };
     for (const [key, x, y, kind] of C.SITE_TEMPLATE) {
-      const jx = kind === 'city' ? 0 : rng.range(-22, 22), jy = kind === 'city' ? 0 : rng.range(-22, 22);
+      /* 'mid' is the one site that mirrors onto ITSELF, so it may not be jittered: an
+       * off-centre centre makes one player's road to the middle shorter than the other's.
+       * Every other site is jittered and then point-mirrored, which stays fair. */
+      const fixed = kind === 'city' || key === 'mid';
+      const jx = fixed ? 0 : rng.range(-22, 22), jy = fixed ? 0 : rng.range(-22, 22);
       add(key, x + jx, y + jy, kind);
       if (key !== 'mid' && key !== 'sm0') {   // mirror everything except the true middles
         const src = byKey[key];
@@ -83,10 +88,12 @@
         explored: {}            // siteId -> last-known {kind, owner, post:{bt,level}|null}
       })),
       units: [], storms: [], events: [],
+      nav: null, navVersion: 0,   // movement grid; the version counts changes to what blocks
       nextId: 1,
       chaosNext: C.CHAOS.firstAt, chaosParity: 0, surged: false,
       vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
     };
+    world.nav = NAV.build(world.map);
     for (let pi = 0; pi < 2; pi++) {
       world.players[pi].banner = world.map.cities[pi];
       exploreAround(world, pi);   // you know your own surroundings from the start
@@ -143,36 +150,20 @@
     return seen(world.vis[pi], x, y);
   }
 
-  /* ---------------- pathfinding (BFS; enemy ramparts block) ---------------- */
+  /* ---------------- pathfinding: the nav grid does the walking ---------------- */
   function blockedFor(world, u, siteId) {
     const s = world.map.sites[siteId];
     return !!(s.post && s.post.bt === 'rampart' && s.owner !== u.owner && s.owner !== -1);
   }
-  function nextStep(world, u, goalId) {
-    /* BFS from goal back to the unit's nearest site; returns the next site to walk to */
-    const map = world.map;
-    let start = 0, best = Infinity;
-    for (const s of map.sites) { const dd = d2(u.x, u.y, s.x, s.y); if (dd < best) { best = dd; start = s.id; } }
-    if (start === goalId) return goalId;
-    const prev = new Array(map.sites.length).fill(-1);
-    const q = [goalId]; prev[goalId] = goalId;
-    while (q.length) {
-      const cur = q.shift();
-      for (const nb of map.adj[cur]) {
-        if (prev[nb] !== -1) continue;
-        if (nb !== start && blockedFor(world, u, nb)) continue;   // walls bar the way
-        prev[nb] = cur; q.push(nb);
-      }
+  /* the flow field said "no way through": find the wall that is in the way */
+  function nearestBlocker(world, u) {
+    let target = null, bd = Infinity;
+    for (const s of world.map.sites) {
+      if (!blockedFor(world, u, s.id)) continue;
+      const dd = d2(u.x, u.y, s.x, s.y);
+      if (dd < bd) { bd = dd; target = s; }
     }
-    if (prev[start] === -1) {
-      /* walled off — besiege the nearest hostile rampart instead */
-      let target = -1, bd = Infinity;
-      for (const s of map.sites) {
-        if (blockedFor(world, u, s.id)) { const dd = d2(u.x, u.y, s.x, s.y); if (dd < bd) { bd = dd; target = s.id; } }
-      }
-      return target === -1 ? start : (u.goal = target, nextStep(world, u, target));
-    }
-    return prev[start];
+    return target;
   }
 
   /* ---------------- commands ---------------- */
@@ -283,6 +274,7 @@
       pl.essence -= def.cost;
       site.owner = pi;
       site.post = { bt: cmd.bt, level: 1, hp: def.hp, maxHp: def.hp, cd: 0 };
+      if (cmd.bt === 'rampart') world.navVersion++;   // the ways through Shadow have changed
       emit(world, { e: 'post', pi, site: site.id, bt: cmd.bt, x: site.x, y: site.y });
       return { ok: true };
     }
@@ -341,7 +333,7 @@
       ox: world.rng.range(-24, 24), oy: world.rng.range(-24, 24),   // personal formation offset
       hp: def.hp * scale, maxHp: def.hp * scale,
       dmg: def.dmg * (owner === 2 ? C.CHAOS.dmgScale(world.t) : 1),
-      cd: 0, step: -1,
+      cd: 0,
       goal: goal != null ? goal : (owner === 2 ? world.map.cities[world.chaosParity++ % 2] : world.players[owner].banner),
       co: co != null ? co : -1   // company = mustering slot; -1 marches with the royal banner
     };
@@ -362,6 +354,7 @@
     site.lastHurt = world.t;
     if (site.post.hp <= 0) {
       emit(world, { e: 'postdie', pi: site.owner, site: site.id, x: site.x, y: site.y, bt: site.post.bt });
+      if (site.post.bt === 'rampart') world.navVersion++;   // the road is open again
       site.post = null; site.owner = -1;
     } else if (world.t - (site.alerted || -99) > 12) {
       site.alerted = world.t;
@@ -591,7 +584,7 @@
         const pl2 = world.players[u.owner];
         const cb = u.co >= 0 ? pl2.slots[u.co] : null;
         const want = cb && cb.rally != null && cb.rally >= 0 ? cb.rally : pl2.banner;
-        if (u.goal !== want) { u.goal = want; u.step = -1; }
+        if (u.goal !== want) u.goal = want;
       }
       /* garrison duty: flag home + walls standing → man the ramparts. Take a post on the
        * ring, mass toward the threatened arc, hurl from the parapet — and NEVER step
@@ -648,15 +641,27 @@
         }
         continue;
       }
-      /* march */
-      if (u.step === -1 || d2(u.x, u.y, world.map.sites[u.step].x + u.ox, world.map.sites[u.step].y + u.oy) < 34 * 34)
-        u.step = nextStep(world, u, u.goal);
-      const wp = world.map.sites[u.step];
-      const tx = wp.x + u.ox, ty = wp.y + u.oy;
-      const dd = Math.sqrt(d2(u.x, u.y, tx, ty));
-      if (dd > 4) {
-        const mv = def.speed * dt / dd;
-        u.x += (tx - u.x) * mv; u.y += (ty - u.y) * mv;
+      /* march: the flow field carries the column; within sight of the goal each soldier
+       * peels off to his own place in the line, so an army arrives spread, not stacked */
+      const gs = world.map.sites[u.goal];
+      if (gs) {
+        const gx = gs.x + u.ox, gy = gs.y + u.oy;
+        const dgoal = Math.sqrt(d2(u.x, u.y, gx, gy));
+        let vx = 0, vy = 0;
+        if (dgoal < C.NAV.arrive) {
+          if (dgoal > 4) { vx = (gx - u.x) / dgoal; vy = (gy - u.y) / dgoal; }
+        } else {
+          const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);
+          if (s3) { vx = s3.x; vy = s3.y; }
+          else {
+            /* walled off — go break what bars the way (or push on if nothing does) */
+            const bl = nearestBlocker(world, u);
+            const bx = bl ? bl.x : gx, by = bl ? bl.y : gy;
+            const db = Math.sqrt(d2(u.x, u.y, bx, by)) || 1;
+            vx = (bx - u.x) / db; vy = (by - u.y) / db;
+          }
+        }
+        u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
       }
       clampWalls(world, u);
     }

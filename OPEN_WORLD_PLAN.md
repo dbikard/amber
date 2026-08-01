@@ -181,8 +181,12 @@ stage begins before the previous one is green. A big-bang rewrite would change t
 AI simultaneously, leaving nothing trustworthy to measure against.
 
 1. **Watchtower fork** — ballista / cannon branches. No map change. *(shipping now)*
-2. **Continuous movement** under the existing graph — nav grid and flow fields, sites demoted
-   to waypoints. Mirror symmetry must stay ≈50/50; this is the proof the movement layer is fair.
+2. ~~**Continuous movement**~~ — DONE (`js/nav.js`). Cost grid + per-(goal, owner) Dijkstra
+   flow fields. The site web is baked in as corridors so behaviour matched the old march;
+   stage 3 swaps the synthetic cost for terrain and nothing above the nav layer changes.
+   Two fairness bugs fell out of the mirror check: the self-mirroring `mid` site was jittered
+   (pre-existing seat bias), and the grid cell must divide the map or it is half a cell out of
+   step with the board's mirror. **Any future grid must keep both properties.**
 3. **Terrain** — obstacle grid, corridor-driven generation, sites become anchors, edges derived
    from reachability rather than authored.
 4. **Free placement** inside claim areas; essence nodes replace springs; building ids replace

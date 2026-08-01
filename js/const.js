@@ -53,6 +53,26 @@
                hp: 700, hpUp: [1050, 1500],
                blurb: 'Walls the path. Enemies must break it to pass' }
   };
+  /* ---- Navigation (open world, stage 2): units move continuously over a cost grid ----
+   * The site web is baked in as corridors — free within freeR of a path or site, ramping
+   * to maxCost, impassable past edgeR. Stage 3 replaces this with real terrain.
+   * Corridor width is tuned to reproduce the old site-to-site march: units used to walk a
+   * line with a ±24 formation offset, so ~26 of free ground either side is the same road. */
+  CONST.NAV = {
+    /* cell MUST divide both MAP.W and MAP.H (gcd 100 → 4,5,10,20,25,50). The map is
+     * mirrored through its centre for fairness; a cell size that does not divide the map
+     * puts the grid half a cell out of step with that mirror, which is a seat bias. */
+    cell: 20,          // world units per grid cell (700×2400 → 35×120 cells)
+    freeR: 26,         // distance from a path/site that still costs 1
+    rampStep: 10,      // world units per extra point of cost beyond freeR
+    maxCost: 6,        // the ragged verge — passable, but you would rather not
+    edgeR: 56,         // beyond this from any path or site: impassable
+    siteR: 44,         // a site is open ground of this radius before the ramp starts
+    rampartR: 104,     // an enemy rampart seals its site: must be broken, not walked around
+    arrive: 72,        // within this of the goal a unit steers to its own place in the line
+    cacheMax: 48       // flow fields held before the cache is dropped
+  };
+
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
   CONST.VISION = { city: 420, unit: 260, post: 300 };   // watchposts override via .vision
 
