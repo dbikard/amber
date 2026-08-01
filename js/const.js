@@ -26,33 +26,33 @@
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle
    * and is mirrored through (350,1200) for fairness. jitter is applied per-seed. */
-  CONST.MAP = { W: 1400, H: 3000 };
-  /* How much world fits across the screen. The map is now WIDER than one screenful, so the
-   * camera pans on both axes and this is the zoom, not a fit-to-width. */
-  CONST.VIEW_W = 780;
-  CONST.SITE_TEMPLATE = [
-    /* [key, x, y, kind] — player 0's half plus the middle; everything is point-mirrored
-     * through the centre. 'mid' sits exactly at the centre and is never jittered. */
-    ['city0', 700, 2640, 'city'],
-    ['r0', 700, 2240, 'road'], ['mid', 700, 1500, 'road'],
-    ['s0a', 260, 2380, 'node'], ['s0b', 1140, 2380, 'node'],
-    ['sm0', 160, 1500, 'node'],
-    ['v0', 330, 1880, 'vantage'], ['v1', 1070, 1880, 'vantage'],
-    ['v2', 110, 2620, 'vantage']
-  ];
-  CONST.EDGE_TEMPLATE = [
-    ['city0', 'r0'], ['r0', 'mid'],
-    ['city0', 's0a'], ['city0', 's0b'],
-    ['s0a', 'v0'], ['s0b', 'v1'],
-    ['v0', 'sm0'], ['r0', 'v0'], ['r0', 'v1'],
-    ['mid', 'sm0'],
-    ['city0', 'v2'], ['v2', 's0a']    // the outer western shoulder
-  ];
+  /* The world is generated fresh every match — no template, no corridors, no mirror.
+   * Squarer than before on purpose: a Seat must have world on every side to explore. */
+  CONST.MAP = { W: 2000, H: 2400 };
+  CONST.VIEW_W = 820;          // how much world fits across the screen (the zoom)
+  CONST.WORLD = {
+    freq: 0.030,        // noise frequency in cells — lower makes broader country
+    ridge: 0.40,        // how much folded (ridge) noise drives elevation: mountain CHAINS
+    rim: 7,             // cells of soft falloff at the map edge
+    sea: 0.33,          // below this elevation is water
+    hill: 0.635,        // above this is high ground
+    cliff: 0.755,       // …and above this, impassable crag
+    minLand: 0.34,      // a world whose largest landmass is smaller than this is rerolled
+    nodes: 14, nodesMin: 9, nodeGap: 300,     // springs: how many, and how far apart
+    vantages: 8, vantGap: 240,
+    inland: 300,        // a Seat may not stand closer than this to the edge of the world
+    seatRoom: 300,      // buildable cells required around a Seat
+    seatApart: 1500,    // the two Seats must be at least this far apart
+    maxSkew: 6,         // reject a pairing whose two sides differ by more than this
+    relief: 150         // world units of height between the lowest water and the highest crag
+  };
   CONST.SITE_NAMES = {
-    node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn', 'the Deep Font', 'the Still Water'],
+    node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn',
+           'the Deep Font', 'the Still Water', 'the Glass Rill', 'the Cold Cistern',
+           'the Whispering Font', 'the Drowned Bell', 'the Green Well', 'the Salt Spring',
+           'the Amber Rill', 'the Sunken Basin'],
     vantage: ['the Grey Crag', 'the Watcher’s Tor', 'the Broken Stair', 'the High Shoulder',
-              'the Wind Scarp', 'the Old Barrow'],
-    road: ['the First Milestone', 'the Mid-Reach', 'the Last Milestone']
+              'the Wind Scarp', 'the Old Barrow', 'the Black Tor', 'the Raven Steps']
   };
 
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
@@ -68,16 +68,8 @@
      * mirrored through its centre for fairness; a cell size that does not divide the map
      * puts the grid half a cell out of step with that mirror, which is a seat bias. */
     cell: 20,          // world units per grid cell (700×2400 → 35×120 cells)
-    /* terrain: ROAD costs 1, OPEN 2, FOREST 4, ROCK/WATER are impassable. You may always
-     * leave the road — it is simply slower and more exposed out there. */
-    roadR: 24,         // within this of a path curve or site the ground is road/court
-    wildR: 170,        // by this far from any way through, the country has closed entirely
-                       // (scales with the map: a wider board needs wider corridors, or it
-                       //  is mostly rock — measured at 64% blocked before this moved)
-    rockAt: 0.76,      // solidity above which the ground is rock or water
-    forestAt: 0.46,    // …and above which it is wood
-    noiseF: 0.15,      // noise frequency in cells (lower = broader masses)
-    siteR: 32,         // a site is open ground of this radius
+    /* terrain costs live in WorldGen.COST; climbing is charged on top of them */
+    slope: 26,         // extra move cost per unit of elevation climbed (descending is free)
     rampartR: 104,     // an enemy rampart seals its site: must be broken, not walked around
     arrive: 72,        // within this of the goal a unit steers to its own place in the line
     cacheMax: 48       // flow fields held before the cache is dropped

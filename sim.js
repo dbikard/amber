@@ -6,6 +6,8 @@
 'use strict';
 require('./js/rng.js');
 require('./js/const.js');
+require('./js/worldgen.js');
+require('./js/nav.js');
 require('./js/world.js');
 require('./js/ai.js');
 

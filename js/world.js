@@ -8,6 +8,7 @@
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
   const RNG = global.RNG || (typeof require !== 'undefined' ? require('./rng.js') : null);
   const NAV = global.NAV || (typeof require !== 'undefined' ? require('./nav.js') : null);
+  const WG = global.WorldGen || (typeof require !== 'undefined' ? require('./worldgen.js') : null);
 
   function emit(world, ev) {
     world.events.push(ev);
@@ -15,78 +16,25 @@
   }
   const d2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
 
-  /* ---------------- map generation: template + mirror + jitter ---------------- */
-  function buildMap(rng) {
-    const sites = [], byKey = {};
-    const nameBags = {};
-    for (const k of Object.keys(C.SITE_NAMES)) nameBags[k] = C.SITE_NAMES[k].slice();
-    const takeName = (kind) => {
-      const bag = nameBags[kind];
-      return bag && bag.length ? bag.splice(Math.floor(rng.next() * bag.length), 1)[0] : kind;
-    };
-    const add = (key, x, y, kind) => {
-      const s = { id: sites.length, key, x, y, kind, owner: -1, post: null,
-                  name: kind === 'city' ? null : takeName(kind), lastHurt: -99 };
-      sites.push(s); byKey[key] = s;
-      return s;
-    };
-    for (const [key, x, y, kind] of C.SITE_TEMPLATE) {
-      /* 'mid' is the one site that mirrors onto ITSELF, so it may not be jittered: an
-       * off-centre centre makes one player's road to the middle shorter than the other's.
-       * Every other site is jittered and then point-mirrored, which stays fair. */
-      const fixed = kind === 'city' || key === 'mid';
-      const jx = fixed ? 0 : rng.range(-22, 22), jy = fixed ? 0 : rng.range(-22, 22);
-      add(key, x + jx, y + jy, kind);
-      if (key !== 'mid' && key !== 'sm0') {   // mirror everything except the true middles
-        const src = byKey[key];
-        add(key + '_m', C.MAP.W - src.x, C.MAP.H - src.y, kind);
-      } else if (key === 'sm0') {
-        const src = byKey[key];
-        add('sm0_m', C.MAP.W - src.x, C.MAP.H - src.y, 'node');
-      }
-    }
-    byKey.city0.owner = 0; byKey.city0_m.owner = 1;
-    byKey.city0.name = 'the City of Corwin'; byKey.city0_m.name = 'the City of Eric';
-
-    const edges = [];   // adjacency by site id
-    const adj = sites.map(() => []);
-    /* Paths BEND. The control offset is world truth (terrain, nav and both renderers all
-     * sample the same curve), so it is generated here — and a mirrored edge takes the
-     * NEGATED offset, which is what makes its curve the exact mirror of its twin's. */
-    const curves = [];
-    let bend = { jx: 0, jy: 0 };
-    const link = (a, b) => {
-      if (!a || !b || adj[a.id].includes(b.id)) return;
-      adj[a.id].push(b.id); adj[b.id].push(a.id);
-      edges.push([a.id, b.id]);
-      curves.push(bend);
-    };
-    /* an edge and its mirror twin, bent by equal and opposite hands */
-    const linkPair = (a1, b1, a2, b2) => {
-      bend = { jx: rng.range(-26, 26), jy: rng.range(-16, 16) };
-      link(a1, b1);
-      bend = { jx: -bend.jx, jy: -bend.jy };
-      link(a2, b2);
-    };
-    const m = (k) => byKey[k + '_m'] || byKey[k];   // mirror lookup ('mid' maps to itself)
-    for (const [a, b] of C.EDGE_TEMPLATE)
-      linkPair(byKey[a], byKey[b], m(a), m(b));    // the mirrored web
-    /* stitch the halves: point-mirroring swaps east/west, so the west corridor's northern
-     * continuation is v1's mirror (west-north), and the east corridor's southern leg is v1 */
-    linkPair(byKey.sm0, byKey.v1_m,               // west middle spring → west-north vantage
-             byKey.sm0_m, byKey.v1);              // east middle spring → east-south vantage
-    return { sites, edges, adj, curves, byKey,
-             cities: [byKey.city0.id, byKey.city0_m.id],
-             roads: sites.filter((s) => s.kind === 'road').map((s) => s.id) };
+  /* ---------------- the world ----------------
+   * Generated fresh, every match, by js/worldgen.js. No template, no mirror, no corridors —
+   * and therefore no way to know where the other Seat stands until somebody walks there. */
+  function buildMap(seed) {
+    const gen = WG.build(seed, RNG);
+    if (!gen) return null;
+    for (const s of gen.sites) { s.lastHurt = -99; }
+    return { sites: gen.sites, cities: gen.cities, nodes: gen.nodes,
+             gen, skew: gen.skew, apart: gen.apart };
   }
 
   function createWorld(seed) {
     const rng = RNG.make(seed >>> 0);
+    const map = buildMap(seed >>> 0);
     const world = {
       seed: seed >>> 0, rng,
       t: 0, tick: 0,
       winner: null, winReason: null,
-      map: buildMap(rng),
+      map,
       players: [0, 1].map(() => ({
         essence: C.START_ESSENCE,
         castleHp: C.CASTLE_HP, wallHp: 0, wallLevel: 0, wallHurt: -99, wallAlert: -99,
@@ -105,7 +53,7 @@
       chaosNext: C.CHAOS.firstAt, chaosParity: 0, surged: false,
       vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
     };
-    world.nav = NAV.build(world.map, world.seed);
+    world.nav = NAV.build(world.map.gen);
     for (let pi = 0; pi < 2; pi++) {
       world.players[pi].banner = world.map.cities[pi];
       exploreAround(world, pi);   // you know your own surroundings from the start
@@ -144,8 +92,8 @@
     if (x < 0 || y < 0 || x > C.MAP.W || y > C.MAP.H) return false;
     const nav = world.nav, c = NAV.cellOf(nav, x, y);
     if (c < 0) return false;
-    const t = nav.terra[c];
-    return t === NAV.T.ROAD || t === NAV.T.OPEN;   // no building in wood, rock or water
+    /* plain, meadow and hill will bear a building; wood, marsh, water and crag will not */
+    return !!WG.BUILDABLE[nav.terra[c]];
   }
   function clearOfWorks(world, x, y) {
     const need = C.BUILD.foot * 2 + C.BUILD.gap;
@@ -203,8 +151,10 @@
   function exploreAround(world, pi) {
     const src = world.vis ? world.vis[pi] : visionSources(world, pi);
     const pl = world.players[pi];
+    /* A Seat is a site like any other: you know it is there once you have SEEN it, and not
+     * before. Finding the rival's is the whole early game now. */
     for (const s of world.map.sites)
-      if (seen(src, s.x, s.y)) pl.explored[s.id] = { kind: s.kind };
+      if (seen(src, s.x, s.y)) pl.explored[s.id] = { kind: s.kind, name: s.name };
     /* the new fog rule: a rival's work is visible only while you can SEE it, and remembered
      * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
     for (let o = 0; o < 2; o++) {
@@ -569,10 +519,11 @@
 
     /* chaos director: rifts at road sites (springs too, once surging) */
     if (t >= world.chaosNext) {
-      const pool = world.surged
-        ? world.map.roads.concat(world.map.sites.filter((s) => s.kind === 'node').map((s) => s.id))
-        : world.map.roads;
-      const at = world.map.sites[pool[Math.floor(world.rng.next() * pool.length)]];
+      /* There is no black road to tear along any more. Rifts open at the springs and the
+       * high places — the ground worth holding — so forward country has a price. */
+      const pool = world.map.sites.filter((s) => s.kind !== 'city').map((s) => s.id);
+      const at = world.map.sites[pool[Math.floor(world.rng.next() * pool.length)]] ||
+                 world.map.sites[world.map.cities[0]];
       const n = C.CHAOS.count(t);
       emit(world, { e: 'rift', x: at.x, y: at.y });
       for (let i = 0; i < n; i++) spawnUnit(world, 2, 'fiend', at.x, at.y);

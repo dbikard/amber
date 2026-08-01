@@ -35,8 +35,10 @@
   const dummy = () => new THREE.Object3D();
   const dum = typeof THREE !== 'undefined' ? new THREE.Object3D() : null;
   const colTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
-  const dx = (x, viewer) => (viewer === 0 ? x : C.MAP.W - x);
-  const dy = (y, viewer) => (viewer === 0 ? y : C.MAP.H - y);
+  /* no world flip: the map is asymmetric now, so both players read the same ground and
+   * simply start their camera over their own Seat */
+  const dx = (x) => x;
+  const dy = (y) => y;
 
   /* ---------------- low-poly model kit: merged geometry with vertex colors ---------------- */
   function colorize(geo, hex) {
@@ -228,7 +230,8 @@
     scene.add(sun);
     cam = new THREE.PerspectiveCamera(55, 1, 10, 3600);
     rig = new THREE.Group();
-    cam.position.set(0, 850, 1185);   // pitch ~36°, full map width on portrait
+    /* pitch ~36°, framing CONST.VIEW_W of world across a portrait screen */
+    cam.position.set(0, C.VIEW_W * 1.21, C.VIEW_W * 1.69);
     cam.lookAt(0, 0, 0);
     rig.add(cam);
     scene.add(rig);
@@ -264,8 +267,13 @@
     /* the map is wider than one screenful now: this is a zoom, not a fit-to-width */
     scale = W / C.VIEW_W;
     viewW = W / scale; viewH = H / scale;
-    R.camX = R.maxCamX() / 2;
-    R.camY = R.maxCamY();
+    if (!R._homed) { R.camX = R.maxCamX() / 2; R.camY = R.maxCamY() / 2; }
+  };
+  R.lookAt = function (wx, wy) {
+    /* the rig origin IS what the camera centres on, and the rig sits at camY + 0.62*viewH */
+    R._homed = true;
+    R.camX = Math.max(0, Math.min(R.maxCamX(), wx - viewW / 2));
+    R.camY = Math.max(0, Math.min(R.maxCamY(), wy - viewH * 0.62));
   };
   R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
@@ -274,9 +282,11 @@
     R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - (dpy || 0) / scale));
   };
   /* the minimap is a true rectangle of the world, and scrubbing it moves both axes */
+  /* A corner map, and a SMALL one. Sized off the map's aspect it grew to half the screen
+   * width on a squarer world and started swallowing taps meant for the ground under it. */
   const MINI = () => {
-    const mh = Math.min(H * 0.30, 240), mw = mh * (C.MAP.W / C.MAP.H);
-    return { mw, mh, mx: W - mw - 6, my: (H - mh) / 2 };
+    const mw = Math.min(W * 0.26, 120), mh = Math.min(H * 0.30, mw * (C.MAP.H / C.MAP.W));
+    return { mw, mh, mx: W - mw - 6, my: 62 };
   };
   R.miniBox = MINI;
   R.hitMinimap = (px, py) => {
@@ -340,39 +350,33 @@
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
     fx = [];
 
-    const bake = global.Terrain.bake(view, viewer, { trees: false, siteSprites: false, labels: false });
-    /* rolling ground, flattened along paths and around sites */
-    const seg = [56, 190];
+    const bake = global.Terrain.bake(view, viewer, { props: false, labels: false });
+    /* REAL relief: the ground mesh is the sim's own elevation field, so a hill you see is a
+     * hill units pay to climb and a crag you see is one they cannot cross at all. */
+    const nav = view.nav;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < nav.elev.length; i++) {
+      const e = nav.elev[i];
+      if (e < lo) lo = e;
+      if (e > hi) hi = e;
+    }
+    const span = Math.max(1e-6, hi - lo);
+    const relief = C.WORLD.relief;
+    /* bilinear sample of the elevation grid, in world units */
+    const hFn = (x, z) => {
+      const fx = Math.max(0, Math.min(nav.W - 1.001, x / nav.cw - 0.5));
+      const fz = Math.max(0, Math.min(nav.H - 1.001, z / nav.cw - 0.5));
+      const x0 = fx | 0, z0 = fz | 0, tx = fx - x0, tz = fz - z0;
+      const i = z0 * nav.W + x0;
+      const a = nav.elev[i] * (1 - tx) + nav.elev[i + 1] * tx;
+      const b = nav.elev[i + nav.W] * (1 - tx) + nav.elev[i + nav.W + 1] * tx;
+      return ((a * (1 - tz) + b * tz) - lo) / span * relief;
+    };
+    const seg = [Math.min(180, nav.W), Math.min(180, nav.H)];
     const geo = new THREE.PlaneGeometry(C.MAP.W, C.MAP.H, seg[0], seg[1]);
     geo.rotateX(-Math.PI / 2);
     geo.translate(C.MAP.W / 2, 0, C.MAP.H / 2);
     const pp = geo.attributes.position;
-    const rngH = global.RNG.make((view.mapSeed || 7) ^ 0xbeef);
-    const bumps = [];
-    for (let i = 0; i < 70; i++) bumps.push([rngH.next() * C.MAP.W, rngH.next() * C.MAP.H, rngH.range(90, 220), rngH.range(6, 22)]);
-    const flatPts = bake.pathPts.map((p) => [dx(p[0], viewer), dy(p[1], viewer)]);
-    for (const s of view.map.sites) if (s.kind !== 'city') flatPts.push([s.x, s.y]);
-    const cityPts = view.map.cities.map((id) => [view.map.sites[id].x, view.map.sites[id].y]);
-    /* ONE height truth, shared by the mesh and everything that stands on it */
-    const hFn = (x, z) => {
-      let h = 0;
-      for (const [bx2, bz, br, bh] of bumps) {
-        const dd = (x - bx2) * (x - bx2) + (z - bz) * (z - bz);
-        if (dd < br * br) h += bh * (1 - Math.sqrt(dd) / br);
-      }
-      let flat = 1;
-      for (const p of cityPts) {   // cities are levelled ground, wall to wall
-        const dd = (x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]);
-        if (dd < 180 * 180) return 0;
-        if (dd < 250 * 250) flat = Math.min(flat, (Math.sqrt(dd) - 180) / 70);
-      }
-      for (const p of flatPts) {
-        const dd = (x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]);
-        if (dd < 3600) { flat = 0; break; }
-        if (dd < 12100) flat = Math.min(flat, (Math.sqrt(dd) - 60) / 50);
-      }
-      return h * flat;
-    };
     for (let i = 0; i < pp.count; i++) pp.setY(i, hFn(pp.getX(i), pp.getZ(i)));
     geo.computeVertexNormals();
     /* sample into a grid for cheap per-frame lookups */
@@ -383,7 +387,6 @@
         groundGrid[gz * gridW + gx] = hFn(gx * GRES, gz * GRES);
     const tex2 = new THREE.CanvasTexture(bake.canvas);
     tex2.colorSpace = THREE.SRGBColorSpace;
-    if (viewer === 1) { tex2.center.set(0.5, 0.5); tex2.rotation = Math.PI; }
     ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex2 }));
     worldG.add(ground);
 
@@ -391,8 +394,8 @@
     const pals = { gold: [0x3c4416, 0x5f6626, 0x8f9838], mid: [0x232840, 0x333a5c, 0x4c5680], ash: [0x3c2020, 0x553030, 0x6f4444] };
     const buckets = { gold: [], mid: [], ash: [] };
     for (const [tx, ty, r2, v] of bake.trees) {
-      const b = ty > C.MAP.H * 0.62 ? 'gold' : ty < C.MAP.H * 0.34 ? 'ash' : 'mid';
-      buckets[b].push([dx(tx, viewer), dy(ty, viewer), r2, v]);
+      const b = v > 0.62 ? 'gold' : v > 0.3 ? 'mid' : 'ash';
+      buckets[b].push([tx, ty, r2, v]);
     }
     for (const k of Object.keys(buckets)) {
       const list = buckets[k];
@@ -412,7 +415,7 @@
     if (bake.rocks && bake.rocks.length) {
       const rim = new THREE.InstancedMesh(rockGeo(), MAT, bake.rocks.length);
       bake.rocks.forEach(([rx, ry, rr, rv], i) => {
-        const x = dx(rx, viewer), z = dy(ry, viewer);
+        const x = rx, z = ry;
         dum.position.set(x, groundH(x, z) - 1, z);
         dum.rotation.set(0, rv * Math.PI * 2, 0);
         const s2 = 0.8 + rr * 0.075;
@@ -479,10 +482,13 @@
     /* a proper medieval curtain wall: continuous crenellated ring, interval towers with
      * conical roofs, and gatehouses where the actual roads meet the city */
     const stW = 0x8f8898, stL = 0xbdb6c8, stD = 0x555064, roofC = 0x5a4a68;
-    const gateAngs = view.map.adj[city.id].map((nb) => {
-      const n = view.map.sites[nb];
-      return Math.atan2(n.y - city.y, n.x - city.x);
-    });
+    /* gatehouses face the nearest places worth going to — there is no road graph left to
+     * read them off, so the three closest sites name the gates */
+    const gateAngs = view.map.sites
+      .filter((n) => n.id !== city.id)
+      .sort((a, b2) => ((a.x - city.x) ** 2 + (a.y - city.y) ** 2) - ((b2.x - city.x) ** 2 + (b2.y - city.y) ** 2))
+      .slice(0, 3)
+      .map((n) => Math.atan2(n.y - city.y, n.x - city.x));
     const nearGate = (a) => gateAngs.some((ga) => {
       let d = Math.abs(a - ga) % (Math.PI * 2);
       if (d > Math.PI) d = Math.PI * 2 - d;
@@ -526,7 +532,7 @@
     worldG.add(g.group);
     return g;
   }
-  function curViewerRotOwn() { return curViewer === 0 ? 0 : Math.PI; }
+  function curViewerRotOwn() { return 0; }
 
   /* ---------------- events → fx ---------------- */
   const TINT = { 0: 0xffd98a, 1: 0xff8a96, 2: 0x7dff9e };
@@ -587,11 +593,10 @@
     /* camera: stand on your side of the table, look down the road.
      * camY ∈ [0, maxCamY] remaps to a focus track anchored so both ends frame a city:
      * camY = max → own city + build grid at the bottom; camY = 0 → the rival's gates. */
-    const f0 = C.MAP.H * 0.20, f1 = C.MAP.H * 0.74;
-    const focus = f0 + (R.camY / Math.max(1, R.maxCamY())) * (f1 - f0);
-    const cx = R.camX + viewW / 2;   // display-space centre of the view
-    rig.position.set(viewer === 0 ? cx : C.MAP.W - cx, 0, viewer === 0 ? focus : C.MAP.H - focus);
-    rig.rotation.y = viewer === 0 ? 0 : Math.PI;
+    /* the rig simply follows the camera over the world; there is no fixed enemy direction
+     * to anchor a focus track to any more */
+    rig.position.set(R.camX + viewW / 2, 0, R.camY + viewH * 0.62);
+    rig.rotation.y = 0;
 
     updateUnits(view, viewer, dt);
     updateSites(view, viewer);
@@ -686,6 +691,8 @@
     for (const g of [cityObjs.own, cityObjs.foe]) {
       const pi = g.own ? viewer : 1 - viewer;
       const pl = view.players[pi];
+      /* the rival's court stays out of the world until somebody has seen it */
+      if (!g.own) { g.group.visible = view.foeSeen !== false; if (!g.group.visible) continue; }
       g.wall.visible = pl.wallHp > 0;
       /* works stand where they were placed. A rival's work you can no longer see is a
        * ghost — drawn faint, at the place you last saw it. */
@@ -891,6 +898,7 @@
     }
     /* castle + wall bars */
     for (const pi of [viewer, 1 - viewer]) {
+      if (pi !== viewer && view.foeSeen === false) continue;   // no bar over a Seat you have not found
       const pl = view.players[pi];
       const cs = view.map.sites[view.map.cities[pi]];
       const p = proj(cs.x, 186, cs.y);
@@ -916,6 +924,7 @@
       const X = mpx(dx(s.x, viewer)), Y = mpy(dy(s.y, viewer));
       if (s.kind === 'city') {
         const pi2 = view.map.cities.indexOf(s.id);
+        if (pi2 !== viewer && view.foeSeen === false) continue;
         g.fillStyle = pi2 === viewer ? '#ffd98a' : '#ff8a96';
         g.fillRect(X - 3, Y - 3, 6, 6);
       } else {

@@ -13,13 +13,13 @@
  *  - cross-origin passes through untouched */
 'use strict';
 
-const VERSION = '0.7.6';
+const VERSION = '0.7.7';
 const CACHE = 'amber-' + VERSION;
 const CORE = [
   './', './index.html', './styles.css', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
   './js/vendor/pixi.min.js', './js/vendor/three.min.js',
-  './js/rng.js', './js/const.js', './js/nav.js', './js/world.js', './js/ai.js', './js/sprites.js',
+  './js/rng.js', './js/const.js', './js/worldgen.js', './js/nav.js', './js/world.js', './js/ai.js', './js/sprites.js',
   './js/terrain.js', './js/render.js', './js/render3d.js', './js/render_select.js',
   './js/qrcode.js', './js/net.js', './js/ui.js', './js/game.js'
 ].map((u) => (u.endsWith('/') || u.endsWith('.html') ? u : u + '?v=' + VERSION));

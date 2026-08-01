@@ -47,6 +47,7 @@
       ];
     } else game.hints = [];
     Render.resize();
+    homeCamera();
     UI.startMatch(AI.HEIRS[kind].title);
   }
   function startMP(seed) {
@@ -58,10 +59,20 @@
     game.world = Net.isHost ? World.createWorld(seed) : null;
     refWorld = Net.isHost ? null : World.createWorld(seed);   // guest: map geometry only
     Render.resize();
+    homeCamera();
     UI.startMatch(Net.isHost ? 'Eric' : 'Corwin');
   }
+  /* Your Seat can be anywhere now, so the camera has to be told where home is. */
+  function homeCamera() {
+    const w = game.world || refWorld;
+    if (!w || !Render.lookAt) return;
+    const c = w.map.sites[w.map.cities[game.viewer]];
+    Render.lookAt(c.x, c.y);
+  }
+
   function toMenu() {
     game.mode = null; game.world = null; game.over = false;
+    if (Render.lookAt) Render._homed = false;
     if (Net.active) Net.close();
     if (game.updateReady) { applyUpdate(); return; }   // a new version waited politely for match end
     UI.showMenu(campaignLabel());
@@ -140,6 +151,8 @@
     const mem = world.players[viewer].explored;
     return {
       t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed,
+      /* the rival's Seat is a rumour until you have seen it */
+      foeSeen: !!world.players[viewer].explored[world.map.cities[1 - viewer]],
       /* the SAME fog the wire applies: a rival's works only where you can see them, and
        * ghosts (id-keyed in the world, listed on the view) for the ones you cannot */
       players: world.players.map((pl, pi) => pi === viewer
@@ -182,6 +195,7 @@
     const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
     /* the guest builds the same world from the same seed, so terrain needs no wire at all */
     return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
+             foeSeen: !!(snap.sites[refWorld.map.cities[0]] && snap.sites[refWorld.map.cities[0]].live !== undefined),
              sites: snap.sites, units, storms: snap.storms, visSources: src, see };
   }
 

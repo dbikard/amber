@@ -117,6 +117,18 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       and the Pattern walk was all-or-nothing, freezing a poor walker at 1% forever. Caps are
       per-owner now and the walk pays what it can. Draws went from 15-of-30 in the worst
       matchup to ZERO across the whole suite.
+- [x] **A world made new each match** (v0.8) — `js/worldgen.js`. No template, no edges, no
+      corridors, no mirror. Elevation (folded/ridge noise) and moisture make the land; seven
+      terrain types come off them — water, marsh, plain, meadow, forest, hill, crag — and
+      climbing costs movement, so armies find the saddle on their own. Springs, high ground
+      and BOTH Seats are then placed on whatever land came out.
+      **The rival's Seat is hidden** until somebody lays eyes on it: renderers, minimap and
+      the AI all wait on `explored`. That is why the mirror had to go — a point-mirrored world
+      tells you exactly where the enemy stands. Fairness is now *chosen* instead: hundreds of
+      candidate Seat pairs are scored on springs and buildable ground in reach, and the least
+      skewed pair wins.
+      Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
+      the nearest place they have never seen and only assault a Seat they have found.
 - [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
       Chaos repurposed as the price of the best ground
 - [x] **Retune** (pulled FORWARD, before walls — tuning siege against a broken triangle

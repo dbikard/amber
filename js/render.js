@@ -55,17 +55,24 @@
     /* the map is wider than one screenful now: this is a zoom, not a fit-to-width */
     scale = W / C.VIEW_W;
     viewW = W / scale; viewH = H / scale;
-    R.camX = R.maxCamX() / 2;              // start centred on the road
-    R.camY = R.maxCamY();                  // …and at your own gates
+    if (!R._homed) { R.camX = R.maxCamX() / 2; R.camY = R.maxCamY() / 2; }
     if (fogRT) { fogRT.destroy(true); fogRT = null; }
     makeVignette();
+  };
+  /* put the camera over a world point (used at match start to find your own Seat) */
+  R.lookAt = function (wx, wy) {
+    R._homed = true;
+    R.camX = Math.max(0, Math.min(R.maxCamX(), wx - viewW / 2));
+    R.camY = Math.max(0, Math.min(R.maxCamY(), wy - viewH / 2));
   };
   R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
 
-  /* display space = world rotated 180° for viewer 1 */
-  const dx = (x, viewer) => (viewer === 0 ? x : C.MAP.W - x);
-  const dy = (y, viewer) => (viewer === 0 ? y : C.MAP.H - y);
+  /* The world used to be rotated 180° for player 2 so your own Seat sat at the bottom. A
+   * procedurally placed, asymmetric world has no axis to flip about — both players read the
+   * same map and simply start their camera over their own Seat. */
+  const dx = (x) => x;
+  const dy = (y) => y;
   R.toWorld = function (px, py, viewer) {
     const wx = px / scale + R.camX, wy = py / scale + R.camY;
     return { x: dx(wx, viewer), y: dy(wy, viewer) };
@@ -102,9 +109,11 @@
     return best;
   };
   /* the minimap is a true rectangle of the world, and scrubbing it moves both axes */
+  /* A corner map, and a SMALL one. Sized off the map's aspect it grew to half the screen
+   * width on a squarer world and started swallowing taps meant for the ground under it. */
   const MINI = () => {
-    const mh = Math.min(H * 0.30, 240), mw = mh * (C.MAP.W / C.MAP.H);
-    return { mw, mh, mx: W - mw - 6, my: (H - mh) / 2 };
+    const mw = Math.min(W * 0.26, 120), mh = Math.min(H * 0.30, mw * (C.MAP.H / C.MAP.W));
+    return { mw, mh, mx: W - mw - 6, my: 62 };
   };
   R.miniBox = MINI;
   R.hitMinimap = (px, py) => {
@@ -460,12 +469,18 @@
           .stroke({ width: 3, color: 0x9cc8ff });
       }
     };
+    /* the rival's court is not drawn until it has been found */
+    const foeKnown = view.foeSeen !== false;
+    foe.castle.visible = foeKnown;
+    if (foe.wall) foe.wall.visible = foeKnown;
+    if (foe.bars) foe.bars.visible = foeKnown;
     for (const b of me.buildings) drawWork(own, b, true, false);
     for (const b of en.buildings) drawWork(own, b, false, false);
     for (const gh of (en.ghosts || [])) if (!live.has(gh.id)) drawWork(own, gh, false, true);
     for (const [id, sp] of own.pool) if (!live.has(id)) { sp.destroy(); own.pool.delete(id); }
     drawWallsBars(own, me, viewer, true);
-    drawWallsBars(foe, en, viewer, false);
+    if (foeKnown) drawWallsBars(foe, en, viewer, false);
+    else { foe.wall.clear(); foe.bars.clear(); }
   }
   function drawWallsBars(g, pl, viewer, own) {
     g.wall.clear(); g.bars.clear();
@@ -539,6 +554,7 @@
       const X = px(dx(s.x, viewer)), Y = py(dy(s.y, viewer));
       if (s.kind === 'city') {
         const pi2 = view.map.cities.indexOf(s.id);
+        if (pi2 !== viewer && view.foeSeen === false) continue;   // an unfound Seat is not on any map
         g.rect(X - 3, Y - 3, 6, 6).fill(pi2 === viewer ? 0xffd98a : 0xff8a96);
       } else {
         const col = !st ? 0x3a3444 : (st.holder == null || st.holder === -1 ? 0x8a8098 : (st.holder === viewer ? 0xffd98a : 0xff8a96));

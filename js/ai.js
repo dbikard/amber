@@ -11,7 +11,12 @@
   function view(world, me) {
     const World = global.World;
     const pl = world.players[me], en = world.players[1 - me];
-    const myCity = World.cityOf(world, me), enCity = World.cityOf(world, 1 - me);
+    const myCity = World.cityOf(world, me);
+    /* THE RIVAL'S SEAT IS NOT KNOWN until somebody has laid eyes on it. Everything that used
+     * to orient off enCity — where to face the towers, where to send the banner, where to
+     * storm — has to cope with not knowing, and go looking instead. */
+    const enCityId = world.map.cities[1 - me];
+    const enCity = pl.explored[enCityId] ? World.cityOf(world, 1 - me) : null;
     const have = {};
     for (const b of pl.buildings) have[b.bt] = (have[b.bt] || 0) + 1;
     const free = C.MAX_BUILDINGS - pl.buildings.length;
@@ -21,19 +26,23 @@
     for (const u of world.units) {
       if (u.owner === me) {
         myUnits.push(u);
-        if (d2(u.x, u.y, enCity.x, enCity.y) < 700 * 700) push++;
+        if (enCity && d2(u.x, u.y, enCity.x, enCity.y) < 700 * 700) push++;
       } else if (World.canSee(world, me, u.x, u.y)) {
         visHostiles.push(u);
         if (d2(u.x, u.y, myCity.x, myCity.y) < 600 * 600) threats.push(u);
       }
     }
-    /* the essence nodes, bucketed by whose half of Shadow they lie in */
-    const nodes = { own: [], mid: [], enemy: [] };
+    /* Springs, bucketed by how far out they are from MY Seat — the old near/contested/far
+     * split needed both Seats' positions, and one of them is a secret now. */
+    const allNodes = world.map.sites.filter((s) => s.kind === 'node')
+      .sort((a, b) => d2(a.x, a.y, myCity.x, myCity.y) - d2(b.x, b.y, myCity.x, myCity.y));
+    const nodes = { own: allNodes.slice(0, 3), mid: allNodes.slice(3, 7), enemy: allNodes.slice(7) };
+    /* the nearest place we have never laid eyes on: where a scout should go */
+    let frontier = null, fbd = Infinity;
     for (const s of world.map.sites) {
-      if (s.kind !== 'node') continue;
-      const dMe = d2(s.x, s.y, myCity.x, myCity.y), dEn = d2(s.x, s.y, enCity.x, enCity.y);
-      const bucket = Math.abs(Math.sqrt(dMe) - Math.sqrt(dEn)) < 260 ? 'mid' : (dMe < dEn ? 'own' : 'enemy');
-      nodes[bucket].push(s);
+      if (pl.explored[s.id] || s.id === world.map.cities[me]) continue;
+      const dd = d2(s.x, s.y, myCity.x, myCity.y);
+      if (dd < fbd) { fbd = dd; frontier = s; }
     }
     const enemyArmy = visHostiles.filter((u) => u.owner === 1 - me).length;
     const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
@@ -42,6 +51,7 @@
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
       visHostiles, threats, push, enemyArmy, mySprings,
+      enCityId, frontier, unexplored: world.map.sites.filter((s) => !pl.explored[s.id]).length,
       nodes,
       myPattern: pl.pattern, walking: pl.walking,
       enemyWalking: en.revealed && en.walking, enemyPattern: en.revealed ? en.pattern : 0,
@@ -62,8 +72,8 @@
   }
   const stormDefend = (min) => (v) => clusterAt(v.threats, min);
   const stormPush = (defMin) => (v) => {
-    if (v.push >= 3) {
-      const defenders = v.visHostiles.filter((u) => d2(u.x, u.y, v.enCity.x, v.enCity.y) < 500 * 500);
+    if (v.push >= 3 && v.enCity) {
+      const defenders = v.visHostiles.filter((u) => d2(u.x, u.y, v.enCity.x, v.enCity.y) < 500 * 500);   // guarded by v.enCity above
       const p = clusterAt(defenders, 2);
       if (p) return p;
     }
@@ -72,7 +82,9 @@
 
   /* map helpers: own-side chokes/vantages by distance to my city */
   const nearestOf = (v, sites) => sites.slice().sort((a, b) => d2(a.x, a.y, v.myCity.x, v.myCity.y) - d2(b.x, b.y, v.myCity.x, v.myCity.y));
-  const ownChoke = (v) => nearestOf(v, v.world.map.roads.map((id) => v.world.map.sites[id]))[0];
+  /* a forward place worth standing on: the nearest site that is not my own Seat. With no
+   * road network left there are no named chokes — the land makes its own. */
+  const ownChoke = (v) => nearestOf(v, v.world.map.sites.filter((s) => s.kind !== 'city'))[0] || v.myCity;
   const ownVantages = (v) => nearestOf(v, v.world.map.sites.filter((s) => s.kind === 'vantage')).slice(0, 2);
 
   const held = (v, site) => global.World.nodeHolder(v.world, site) !== -1;
@@ -102,7 +114,11 @@
     return null;
   }
   function spotFor(v, bt) {
-    const c = v.myCity, toFoe = Math.atan2(v.enCity.y - c.y, v.enCity.x - c.x);
+    const c = v.myCity;
+    /* the front is wherever trouble is expected: the found Seat, else the nearest unknown
+     * ground, else the middle of the world */
+    const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
     /* a Gate belongs on a spring. Only when every reachable one is held does an heir
      * settle for a waystone behind the Seat — the trickle is not worth much. */
     if (bt === 'gate') {
@@ -124,6 +140,12 @@
     return sweep(v, bt, site.x, site.y, Math.atan2(v.myCity.y - site.y, v.myCity.x - site.x), 46, 34, 3);
   }
 
+  /* Where to march when you do not know where the enemy IS. Scout the nearest unseen place;
+   * failing that, hold the nearest ground worth holding. */
+  const seek = (v) => (v.frontier ? v.frontier.id : ownChoke(v).id);
+  /* the assault, but only against a Seat that has been found */
+  const strike = (v) => (v.enCity ? v.enCityId : seek(v));
+
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
     julian: {
@@ -139,7 +161,7 @@
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2), wantRampart()],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
-      banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? v.enCity.id : v.myCity.id,
+      banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (v.unexplored > 2 && v.army >= 4 ? seek(v) : v.myCity.id),
       wall: (v) => v.t > 60,
       /* the LAST resort, and it has to be genuinely last: at eight minutes he was simply
        * out-walking Brand, which is greed's whole job. Matches run 14-20m now. */
@@ -156,7 +178,7 @@
       upPref: ['barracks', 'spire', 'gate', 'tower'],
       towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
       missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
-      banner: (v) => v.army >= 6 ? v.enCity.id : ownChoke(v).id,   // stage, then storm the gates
+      banner: (v) => v.army >= 6 ? strike(v) : seek(v),   // scout, stage, then storm the gates
       wall: (v) => v.myCastle < 800 || v.t > 260,
       walk: () => false, pauseWalk: () => false,
       storm: stormPush(4),
@@ -176,7 +198,7 @@
        * measured: it starves him (2 wins across the field) because the walk's drain has to
        * come from somewhere, and under the new economy that somewhere is the springs. */
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantRampart()],
-      banner: (v) => v.myCity.id,   // the army exists to buy him time
+      banner: (v) => (v.unexplored > 3 && v.army >= 5 ? seek(v) : v.myCity.id),   // the army buys him time, but must still find the springs
       wall: (v) => v.t > 120 || !!v.have.shrine,   // Brand walls early — the walk needs a keep
       walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > 360,
       pauseWalk: () => false,
@@ -191,9 +213,9 @@
       upPref: ['barracks', 'gate', 'spire', 'tower', 'shrine'],
       towerBranch: () => 'bolt',
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
-      banner: (v) => (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle)
-        ? v.enCity.id
-        : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id,   // contest the middle, assault from strength
+      banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
+        ? v.enCityId
+        : (v.unexplored > 2 ? seek(v) : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id),
       wall: (v) => v.t > 150,
       walk: (v) => v.have.shrine && v.essence > 260 && (v.enemyCastle < v.myCastle || v.threats.length === 0),
       pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 4,
@@ -219,9 +241,9 @@
                         ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : []),
                         ...(v.threats.length >= 2 ? [wantRampart()] : [])],
       banner: (v) => {
-        if (v.enemyWalking && (v.enemyArmy < 2 || v.army >= 6)) return v.enCity.id;
-        if (v.army >= 6) return v.enCity.id;
-        return ownChoke(v).id;
+        if (v.enCity && v.enemyWalking && (v.enemyArmy < 2 || v.army >= 6)) return v.enCityId;
+        if (v.enCity && v.army >= 6) return v.enCityId;
+        return v.unexplored > 2 && v.army >= 4 ? seek(v) : ownChoke(v).id;
       },
       wall: (v) => v.threats.length >= 1 || v.t > 110,
       walk: (v) => v.have.shrine && v.essence > 200 &&
@@ -254,7 +276,7 @@
       title: 'A grasping shadow-lord', interval: 1.6, noise: 0,
       plan: () => ['gate', 'gate', 'gate', 'gate', 'barracks', 'barracks', 'barracks', 'barracks'],
       upPref: ['gate', 'barracks'],
-      missions: () => [], banner: (v) => v.enCity.id,
+      missions: () => [], banner: (v) => strike(v),
       walk: () => false, pauseWalk: () => false,
       storm: () => null, trump: () => false
     }
