@@ -48,6 +48,7 @@
     } else game.hints = [];
     Render.resize();
     homeCamera();
+    armBack();
     UI.startMatch(AI.HEIRS[kind].title);
   }
   function startMP(seed) {
@@ -60,8 +61,32 @@
     refWorld = Net.isHost ? null : World.createWorld(seed);   // guest: map geometry only
     Render.resize();
     homeCamera();
+    armBack();
     UI.startMatch(Net.isHost ? 'Eric' : 'Corwin');
   }
+  /* ---------------- the phone's back button ----------------
+   * Installed as a PWA, Android's back gesture leaves the app. It should dismiss whatever is
+   * open first — a build sheet, an armed flag, a storm being aimed — and only then leave the
+   * match, and only then the game. ONE history entry is held while a match runs; each back
+   * consumes it, we handle a layer, and we re-arm for the next one. */
+  let backArmed = false;
+  function armBack() {
+    if (backArmed || !game.mode) return;
+    backArmed = true;
+    try { history.pushState({ amber: 1 }, ''); } catch (e) { backArmed = false; }
+  }
+  function onPopState() {
+    backArmed = false;
+    if (!game.mode) return;                       // at the menu: let the browser have it
+    if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
+    if (game.targeting || game.armedFlag != null) {
+      game.targeting = false; game.armedFlag = null;
+      UI.banner('Cancelled', 'warn');
+      armBack(); return;
+    }
+    toMenu();                                     // in a match: back leaves to the menu
+  }
+
   /* Your Seat can be anywhere now, so the camera has to be told where home is. */
   function homeCamera() {
     const w = game.world || refWorld;
@@ -563,6 +588,7 @@
     cvs.addEventListener('pointerup', onUp);
     cvs.addEventListener('pointercancel', onUp);
     cvs.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('popstate', onPopState);
     /* kill the synthetic mouse click that follows a touch — it lands on whatever
      * sheet just opened under the finger and 'chooses' a card the player never tapped */
     cvs.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
