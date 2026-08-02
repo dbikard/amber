@@ -101,7 +101,11 @@
   };
 
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
-  CONST.VISION = { city: 420, unit: 260, build: 240 };   // a work may override via def.vision
+  CONST.VISION = { city: 420, unit: 260, build: 240,
+    /* A walk on the Pattern is a beacon. The blazing lines light the Shrine and the ground
+     * around it for EVERYONE — you cannot reach for the throne in secret, and your rivals
+     * are owed the chance to come and stop you. */
+    pattern: 380 };
 
   /* Ground you have HAD eyes on stays on the map under a lighter veil once your troops move
    * on — a country you have walked should not go black again behind you. `keep` is how much

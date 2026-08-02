@@ -90,7 +90,7 @@
     $('end').classList.add('hidden');
     $('hud').classList.remove('hidden');
     $('rival-name').textContent = rivalName;
-    $('rival-pattern').classList.add('hidden');
+    $('walkers').innerHTML = '';
   };
 
   /* ---------------- flag tray: the army's orders, always at thumb's reach ---------------- */
@@ -99,6 +99,12 @@
   /* a company's colour follows its ID, which never repeats — so a standard keeps its colour
    * for the whole match instead of shuffling every time some other hall is razed */
   UI.coColor = (id) => PENNANT_CSS[(id - 1) % PENNANT_CSS.length];
+  /* the same seat colours the renderer uses: you are gold, rivals take the rest in seat order */
+  UI.seatColor = (pi, viewer) => {
+    const hex = pi === viewer ? C.SEAT_TINT[0]
+      : (C.SEAT_TINT[1 + (pi < viewer ? pi : pi - 1)] || C.SEAT_TINT[1]);
+    return '#' + hex.toString(16).padStart(6, '0');
+  };
   UI.flags = function (view, viewer, armed) {
     const tray = $('flag-tray');
     const me = view.players[viewer];
@@ -174,11 +180,30 @@
     er.textContent = (incomeRate >= 0 ? '+' : '') + incomeRate.toFixed(1) + '/s' + (me.musterPaused ? ' ⏸' : '');
     er.style.color = incomeRate >= 0 ? '' : '#ff8a96';
     $('timer').textContent = mmss(view.t);
-    const rp = $('rival-pattern');
-    if (en.revealed) {
-      rp.classList.remove('hidden');
-      rp.textContent = '✴ ' + en.pattern.toFixed(0) + '%';
-    } else rp.classList.add('hidden');
+    /* THE RACE. Every heir on the Pattern, however far along, in their own colour — a walk
+     * is a public act and the whole table is owed the count. Yours is marked. */
+    const race = $('walkers');
+    const on = view.players.map((q, pi) => ({ q, pi }))
+      .filter(({ q, pi }) => !q.out && q.walking && (pi === viewer || q.revealed))
+      .sort((a, b) => b.q.pattern - a.q.pattern);
+    const key = on.map(({ q, pi }) => pi + ':' + q.pattern.toFixed(0)).join(',');
+    if (key !== race._key) {
+      race._key = key;
+      race.innerHTML = '';
+      for (const { q, pi } of on) {
+        const d = document.createElement('div');
+        d.className = 'walker' + (pi === viewer ? ' mine' : '');
+        d.style.color = UI.seatColor(pi, viewer);
+        d.textContent = '✴ ' + (pi === viewer ? 'YOU' : (C.SEAT_NAMES[pi] || 'a rival').toUpperCase()) +
+                        ' ' + q.pattern.toFixed(0) + '%';
+        race.appendChild(d);
+      }
+      /* tell the map how far down to start, so the two never overlap */
+      if (global.Render) {
+        const b = race.getBoundingClientRect();
+        global.Render.miniTop = on.length ? Math.ceil(b.bottom) + 6 : 0;
+      }
+    }
     for (const k of ['storm', 'trump']) {
       const btn = $('pw-' + k), cd = me.powers ? me.powers[k] : 99;
       const ready = cd <= 0;

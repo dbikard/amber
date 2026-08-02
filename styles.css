@@ -21,7 +21,18 @@ body {
   padding: 6px 12px; font-size: 14px;
   color: #e08a96; text-shadow: 0 1px 3px #000;
 }
-#rival-pattern { color: #9cc8ff; font-weight: bold; }
+#walkers {
+  position: absolute; right: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  pointer-events: none;
+}
+.walker {
+  font-size: 13px; font-weight: bold; letter-spacing: 1px;
+  text-shadow: 0 1px 3px #000, 0 0 10px #0009;
+  background: rgba(10, 8, 18, 0.55); border-radius: 4px; padding: 1px 7px;
+  border: 1px solid #9cc8ff44;
+}
+.walker.mine { border-color: #ffe9a8aa; }
 #timer { color: #b8a878; font-variant-numeric: tabular-nums; }
 #hud-bottom {
   position: absolute; bottom: calc(env(safe-area-inset-bottom, 0) + 2px); left: 0; right: 0;

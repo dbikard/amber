@@ -75,6 +75,11 @@ needs fog of war and must not trust cross-browser determinism.
 
 ## Fog rules (enforced at snapshot/render, respected by AI)
 
+A WALK IS PUBLIC: while an heir walks the Pattern their Shrine and `VISION.pattern` of
+ground around it are a vision source for everyone (see `visionSources`), and every walker's
+progress is on the top-right board. `World.walkers(world)` is the one answer to who is
+walking, where, and how far along.
+
 Rival slot *occupancy* is public, building *type/level* is veiled. Road units, castle HP,
 storms: public. A started Pattern walk reveals that shrine + progress. AI reads only what a
 human could see (see `AI.view()`).

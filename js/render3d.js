@@ -339,7 +339,9 @@
    * width on a squarer world and started swallowing taps meant for the ground under it. */
   const MINI = () => {
     const mw = Math.min(W * 0.26, 120), mh = Math.min(H * 0.30, mw * (C.MAP.H / C.MAP.W));
-    return { mw, mh, mx: W - mw - 6, my: 62 };
+    /* the walkers' board owns the top-right corner when anyone is on the Pattern; the map
+     * slides under it rather than through it */
+    return { mw, mh, mx: W - mw - 6, my: Math.max(62, R.miniTop || 0) };
   };
   R.miniBox = MINI;
   /* What is ACTUALLY on screen, in world units. Under perspective the visible ground is a

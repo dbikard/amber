@@ -137,6 +137,15 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       NOT answering it. Colours follow a company's id, which never repeats: pennants used to
       be indexed by `buildings.indexOf(b)`, so every razed hall reshuffled the colours of the
       survivors. Commands: `build {co}`, `rally {co}`, and a new `assign {id, co}`.
+- [x] **A walk on the Pattern is a beacon.** Reaching for the throne can no longer be done
+      quietly: while an heir walks, their Shrine and `VISION.pattern` (380) of ground around it
+      are lit for EVERY other heir — fog, snapshot and renderer all follow, because they all
+      read the same vision sources. The light goes out the moment the walk stops, and a fallen
+      heir stops burning. `World.walkers(world)` is the shared answer to "who is on the
+      Pattern, where, and how far along".
+      The count is public too: a board top-right lists every walker in their own seat colour
+      with their percentage, yours marked. The minimap yields (`Render.miniTop`) rather than
+      being overlapped by it.
 - [ ] **Four heirs (LAN, free-for-all).** Sim, world, view, renderer and netcode all take
       2-4 now; what is left is play-testing it with real devices and the lobby polish.
       - Chaos moved off owner index 2 (`CHAOS_ID = -1`) — it collided with the third heir.

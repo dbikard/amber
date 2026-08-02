@@ -157,7 +157,26 @@
       if (!b.raise) src.push([b.x, b.y, C.BUILDINGS[b.bt].vision || C.VISION.build]);
     for (const u of world.units)
       if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
+    /* somebody else's walk lights their Shrine for you too — the Pattern is not walked in
+     * the dark, and a rival reaching for the throne must be findable */
+    for (let o = 0; o < world.players.length; o++) {
+      const q = world.players[o];
+      if (o === pi || q.out || !q.walking) continue;
+      const sh = q.buildings.find((b) => b.bt === 'shrine' && !b.raise);
+      if (sh) src.push([sh.x, sh.y, C.VISION.pattern]);
+    }
     return src;
+  }
+  /* every Shrine currently burning, for the renderer and the HUD: [{ pi, x, y, pattern }] */
+  function walkers(world) {
+    const out = [];
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const q = world.players[pi];
+      if (q.out || !q.walking) continue;
+      const sh = q.buildings.find((b) => b.bt === 'shrine' && !b.raise);
+      out.push({ pi, x: sh ? sh.x : null, y: sh ? sh.y : null, pattern: q.pattern });
+    }
+    return out;
   }
   /* ---------------- remembered ground ----------------
    * `explored` remembers SITES; this remembers the LAND. One byte per cell, marked wherever
@@ -723,7 +742,7 @@
   }
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
-                   visionSources, placementError, inClaim, nodeAt, nodeHolder, bldOf,
+                   visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf,
                    newSeenMask, markSeen };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

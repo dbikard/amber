@@ -603,6 +603,57 @@ async function match(browser, base, renderer) {
     }
     await pg.evaluate(() => window.UI.closeSheet());
 
+    /* ---------------- the race board ---------------- *
+     * A walk is public: the Shrine lights up for everyone, and every walker's count belongs
+     * on screen where all of them can read it. */
+    suite(`${r} · the race`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const race = await pg.evaluate(() => {
+      const W = window.World, C = window.CONST, g = window.Game.game;
+      g.world = W.createWorld(4242, 3);
+      const shrines = [];
+      for (const pi of [1, 2]) {
+        const c = W.cityOf(g.world, pi);
+        g.world.players[pi].essence = 999999;
+        let at = null;
+        for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+          for (let a = 0; a < 40 && !at; a++) {
+            const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+            if (W.placementError(g.world, pi, x, y, 'shrine') === null) at = { x, y };
+          }
+        if (!at) return { ok: false, why: 'no room for a Shrine at seat ' + pi };
+        W.applyCommand(g.world, pi, { c: 'build', ...at, bt: 'shrine' });
+        for (let i = 0; i < 30 * 40 && g.world.players[pi].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+        W.applyCommand(g.world, pi, { c: 'walk', on: true });
+        shrines.push(at);
+      }
+      for (let i = 0; i < 30 * 40; i++) {
+        for (const p of g.world.players) { p.essence = Math.max(p.essence, 50000); p.castleHp = C.CASTLE_HP; }
+        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
+      }
+      return { ok: true, shrines,
+               sees: shrines.map((s) => W.canSee(g.world, 0, s.x, s.y)),
+               walking: g.world.players.map((p) => p.walking) };
+    });
+    ok('two rivals are walking', race.ok && race.walking && race.walking[1] && race.walking[2], race.why || '');
+    if (race.ok) {
+      ok('seat 0 can see BOTH burning Shrines', race.sees.every(Boolean), JSON.stringify(race.sees));
+      await pg.waitForTimeout(400);
+      const board = await pg.evaluate(() => {
+        const rows = [...document.querySelectorAll('#walkers .walker')];
+        const mini = window.Render.miniBox();
+        const last = rows.length ? rows[rows.length - 1].getBoundingClientRect().bottom : 0;
+        return { n: rows.length, texts: rows.map((e) => e.textContent),
+                 colours: [...new Set(rows.map((e) => e.style.color))].length,
+                 miniTop: mini.my, lastBottom: last };
+      });
+      ok('the board lists every walker', board.n === 2, board.texts.join(' | '));
+      ok('each in a colour of their own', board.colours === 2, `${board.colours} colours`);
+      ok('and each shows a percentage', board.texts.every((t) => /\d+%/.test(t)), board.texts.join(' | '));
+      ok('the minimap makes room for it rather than overlapping',
+         board.miniTop >= board.lastBottom, `map top ${board.miniTop}, board bottom ${Math.round(board.lastBottom)}`);
+    }
+
     /* ---------------- companies ---------------- *
      * A dozen halls used to mean a dozen flags. Raising one now asks which standard it
      * answers to, and the tray shows one chip per COMPANY — which is the difference between

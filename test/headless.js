@@ -277,6 +277,57 @@ suite('a Seat falls')
   ok('the fallen stay fallen', ffa.players.filter((p) => p.out).length === 3);
 }
 
+suite('a walk is a beacon')
+{
+  const w = World.createWorld(1000, 3), pl = w.players[1], c = World.cityOf(w, 1);
+  pl.essence = 999999;
+  let at = null;
+  for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+    for (let a = 0; a < 40 && !at; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 1, x, y, 'shrine') === null) at = { x, y };
+    }
+  ok('seat 1 raises a Shrine', !!at && raise(w, 1, at.x, at.y, 'shrine').ok);
+  const sh = pl.buildings.find((b) => b.bt === 'shrine');
+  const step = (n) => { for (let i = 0; i < n; i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+
+  ok('nobody else can see it while it is quiet', !World.canSee(w, 0, sh.x, sh.y) && !World.canSee(w, 2, sh.x, sh.y));
+  eq('and nobody is walking', World.walkers(w).length, 0);
+
+  World.applyCommand(w, 1, { c: 'walk', on: true });
+  step(12);
+  ok('the walk lights the Shrine for EVERY other heir',
+     World.canSee(w, 0, sh.x, sh.y) && World.canSee(w, 2, sh.x, sh.y));
+  ok('...and the ground around it', World.canSee(w, 0, sh.x + C.VISION.pattern * 0.7, sh.y));
+  ok('...but not the whole map', !World.canSee(w, 0, sh.x + C.VISION.pattern * 1.6, sh.y));
+  const ws = World.walkers(w);
+  eq('the walkers list names them', ws.length, 1);
+  eq('...by seat', ws[0].pi, 1);
+  ok('...with the Shrine it burns at', ws[0].x === sh.x && ws[0].y === sh.y);
+  ok('...and how far along', ws[0].pattern > 0);
+
+  /* the count is public too — a rival snapshot must carry it */
+  const wire = JSON.parse(JSON.stringify(Net.snapFor(w, 0, [])));
+  ok('a rival sees the walk on the wire', wire.players[1].walking === true);
+  ok('and its progress', wire.players[1].pattern > 0);
+  ok('and the Shrine itself is sent, being visible now',
+     wire.players[1].buildings.some((b) => b.bt === 'shrine'));
+
+  World.applyCommand(w, 1, { c: 'walk', on: false });
+  step(12);
+  ok('stopping puts the light out', !World.canSee(w, 0, sh.x, sh.y));
+  eq('and clears the board', World.walkers(w).length, 0);
+
+  /* a fallen heir is not walking, whatever it was doing when it fell */
+  World.applyCommand(w, 1, { c: 'walk', on: true });
+  step(12);
+  eq('walking again', World.walkers(w).length, 1);
+  w.players[1].out = true;
+  eq('a fallen heir leaves the board', World.walkers(w).length, 0);
+  step(12);
+  ok('and their light goes out', !World.canSee(w, 0, sh.x, sh.y));
+}
+
 suite('four on the wire')
 {
   const w = World.createWorld(1000, 4);
