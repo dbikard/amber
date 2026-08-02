@@ -137,6 +137,17 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       NOT answering it. Colours follow a company's id, which never repeats: pennants used to
       be indexed by `buildings.indexOf(b)`, so every razed hall reshuffled the colours of the
       survivors. Commands: `build {co}`, `rally {co}`, and a new `assign {id, co}`.
+- [x] **The Pattern Shrine does not upgrade, and the walk costs more.** The upgrade path made
+      the walk both CHEAPER and FASTER (L1 12/s over 7.6min = 5.5k essence; L3 16/s over
+      4.4min = 4.2k), so it was never the commitment it was supposed to be — and heirs held it
+      at L3 in 13 of 16 measured cases. There is one Pattern and one way to walk it: level 1
+      only, drain 12 → 24/s, ~10.9k essence over 7.6 minutes. `up` on a work is now optional,
+      and a work without one refuses the command (`noup`) and shows no upgrade card.
+      Measured over 12 heir-vs-heir matches to a 30-minute cap:
+        before  pattern 8 / castle 4, median 9.0m
+        after   pattern 5 / castle 7, median 11.9m (4.6–17.4m)
+      The Pattern stops being the default route and matches run longer, toward the 15–30
+      minutes the design asks for.
 - [x] **The 2D renderer is gone.** Its only justification was as a fallback for devices
       without WebGL — and it ran on PixiJS, WebGL-only since v7, so a device that could not
       run 3D could not run it either: it died a little later on a black screen with

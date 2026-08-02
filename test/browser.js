@@ -563,6 +563,38 @@ async function match(browser, base, renderer) {
     }
     await pg.evaluate(() => window.UI.closeSheet());
 
+    /* ---------------- the Shrine's sheet ---------------- */
+    suite(`${r} · the Shrine`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const shrine = await pg.evaluate(() => {
+      const W = window.World, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 999999;
+      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      let sh = g.world.players[0].buildings.find((q) => q.bt === 'shrine');
+      if (!sh) {
+        let at = null;
+        for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+          for (let a = 0; a < 40 && !at; a++) {
+            const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+            if (W.placementError(g.world, 0, x, y, 'shrine') === null) at = { x, y };
+          }
+        if (!at) return { ok: false, why: 'nowhere to raise a Shrine' };
+        W.applyCommand(g.world, 0, { c: 'build', ...at, bt: 'shrine' });
+        for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+        sh = g.world.players[0].buildings.find((q) => q.bt === 'shrine');
+      }
+      window.UI.upSheet(sh, g.world.players[0].essence, false, g.world.players[0]);
+      const txt = document.getElementById('sheet').textContent;
+      return { ok: true, upgrade: /Upgrade to level/i.test(txt), walk: /Walk the Pattern/i.test(txt) };
+    });
+    ok('a Shrine stands', shrine.ok, shrine.why || '');
+    if (shrine.ok) {
+      ok('its sheet offers no upgrade — there is none', !shrine.upgrade);
+      ok('and still offers the walk', shrine.walk);
+    }
+    await pg.evaluate(() => window.UI.closeSheet());
+
     /* ---------------- companies ---------------- *
      * A dozen halls used to mean a dozen flags. Raising one now asks which standard it
      * answers to, and the tray shows one chip per COMPANY — which is the difference between

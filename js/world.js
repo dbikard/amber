@@ -234,7 +234,8 @@
       if (!b2) return C.BUILDINGS.tower.up[level - 1];          // unforked fallback
       return level < C.BUILDINGS.tower.fork ? b2.cost : b2.up[level - C.BUILDINGS.tower.fork];
     }
-    return C.BUILDINGS[bt].up[level - 1];
+    const up = C.BUILDINGS[bt].up;
+    return up ? up[level - 1] : Infinity;   // no table = this work does not upgrade
   }
 
   function applyCommand(world, pi, cmd) {
@@ -269,6 +270,8 @@
       const s = bldOf(world, pi, cmd.id);
       if (!s) return { ok: false, err: 'id' };
       if (s.raise > 0) return { ok: false, err: 'raising' };
+      /* some works simply do not upgrade — the Shrine is one, and there is nothing to offer */
+      if (s.bt !== 'tower' && !C.BUILDINGS[s.bt].up) return { ok: false, err: 'noup' };
       if (s.level >= C.MAX_LEVEL) return { ok: false, err: 'max' };
       /* the Watchtower fork: the level-2 upgrade must name a branch, and it is forever */
       let br = s.br;

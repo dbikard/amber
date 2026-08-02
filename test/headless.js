@@ -205,6 +205,47 @@ suite('a Gate stands on a spring')
      `${pl.incomeRate.toFixed(1)} vs base ${base.toFixed(1)}`);
 }
 
+suite('the Pattern is not upgraded')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 999999;
+  ok('the Shrine has no upgrade table at all', C.BUILDINGS.shrine.up === undefined);
+  ok('so it has one drain and one rate', C.BUILDINGS.shrine.drain.length === 1 && C.BUILDINGS.shrine.rate.length === 1);
+
+  let at = null;
+  for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+    for (let a = 0; a < 40 && !at; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 0, x, y, 'shrine') === null) at = { x, y };
+    }
+  ok('a Shrine can be raised', !!at && raise(w, 0, at.x, at.y, 'shrine').ok);
+  const sh = pl.buildings.find((b) => b.bt === 'shrine');
+  eq('it stands at level 1', sh.level, 1);
+  eq('and refuses to be upgraded', World.applyCommand(w, 0, { c: 'up', id: sh.id }).err, 'noup');
+  eq('...still at level 1', sh.level, 1);
+  ok('an upgrade has no price to quote', !isFinite(World.upgradeCost('shrine', 1)));
+
+  /* the walk is the commitment: it must cost real essence, and be felt as a drain */
+  const before = pl.essence;
+  ok('the walk begins', World.applyCommand(w, 0, { c: 'walk', on: true }).ok);
+  for (let i = 0; i < 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const spent = before - pl.essence;
+  near('a second of walking costs the Shrine drain', spent, C.BUILDINGS.shrine.drain[0], 3.5,
+       `${spent.toFixed(1)} spent, drain ${C.BUILDINGS.shrine.drain[0]}/s`);
+  ok('the drain is reported to the HUD', pl.drainRate >= C.BUILDINGS.shrine.drain[0] - 0.5,
+     `${pl.drainRate.toFixed(1)}/s`);
+  const full = C.BUILDINGS.shrine.drain[0] * (100 / C.BUILDINGS.shrine.rate[0]);
+  ok('a whole walk is a serious sum', full > 9000, `${Math.round(full)} essence over ${(100 / C.BUILDINGS.shrine.rate[0] / 60).toFixed(1)} min`);
+
+  /* a poor player walks SLOWER rather than free — partial payment, not a free ride */
+  pl.essence = 0;
+  const at0 = pl.pattern;
+  for (let i = 0; i < 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const crawled = pl.pattern - at0;
+  ok('with an empty treasury the walk all but stops', crawled < C.BUILDINGS.shrine.rate[0] * 0.5,
+     `${crawled.toFixed(3)}% in a second`);
+}
+
 suite('companies')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);

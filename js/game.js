@@ -167,6 +167,7 @@
       else if (r.err === 'crowded') UI.banner('Too close to another work', 'warn');
       else if (r.err === 'busy') UI.banner('Your masons are already at work', 'warn');
       else if (r.err === 'raising') UI.banner('It is not finished yet', 'warn');
+      else if (r.err === 'noup') UI.banner('The Pattern is what it is — there is nothing to raise', 'warn');
       else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
       else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
     }

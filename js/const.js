@@ -133,9 +133,13 @@
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480, raise: 11,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, up: [250, 400], unique: true, hp: 450, raise: 26,
-                drain: [12, 14, 16], rate: [0.22, 0.29, 0.38],  // essence/sec → %/sec (L1 walk ≈ 7.6 min)
-                blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
+    /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk
+     * is meant to be a commitment you pay for in essence you are not spending on an army —
+     * an upgrade path only made it cheaper AND faster, so it was never a commitment at all.
+     * drain = essence/sec while walking, rate = %/sec: ~7.6 minutes and ~10.9k essence. */
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 450, raise: 26,
+                drain: [24], rate: [0.22],
+                blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED, and it is expensive.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
 

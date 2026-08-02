@@ -340,7 +340,7 @@
         b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, key); UI.closeSheet(); });
         el.appendChild(b);
       }
-    } else if (s.level < C.MAX_LEVEL) {
+    } else if (s.level < C.MAX_LEVEL && (d.up || s.bt === 'tower')) {
       const cost = global.World.upgradeCost(s.bt, s.level, s.br);
       const can = essence >= cost;
       const b = document.createElement('button');

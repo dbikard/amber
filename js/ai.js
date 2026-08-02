@@ -159,7 +159,7 @@
        * the grind has failed to finish it. */
       plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine',
                    'tower', 'barracks', 'tower', 'gate'],
-      upPref: ['tower', 'gate', 'barracks', 'shrine'],
+      upPref: ['tower', 'gate', 'barracks'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
@@ -192,7 +192,7 @@
        * economy never grew and he lost the race he had started. Mine first, then walk. */
       plan: () => ['gate', 'gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire',
                    'tower', 'barracks', 'spire', 'tower'],
-      upPref: ['tower', 'gate', 'shrine', 'barracks'],
+      upPref: ['tower', 'gate', 'barracks'],
       towerBranch: () => 'cannon',   // the walk is answered by an army, and an army is a crowd
       /* Greed must still MINE. Keeping Brand's army home to guard the walk was tried and
        * measured: it starves him (2 wins across the field) because the walk's drain has to
@@ -209,7 +209,7 @@
       interval: 1.4, noise: 0.10,
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks',
                    'tower', 'barracks', 'spire', 'gate'],
-      upPref: ['barracks', 'gate', 'spire', 'tower', 'shrine'],
+      upPref: ['barracks', 'gate', 'spire', 'tower'],
       towerBranch: () => 'bolt',
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
       banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
@@ -233,7 +233,7 @@
         else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
         return wants;
       },
-      upPref: ['gate', 'shrine', 'barracks', 'tower', 'spire'],
+      upPref: ['gate', 'barracks', 'tower', 'spire'],
       towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
       missions: (v) => [wantGates('own', 2), wantWatch(1),
                         ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : [])],
