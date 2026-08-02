@@ -71,7 +71,7 @@
     hill: 0.635,        // above this is high ground
     cliff: 0.755,       // …and above this, impassable crag
     minLand: 0.34,      // a world whose largest landmass is smaller than this is rerolled
-    nodes: 14, nodesMin: 9, nodeGap: 300, springNear: 200, springFar: 400, seatApartMulti: 0.62,     // springs: how many, and how far apart
+    nodes: 14, nodesMin: 9, nodeGap: 300, springNear: 200, springFar: 400, seatApartMulti: 0.62, springLevel: 58,     // springs: how many, and how far apart
     vantages: 8, vantGap: 240,
     inland: 300,        // a Seat may not stand closer than this to the edge of the world
     seatRoom: 300,      // buildable cells required around a Seat
@@ -199,13 +199,22 @@
   };
 
   /* Chaos director: rifts tear open at black-road sites (and, late, at springs);
-   * fiends march the paths toward the cities, sieging whatever stands in the way. */
+   * fiends march the paths toward the cities, sieging whatever stands in the way.
+   *
+   * CHAOS IS THE PRICE OF THE BEST GROUND, NOT A DOOMSDAY TIMER (DESIGN_PRINCIPLES §4).
+   * Ramping hp and damage together without a ceiling multiplies into one: measured against
+   * the stat block, a lone fiend ate 5 soldiers by minute 10, 9 by minute 15 and 26 by
+   * minute 30, while the rift schedule climbed to 40 fiends a minute. Bots survived that by
+   * massing 150 troops and fighting in a blob, where a dozen swords answer one fiend at
+   * once; a human holding a road with six men met the arithmetic head-on. Both curves are
+   * now capped: a fiend grows into a soldier's better — about two swords to put down — and
+   * stays there. Late Chaos still presses, by being MANY, which is a fight you can win. */
   CONST.CHAOS = {
     firstAt: 90,                       // s before the first rift
     interval: (t) => Math.max(15, 46 - t * 0.04),   // s between rifts
     count: (t) => 2 + Math.floor(t / 150) + (t > 480 ? 2 : 0),  // fiends per rift (surge at 8 min)
-    hpScale: (t) => 1 + t / 300,
-    dmgScale: (t) => 1 + t / 520
+    hpScale: (t) => Math.min(2.0, 1 + t / 480),
+    dmgScale: (t) => Math.min(1.35, 1 + t / 1200)
   };
 
   CONST.PATTERN_ALERTS = [

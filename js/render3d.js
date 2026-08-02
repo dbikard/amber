@@ -687,7 +687,14 @@
         const mvx = u.x - f.x, mvy = u.y - f.y;
         if (mvx * mvx + mvy * mvy > 0.5) f.a = Math.atan2(mvx, mvy);
         f.x = u.x; f.y = u.y;
-        dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
+        /* the march bob belongs to marching. Ranks standing at the muster were hopping in
+         * place two and a half times a second, which reads as a shiver rather than as men at
+         * rest. Smooth the speed rather than test it — a guest gets positions at 10 Hz, so a
+         * raw per-frame delta is zero five frames in six and would strobe. */
+        const sp = Math.sqrt(mvx * mvx + mvy * mvy) / Math.max(1e-4, dt);
+        f.sp = f.sp == null ? sp : f.sp + (sp - f.sp) * Math.min(1, dt * 6);
+        const bob = Math.min(1, f.sp / 20) * 1.6;
+        dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
         dum.rotation.set(0, f.a, 0);
         const s2 = u.kind === 'champion' ? 1.25 : 1;
         dum.scale.set(s2, s2, s2);

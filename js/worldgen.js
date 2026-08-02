@@ -301,8 +301,8 @@
       for (const p of vants) add(p.x, p.y, 'vantage');
 
       /* the Seats stand on level, open ground whatever the noise said */
-      const flatten = (p) => {
-        const r = C.CITY.r + 40, rc = Math.ceil(r / land.cw);
+      const flatten = (p, radius) => {
+        const r = radius || (C.CITY.r + 40), rc = Math.ceil(r / land.cw);
         const gx = Math.floor(p.x / land.cw), gy = Math.floor(p.y / land.cw);
         let sum = 0, k = 0;
         for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
@@ -321,8 +321,11 @@
         }
       };
       for (const p of seats.pts) flatten(p);
-      /* and a spring must be standable, not a rock */
+      /* A spring lies in a level hollow. Not decoration: the pool and its ring are drawn as
+       * FLAT discs at one height, so on ground that rises 16 units across them the land pokes
+       * through and takes a bite out of the water. Level the ground and they sit in it. */
       for (const p of nodes) {
+        flatten(p, C.WORLD.springLevel);
         const i = Math.floor(p.y / land.cw) * land.W + Math.floor(p.x / land.cw);
         if (!G.BUILDABLE[land.terra[i]]) land.terra[i] = T.PLAIN;
       }

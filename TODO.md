@@ -275,6 +275,35 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **Chaos stops escalating.** Reported from play: the fiends are too strong. They were.
+      `hpScale` and `dmgScale` both ramped without a ceiling and multiplied into each other,
+      so measured against the stat block a lone fiend ate 5 soldiers by minute 10, 9 by
+      minute 15 and 26 by minute 30, while the rift schedule climbed to 40 fiends a minute.
+      Bots never felt it — they mass 150 troops and fight in a blob, where a dozen swords
+      answer one fiend at once — but a human holding a road with six men met the arithmetic
+      head-on. That is a doomsday timer, which DESIGN_PRINCIPLES §4 says Chaos is not.
+      Both curves are capped (hp x2.0, damage x1.35): a fiend grows into a soldier's better,
+      about two swords to put down, and stays there. The rift COUNT still swells, so late
+      Chaos presses by being many. Duration held: benedict mirror 12.0m → 11.9m, greedy
+      mirror 3.9m → 3.9m, bleys/julian 17.6m → 25.0m (top of the 15–30 band; that matchup
+      also flipped 58% → 21%, which is the known heir skew moving, not a new one).
+      A softer cap (x2.4/x1.5, three swords) was measured too and moved durations by 0.2m —
+      the escalation, not its ceiling, was what set the length.
+- [x] **The ranks stand still.** Troops ordered home shivered around the Seat. A soldier on
+      the muster ground steers to his own place in the ring directly; one outside it rides
+      the flow field in. That handover was judged by `NAV.arrive` around the Seat CENTRE,
+      which put the ring itself on the wrong side of the line: 12 of 50 men froze on the
+      tower's own ground (the field reckoned them arrived and stopped pushing, the direct
+      rule did not yet apply), and in AI play 13 of 102 stepped out toward their place, fell
+      back under the field and repeated at 30 Hz. The muster ground now reaches past the
+      outermost place in the ring, so the handover happens once. The renderer's march bob
+      was making it worse by hopping standing men two and a half times a second; it now
+      scales with a smoothed speed, so men at rest are at rest.
+- [x] **Springs sit in level ground.** A pool and its ownership ring are drawn as FLAT discs
+      at one height. Elevation varied by up to 18 units across that footprint, so the land
+      poked through and took a wedge out of the water. Worldgen levels a `springLevel` radius
+      around every spring; measured spread across the pool+ring is now 0.00 on every seed.
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play

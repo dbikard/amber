@@ -60,6 +60,46 @@ for (const seed of SEEDS) {
     ok(`seed ${seed}: and a Gate can actually be raised on it`, !!raisable,
        raisable ? `${raisable.s.name} at ${Math.round(raisable.d)}` : 'none claimable');
   }
+
+  /* A spring lies in a level hollow. The pool and its ownership ring are drawn as FLAT discs
+   * at one height, so ground that rises across them pokes through and takes a bite out of the
+   * water — which is exactly what a wedge missing from a pool looks like. Measure the terrain
+   * the way the renderer does and demand it be level out to the rim of the ring. */
+  {
+    const nav = w.nav;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < nav.elev.length; i++) {
+      const e = nav.elev[i];
+      if (e < lo) lo = e;
+      if (e > hi) hi = e;
+    }
+    const span = Math.max(1e-6, hi - lo);
+    const hAt = (x, z) => {
+      const fx = Math.max(0, Math.min(nav.W - 1.001, x / nav.cw - 0.5));
+      const fz = Math.max(0, Math.min(nav.H - 1.001, z / nav.cw - 0.5));
+      const x0 = fx | 0, z0 = fz | 0, tx = fx - x0, tz = fz - z0;
+      const i = z0 * nav.W + x0;
+      const a = nav.elev[i] * (1 - tx) + nav.elev[i + 1] * tx;
+      const b = nav.elev[i + nav.W] * (1 - tx) + nav.elev[i + nav.W + 1] * tx;
+      return ((a * (1 - tz) + b * tz) - lo) / span * C.WORLD.relief;
+    };
+    const RIM = 41;              // outer radius of the ownership ring, from render3d.js
+    let worst = 0, where = null;
+    for (const s of w.map.sites) {
+      if (s.kind !== 'node') continue;
+      let mn = Infinity, mx = -Infinity;
+      for (let rr = 0; rr <= RIM; rr += 8)
+        for (let a2 = 0; a2 < 16; a2++) {
+          const th = a2 / 16 * Math.PI * 2;
+          const h = hAt(s.x + Math.cos(th) * rr, s.y + Math.sin(th) * rr);
+          if (h < mn) mn = h;
+          if (h > mx) mx = h;
+        }
+      if (mx - mn > worst) { worst = mx - mn; where = s.name; }
+    }
+    ok(`seed ${seed}: every spring sits in level ground`, worst <= 1,
+       `worst spread ${worst.toFixed(2)} at ${where}`);
+  }
 }
 
 suite('movement');
@@ -624,6 +664,38 @@ suite('the muster ground')
      d[d.length >> 1] > C.CITY.seatR + 20, `median ${Math.round(d[d.length >> 1])} from the Seat`);
   ok('and it stays inside the court', d[d.length - 1] < C.CITY.r + 60,
      `furthest ${Math.round(d[d.length - 1])}`);
+
+  /* EVERY man reaches his place. A soldier on the muster ground steers to his own place in
+   * the ring directly; a soldier outside it rides the flow field in. Judging that handover by
+   * NAV.arrive around the Seat CENTRE left a dead band where neither rule fired: the field
+   * reckoned the man had arrived and stopped pushing, and the direct rule did not yet apply,
+   * so he froze on the tower's own ground — a quarter of the army standing inside the castle.
+   * The median above cannot see it; count them. */
+  World.applyCommand(w, 0, { c: 'banner', x: c.x, y: c.y, co: 0 });
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const home = w.units.filter((u) => u.owner === 0);
+  const inside = home.filter((u) => Math.hypot(u.x - c.x, u.y - c.y) < C.CITY.seatR);
+  eq('and no man is left standing inside the tower', inside.length, 0,
+     `${inside.length} of ${home.length} on the tower's ground`);
+
+  /* the same dead band, one step out, makes a man step toward his place, fall back under the
+   * field and repeat — an army shivering at 30 Hz. Reversing direction is the signature. */
+  const hist = home.map((u) => ({ id: u.id, h: [] }));
+  for (let t = 0; t < 60; t++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    for (const tr of hist) { const u = w.units.find((q) => q.id === tr.id); if (u) tr.h.push([u.x, u.y]); }
+  }
+  let shivering = 0;
+  for (const tr of hist) {
+    let rev = 0;
+    for (let i = 2; i < tr.h.length; i++) {
+      const ax = tr.h[i - 1][0] - tr.h[i - 2][0], ay = tr.h[i - 1][1] - tr.h[i - 2][1];
+      const bx = tr.h[i][0] - tr.h[i - 1][0], by = tr.h[i][1] - tr.h[i - 1][1];
+      if (ax * bx + ay * by < 0) rev++;
+    }
+    if (rev >= 4) shivering++;
+  }
+  eq('nobody in the ranks shivers', shivering, 0, `${shivering} of ${hist.length} reverse 4+ times in 2s`);
 }
 
 suite('remembered ground')
@@ -668,6 +740,34 @@ suite('no walls, for now')
   eq('the wall command is refused', World.applyCommand(w, 0, { c: 'wall' }).err, 'cmd');
   ok('no player carries wall state', w.players.every((p) => p.wallHp === undefined));
   ok('no rampart survives in the nav layer', C.NAV.rampartR === undefined);
+}
+
+/* Chaos is the price of the best ground, not a doomsday timer (DESIGN_PRINCIPLES §4). It may
+ * press harder over time by being MANY; it may not grow into something no army can answer.
+ * The measure is the exchange rate: how many soldiers a lone fiend puts down before it falls.
+ * Uncapped hp AND damage ramps multiplied into 5 soldiers by minute 10 and 26 by minute 30. */
+suite('Chaos presses, it does not escalate')
+{
+  const S = C.UNITS.soldier, F = C.UNITS.fiend;
+  const eats = (t) => {
+    let hp = F.hp * C.CHAOS.hpScale(t), n = 0;
+    const fdps = (F.dmg * C.CHAOS.dmgScale(t)) / F.atk, sdps = S.dmg / S.atk;
+    while (n < 99) {
+      const tDies = S.hp / fdps;
+      if (hp / sdps <= tDies) break;
+      hp -= sdps * tDies; n++;
+    }
+    return n;
+  };
+  ok('a fiend outmatches a lone soldier', eats(600) >= 1, `${eats(600)} at minute 10`);
+  for (const m of [10, 15, 30, 45])
+    ok(`and never more than two, even at minute ${m}`, eats(m * 60) <= 2, `${eats(m * 60)} soldiers`);
+  ok('the hit points stop climbing', C.CHAOS.hpScale(2700) === C.CHAOS.hpScale(5400),
+     `x${C.CHAOS.hpScale(2700)}`);
+  ok('and so does the damage', C.CHAOS.dmgScale(2700) === C.CHAOS.dmgScale(5400),
+     `x${C.CHAOS.dmgScale(2700)}`);
+  ok('but the rifts still swell', C.CHAOS.count(1800) > C.CHAOS.count(300),
+     `${C.CHAOS.count(300)} then ${C.CHAOS.count(1800)} per rift`);
 }
 
 /* ---------------- multiplayer: the snapshot contract ---------------- */

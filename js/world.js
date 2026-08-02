@@ -674,12 +674,20 @@
          * stands on that ground and an army standing with it simply vanishes under the
          * castle — which is what happened when the walls went and took the garrison's ring
          * with them. A stable per-soldier angle keeps the ring even instead of jostling. */
+        let muster = 0;   // >0 once the goal is a place in the ring: how far the ground reaches
         if (u.owner !== C.CHAOS_ID) {
           const cs = cityOf(world, u.owner);
           if (d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR) {
             const ang = (u.id * 2.39996) % (Math.PI * 2);          // golden angle: no clumps
             const rr = C.CITY.seatR + 24 + (u.id % 4) * 17;
             gx = cs.x + Math.cos(ang) * rr; gy = cs.y + Math.sin(ang) * rr;
+            /* The whole ring is muster ground, not just the last few strides. Judging it by
+             * NAV.arrive around the Seat CENTRE instead put every soldier in a 30 Hz loop:
+             * step outward toward his own place, cross out of the field's arrival circle,
+             * get dragged back to the middle, repeat — which is what the shivering ranks
+             * under the tower were. Reach past the outermost place and the handover happens
+             * once. */
+            muster = rr + C.NAV.arrive;
           }
         }
         const dgoal = Math.sqrt(d2(u.x, u.y, gx, gy));
@@ -689,7 +697,7 @@
          * middle, since by the field's reckoning he has already arrived. */
         const dField = Math.sqrt(d2(u.x, u.y, gs.x, gs.y));
         let vx = 0, vy = 0;
-        if (dgoal < C.NAV.arrive || dField < C.NAV.arrive) {
+        if (dgoal < C.NAV.arrive || dField < C.NAV.arrive || (muster && dField < muster)) {
           if (dgoal > 4) { vx = (gx - u.x) / dgoal; vy = (gy - u.y) / dgoal; }
         } else {
           const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);
