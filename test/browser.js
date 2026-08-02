@@ -741,6 +741,36 @@ async function match(browser, base, renderer) {
     ok('a guest can open a build sheet', lan.sheet);
     ok('the guest raised no errors rendering snapshots', errs.length === 0, errs.slice(0, 3).join(' | '));
 
+    /* ...and the same path at a seat that is neither host nor "the other one" */
+    const lan4 = await pg.evaluate(async () => {
+      const { Game, Net, World, CONST: C, AI } = window;
+      const seed = 777, seats = 4, mine = 2;
+      Net.isHost = false; Net.localIdx = mine; Net.active = true;
+      Net.send = () => {};
+      Game.startMP(seed, seats, mine);
+      const hw = World.createWorld(seed, seats);
+      const bots = [0, 1, 2, 3].map((i) => AI.make(['benedict', 'julian', 'bleys', 'brand'][i]));
+      for (let i = 0; i < 30 * 100 && hw.winner === null; i++) {
+        for (let pi = 0; pi < seats; pi++) bots[pi].step(hw, pi, (cm) => World.applyCommand(hw, pi, cm), C.SIM_DT);
+        World.update(hw, C.SIM_DT); hw.events.length = 0;
+      }
+      const push = () => Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, mine, hw.events.splice(0)))));
+      push();
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      push();
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      return { viewer: Game.game.viewer, seats: Game.game.world ? -1 : hw.players.length,
+               ess: document.getElementById('ess-n').textContent,
+               want: Math.floor(hw.players[mine].essence),
+               names: Game.game.names.length };
+    });
+    ok('a guest can hold a seat that is not seat 1', lan4.viewer === 2, `viewer ${lan4.viewer}`);
+    ok('it knows all four names', lan4.names === 4, `${lan4.names}`);
+    ok('and reads its OWN essence off the wire, not seat 1s',
+       Math.abs(parseInt(lan4.ess, 10) - lan4.want) <= Math.max(30, lan4.want * 0.3),
+       `ess-n ${lan4.ess}, seat 2 has ${lan4.want}`);
+    ok('four-player guest rendering raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+
     suite(`${r} · console`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();

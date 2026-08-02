@@ -277,6 +277,47 @@ suite('a Seat falls')
   ok('the fallen stay fallen', ffa.players.filter((p) => p.out).length === 3);
 }
 
+suite('four on the wire')
+{
+  const w = World.createWorld(1000, 4);
+  const bots = [AI.make('benedict'), AI.make('julian'), AI.make('bleys'), AI.make('brand')];
+  for (let i = 0; i < 30 * 60 * 3 && w.winner === null; i++) {
+    for (let pi = 0; pi < 4; pi++) bots[pi].step(w, pi, (cm) => World.applyCommand(w, pi, cm), C.SIM_DT);
+    World.update(w, C.SIM_DT);
+    w.events.length = 0;
+  }
+  ok('all four heirs are building', w.players.every((p) => p.buildings.length > 0),
+     w.players.map((p) => p.buildings.length).join(','));
+
+  /* one snapshot per seat, and each must keep every OTHER seat's secrets */
+  for (let viewer = 0; viewer < 4; viewer++) {
+    const wire = JSON.parse(JSON.stringify(Net.snapFor(w, viewer, [])));
+    eq(`seat ${viewer}: the snapshot carries every player`, wire.players.length, 4);
+    const rivals = wire.players.filter((q, pi) => pi !== viewer);
+    ok(`seat ${viewer}: no rival essence`, rivals.every((q) => q.essence === null));
+    ok(`seat ${viewer}: no rival banner`, rivals.every((q) => q.banner === null));
+    ok(`seat ${viewer}: no rival powers`, rivals.every((q) => q.powers === null));
+    ok(`seat ${viewer}: no rival company list`, rivals.every((q) => q.companies.length === 0));
+    ok(`seat ${viewer}: own essence is present`, wire.players[viewer].essence != null);
+    /* fog: every rival work sent must be one this seat can actually see */
+    const canSee = (x, y) => World.canSee(w, viewer, x, y);
+    for (let pi = 0; pi < 4; pi++) {
+      if (pi === viewer) continue;
+      ok(`seat ${viewer}: only sees seat ${pi}'s works it can see`,
+         wire.players[pi].buildings.every((b) => canSee(b.x, b.y)));
+    }
+    ok(`seat ${viewer}: units are its own or seen`,
+       wire.units.every((u) => u.owner === viewer || canSee(u.x, u.y)));
+    const bytes = JSON.stringify(wire).length;
+    ok(`seat ${viewer}: still fits a 10 Hz channel`, bytes < 120000, `${(bytes / 1024).toFixed(1)} KiB`);
+  }
+
+  /* four seats means four snapshots per tick — the budget is what the host must push */
+  const total = [0, 1, 2, 3].reduce((a, v) => a + JSON.stringify(Net.snapFor(w, v, [])).length, 0);
+  ok('the host can push all four at 10 Hz', total < 400000,
+     `${(total / 1024).toFixed(1)} KiB per round, ${(total * 10 / 1024 / 1024 * 8).toFixed(1)} Mbit/s`);
+}
+
 suite('the Pattern is not upgraded')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);

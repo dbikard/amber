@@ -137,6 +137,25 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       NOT answering it. Colours follow a company's id, which never repeats: pennants used to
       be indexed by `buildings.indexOf(b)`, so every razed hall reshuffled the colours of the
       survivors. Commands: `build {co}`, `rally {co}`, and a new `assign {id, co}`.
+- [ ] **Four heirs (LAN, free-for-all).** Sim, world, view, renderer and netcode all take
+      2-4 now; what is left is play-testing it with real devices and the lobby polish.
+      - Chaos moved off owner index 2 (`CHAOS_ID = -1`) — it collided with the third heir.
+      - `placeCities` grows a SET greedily and scores the spread across all Seats, not the gap
+        between two. Separation scales with the count: four cannot stand as far apart as two.
+      - A Seat falling ELIMINATES that heir in a free-for-all (works, men and ghosts go with
+        them) and the last standing takes the throne; a duel still ends on the first fall.
+      - Per-tick service order rotates the ring rather than flipping, or seat 0 would win
+        every simultaneous finish.
+      - `seatSeen` per seat replaces the single `foeSeen`; the renderer builds a city per
+        player; you are always gold and every rival keeps its own colour by seat order.
+      - Netcode is a STAR: the host holds up to three peers, each paired by the same QR
+        offer/answer as before, and sends each guest its OWN fog-filtered snapshot. Commands
+        carry the sender's seat. The host hands out seed, player count and seat at start.
+      - Measured: 22.4 KiB per snapshot round at four players = 1.75 Mbit/s at 10 Hz.
+      - Solo is still 1v1 by choice. The AI no longer CRASHES on a four-way (it picks a
+        primary rival instead of `players[1 - me]`) but it has not been taught to play one.
+      - Not yet done: a lobby that shows who has joined, reconnection, and any real-device
+        testing of three simultaneous WebRTC pairings.
 - [x] **The Pattern Shrine does not upgrade, and the walk costs more.** The upgrade path made
       the walk both CHEAPER and FASTER (L1 12/s over 7.6min = 5.5k essence; L3 16/s over
       4.4min = 4.2k), so it was never the commitment it was supposed to be — and heirs held it

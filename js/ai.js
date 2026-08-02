@@ -10,13 +10,24 @@
   /* what a player can legitimately know */
   function view(world, me) {
     const World = global.World;
-    const pl = world.players[me], en = world.players[1 - me];
+    const pl = world.players[me];
     const myCity = World.cityOf(world, me);
     /* THE RIVAL'S SEAT IS NOT KNOWN until somebody has laid eyes on it. Everything that used
      * to orient off enCity — where to face the towers, where to send the banner, where to
      * storm — has to cope with not knowing, and go looking instead. */
-    const enCityId = world.map.cities[1 - me];
-    const enCity = pl.explored[enCityId] ? World.cityOf(world, 1 - me) : null;
+    /* With more than two heirs there is no "the other one". THE rival is whichever living
+     * heir this one should be worrying about: the one it has FOUND and whose Seat is nearest,
+     * else the nearest it has not found — so an heir still orients on somebody, and a
+     * four-way does not crash on `players[1 - me]`. */
+    const others = world.players.map((q, pi) => pi).filter((pi) => pi !== me && !world.players[pi].out);
+    const byNear = others.slice().sort((a, b) =>
+      d2(World.cityOf(world, a).x, World.cityOf(world, a).y, myCity.x, myCity.y) -
+      d2(World.cityOf(world, b).x, World.cityOf(world, b).y, myCity.x, myCity.y));
+    const foundIdx = byNear.find((pi) => pl.explored[world.map.cities[pi]]);
+    const enIdx = foundIdx != null ? foundIdx : (byNear[0] != null ? byNear[0] : me);
+    const en = world.players[enIdx];
+    const enCityId = world.map.cities[enIdx];
+    const enCity = pl.explored[enCityId] ? World.cityOf(world, enIdx) : null;
     const have = {};
     for (const b of pl.buildings) have[b.bt] = (have[b.bt] || 0) + 1;
     /* no ceiling on works any more — what is rationed is the masons. `free` now means
@@ -47,7 +58,7 @@
       const dd = d2(s.x, s.y, myCity.x, myCity.y);
       if (dd < fbd) { fbd = dd; frontier = s; }
     }
-    const enemyArmy = visHostiles.filter((u) => u.owner === 1 - me).length;
+    const enemyArmy = visHostiles.filter((u) => u.owner !== me && u.owner !== C.CHAOS_ID).length;
     const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
     return {
       t: world.t, me, pl, world, have, free, raising,

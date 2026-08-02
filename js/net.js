@@ -106,48 +106,85 @@
       setTimeout(res, 2500);
     });
   }
-  function wireChannel(dc) {
-    Net.dc = dc;
-    dc.onopen = () => { diag('datachannel OPEN — linked ✔'); Net.active = true; Net.peerGone = false; Net._pairing = false; releaseWake(); if (Net.onOpen) Net.onOpen(); };
-    dc.onclose = () => { diag('datachannel closed'); Net.peerGone = true; if (Net.onClose) Net.onClose(); };
-    dc.onerror = () => { diag('datachannel error'); Net.peerGone = true; };
-    dc.onmessage = (e) => handle(JSON.parse(e.data));
+  /* ---------------- the star ----------------
+   * A guest has exactly one link, to the host. The HOST may hold up to three, one per guest,
+   * and every one is paired the same way the single link always was: an offer by QR, an
+   * answer scanned back. Peer k is player k+1 — seats are handed out in the order people
+   * join, and the host tells each guest which one it got. */
+  Net.peers = [];          // host only: [{ pc, dc, idx, open }]
+  const openPeers = () => Net.peers.filter((p) => p.dc && p.dc.readyState === 'open');
+  Net.seated = () => 1 + openPeers().length;          // how many are actually in the match
+
+  function wireChannel(dc, peer) {
+    if (peer) peer.dc = dc; else Net.dc = dc;
+    dc.onopen = () => {
+      diag('datachannel OPEN — linked ✔' + (peer ? ' (seat ' + peer.idx + ')' : ''));
+      Net.active = true; Net.peerGone = false; Net._pairing = false;
+      releaseWake();
+      if (Net.onOpen) Net.onOpen(peer ? peer.idx : Net.localIdx);
+    };
+    dc.onclose = () => {
+      diag('datachannel closed' + (peer ? ' (seat ' + peer.idx + ')' : ''));
+      /* a host with other guests still standing is not "gone" — only the one who left is */
+      if (!peer || !openPeers().length) Net.peerGone = true;
+      if (Net.onClose) Net.onClose(peer ? peer.idx : Net.localIdx);
+    };
+    dc.onerror = () => { diag('datachannel error'); if (!peer || !openPeers().length) Net.peerGone = true; };
+    dc.onmessage = (e) => handle(JSON.parse(e.data), peer ? peer.idx : 0);
   }
 
+  /* call once per guest you want to add; each returns that guest's offer */
   Net.host = async function () {
     Net.isHost = true; Net.localIdx = 0;
     Net._pairing = true; acquireWake();
-    const pc = Net.pc = makePC();
-    wireChannel(pc.createDataChannel('amber', { ordered: true }));
+    const pc = makePC();
+    const peer = { pc, dc: null, idx: Net.peers.length + 1 };
+    Net.peers.push(peer);
+    Net._pending = peer;
+    wireChannel(pc.createDataChannel('amber', { ordered: true }), peer);
     await pc.setLocalDescription(await pc.createOffer());
     await gathered(pc);
     return compress(JSON.stringify(pc.localDescription));
   };
+  Net.canAdd = () => Net.peers.length < (global.CONST.MAX_PLAYERS - 1);
   Net.join = async function (offerCode) {
-    Net.isHost = false; Net.localIdx = 1;
+    Net.isHost = false;
+    Net.localIdx = 1;              // provisional: the host names the real seat at start
     Net._pairing = true; acquireWake();
     const pc = Net.pc = makePC();
-    pc.ondatachannel = (e) => wireChannel(e.channel);
+    pc.ondatachannel = (e) => wireChannel(e.channel, null);
     await pc.setRemoteDescription(JSON.parse(await decompress(offerCode)));
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
     return compress(JSON.stringify(pc.localDescription));
   };
   Net.acceptAnswer = async function (answerCode) {
-    await Net.pc.setRemoteDescription(JSON.parse(await decompress(answerCode)));
+    const pc = Net.isHost ? (Net._pending && Net._pending.pc) : Net.pc;
+    if (!pc) return;
+    await pc.setRemoteDescription(JSON.parse(await decompress(answerCode)));
   };
 
-  Net.send = function (o) {
-    if (Net.dc && Net.dc.readyState === 'open') Net.dc.send(JSON.stringify(o));
+  /* `to` names a seat; without it this goes to everyone the sender is linked to */
+  Net.send = function (o, to) {
+    const txt = JSON.stringify(o);
+    if (Net.isHost) {
+      for (const p of Net.peers)
+        if (p.dc && p.dc.readyState === 'open' && (to == null || p.idx === to)) p.dc.send(txt);
+    } else if (Net.dc && Net.dc.readyState === 'open') Net.dc.send(txt);
   };
   Net.close = function () {
-    try { if (Net.dc) Net.dc.close(); if (Net.pc) Net.pc.close(); } catch (e) {}
-    Net.active = false; Net.dc = null; Net.pc = null;
+    try {
+      if (Net.dc) Net.dc.close();
+      if (Net.pc) Net.pc.close();
+      for (const p of Net.peers) { if (p.dc) p.dc.close(); if (p.pc) p.pc.close(); }
+    } catch (e) {}
+    Net.active = false; Net.dc = null; Net.pc = null; Net.peers = []; Net._pending = null;
     Net._pairing = false; releaseWake();
   };
 
-  function handle(m) {
-    if (m.t === 'cmd') { if (Net.onCmd) Net.onCmd(m.c); }
+  /* `from` is the seat the message came from — the host must know WHOSE command it is */
+  function handle(m, from) {
+    if (m.t === 'cmd') { if (Net.onCmd) Net.onCmd(m.c, from); }
     else if (m.t === 'snap') { if (Net.onSnap) Net.onSnap(m.s); }
     else if (m.t === 'start') { if (Net.onStart) Net.onStart(m); }
   }

@@ -54,14 +54,24 @@ globals (`RNG`, `CONST`, `World`, `AI`) so `sim.js` can `require()` them in orde
 - Commands: `{c:'build',slot,bt}`, `{c:'up',slot}`, `{c:'walk',on}`,
   `{c:'power',k,p}` — all validated in `applyCommand(world, playerIdx, cmd)`.
 
+## Players
+
+2-4. `World.createWorld(seed, n)` and `WorldGen.build(seed, RNG, n)` take the count; two is a
+duel and behaves as it always did. Chaos is `CONST.CHAOS_ID = -1`, NOT a player index. In a
+free-for-all a toppled Seat eliminates that heir (`pl.out`) and the last standing wins; in a
+duel the first fall still ends it. You are always `SEAT_TINT[0]` (gold); rivals take the rest
+in seat order with the viewer removed from the line.
+
 ## Multiplayer model (differs from perils!)
 
 Perils = deterministic lockstep (co-op). Amber = **host-authoritative**: competitive play
 needs fog of war and must not trust cross-browser determinism.
 - Pairing (QR/SDP/wake-lock/diag) ported from perils `js/net.js` — do not reinvent it.
-- Host simulates everything; guest sends commands, receives fog-filtered snapshots ~10 Hz
-  (`Net.snapFor(world, viewerIdx)`), interpolates unit positions between the last two snaps.
-- Host = player 0 (Corwin), guest = player 1 (Eric).
+- A STAR: the host holds one peer per guest (`Net.peers`, up to 3), each paired by the same
+  QR offer/answer. Host simulates everything and sends each guest its OWN fog-filtered
+  snapshot (`Net.snapFor(world, seat)`); commands carry the sender's seat. The host hands out
+  seed, player count and seat in the start message — a guest never guesses its own index.
+- Host = seat 0. A guest may hold ANY other seat, so never hardcode 1.
 
 ## Fog rules (enforced at snapshot/render, respected by AI)
 

@@ -54,14 +54,18 @@
     armBack();
     UI.startMatch(AI.HEIRS[kind].title);
   }
-  function startMP(seed) {
+  /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
+   * both out with the start message, so a guest never has to guess its own index. */
+  function startMP(seed, seats, mySeat) {
+    const n = Math.max(2, Math.min(C.MAX_PLAYERS, seats || 2));
     game.mode = Net.isHost ? 'host' : 'guest';
-    game.viewer = Net.isHost ? 0 : 1;
+    game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
+    Net.localIdx = game.viewer;
     game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
-    game.names = ['Corwin', 'Eric'];
+    game.names = C.SEAT_NAMES.slice(0, n);
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
-    game.world = Net.isHost ? World.createWorld(seed) : null;
-    refWorld = Net.isHost ? null : World.createWorld(seed);   // guest: map geometry only
+    game.world = Net.isHost ? World.createWorld(seed, n) : null;
+    refWorld = Net.isHost ? null : World.createWorld(seed, n);   // guest: map geometry only
     Render.resize();
     homeCamera();
     armBack();
@@ -208,10 +212,11 @@
     const snap = snapCur;
     /* vision sources rebuilt client-side from own visible assets */
     const src = [];
-    const city = refWorld.map.sites[refWorld.map.cities[1]];
+    const me = game.viewer;
+    const city = refWorld.map.sites[refWorld.map.cities[me]];
     src.push([city.x, city.y, C.VISION.city]);
     /* your own works see for you — the snapshot always carries them in full */
-    for (const b of snap.players[1].buildings)
+    for (const b of snap.players[me].buildings)
       src.push([b.x, b.y, (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].vision) || C.VISION.build]);
     /* interpolate own+visible units between the last two snapshots */
     const alpha = Math.min(1, (performance.now() - snapAt) / 100);
@@ -223,7 +228,7 @@
         return q ? { ...u, x: q.x + (u.x - q.x) * alpha, y: q.y + (u.y - q.y) * alpha } : u;
       });
     }
-    for (const u of units) if (u.owner === 1) src.push([u.x, u.y, C.VISION.unit]);
+    for (const u of units) if (u.owner === me) src.push([u.x, u.y, C.VISION.unit]);
     const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
     /* the guest builds the same world from the same seed, so terrain needs no wire at all */
     /* the guest remembers the land itself. Nothing about it needs to cross the wire — it is
@@ -277,7 +282,10 @@
         acc -= C.SIM_DT;
         if (!game.over) {
           if (game.mode === 'sp') game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
-          if (game.mode === 'host') { for (const c of guestCmdQueue.splice(0)) World.applyCommand(game.world, 1, c); }
+          /* every guest's commands are applied AS THAT GUEST — with four seats the sender
+           * is the only thing that says whose order it was */
+          if (game.mode === 'host')
+            for (const q of guestCmdQueue.splice(0)) World.applyCommand(game.world, q.pi, q.c);
           World.update(game.world, C.SIM_DT);
         }
       }
@@ -292,7 +300,11 @@
         snapTimer -= dtReal;
         if (snapTimer <= 0) {
           snapTimer = 0.1;
-          Net.send({ t: 'snap', s: Net.snapFor(game.world, 1, pendingGuestEvents.splice(0)) });
+          /* one snapshot per guest: each is fog-filtered for THAT seat, so they cannot share */
+          const evs2 = pendingGuestEvents.splice(0);
+          for (const p of Net.peers)
+            if (p.dc && p.dc.readyState === 'open')
+              Net.send({ t: 'snap', s: Net.snapFor(game.world, p.idx, evs2) }, p.idx);
         }
       }
       Render.frame(view, game.viewer, dtReal);
@@ -301,10 +313,12 @@
       UI.flags(view, game.viewer, game.armedFlag);
     } else if (game.mode === 'guest' && snapCur) {
       const view = guestView();
-      Render.frame(view, 1, dtReal);
-      UI.hud(view, 1, (snapCur.players[1].incomeRate || 0) - (snapCur.players[1].drainRate || 0), game.targeting);
-      UI.tick(snapCur.players[1].essence || 0);
-      UI.flags(view, 1, game.armedFlag);
+      /* a guest may hold ANY seat but seat 0 — read its own, never seat 1's */
+      const gv = game.viewer, gp = snapCur.players[gv] || {};
+      Render.frame(view, gv, dtReal);
+      UI.hud(view, gv, (gp.incomeRate || 0) - (gp.drainRate || 0), game.targeting);
+      UI.tick(gp.essence || 0);
+      UI.flags(view, gv, game.armedFlag);
     }
   }
 
@@ -503,7 +517,7 @@
         if (!startPairStream(offer)) { say('could not draw the QR'); return; }
         qrJoin.classList.add('hidden');
         qrScanReply.classList.remove('hidden');
-        say('1) Eric scans this  2) tap SCAN REPLY');
+        say(`1) ${C.SEAT_NAMES[Net.peers.length]} scans this  2) tap SCAN REPLY`);
       } catch (e) { say('failed: ' + (e.message || e)); }
     });
     qrScanReply.addEventListener('click', async () => {
@@ -528,17 +542,28 @@
     Net.onOpen = () => {
       if (pairStop) { pairStop(); pairStop = null; }
       qrScanReply.classList.add('hidden'); qrJoin.classList.remove('hidden');
-      if (Net.isHost) { $('lan-start').classList.remove('hidden'); say('LINKED — begin when ready'); }
-      else say('LINKED — awaiting Corwin…');
+      if (Net.isHost) {
+        /* up to three guests, added one at a time; play with however many are in */
+        const n = Net.seated();
+        $('lan-start').classList.remove('hidden');
+        $('lan-start').textContent = 'BEGIN — ' + n + ' HEIRS';
+        $('qr-host').textContent = Net.canAdd() ? 'ADD ANOTHER HEIR' : 'FOUR IS THE LIMIT';
+        $('qr-host').disabled = !Net.canAdd();
+        $('qr-host').classList.remove('hidden');
+        say(n + ' of ' + C.MAX_PLAYERS + ' seated — add another, or begin');
+      } else say('LINKED — awaiting the host…');
     };
     $('lan-start').addEventListener('click', () => {
       const seed = (Math.random() * 0xffffffff) >>> 0;
-      Net.send({ t: 'start', seed });
+      const seats = Net.seated();
+      /* each guest is told the same seed and player count, and its OWN seat */
+      for (const p of Net.peers)
+        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
       $('lan-start').classList.add('hidden');
-      startMP(seed);
+      startMP(seed, seats, 0);
     });
-    Net.onStart = (m) => startMP(m.seed);
-    Net.onCmd = (c) => guestCmdQueue.push(c);
+    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx);
+    Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
     Net.onSnap = (s) => {
       snapPrev = snapCur; snapCur = s; snapAt = performance.now();
       if (s.events && s.events.length && refWorld) routeEvents(s.events, guestView());
