@@ -15,6 +15,17 @@
     sheet.addEventListener('click', (e) => {
       if (performance.now() - (sheet._openedAt || 0) < 320) { e.stopPropagation(); e.preventDefault(); }
     }, true);
+    /* the menu's fold-out panels close when you tap away from them, like the sheets do */
+    document.addEventListener('pointerdown', (e) => {
+      const closeIfAway = (panelId, btnId) => {
+        const panel = $(panelId), btn = $(btnId);
+        if (!panel || panel.classList.contains('hidden')) return;
+        if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
+        panel.classList.add('hidden');
+      };
+      closeIfAway('skirmish-row', 'btn-skirmish');
+      closeIfAway('lan-panel', 'btn-lan');
+    }, true);
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
     $('btn-skirmish').addEventListener('click', () => $('skirmish-row').classList.toggle('hidden'));
     $('btn-lan').addEventListener('click', () => $('lan-panel').classList.toggle('hidden'));

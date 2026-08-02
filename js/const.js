@@ -34,11 +34,16 @@
   CONST.MAP = { W: 2000, H: 2400 };
   CONST.VIEW_W = 620;          // how much world fits across the screen at zoom 1 (closer in)
   CONST.VIEW = {
-    min: 0.55, max: 2.6,       // zoom range: 0.55 = survey the country, 2.6 = down among the works
+    /* zoom range. The floor is not arbitrary: further out than this the camera outruns its
+     * own far plane and the world clips to black, and everything on screen is too small to
+     * act on anyway. */
+    min: 0.80, max: 2.6,
     overscroll: 0.42,          // how far past the world's edge the camera may run, as a
                                // fraction of the view — without it a corner Seat is stranded
                                // small at the top of the screen with nowhere left to scroll
-    camHigh: 1.21, camBack: 1.69   // the 3D rig's height and set-back, in units of the view width
+    /* the 3D rig's height and set-back, in units of the view width. ~50° of pitch: more
+     * overhead than the old 36°, so the ground you are acting on reads as a map. */
+    camHigh: 1.62, camBack: 1.36
   };
   CONST.WORLD = {
     freq: 0.030,        // noise frequency in cells — lower makes broader country

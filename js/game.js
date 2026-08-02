@@ -363,6 +363,9 @@
       issue({ c: 'power', k: 'storm', x: w.x, y: w.y });
       return;
     }
+    /* A sheet is a modal: the first tap outside it just dismisses it. Armed flags and storm
+     * targeting are handled above, so an explicit armed action still goes through. */
+    if (UI.sheetOpen()) { UI.closeSheet(); return; }
     /* one of your own works first (they overlap everything), then sites, then bare ground */
     const bid = Render.hitBuilding(x, y);
     if (bid >= 0) {

@@ -138,6 +138,13 @@
     return { mw, mh, mx: W - mw - 6, my: 62 };
   };
   R.miniBox = MINI;
+  /* what is actually on screen, in world units (flat: exactly the camera rect), clamped to
+   * the world — the camera may overscroll past the rim, and the viewfinder should only ever
+   * describe ground that exists */
+  R.viewRect = () => ({
+    x0: Math.max(0, R.camX), y0: Math.max(0, R.camY),
+    x1: Math.min(C.MAP.W, R.camX + viewW), y1: Math.min(C.MAP.H, R.camY + viewH)
+  });
   R.hitMinimap = (px, py) => {
     const m = MINI();
     return px >= m.mx - 4 && px <= m.mx + m.mw + 4 && py >= m.my - 4 && py <= m.my + m.mh + 4;
@@ -588,9 +595,10 @@
       g.circle(px(f.x), py(f.y), 5 + (1 - f.ttl / f.max) * 5)
         .stroke({ width: 1.5, color: f.ping, alpha: f.ttl / f.max });
     }
-    const vx = mx + (R.camX / C.MAP.W) * mw, vw2 = (viewW / C.MAP.W) * mw;
-    const vy = my + (R.camY / C.MAP.H) * mh, vh = (viewH / C.MAP.H) * mh;
-    g.rect(vx, vy, vw2, vh).stroke({ width: 1.5, color: 0xffe9a8 });
+    const vr = R.viewRect();
+    g.rect(mx + (vr.x0 / C.MAP.W) * mw, my + (vr.y0 / C.MAP.H) * mh,
+           ((vr.x1 - vr.x0) / C.MAP.W) * mw, ((vr.y1 - vr.y0) / C.MAP.H) * mh)
+      .stroke({ width: 1.5, color: 0xffe9a8 });
   }
   function updateTargeting() {
     const g = stage.target;

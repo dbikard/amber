@@ -216,6 +216,18 @@
     return merge(p);
   }
 
+  /* Place the camera on its rig and pitch it at the rig's own origin.
+   * NOT cam.lookAt(0,0,0): the camera is a CHILD of the rig, so that aims it at the world's
+   * origin corner instead of at what the rig is over — which skewed the whole view and grew
+   * worse with every zoom step, because applyZoom re-aimed it each time. Setting the pitch
+   * directly has no parent-space ambiguity to get wrong. */
+  function aimCam(vw) {
+    const h = vw * C.VIEW.camHigh, d = vw * C.VIEW.camBack;
+    cam.position.set(0, h, d);
+    cam.rotation.set(-Math.atan2(h, d), 0, 0);
+    cam.updateMatrixWorld(true);
+  }
+
   /* ---------------- boot / resize / camera ---------------- */
   R.init = async function (canvas) {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -228,11 +240,11 @@
     const sun = new THREE.DirectionalLight(0xffe8c0, 1.75);
     sun.position.set(-420, 760, 380);
     scene.add(sun);
-    cam = new THREE.PerspectiveCamera(55, 1, 10, 3600);
+    /* far plane has to clear the whole board from the furthest zoom, or the world clips
+     * to black at the edges when you pull out */
+    cam = new THREE.PerspectiveCamera(55, 1, 10, 9000);
     rig = new THREE.Group();
-    /* pitch ~36°; applyZoom() sets the real distance from CONST.VIEW */
-    cam.position.set(0, C.VIEW_W * C.VIEW.camHigh, C.VIEW_W * C.VIEW.camBack);
-    cam.lookAt(0, 0, 0);
+    aimCam(C.VIEW_W);
     rig.add(cam);
     scene.add(rig);
     worldG = new THREE.Group();
@@ -273,10 +285,7 @@
     R.zoom = Math.max(C.VIEW.min, Math.min(C.VIEW.max, R.zoom || 1));
     scale = W * R.zoom / C.VIEW_W;
     viewW = W / scale; viewH = H / scale;
-    if (cam) {
-      cam.position.set(0, viewW * C.VIEW.camHigh, viewW * C.VIEW.camBack);
-      cam.lookAt(0, 0, 0);
-    }
+    if (cam) aimCam(viewW);
     R.clampCam();
   };
   R.setZoom = function (z) { R.zoom = z; R.applyZoom(); };
@@ -320,6 +329,33 @@
     return { mw, mh, mx: W - mw - 6, my: 62 };
   };
   R.miniBox = MINI;
+  /* What is ACTUALLY on screen, in world units. Under perspective the visible ground is a
+   * trapezoid, and the old minimap box drew camX..camX+viewW — which is neither where the
+   * camera is looking nor how much it sees, and the mismatch grew with every zoom step.
+   * Sample the screen and take the bounding box of what really lands on the ground. */
+  R.viewRect = function () {
+    /* Sampled densely, because near the horizon the screen-to-ground mapping is violently
+     * nonlinear and a coarse grid bounds nothing. Every sample is clamped to the world
+     * first: the top of the screen genuinely sees thousands of units past the rim, and a
+     * viewfinder should say WHICH PART OF THE WORLD is on screen, not how much void is. */
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, hits = 0;
+    const N = 8;
+    for (let iy = 0; iy <= N; iy++) {
+      for (let ix = 0; ix <= N; ix++) {
+        const w2 = R.toWorld((ix / N) * W, (iy / N) * H);
+        if (!w2 || !isFinite(w2.x) || !isFinite(w2.y)) continue;
+        const cx = Math.max(0, Math.min(C.MAP.W, w2.x)), cy = Math.max(0, Math.min(C.MAP.H, w2.y));
+        hits++;
+        if (cx < x0) x0 = cx;
+        if (cy < y0) y0 = cy;
+        if (cx > x1) x1 = cx;
+        if (cy > y1) y1 = cy;
+      }
+    }
+    if (hits < 4) { x0 = R.camX; y0 = R.camY; x1 = R.camX + viewW; y1 = R.camY + viewH; }
+    return { x0: Math.max(0, x0), y0: Math.max(0, y0),
+             x1: Math.min(C.MAP.W, x1), y1: Math.min(C.MAP.H, y1) };
+  };
   R.hitMinimap = (px, py) => {
     const m = MINI();
     return px >= m.mx - 4 && px <= m.mx + m.mw + 4 && py >= m.my - 4 && py <= m.my + m.mh + 4;
@@ -986,9 +1022,9 @@
       g.globalAlpha = 1;
     }
     g.strokeStyle = '#ffe9a8'; g.lineWidth = 1.5;
-    const vx = mx + (R.camX / C.MAP.W) * mw, vw2 = (viewW / C.MAP.W) * mw;
-    const vy = my + (R.camY / C.MAP.H) * mh, vh2 = (viewH / C.MAP.H) * mh;
-    g.strokeRect(vx, vy, vw2, vh2);
+    const vr = R.viewRect();
+    g.strokeRect(mx + (vr.x0 / C.MAP.W) * mw, my + (vr.y0 / C.MAP.H) * mh,
+                 ((vr.x1 - vr.x0) / C.MAP.W) * mw, ((vr.y1 - vr.y0) / C.MAP.H) * mh);
     /* storm targeting */
     if (R.targeting) {
       g.fillStyle = 'rgba(255,90,74,0.06)'; g.fillRect(0, 0, W, H);
