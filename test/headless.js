@@ -162,6 +162,27 @@ suite('the standard')
      alive ? `closed ${Math.round(d0 - Math.hypot(alive.x - worst.x, alive.y - worst.y))} of ${Math.round(d0)}` : 'died en route');
 }
 
+suite('the muster ground')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 99000;
+  let built = 0;
+  for (let a = 0; a < 40 && built < 3; a++) {
+    const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
+    if (!World.placementError(w, 0, x, y, 'barracks')) { World.applyCommand(w, 0, { c: 'build', x, y, bt: 'barracks' }); built++; }
+  }
+  eq('three barracks stand', built, 3);
+  for (let i = 0; i < 30 * 180; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const mine = w.units.filter((u) => u.owner === 0);
+  ok('they muster an army', mine.length > 20, `${mine.length} troops`);
+  const d = mine.map((u) => Math.hypot(u.x - c.x, u.y - c.y)).sort((a, b) => a - b);
+  /* the Seat stands on its own ground; an army standing WITH it disappears under the castle */
+  ok('an army ordered home forms up in the court, not on the tower',
+     d[d.length >> 1] > C.CITY.seatR + 20, `median ${Math.round(d[d.length >> 1])} from the Seat`);
+  ok('and it stays inside the court', d[d.length - 1] < C.CITY.r + 60,
+     `furthest ${Math.round(d[d.length - 1])}`);
+}
+
 suite('no walls, for now')
 {
   ok('the rampart is gone from the build table', !C.BUILDINGS.rampart);

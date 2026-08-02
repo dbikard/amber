@@ -27,6 +27,8 @@
     return a * (1 - tz) + b * tz;
   }
   R.groundH = (x, z) => groundH(x, z);
+  /* test handle: the army's instanced meshes, so a suite can prove they are still drawn */
+  R.debugUnitMeshes = () => unitIM;
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
   const PENNANT = [0xe8ecff, 0x64d8d8, 0xc48eff, 0xff9ad8, 0x9adcff, 0xffc27a, 0xb0e8a0, 0xd8b0ff];
@@ -565,10 +567,13 @@
     /* worked ground disc */
     const court = new THREE.Mesh(new THREE.CircleGeometry(C.CITY.r + 14, 30).rotateX(-Math.PI / 2),
       new THREE.MeshLambertMaterial({ color: own ? 0x2e2416 : 0x2a161a, transparent: true, opacity: 0.85 }));
-    court.position.set(city.x, 0.6, city.y);
+    /* on the GROUND, not on the y=0 plane: the land has real elevation now, and a Seat on a
+     * hill was buried to its neck while its court disc lay underground entirely */
+    const ch = groundH(city.x, city.y);
+    court.position.set(city.x, ch + 0.6, city.y);
     g.group.add(court);
     g.tower = towerModel(own);
-    g.tower.position.set(city.x, 0, city.y);
+    g.tower.position.set(city.x, ch, city.y);
     g.group.add(g.tower);
     /* works are placed things now: their groups are made and destroyed as they rise and fall */
     g.works = new Map();   // building id -> { grp, key, pad }
@@ -654,6 +659,12 @@
       if (!im) {
         im = unitIM[kind] = new THREE.InstancedMesh(unitGeo(kind), MAT, 260);
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        /* An InstancedMesh is culled against a bounding sphere derived from its instance
+         * matrices — computed ONCE, on the first frustum test, and cached. The trees get away
+         * with it because their matrices are final before that test; these are written afresh
+         * every frame, so the sphere was fixed forever around the world's origin corner and
+         * the whole army was culled the moment the camera looked anywhere else. */
+        im.frustumCulled = false;
         worldG.add(im);
       }
       const list = byKind[kind];
@@ -869,22 +880,41 @@
   }
 
   /* ---------------- overlay: bars, labels, minimap, targeting ---------------- */
+  /* a scratch the size of the overlay, for compositing the edge-of-sight band */
+  let rimCv = null, rimC2 = null;
+  function rimCtx() {
+    if (typeof document === 'undefined') return null;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (!rimCv) { rimCv = document.createElement('canvas'); rimC2 = rimCv.getContext('2d'); }
+    if (rimCv.width !== W * dpr || rimCv.height !== H * dpr) {
+      rimCv.width = W * dpr; rimCv.height = H * dpr;
+      rimC2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    return rimC2;
+  }
+
   function overlayPass(view, viewer) {
     const g = octx;
     g.clearRect(0, 0, W, H);
     /* fog of war, projected: dark veil with soft elliptical holes at each vision source */
     g.fillStyle = 'rgba(6,4,12,0.86)';
     g.fillRect(0, 0, W, H);
-    g.globalCompositeOperation = 'destination-out';
+    /* project every sight disc ONCE — the holes and the rim are both drawn from these */
+    const discs = [];
     for (const [x, y, r2] of view.visSources) {
-      const c2 = proj(x, 2, y);
+      const gh = groundH(x, y) + 2;
+      const c2 = proj(x, gh, y);
       if (!c2.ok) continue;
-      const eH = proj(x + r2, 2, y), eV1 = proj(x, 2, y - r2), eV2 = proj(x, 2, y + r2);
+      const eH = proj(x + r2, gh, y), eV1 = proj(x, gh, y - r2), eV2 = proj(x, gh, y + r2);
       const rx = Math.abs(eH.x - c2.x), ry = Math.max(8, Math.abs(eV1.y - eV2.y) / 2);
-      if (c2.y < -ry * 2 || c2.y > H + ry * 2 || rx < 2) continue;
       const cy2 = (eV1.y + eV2.y) / 2;
+      if (cy2 < -ry * 2 || cy2 > H + ry * 2 || rx < 2) continue;
+      discs.push([c2.x, cy2, rx, ry]);
+    }
+    g.globalCompositeOperation = 'destination-out';
+    for (const [cx2, cy2, rx, ry] of discs) {
       g.save();
-      g.translate(c2.x, cy2); g.scale(1, ry / rx);
+      g.translate(cx2, cy2); g.scale(1, ry / rx);
       /* a tight falloff: the edge of sight should read as an edge, not a smear */
       const gr = g.createRadialGradient(0, 0, rx * 0.82, 0, 0, rx);
       gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -893,19 +923,25 @@
       g.restore();
     }
     g.globalCompositeOperation = 'source-over';
-    /* a warm rim on the edge of sight, so there is a LINE to plan against rather than a
-     * gradient that fades off into nothing */
-    g.strokeStyle = 'rgba(255,233,168,0.10)'; g.lineWidth = 1.5;
-    for (const [x, y, r2] of view.visSources) {
-      const c2 = proj(x, 2, y);
-      if (!c2.ok) continue;
-      const eH = proj(x + r2, 2, y), eV1 = proj(x, 2, y - r2), eV2 = proj(x, 2, y + r2);
-      const rx = Math.abs(eH.x - c2.x), ry = Math.max(8, Math.abs(eV1.y - eV2.y) / 2);
-      if (c2.y < -ry * 2 || c2.y > H + ry * 2 || rx < 2) continue;
-      g.save();
-      g.translate(c2.x, (eV1.y + eV2.y) / 2); g.scale(1, ry / rx);
-      g.beginPath(); g.arc(0, 0, rx, 0, 7); g.stroke();
-      g.restore();
+    /* ONE warm line on the edge of sight — the OUTER limit of the lit ground, not a ring
+     * around every lamp. A ring per source turned a well-watched city into a nest of circles,
+     * and since units carry sight too, each soldier dragged his own ring across the map.
+     * Fill the union of the discs into a scratch, cut a slightly smaller union back out, and
+     * what survives is exactly the outer boundary — one pass, no outline geometry. */
+    const rc = rimCtx();
+    if (rc && discs.length) {
+      rc.clearRect(0, 0, W, H);
+      rc.fillStyle = 'rgba(255,233,168,0.34)';
+      rc.beginPath();
+      for (const [cx2, cy2, rx, ry] of discs) rc.ellipse(cx2, cy2, rx, ry, 0, 0, 7);
+      rc.fill();
+      rc.globalCompositeOperation = 'destination-out';
+      rc.beginPath();
+      for (const [cx2, cy2, rx, ry] of discs)
+        rc.ellipse(cx2, cy2, Math.max(0.5, rx - 2), Math.max(0.5, ry - 2 * (ry / rx)), 0, 0, 7);
+      rc.fill();
+      rc.globalCompositeOperation = 'source-over';
+      g.drawImage(rimCv, 0, 0, W, H);
     }
     /* unit hp slivers */
     for (const u of view.units) {
@@ -922,7 +958,7 @@
       if (s.kind === 'city') continue;
       const st = view.sites[s.id];
       if (!st) continue;
-      const p = proj(s.x, 2, s.y);
+      const p = proj(s.x, groundH(s.x, s.y) + 2, s.y);
       if (!p.ok || p.y < -20 || p.y > H + 20) continue;
       g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 3;
       g.strokeText(s.name, p.x, p.y + 30);
@@ -934,7 +970,7 @@
       if (pi !== viewer && view.foeSeen === false) continue;   // no bar over a Seat you have not found
       const pl = view.players[pi];
       const cs = view.map.sites[view.map.cities[pi]];
-      const p = proj(cs.x, 186, cs.y);
+      const p = proj(cs.x, groundH(cs.x, cs.y) + 186, cs.y);
       if (!p.ok) continue;
       g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y - 4, 92, 8);
       g.fillStyle = pi === viewer ? '#ffd98a' : '#ff8a96';

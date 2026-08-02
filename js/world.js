@@ -544,10 +544,27 @@
        * peels off to his own place in the line, so an army arrives spread, not stacked */
       const gs = u.goal;
       if (gs) {
-        const gx = gs.x + u.ox, gy = gs.y + u.oy;
+        let gx = gs.x + u.ox, gy = gs.y + u.oy;
+        /* Troops ordered home muster in the COURT, not on the tower's own ground. The Seat
+         * stands on that ground and an army standing with it simply vanishes under the
+         * castle — which is what happened when the walls went and took the garrison's ring
+         * with them. A stable per-soldier angle keeps the ring even instead of jostling. */
+        if (u.owner !== 2) {
+          const cs = cityOf(world, u.owner);
+          if (d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR) {
+            const ang = (u.id * 2.39996) % (Math.PI * 2);          // golden angle: no clumps
+            const rr = C.CITY.seatR + 24 + (u.id % 4) * 17;
+            gx = cs.x + Math.cos(ang) * rr; gy = cs.y + Math.sin(ang) * rr;
+          }
+        }
         const dgoal = Math.sqrt(d2(u.x, u.y, gx, gy));
+        /* the flow field is drawn to the ORDER's point; a soldier's own place in the line is
+         * somewhere near it. Once he is on the muster ground, walk to his place directly —
+         * the field cannot carry him there, and at the Seat it would even hold him in the
+         * middle, since by the field's reckoning he has already arrived. */
+        const dField = Math.sqrt(d2(u.x, u.y, gs.x, gs.y));
         let vx = 0, vy = 0;
-        if (dgoal < C.NAV.arrive) {
+        if (dgoal < C.NAV.arrive || dField < C.NAV.arrive) {
           if (dgoal > 4) { vx = (gx - u.x) / dgoal; vy = (gy - u.y) / dgoal; }
         } else {
           const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);

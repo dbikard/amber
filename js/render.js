@@ -16,6 +16,7 @@
   let siteFx = new Map();    // site id -> retained per-site display state
   let cityFx = null, lastMapKey = '', curView = null, curViewer = 0;
   let fogRT = null, fogScene = null, holeTex = null, T = 0;
+  let rimRT = null, rimScene = null;
 
   const tex = (cv2) => {
     if (!texCache.has(cv2)) texCache.set(cv2, PIXI.Texture.from(cv2));
@@ -33,7 +34,7 @@
     app.ticker.stop();   // game.js owns the loop
     const mk2 = () => new PIXI.Container();
     stage.world = mk2();
-    for (const k of ['terrain', 'rift', 'site', 'banner', 'unit', 'city', 'storm', 'fxw', 'glow']) {
+    for (const k of ['terrain', 'rift', 'site', 'banner', 'city', 'unit', 'storm', 'fxw', 'glow']) {
       stage[k] = mk2(); stage.world.addChild(stage[k]);
     }
     stage.glow.blendMode = 'add';
@@ -57,6 +58,7 @@
     R.applyZoom();
     if (!R._homed) { R.camX = R.maxCamX() / 2; R.camY = R.maxCamY() / 2; }
     if (fogRT) { fogRT.destroy(true); fogRT = null; }
+    if (rimRT) { rimRT.destroy(true); rimRT = null; }
     makeVignette();
   };
   /* zoom is a multiplier on how much world fits across the screen */
@@ -180,7 +182,7 @@
 
   /* ---------------- scene (re)build per map/viewer ---------------- */
   function rebuildScene(view, viewer) {
-    for (const k of ['terrain', 'rift', 'site', 'banner', 'unit', 'city', 'storm', 'fxw', 'glow'])
+    for (const k of ['terrain', 'rift', 'site', 'banner', 'city', 'unit', 'storm', 'fxw', 'glow'])
       stage[k].removeChildren();
     for (const f of fx) if (f.obj) f.obj.destroy();
     fx = []; unitPool.clear(); siteFx.clear(); cityFx = null;
@@ -240,7 +242,7 @@
     stage.glow.addChild(aura);
     stage.city.addChild(g.castle);
     g.bars = new PIXI.Graphics();
-    stage.city.addChild(g.bars);
+    stage.fxw.addChild(g.bars);   // above the troops mustering in front of the Seat
     return g;
   }
   function buildCityFoe(view, viewer) {
@@ -256,7 +258,8 @@
     g.castle.position.set(g.cx, g.cy);
     g.shrineRing = new PIXI.Graphics();
     g.bars = new PIXI.Graphics();
-    stage.city.addChild(g.castle, g.shrineRing, g.bars);
+    stage.city.addChild(g.castle, g.shrineRing);
+    stage.fxw.addChild(g.bars);
     return g;
   }
 
@@ -445,7 +448,11 @@
     if (key !== own.claimKey) {
       own.claimKey = key;
       own.claim.clear();
-      for (const a of anchors) own.claim.circle(a.x, a.y, a.r).fill({ color: 0xffd98a, alpha: 0.045 });
+      /* ONE fill over the union, not a wash per disc: filling each circle separately stacked
+       * alpha wherever two claims overlapped, so every building wore a visible ring of its own
+       * inside your own country. Same path, one fill — uniform, and only the outer edge shows. */
+      for (const a of anchors) own.claim.circle(a.x, a.y, a.r);
+      own.claim.fill({ color: 0xffd98a, alpha: 0.05 });
       const segs = global.Terrain.claimOutline(anchors);
       for (const [x1, y1, x2, y2] of segs) own.claim.moveTo(x1, y1).lineTo(x2, y2);
       own.claim.stroke({ width: 3, color: 0xffd98a, alpha: 0.5 });
@@ -546,15 +553,41 @@
       hs.width = hs.height = rr * 2;
     }
     app.renderer.render({ container: fogScene, target: fogRT, clear: true });
-    /* A warm rim on the edge of sight. Without it the veil fades off into nothing and there
-     * is no line to plan against — you cannot tell where you stop seeing. */
-    const rim = stage.fogRim || (stage.fogRim = (() => { const gg = new PIXI.Graphics(); app.stage.addChildAt(gg, app.stage.getChildIndex(stage.fog) + 1); return gg; })());
-    rim.clear();
+    /* ONE warm line on the edge of sight — the OUTER limit of the lit ground, not a ring
+     * around every lamp. A ring per source turned a well-watched city into a nest of circles.
+     * Every sight disc is filled into a scratch as a single union, then a slightly smaller
+     * union is cut back out of it; what survives is exactly the outer boundary. Sight sources
+     * include every unit, so an O(n²) outline walk is out of the question — this is one pass. */
+    if (!rimRT) {
+      rimRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: 1 });
+      if (!rimScene) {
+        rimScene = new PIXI.Container();
+        rimScene._band = new PIXI.Graphics();
+        rimScene._cut = new PIXI.Graphics();
+        rimScene._cut.blendMode = 'erase';
+        rimScene.addChild(rimScene._band, rimScene._cut);
+      }
+      if (!stage.fogRim) {
+        stage.fogRim = new PIXI.Sprite();
+        app.stage.addChildAt(stage.fogRim, app.stage.getChildIndex(stage.fog) + 1);
+      }
+      stage.fogRim.texture = rimRT;
+    }
+    const band = rimScene._band, cut = rimScene._cut;
+    band.clear(); cut.clear();
+    let any = false;
     for (const [x, y, r] of view.visSources) {
       const X = (dx(x, viewer) - R.camX) * scale, Y = (dy(y, viewer) - R.camY) * scale, rr = r * scale;
       if (Y < -rr || Y > H + rr || X < -rr || X > W + rr) continue;
-      rim.circle(X, Y, rr).stroke({ width: 1.5, color: 0xffe9a8, alpha: 0.10 });
+      band.circle(X, Y, rr);
+      cut.circle(X, Y, Math.max(0.5, rr - 2));
+      any = true;
     }
+    if (any) {
+      band.fill({ color: 0xffe9a8, alpha: 0.34 });
+      cut.fill({ color: 0xffffff, alpha: 1 });
+    }
+    app.renderer.render({ container: rimScene, target: rimRT, clear: true });
   }
 
   /* ---------------- minimap + targeting (screen space) ---------------- */

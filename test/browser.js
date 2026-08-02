@@ -216,6 +216,43 @@ async function match(browser, base, renderer) {
     ok('raising a Gate extends the writ', grew.placed && grew.after > grew.before,
        `${grew.before} -> ${grew.after} segments`);
 
+    /* ---------------- the army is on screen ---------------- *
+     * Troops went invisible in 3D: an InstancedMesh is culled against a bounding sphere built
+     * from its instance matrices, computed ONCE on the first frustum test and cached. The
+     * trees survive because their matrices are final by then; the army's are rewritten every
+     * frame, so the sphere stayed pinned to the world's origin corner and the whole force was
+     * culled the moment the camera looked anywhere else. */
+    suite(`${r} · the army is drawn`);
+    const army = await pg.evaluate(() => {
+      const W = window.World, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 99000;
+      let built = 0;
+      for (let a = 0; a < 40 && built < 3; a++) {
+        const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
+        if (!W.placementError(g.world, 0, x, y, 'barracks')) { W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'barracks' }); built++; }
+      }
+      for (let i = 0; i < 30 * 150 && g.world.winner === null; i++) { W.update(g.world, C.SIM_DT); g.world.events.length = 0; }
+      window.Render.setZoom(1.35); window.Render.lookAt(c.x, c.y);
+      const mine = g.world.units.filter((u) => u.owner === 0);
+      const d = mine.map((u) => Math.hypot(u.x - c.x, u.y - c.y)).sort((a, b) => a - b);
+      return { n: mine.length, median: Math.round(d[d.length >> 1] || 0), buried: d.filter((x) => x < C.CITY.seatR).length };
+    });
+    ok('a garrison musters', army.n > 10, `${army.n} troops`);
+    ok('the army stands in the court, not on the tower', army.median > 90,
+       `median ${army.median} from the Seat, ${army.buried} of ${army.n} still on its own ground`);
+    await pg.waitForTimeout(600);
+    if (r === '3d') {
+      const meshes = await pg.evaluate(() => {
+        const im = window.Render.debugUnitMeshes();
+        return Object.keys(im).map((k) => ({ k, count: im[k].count, culled: im[k].frustumCulled, vis: im[k].visible }));
+      });
+      const sold = meshes.find((m) => m.k === 'soldier');
+      ok('the soldiers are instanced', !!sold && sold.count > 10, JSON.stringify(sold));
+      ok('and not frustum-culled against a stale sphere at the origin',
+         meshes.every((m) => m.culled === false), JSON.stringify(meshes.filter((m) => m.culled)));
+    }
+
     /* ---------------- HUD layering ---------------- *
      * The overlay canvas paints the full-screen fog veil. If it stacks above the HUD it
      * buries the essence readout, the flags and the power buttons. */
