@@ -424,6 +424,101 @@ async function match(browser, base, renderer) {
        tray.right <= tray.w + 1 && tray.left >= 0,
        `${tray.n} chips, powers span ${tray.left}..${tray.right} of ${tray.w}`);
 
+    /* ---------------- an open sheet keeps asking ---------------- *
+     * A card refused for a reason that can CHANGE — the masons are busy, or no troops of yours
+     * stand at the spring yet — has to go live in place. Closing and re-opening the menu to
+     * discover the answer changed is not an interface. */
+    suite(`${r} · the sheet stays live`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    await pg.waitForTimeout(150);
+    const live = await pg.evaluate(async () => {
+      const W = window.World, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 99000;
+      /* finish anything standing, then start one work so the masons are demonstrably busy */
+      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      let at = null;
+      for (let rad = 170; rad < 400 && !at; rad += 20)
+        for (let a = 0; a < 40 && !at; a++) {
+          const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+          if (W.placementError(g.world, 0, x, y, 'tower') === null) at = { x, y };
+        }
+      if (!at) return { ok: false, why: 'nowhere to build' };
+      W.applyCommand(g.world, 0, { c: 'build', ...at, bt: 'tower' });
+      const shell = g.world.players[0].buildings.find((q) => q.raise > 0);
+
+      /* open the build sheet on some OTHER open ground while they are busy */
+      let at2 = null;
+      for (let rad = 200; rad < 420 && !at2; rad += 20)
+        for (let a = 0; a < 40 && !at2; a++) {
+          const th = a / 40 * Math.PI * 2 + 0.3, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+          if (W.placementError(g.world, 0, x, y, 'tower') === 'busy') at2 = { x, y };
+        }
+      if (!at2) return { ok: false, why: 'no spot reported busy' };
+      window.UI.buildSheet(at2, g.world.players[0].essence,
+        (bt) => W.placementError(g.world, 0, at2.x, at2.y, bt));
+      const card = () => document.querySelector('#sheet .card[data-bt="tower"]');
+      const lockedWhileBusy = card() && card().classList.contains('locked');
+      const saidBusy = card() && /masons/i.test(card().textContent);
+
+      /* let the masons finish WITHOUT touching the sheet */
+      for (let i = 0; i < 30 * 40 && shell.raise > 0; i++) {
+        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
+      }
+      window.UI.tick(g.world.players[0].essence);
+      await new Promise((res) => requestAnimationFrame(res));
+      const stillOpen = window.UI.sheetOpen();
+      const freeNow = card() && !card().classList.contains('locked');
+      return { ok: true, lockedWhileBusy, saidBusy, stillOpen, freeNow,
+               text: card() ? card().textContent.slice(0, 70) : 'no card' };
+    });
+    ok('the scenario set up', live.ok, live.why || '');
+    if (live.ok) {
+      ok('a card is locked while the masons are busy', live.lockedWhileBusy);
+      ok('and says so', live.saidBusy, live.text);
+      ok('the sheet is still the one you opened', live.stillOpen);
+      ok('the card goes live when the masons finish, without reopening', live.freeNow, live.text);
+    }
+
+    /* the other reason that changes on its own: a spring beyond your writ needs your troops
+     * standing on it, and they may arrive long after you opened the sheet */
+    const arrive = await pg.evaluate(async () => {
+      const W = window.World, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 99000;
+      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      /* an unheld spring outside the writ, with nobody of ours near it */
+      const spring = g.world.map.sites.filter((s) => s.kind === 'node')
+        .find((s) => Math.hypot(s.x - c.x, s.y - c.y) > C.CLAIM.seat + 120 &&
+                     W.placementError(g.world, 0, s.x + 40, s.y, 'gate') === 'presence');
+      if (!spring) return { ok: false, why: 'no spring reported presence' };
+      const at = { x: spring.x + 40, y: spring.y };
+      window.UI.buildSheet(at, g.world.players[0].essence,
+        (bt) => W.placementError(g.world, 0, at.x, at.y, bt));
+      const card = () => document.querySelector('#sheet .card[data-bt="gate"]');
+      const lockedAway = card() && card().classList.contains('locked');
+      const saidTroops = card() && /troops/i.test(card().textContent);
+      /* march someone there — a Trump champion is the quickest honest way */
+      g.world.players[0].powers.trump = 0;
+      W.applyCommand(g.world, 0, { c: 'power', k: 'trump' });
+      const champ = g.world.units.find((u) => u.id === g.world.players[0].championId);
+      if (!champ) return { ok: false, why: 'no champion' };
+      champ.x = spring.x; champ.y = spring.y;
+      W.update(g.world, C.SIM_DT);
+      window.UI.tick(g.world.players[0].essence);
+      await new Promise((res) => requestAnimationFrame(res));
+      return { ok: true, lockedAway, saidTroops,
+               freeNow: card() && !card().classList.contains('locked'),
+               text: card() ? card().textContent.slice(0, 70) : 'no card' };
+    });
+    ok('a spring beyond the writ was found', arrive.ok, arrive.why || '');
+    if (arrive.ok) {
+      ok('its Gate is locked while no troops of yours stand there', arrive.lockedAway);
+      ok('and says why', arrive.saidTroops, arrive.text);
+      ok('it goes live the moment a soldier arrives, without reopening', arrive.freeNow, arrive.text);
+    }
+    await pg.evaluate(() => window.UI.closeSheet());
+
     /* ---------------- the back button ---------------- *
      * Start from a clean slate: the input suite deliberately leaves a sheet open, and a
      * tap on ground with a sheet already up DISMISSES rather than opens. */

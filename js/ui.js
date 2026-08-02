@@ -152,24 +152,33 @@
     busy: 'your masons are already at work — one rises at a time',
     unique: 'you have one already'
   };
+  function cardBody(d, bt, bad) {
+    return `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
+           `<span class="c-cost">◆ ${d.cost}</span>` +
+           `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}` +
+           `${bad || !d.raise ? '' : ' <b>· ' + d.raise + 's to raise</b>'}</span>${bad ? '' : rateTag(bt, 1)}`;
+  }
   function buildCards(el, at, essence, why) {
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
       const bad = why ? why(bt) : null;
-      const can = essence >= d.cost && !bad;
       const card = document.createElement('button');
-      card.className = 'card' + (can ? '' : ' locked');
-      if (!bad) card.dataset.cost = d.cost;   // live affordability: UI.tick unlocks it when income catches up
-      card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
-                       `<span class="c-cost">◆ ${d.cost}</span>` +
-                       `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}` +
-                       `${bad || !d.raise ? '' : ' <b>· ' + d.raise + 's to raise</b>'}</span>${bad ? '' : rateTag(bt, 1)}`;
+      card.className = 'card' + (essence >= d.cost && !bad ? '' : ' locked');
+      card.dataset.cost = d.cost;      // live affordability: UI.tick unlocks it as income catches up
+      card.dataset.bt = bt;            // ...and re-asks the sim why, so a card can unlock in place
+      card.dataset.bad = bad || '';
+      card.innerHTML = cardBody(d, bt, bad);
       card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(at.x, at.y, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
+    /* the sheet remembers WHERE it was opened and HOW to ask, so the answer can change while
+     * it is open: the masons finish, or a soldier finally reaches the spring, and the card
+     * you are already looking at goes live without you closing and re-opening it */
+    el._why = why || null;
   }
+  const freshSheet = () => { const el = $('sheet'); el._why = null; el._raising = null; return el; };
   UI.buildSheet = function (at, essence, why) {
-    const el = $('sheet');
+    const el = freshSheet();
     el.innerHTML = `<div class="sheet-title">Raise a work here ${trChip(essence)}</div>`;
     buildCards(el, at, essence, why);
     addCancel(el);
@@ -190,19 +199,22 @@
            (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
   }
 
+  const raiseLine = (s) =>
+    `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
+    'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.';
   UI.upSheet = function (s, essence, walking) {
     const d = C.BUILDINGS[s.bt], face = towerFace(s);
-    const el = $('sheet');
+    const el = freshSheet();
     el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${face.blurb}</div>`;
     /* still scaffolding: it earns nothing, musters nobody and holds no ground yet, and there
      * is nothing to offer but the wait */
     if (s.raise > 0) {
-      const pct = Math.round((1 - s.raise / (s.raiseFor || 1)) * 100);
       const w = document.createElement('div');
       w.className = 'sheet-blurb';
-      w.innerHTML = `<b>🔨 Rising — ${pct}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
-                    `Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.`;
+      w.id = 'raise-line';
+      el._raising = s;   // counted down live by UI.tick, rather than frozen at the moment it opened
+      w.innerHTML = raiseLine(s);
       el.appendChild(w);
       addCancel(el);
       el._openedAt = performance.now();
@@ -270,6 +282,7 @@
     city: 'A Seat of Power.'
   };
   UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, at, why) {
+    freshSheet();
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder === -1 ? 'unclaimed'
       : st.holder === viewer ? 'yours' : 'the rival’s';
@@ -335,13 +348,34 @@
   UI.tick = function (essence) {
     const el = $('sheet');
     if (el.classList.contains('hidden')) return;
-    for (const card of el.querySelectorAll('.card[data-cost]'))
-      card.classList.toggle('locked', essence < +card.dataset.cost);
+    for (const card of el.querySelectorAll('.card[data-cost]')) {
+      const bt = card.dataset.bt;
+      let bad = card.dataset.bad || '';
+      if (bt && el._why) {
+        const now = el._why(bt) || '';
+        if (now !== bad) {   // only touch the DOM when the answer actually changed
+          bad = card.dataset.bad = now;
+          card.innerHTML = cardBody(C.BUILDINGS[bt], bt, now || null);
+        }
+      }
+      card.classList.toggle('locked', !!bad || essence < +card.dataset.cost);
+    }
+    /* a work going up counts down in place; when it finishes the sheet is stale, so say so */
+    if (el._raising) {
+      const line = el.querySelector('#raise-line');
+      if (line) line.innerHTML = el._raising.raise > 0 ? raiseLine(el._raising)
+        : '<b>✔ Finished.</b> Tap it again to see what it can do.';
+      if (el._raising.raise <= 0) el._raising = null;
+    }
     const chip = el.querySelector('.tr-chip b');
     if (chip) chip.textContent = Math.floor(essence);
   };
 
-  UI.closeSheet = function () { $('sheet').classList.add('hidden'); if (global.Render) global.Render.selected = -1; };
+  UI.closeSheet = function () {
+    const el = $('sheet');
+    el.classList.add('hidden'); el._why = null; el._raising = null;
+    if (global.Render) global.Render.selected = -1;
+  };
   UI.sheetOpen = () => !$('sheet').classList.contains('hidden');
 
   /* ---------------- banners ---------------- */
