@@ -34,8 +34,29 @@
     $('end-next').addEventListener('click', () => H.onEndNext());
     $('end-menu').addEventListener('click', () => H.onEndMenu());
 
-    /* skirmish: pick your rival heir */
+    /* skirmish: how hard, then which heir. The difficulty sticks between matches — it is a
+     * preference, not a per-match question, and asking it twice would be nagging. */
     const row = $('skirmish-row');
+    const diffRow = document.createElement('div');
+    diffRow.className = 'diff-row';
+    const note = document.createElement('div');
+    note.className = 'diff-note';
+    const paint = () => {
+      const cur = UI.difficulty();
+      for (const b of diffRow.children) b.classList.toggle('on', b.dataset.key === cur);
+      note.textContent = C.DIFFICULTY[cur].blurb;
+    };
+    for (const key of C.DIFFICULTY_UI) {
+      const d = C.DIFFICULTY[key];
+      const b = document.createElement('button');
+      b.className = 'mbtn small diff';
+      b.dataset.key = key;
+      b.textContent = d.name;
+      b.addEventListener('click', () => { UI.setDifficulty(key); paint(); });
+      diffRow.appendChild(b);
+    }
+    row.appendChild(diffRow);
+    row.appendChild(note);
     for (const kind of Object.keys(global.AI.HEIRS)) {
       const b = document.createElement('button');
       b.className = 'mbtn small';
@@ -43,6 +64,17 @@
       b.addEventListener('click', () => H.onSkirmish(kind));
       row.appendChild(b);
     }
+    paint();
+  };
+  /* remembered across sessions; an unknown or missing value falls back to the default */
+  UI.difficulty = function () {
+    let k = null;
+    try { k = localStorage.getItem('amber_difficulty'); } catch (e) { k = null; }
+    return C.DIFFICULTY[k] ? k : C.DIFFICULTY_DEFAULT;
+  };
+  UI.setDifficulty = function (k) {
+    if (!C.DIFFICULTY[k]) return;
+    try { localStorage.setItem('amber_difficulty', k); } catch (e) { /* private mode: this match only */ }
   };
 
   /* ---------------- menu / match lifecycle ---------------- */

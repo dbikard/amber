@@ -129,6 +129,14 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       skewed pair wins.
       Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
       the nearest place they have never seen and only assault a Seat they have found.
+- [x] **Solo difficulty (SQUIRE / HEIR / PRINCE).** Skirmish always handed the heir full
+      strength — the only ramp was the campaign ladder — so solo played as hard as the heirs
+      play each other. Difficulty now blunts how often an heir acts (`slow`, `noise`) AND what
+      it draws from the same ground (`eco`, a new per-player income scalar). Measured at six
+      minutes, an heir holds income 13 / 25 / 39 and an army of 60 / 74 / 83 across the three
+      rungs; PRINCE against a full-strength mirror is a 50/50. Default is HEIR, remembered
+      across sessions. The campaign ladder gained `eco` too. The handicap is the heir's alone —
+      it plays its own game, only poorer; your own side is never touched.
 - [x] **You open with a spring you can actually use.** Seat selection required a spring
       within the writ, but "within" counted one lying in the castle's lap — visible, cramped,
       and crowding the court. A candidate Seat is now scored on springs it can DRAW ON: at

@@ -76,6 +76,35 @@ async function match(browser, base, renderer) {
     ok('the LAN panel opens', !(await hidden('lan-panel')));
     await pg.mouse.click(60, 120); await pg.waitForTimeout(200);
     ok('tapping away closes the LAN panel', await hidden('lan-panel'));
+
+    /* solo difficulty: a preference that sticks, and that actually reaches the sim */
+    await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
+    const diff = await pg.evaluate(() => {
+      const C = window.CONST;
+      const btns = [...document.querySelectorAll('#skirmish-row .diff')];
+      const before = window.UI.difficulty();
+      const marked = btns.filter((b) => b.classList.contains('on')).map((b) => b.dataset.key);
+      return { n: btns.length, before, marked, dflt: C.DIFFICULTY_DEFAULT,
+               keys: btns.map((b) => b.dataset.key) };
+    });
+    ok('every difficulty is offered', diff.n === diff.keys.length && diff.n >= 3, diff.keys.join(','));
+    ok('one is marked, and it is the remembered choice', diff.marked.length === 1 && diff.marked[0] === diff.before,
+       `marked ${diff.marked} vs ${diff.before}`);
+    ok('which defaults to something short of full strength', diff.before === diff.dflt && diff.dflt !== 'prince',
+       diff.before);
+    await pg.evaluate(() => { window.UI.setDifficulty('squire'); });
+    await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
+      .find((e) => /julian/i.test(e.textContent)).click());
+    await pg.waitForTimeout(2000);
+    const applied = await pg.evaluate(() => {
+      const C = window.CONST, g = window.Game.game;
+      return { eco: g.world.players[1].eco, mine: g.world.players[0].eco, want: C.DIFFICULTY.squire.eco };
+    });
+    ok('the chosen handicap reaches the heir', applied.eco === applied.want, `eco ${applied.eco}`);
+    ok('and never touches your own side', applied.mine === 1, `eco ${applied.mine}`);
+    await pg.evaluate(() => { window.UI.setDifficulty(window.CONST.DIFFICULTY_DEFAULT); window.Game.toMenu(); });
+    await pg.waitForTimeout(400);
+
     await pg.close();
   }
 

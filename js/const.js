@@ -22,6 +22,20 @@
    * and claims no ground — but it can be broken, so an over-reach can be punished. */
   CONST.RAISE = { hpFrom: 0.25 };   // a shell starts at this fraction of its finished hp
 
+  /* Solo difficulty. `slow` and `noise` blunt how OFTEN an heir acts and how often it fumbles;
+   * `eco` is what it draws from the same ground. Skirmish used to hand every heir full
+   * strength — the only ramp was the campaign ladder — which is why solo played so hard. */
+  CONST.DIFFICULTY = {
+    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 2.0,  noise: 0.45, eco: 0.60,
+               blurb: 'The heir is slow to act and poor. Room to learn the board.' },
+    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.4,  noise: 0.24, eco: 0.80,
+               blurb: 'A real opponent that still leaves you time to build.' },
+    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 1.00,
+               blurb: 'The heir at full strength, as the heirs fight each other.' }
+  };
+  CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];
+  CONST.DIFFICULTY_DEFAULT = 'heir';
+
   CONST.BUILD = { foot: 34, gap: 10 };   // footprint radius, and clearance between works
   /* a Shadow Gate within this of an essence node draws from it (and claims it) */
   CONST.NODE = { r: 96 };

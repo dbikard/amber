@@ -38,6 +38,7 @@
       players: [0, 1].map(() => ({
         essence: C.START_ESSENCE,
         castleHp: C.CASTLE_HP,
+        eco: 1,                 // income handicap: 1 = full strength (always 1 in a duel)
         pattern: 0, walking: false, revealed: false, alertIdx: 0,
         buildings: [],          // free placement: every work knows where it stands
         powers: { storm: 0, trump: 0 },
@@ -487,6 +488,9 @@
           }
         }
       }
+      /* the solo handicap: an heir set to an easier footing simply draws less from the same
+       * ground. It plays its own game exactly as it would otherwise — it is just poorer. */
+      income *= pl.eco;
       pl.essence += income * dt;
       pl.incomeRate = income;
       pl.drainRate = drain;   // muster + walk upkeep — the HUD tells the truth

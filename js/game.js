@@ -10,7 +10,8 @@
   const $ = (id) => document.getElementById(id);
 
   const LADDER = ['julian', 'bleys', 'brand', 'benedict'];
-  const RUNG_OPTS = [{ slow: 1.5, noise: 0.4 }, { slow: 1.3, noise: 0.28 }, { slow: 1.15, noise: 0.15 }, { slow: 1.0, noise: 0.05 }];
+  const RUNG_OPTS = [{ slow: 1.8, noise: 0.42, eco: 0.65 }, { slow: 1.45, noise: 0.28, eco: 0.80 },
+                     { slow: 1.15, noise: 0.15, eco: 0.92 }, { slow: 1.0, noise: 0.05, eco: 1.0 }];
   const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
 
   const game = {
@@ -33,6 +34,8 @@
     game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
     game.world = World.createWorld((Math.random() * 0xffffffff) >>> 0);
     game.bot = AI.make(kind, opts);
+    /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
+    game.world.players[1].eco = (opts && opts.eco) || 1;
     game.names = ['Corwin', AI.HEIRS[kind].title];
     game.targeting = false;
     /* first-matches onboarding: teach the banner, the springs, the assault */
@@ -556,7 +559,7 @@
         const r = Math.min(rung(), LADDER.length - 1);
         startSP(LADDER[r], RUNG_OPTS[r], true);
       },
-      onSkirmish: (kind) => startSP(kind, {}, false),
+      onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
       onBuild: (x, y, bt) => issue({ c: 'build', x, y, bt }),
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
@@ -591,7 +594,7 @@
       onEndNext: () => {
         if (game.mode === 'sp') {
           if (game.campaign) { const r = Math.min(rung(), LADDER.length - 1); startSP(LADDER[r], RUNG_OPTS[r], true); }
-          else startSP(game.bot.kind, {}, false);
+          else startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
         } else toMenu();
       },
       onEndMenu: toMenu
