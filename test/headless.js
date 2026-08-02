@@ -34,6 +34,32 @@ for (const seed of SEEDS) {
   /* every terrain class should actually occur, or the generator has collapsed */
   const seen = new Set(w.nav.terra);
   ok(`seed ${seed}: the land is varied`, seen.size >= 5, `${seen.size} of 7 terrain classes present`);
+
+  /* Both sides must open with a spring they can actually DRAW ON: inside the starting writ,
+   * at arm's length from the Seat rather than in its lap, and with ground beside it that
+   * bears a Gate. A spring you can see and never use is worse than none. */
+  for (const pi of [0, 1]) {
+    const cs = World.cityOf(w, pi);
+    const springs = w.map.sites.filter((s) => s.kind === 'node')
+      .map((s) => ({ s, d: Math.hypot(s.x - cs.x, s.y - cs.y) })).sort((a, b) => a.d - b.d);
+    ok(`seed ${seed}: no spring crowds Seat ${pi}`, !springs.length || springs[0].d >= C.WORLD.springNear,
+       `nearest ${Math.round(springs[0] ? springs[0].d : -1)}`);
+    const inReach = springs.filter((q) => q.d <= C.CLAIM.seat);
+    ok(`seed ${seed}: Seat ${pi} opens with a spring in its writ`, inReach.length > 0,
+       `nearest ${Math.round(springs[0] ? springs[0].d : -1)}`);
+    let raisable = null;
+    for (const q of inReach) {
+      for (let rr = 18; rr < C.NODE.r && !raisable; rr += 12)
+        for (let a2 = 0; a2 < 24 && !raisable; a2++) {
+          const th = a2 / 24 * Math.PI * 2;
+          const x = q.s.x + Math.cos(th) * rr, y = q.s.y + Math.sin(th) * rr;
+          if (World.placementError(w, pi, x, y, 'gate') === null) raisable = q;
+        }
+      if (raisable) break;
+    }
+    ok(`seed ${seed}: and a Gate can actually be raised on it`, !!raisable,
+       raisable ? `${raisable.s.name} at ${Math.round(raisable.d)}` : 'none claimable');
+  }
 }
 
 suite('movement');

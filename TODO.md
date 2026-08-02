@@ -129,6 +129,15 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       skewed pair wins.
       Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
       the nearest place they have never seen and only assault a Seat they have found.
+- [x] **You open with a spring you can actually use.** Seat selection required a spring
+      within the writ, but "within" counted one lying in the castle's lap — visible, cramped,
+      and crowding the court. A candidate Seat is now scored on springs it can DRAW ON: at
+      arm's length (200–400), inside the writ, with ground beside them that bears a Gate,
+      tested against the same rule `placementError` enforces. Nothing closer than 200 is
+      allowed at all. Costs no extra worldgen retries (max 79ms across 30 seeds).
+- [x] **The remembered-ground edge is softened.** The fog memory is kept on a coarse grid and
+      its raw boundary was a staircase of cells along the lit edge. Both renderers now blur
+      the mask on the way in, sized to how big a cell currently looks on screen.
 - [x] **No cap on works; the masons are the constraint.** `MAX_BUILDINGS = 14` is gone —
       hold as much country as you can defend. What is rationed instead is construction: ONE
       work rises at a time, and each takes time (Gate 10s, Tower 11s, Barracks 13s, Spire 17s,

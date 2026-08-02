@@ -57,7 +57,7 @@
     hill: 0.635,        // above this is high ground
     cliff: 0.755,       // …and above this, impassable crag
     minLand: 0.34,      // a world whose largest landmass is smaller than this is rerolled
-    nodes: 14, nodesMin: 9, nodeGap: 300,     // springs: how many, and how far apart
+    nodes: 14, nodesMin: 9, nodeGap: 300, springNear: 200, springFar: 400,     // springs: how many, and how far apart
     vantages: 8, vantGap: 240,
     inland: 300,        // a Seat may not stand closer than this to the edge of the world
     seatRoom: 300,      // buildable cells required around a Seat

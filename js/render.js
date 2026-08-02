@@ -549,7 +549,15 @@
      * walked stays a map. Erased at partial strength BEFORE the full-strength sight holes, so
      * ground you can see right now still comes out clear. */
     let mem = fogScene._mem;
-    if (!mem) { mem = fogScene._mem = new PIXI.Graphics(); mem.blendMode = 'erase'; fogScene.addChild(mem); }
+    if (!mem) {
+      mem = fogScene._mem = new PIXI.Graphics();
+      mem.blendMode = 'erase';
+      /* the memory is kept on a coarse grid; blurred, its edge reads as "you have been here"
+       * rather than as the resolution the sim files it at */
+      fogScene._memBlur = new PIXI.BlurFilter({ strength: 8 });
+      mem.filters = [fogScene._memBlur];
+      fogScene.addChild(mem);
+    }
     mem.clear();
     const sm = view.seen;
     if (sm) {
@@ -571,6 +579,7 @@
         }
       }
       mem.fill({ color: 0xffffff, alpha: 1 - C.FOG.keep });
+      fogScene._memBlur.strength = Math.max(3, Math.min(24, sm.cell * scale * 0.55));
     }
     const need = view.visSources.length;
     while (fogScene._holes.length < need) {

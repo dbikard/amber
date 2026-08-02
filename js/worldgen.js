@@ -199,6 +199,42 @@
       for (const q of nodes) if ((p.x - q.x) ** 2 + (p.y - q.y) ** 2 < r2) k++;
       return k;
     };
+    /* A spring inside your writ is only worth having if you can actually RAISE A GATE on it:
+     * the Gate must stand within reach of the spring, clear of the Seat's own ground, inside
+     * the writ, and on land that bears a work. A spring lying in the castle's lap counts for
+     * nothing — you can see it and never use it — so it must not count toward fairness either.
+     * Cached per candidate cell: this runs inside the scoring loop. */
+    const cellAt = (x, y) => {
+      const gx = (x / cw) | 0, gy = (y / cw) | 0;
+      if (gx < 0 || gy < 0 || gx >= W || gy >= H) return -1;
+      return gy * W + gx;
+    };
+    const usableCache = new Map();
+    const usable = (i, p) => {
+      if (usableCache.has(i)) return usableCache.get(i);
+      let k = 0;
+      for (const q of nodes) {
+        const dq = Math.hypot(p.x - q.x, p.y - q.y);
+        /* Too close and it is no use: a spring in the castle's lap is cramped ground you can
+         * look at and barely build on, and it crowds the court. Too far and it is outside the
+         * writ you start with. It has to sit at arm's length. */
+        if (dq < C.WORLD.springNear) return (usableCache.set(i, -1), -1);
+        if (dq > C.WORLD.springFar) continue;
+        let ok = false;
+        for (let rr = 18; rr <= C.NODE.r - 8 && !ok; rr += 22)
+          for (let a = 0; a < 16 && !ok; a++) {
+            const th = a / 16 * Math.PI * 2;
+            const gx = q.x + Math.cos(th) * rr, gy = q.y + Math.sin(th) * rr;
+            const ds = Math.hypot(gx - p.x, gy - p.y);
+            if (ds <= C.CITY.seatR + C.BUILD.foot || ds >= C.CLAIM.seat) continue;
+            const ci = cellAt(gx, gy);
+            if (ci >= 0 && G.BUILDABLE[terra[ci]]) ok = true;
+          }
+        if (ok) k++;
+      }
+      usableCache.set(i, k);
+      return k;
+    };
     const want2 = C.WORLD.seatApart * C.WORLD.seatApart;
     let best = null;
     for (let tries = 0; tries < 900; tries++) {
@@ -209,9 +245,11 @@
       const d2 = (pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2;
       if (d2 < want2) continue;
       /* what each Seat actually has: springs close, springs at arm's length, room to build */
-      const fa = [near(pa, C.CLAIM.seat), near(pa, 900), roomAt(land, a, 460)];
-      const fb = [near(pb, C.CLAIM.seat), near(pb, 900), roomAt(land, b, 460)];
-      if (fa[0] < 1 || fb[0] < 1) continue;             // a Seat with no spring at hand is dead
+      const fa = [usable(a, pa), near(pa, 900), roomAt(land, a, 460)];
+      const fb = [usable(b, pb), near(pb, 900), roomAt(land, b, 460)];
+      /* a Seat with no spring it can actually DRAW ON is dead, however many it can see */
+      /* -1 means a spring sits right on top of that Seat — reject the pair outright */
+      if (fa[0] < 1 || fb[0] < 1) continue;
       const skew = Math.abs(fa[0] - fb[0]) * 3 + Math.abs(fa[1] - fb[1])
                  + Math.abs(fa[2] - fb[2]) / 60;
       const far = Math.sqrt(d2);

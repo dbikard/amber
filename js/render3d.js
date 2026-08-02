@@ -905,6 +905,14 @@
   const rimCtx = () => scratch(rimStore);
   const memCtx = () => scratch(memStore);
 
+  /* about how many screen pixels a world unit spans at the middle of the view — enough to
+   * size a blur by, not a projection */
+  function scaleOf() {
+    const a = proj(R.camX + viewW / 2, 0, R.camY + viewH * 0.62);
+    const b = proj(R.camX + viewW / 2 + 100, 0, R.camY + viewH * 0.62);
+    return a.ok && b.ok ? Math.abs(b.x - a.x) / 100 : 0.5;
+  }
+
   function overlayPass(view, viewer) {
     const g = octx;
     g.clearRect(0, 0, W, H);
@@ -957,7 +965,13 @@
         mc.fill();
         g.globalCompositeOperation = 'destination-out';
         g.globalAlpha = 1 - C.FOG.keep;
+        /* the memory is kept on a coarse grid, and its raw edge is a staircase of cells.
+         * Blur it on the way in: what the eye should read is "you have been here", not the
+         * resolution the sim files it at. */
+        const soft = Math.max(4, Math.min(26, sm.cell * scaleOf() * 0.55));
+        g.filter = 'blur(' + soft.toFixed(1) + 'px)';
         g.drawImage(memStore.cv, 0, 0, W, H);
+        g.filter = 'none';
         g.globalAlpha = 1;
         g.globalCompositeOperation = 'source-over';
       }
