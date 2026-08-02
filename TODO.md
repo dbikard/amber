@@ -129,6 +129,26 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       skewed pair wins.
       Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
       the nearest place they have never seen and only assault a Seat they have found.
+- [x] **Companies: a standard is its own thing, not a property of a barracks.** A dozen halls
+      used to mean a dozen flags. Raising a mustering hall now asks which standard it answers
+      to — the War Banner, an existing company, or a new one — and it can be moved between
+      them afterwards from its own sheet. The tray shows one chip per COMPANY with a count of
+      the halls under it, and the gold chip says how many standards are posted afield and so
+      NOT answering it. Colours follow a company's id, which never repeats: pennants used to
+      be indexed by `buildings.indexOf(b)`, so every razed hall reshuffled the colours of the
+      survivors. Commands: `build {co}`, `rally {co}`, and a new `assign {id, co}`.
+- [x] **The 2D renderer was running at about one frame per second.** The fog is two
+      full-screen render targets rebuilt every frame (the holes follow the units, so they
+      cannot simply be cached) and it was costing ~950ms of a ~1020ms frame. Now: both targets
+      at 0.4 resolution (the veil is soft — there is no pixel in it worth preserving), the
+      remembered-ground layer cached in its own target and rebuilt only when the camera or the
+      memory changes rather than re-tessellating hundreds of rects and re-running a blur every
+      frame, the rim band drawn from sprite pools instead of rebuilding ~160 circles of
+      geometry, and the whole pass throttled to ~15Hz whenever the camera is still. 951ms →
+      239ms in software rendering; the throttle only bites at real frame rates, so a device
+      with a GPU should gain more.
+      NOTE: these are SwiftShader numbers from CI. They are honest as a ratio and meaningless
+      as absolutes — a real phone must be measured on a real phone.
 - [x] **A Shadow Gate stands on a spring, and only there.** The off-spring "waystone" — a
       Gate anywhere in your writ, trickling 1/1.5/2 — is gone, along with the `income` table
       that fed it. A Gate is the one thing that draws Shadow out of the ground, so the essence

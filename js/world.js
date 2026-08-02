@@ -39,6 +39,12 @@
         essence: C.START_ESSENCE,
         castleHp: C.CASTLE_HP,
         eco: 1,                 // income handicap: 1 = full strength (always 1 in a duel)
+        /* COMPANIES. A standard is its own thing, not a property of a barracks: several halls
+         * may muster into one company, which is what keeps the flag tray readable once you
+         * hold a dozen of them. Company 0 is not a company — it means "follows the War
+         * Banner". Ids never repeat, so a company's colour never shifts under the player. */
+        companies: [],          // [{ id, rally }] — rally null = this company follows the Banner
+        nextCo: 1,
         pattern: 0, walking: false, revealed: false, alertIdx: 0,
         buildings: [],          // free placement: every work knows where it stands
         powers: { storm: 0, trump: 0 },
@@ -252,10 +258,11 @@
                   raise: def.raise || 0, raiseFor: def.raise || 0,
                   hp: def.hp * C.RAISE.hpFrom, maxHp: def.hp, lastHurt: -99,
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
-                  rally: null };   // null = the company follows the royal War Banner
+                  co: 0 };         // 0 = its muster marches under the royal War Banner
       if (!b.raise) b.hp = def.hp;
+      if (def.spawns) b.co = joinCo(world, pi, cmd.co);
       pl.buildings.push(b);
-      emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y });
+      emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y, co: b.co });
       return { ok: true };
     }
     if (cmd.c === 'up') {
@@ -289,13 +296,27 @@
       return { ok: true };
     }
     if (cmd.c === 'rally') {
-      /* company orders: a mustering building's troops hold their own front */
+      /* a COMPANY's standard, not a building's: every hall mustering into it answers at once */
+      const co = coOf(world, pi, cmd.co);
+      if (!co) return { ok: false, err: 'co' };
+      const p = aimAt(world, cmd);
+      if (!p) { co.rally = null; emit(world, { e: 'rally', pi, co: co.id, site: -1 }); return { ok: true }; }
+      co.rally = p;
+      emit(world, { e: 'rally', pi, co: co.id, site: p.site, x: p.x, y: p.y });
+      return { ok: true };
+    }
+    if (cmd.c === 'assign') {
+      /* move a hall between companies — or out of all of them, back under the Banner */
       const b = bldOf(world, pi, cmd.id);
       if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'id' };
-      const p = aimAt(world, cmd);
-      if (!p) { b.rally = null; emit(world, { e: 'rally', pi, id: b.id, site: -1 }); return { ok: true }; }
-      b.rally = p;
-      emit(world, { e: 'rally', pi, id: b.id, site: p.site, x: p.x, y: p.y });
+      const was = b.co;
+      b.co = joinCo(world, pi, cmd.co);
+      if (was !== b.co) {
+        /* the men already mustered stay with the hall that raised them */
+        for (const u of world.units) if (u.owner === pi && u.from === b.id) u.co = b.co;
+        pruneCos(world, pi);
+      }
+      emit(world, { e: 'assign', pi, id: b.id, co: b.co });
       return { ok: true };
     }
     if (cmd.c === 'banner') {
@@ -332,6 +353,26 @@
     return { ok: false, err: 'cmd' };
   }
 
+  /* ---------------- companies ---------------- */
+  const coOf = (world, pi, id) => world.players[pi].companies.find((c) => c.id === id) || null;
+  /* `want` is a company id, the string 'new', or 0/undefined for the royal War Banner */
+  function joinCo(world, pi, want) {
+    const pl = world.players[pi];
+    if (want === 'new') {
+      const co = { id: pl.nextCo++, rally: null };
+      pl.companies.push(co);
+      return co.id;
+    }
+    const n = +want || 0;
+    return coOf(world, pi, n) ? n : 0;
+  }
+  /* a company with no hall mustering into it and no men left under it is not a company */
+  function pruneCos(world, pi) {
+    const pl = world.players[pi];
+    pl.companies = pl.companies.filter((co) =>
+      pl.buildings.some((b) => b.co === co.id) || world.units.some((u) => u.owner === pi && u.co === co.id));
+  }
+
   /* A standard may be planted ANYWHERE — on a site, or on bare open ground. It is an order
    * to march, not a claim, so there is nothing to validate beyond "is it on the map": if the
    * ground turns out to be unreachable the column walks at it and gets as close as the land
@@ -346,7 +387,7 @@
   }
 
   /* ---------------- units ---------------- */
-  function spawnUnit(world, owner, kind, atX, atY, goal, co) {
+  function spawnUnit(world, owner, kind, atX, atY, goal, co, from) {
     /* per-owner, so a full army can never starve the muster of Chaos or of the other side */
     let mine = 0;
     for (const u of world.units) if (u.owner === owner) mine++;
@@ -363,7 +404,8 @@
       dmg: def.dmg * (owner === 2 ? C.CHAOS.dmgScale(world.t) : 1),
       cd: 0,
       goal: goal != null ? goal : (owner === 2 ? aimAt(world, { site: world.map.cities[world.chaosParity++ % 2] }) : world.players[owner].banner),
-      co: co != null ? co : -1   // company = its mustering hall's id; -1 follows the royal banner
+      co: co != null ? co : 0,   // the COMPANY it musters into; 0 = under the royal War Banner
+      from: from != null ? from : -1   // the hall that raised it, so re-assigning one moves its men
     };
     world.units.push(u);
     return u.id;
@@ -409,6 +451,7 @@
       emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
       pl.buildings.splice(i, 1);
       if (b.bt === 'shrine') pl.walking = false;
+      if (C.BUILDINGS[b.bt].spawns) pruneCos(world, pi);
       /* a fallen mustering hall is a fallen standard: its company rallies to the banner */
       delete world.players[0].ghosts[b.id]; delete world.players[1].ghosts[b.id];
     } else if (world.t - (pl.slotAlert || -99) > 12) {
@@ -463,7 +506,7 @@
           if (b.cd <= 0) {
             if (b.paid >= price - 1e-6) {
               b.paid -= price;
-              spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.id);
+              spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.co, b.id);
               b.cd += per;
             } else b.cd = 0;   // timer ready; the recruit marches the moment he's paid
           }
@@ -563,8 +606,8 @@
       /* the banner moves the army */
       if (u.owner !== 2) {
         const pl2 = world.players[u.owner];
-        const cb = u.co >= 0 ? bldOf(world, u.owner, u.co) : null;   // its mustering hall, if it still stands
-        const want = cb && cb.rally ? cb.rally : pl2.banner;
+        const co = u.co ? coOf(world, u.owner, u.co) : null;   // its company, if it still exists
+        const want = co && co.rally ? co.rally : pl2.banner;
         if (u.goal !== want) u.goal = want;
       }
       /* garrisons of an open city still see farther out */

@@ -205,6 +205,83 @@ suite('a Gate stands on a spring')
      `${pl.incomeRate.toFixed(1)} vs base ${base.toFixed(1)}`);
 }
 
+suite('companies')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 999999;
+  const free = (bt, r) => {
+    for (let a = 0; a < 48; a++) {
+      const th = a / 48 * Math.PI * 2, x = c.x + Math.cos(th) * r, y = c.y + Math.sin(th) * r;
+      if (World.placementError(w, 0, x, y, bt) === null) return { x, y };
+    }
+    return null;
+  };
+  const hall = (r, co) => {
+    const at = free('barracks', r);
+    if (!at) return null;
+    World.applyCommand(w, 0, { c: 'build', ...at, bt: 'barracks', co });
+    for (let i = 0; i < 30 * 40 && pl.buildings.some((b) => b.raise > 0); i++) World.update(w, C.SIM_DT);
+    w.events.length = 0;
+    return pl.buildings[pl.buildings.length - 1];
+  };
+
+  const h1 = hall(180, 0);
+  ok('a hall may muster under the War Banner', h1 && h1.co === 0);
+  eq('...which is not a company at all', pl.companies.length, 0);
+  const h2 = hall(235, 'new');
+  ok('a hall may raise a standard of its own', h2 && h2.co > 0);
+  eq('...which is one company', pl.companies.length, 1);
+  const co = pl.companies[0].id;
+  const h3 = hall(290, co);
+  ok('and a third may JOIN it rather than add another flag', h3 && h3.co === co);
+  eq('still one company for two halls', pl.companies.length, 1,
+     `${pl.buildings.filter((b) => b.co === co).length} halls under it`);
+
+  /* the men follow the company, and moving its standard moves all of them at once */
+  for (let i = 0; i < 30 * 120; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const underCo = w.units.filter((u) => u.owner === 0 && u.co === co).length;
+  const underBanner = w.units.filter((u) => u.owner === 0 && !u.co).length;
+  ok('both halls muster into the one company', underCo > 0, `${underCo} troops`);
+  ok('and the Banner hall musters separately', underBanner > 0, `${underBanner} troops`);
+
+  const site = w.map.sites.find((s) => s.kind === 'node');
+  ok('a company standard can be posted', World.applyCommand(w, 0, { c: 'rally', co, site: site.id }).ok);
+  eq('an unknown company is refused', World.applyCommand(w, 0, { c: 'rally', co: 999, site: site.id }).err, 'co');
+  World.update(w, C.SIM_DT);
+  const goals = new Set(w.units.filter((u) => u.owner === 0 && u.co === co).map((u) => u.goal && u.goal.site));
+  ok('every one of its men answers the new standard, from both halls',
+     goals.size === 1 && goals.has(site.id), [...goals].join(','));
+  const banGoals = new Set(w.units.filter((u) => u.owner === 0 && !u.co).map((u) => u.goal && u.goal.site));
+  ok('and the Banner men are untouched by it', !banGoals.has(site.id));
+
+  /* re-assignment: a hall can be moved, and its own men move with it */
+  const before = w.units.filter((u) => u.owner === 0 && u.from === h3.id).length;
+  ok('the third hall has men of its own', before > 0, `${before}`);
+  ok('it can be sent back under the Banner', World.applyCommand(w, 0, { c: 'assign', id: h3.id, co: 0 }).ok);
+  eq('the hall now answers the Banner', h3.co, 0);
+  eq('and so do the men it raised',
+     w.units.filter((u) => u.owner === 0 && u.from === h3.id && u.co !== 0).length, 0);
+  ok('the company survives while its other hall stands', pl.companies.some((q) => q.id === co));
+
+  /* ...and is dropped once nothing answers to it any more */
+  ok('the last hall can leave too', World.applyCommand(w, 0, { c: 'assign', id: h2.id, co: 0 }).ok);
+  for (const u of w.units) if (u.owner === 0 && u.co === co) u.co = 0;
+  World.applyCommand(w, 0, { c: 'assign', id: h2.id, co: 0 });
+  ok('an empty company is not kept', !pl.companies.some((q) => q.id === co),
+     JSON.stringify(pl.companies));
+
+  /* THE GOLD FLAG. Every man who answers the Banner must move when it moves — this is the
+   * one that was reported as unreliable, and it holds up. */
+  const far = w.map.sites.filter((s) => s.kind !== 'city')
+    .sort((a, b) => Math.hypot(b.x - c.x, b.y - c.y) - Math.hypot(a.x - c.x, a.y - c.y))[0];
+  ok('the Banner can be moved', World.applyCommand(w, 0, { c: 'banner', site: far.id }).ok);
+  World.update(w, C.SIM_DT);
+  const mine = w.units.filter((u) => u.owner === 0);
+  ok('there is an army to direct', mine.length > 10, `${mine.length} troops`);
+  eq('every last one of them takes the new goal',
+     mine.filter((u) => !u.goal || u.goal.site !== far.id).length, 0);
+}
+
 suite('the masons')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
@@ -418,7 +495,7 @@ suite('multiplayer snapshots');
   eq('the rival powers are withheld', foe.powers, null);
   eq('the rival muster state is withheld', foe.musterPaused, false);
   ok('rival works carry no branch', foe.buildings.every((b) => b.br === null));
-  ok('rival works carry no rally order', foe.buildings.every((b) => b.rally === null));
+  ok('a rival hall never reveals which company it musters into', foe.buildings.every((b) => b.co === 0));
 
   /* fog: a rival work in the snapshot must be one the viewer can actually see */
   const canSee = (x, y) => World.canSee(w, 1, x, y);

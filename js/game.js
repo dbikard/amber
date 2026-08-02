@@ -368,7 +368,7 @@
       const w = Render.toWorld(x, y, game.viewer);
       const where = siteId >= 0 ? { site: siteId } : { x: w.x, y: w.y };
       if (id === 'royal') issue({ c: 'banner', ...where });
-      else issue({ c: 'rally', id, ...where });   // works carry ids now, not slots
+      else issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
       return;
     }
     if (game.targeting) {
@@ -386,7 +386,7 @@
     if (bid >= 0) {
       const me = view.players[game.viewer];
       const b = me.buildings.find((q) => q.id === bid);
-      if (b) { Render.selected = bid; UI.upSheet(b, me.essence, me.walking); return; }
+      if (b) { Render.selected = bid; UI.upSheet(b, me.essence, me.walking, me); return; }
     }
     const siteId = Render.hitSite(x, y, view, game.viewer);
     if (siteId >= 0) {
@@ -402,7 +402,7 @@
      * the sheet can say WHY a work will not stand here instead of failing silently. */
     const w2 = Render.toWorld(x, y, game.viewer);
     Render.selected = -1;
-    UI.buildSheet(w2, view.players[game.viewer].essence, whyAt(w2.x, w2.y));
+    UI.buildSheet(w2, view.players[game.viewer].essence, whyAt(w2.x, w2.y), view.players[game.viewer]);
   }
 
   /* Why a work will not stand at a point, per type — asked of the sim itself so the sheet
@@ -560,7 +560,7 @@
         startSP(LADDER[r], RUNG_OPTS[r], true);
       },
       onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
-      onBuild: (x, y, bt) => issue({ c: 'build', x, y, bt }),
+      onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
       onBanner: (site) => issue({ c: 'banner', site }),
@@ -570,15 +570,15 @@
         if (game.armedFlag != null)
           UI.banner(id === 'royal' ? '⚑ Tap where the army should march' : '⚐ Tap where this company should stand', 'alert');
       },
-      onRejoin: (id) => { game.armedFlag = null; issue({ c: 'rally', id, site: -1 }); },
+      onRejoin: (co) => { game.armedFlag = null; issue({ c: 'rally', co, site: -1 }); },
+      onAssign: (id, co) => issue({ c: 'assign', id, co }),
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
         issue({ c: 'banner', site: view.map.cities[game.viewer] });
         const me = view.players[game.viewer];
-        for (const b of me.buildings)
-          if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.rally)
-            issue({ c: 'rally', id: b.id, site: -1 });
+        for (const co of (me.companies || []))
+          if (co.rally) issue({ c: 'rally', co: co.id, site: -1 });
         UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },
       onMuster: (pause) => issue({ c: 'muster', pause }),

@@ -15,8 +15,17 @@
   let unitPool = new Map();  // unit id -> {c, spr, bar, lastHp, owner}
   let siteFx = new Map();    // site id -> retained per-site display state
   let cityFx = null, lastMapKey = '', curView = null, curViewer = 0;
-  let fogRT = null, fogScene = null, holeTex = null, T = 0;
-  let rimRT = null, rimScene = null;
+  let fogRT = null, fogScene = null, holeTex = null, discTex = null, T = 0;
+  let rimRT = null, rimScene = null, memRT = null, memScene = null;
+  /* The veil and its edge are SOFT — nothing in them has a hard pixel to preserve — so they
+   * are rendered at half resolution and scaled up. Both are full-screen render targets built
+   * every frame (the holes follow the units, so they cannot be cached), and at full res that
+   * fill cost alone was running the 2D renderer at about one frame per second. */
+  const FOGRES = 0.4;
+  /* ...and it is rebuilt at about 15Hz rather than every frame. Sight changes at walking pace,
+   * so nobody can see the difference — but it must be rebuilt IMMEDIATELY when the camera
+   * moves, because the veil is drawn in screen space and a stale one would visibly slide. */
+  let fogAt = -1, fogCam = '';
 
   const tex = (cv2) => {
     if (!texCache.has(cv2)) texCache.set(cv2, PIXI.Texture.from(cv2));
@@ -46,6 +55,7 @@
     /* the falloff decides how legible the edge of sight is: 0.55 was a 45% smear and the
      * boundary read as haze rather than as a line you could plan against */
     holeTex = makeRadialTex(256, [[0, 'rgba(255,255,255,1)'], [0.82, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
+    discTex = makeRadialTex(128, [[0, 'rgba(255,255,255,1)'], [0.97, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
     R.resize();
     R.ready = true;
     app.renderer.render(app.stage);
@@ -59,6 +69,7 @@
     if (!R._homed) { R.camX = R.maxCamX() / 2; R.camY = R.maxCamY() / 2; }
     if (fogRT) { fogRT.destroy(true); fogRT = null; }
     if (rimRT) { rimRT.destroy(true); rimRT = null; }
+    if (memRT) { memRT.destroy(true); memRT = null; }
     makeVignette();
   };
   /* zoom is a multiplier on how much world fits across the screen */
@@ -371,13 +382,15 @@
     let coG = stage.banner._coG;
     if (!coG || !coG.parent) { coG = new PIXI.Graphics(); stage.banner.addChild(coG); stage.banner._coG = coG; }
     coG.clear();
+    /* one pennant per COMPANY that is posted afield — its colour follows the company's id,
+     * so a standard keeps the same colour all match instead of shuffling when a hall falls */
     const me = view.players[viewer];
-    me.buildings.forEach((s2, i) => {
-      if (!s2.rally) return;
-      const a = (i / Math.max(1, me.buildings.length)) * Math.PI * 2;
-      const X = dx(s2.rally.x, viewer) + Math.cos(a) * 32, Y = dy(s2.rally.y, viewer) + Math.sin(a) * 32;
+    const cos = (me.companies || []).filter((co) => co.rally);
+    cos.forEach((co, i) => {
+      const a = (i / Math.max(1, cos.length)) * Math.PI * 2;
+      const X = dx(co.rally.x, viewer) + Math.cos(a) * 32, Y = dy(co.rally.y, viewer) + Math.sin(a) * 32;
       coG.moveTo(X, Y).lineTo(X, Y - 26).stroke({ width: 2, color: 0xd8c8a8 });
-      coG.poly([X, Y - 26, X + 14, Y - 21, X, Y - 16]).fill(PENNANT[i % PENNANT.length]);
+      coG.poly([X, Y - 26, X + 14, Y - 21, X, Y - 16]).fill(PENNANT[(co.id - 1) % PENNANT.length]);
     });
   }
 
@@ -535,8 +548,11 @@
 
   /* ---------------- fog of war: soft erase-blend holes ---------------- */
   function updateFog(view, viewer) {
+    const camKey = `${Math.round(R.camX)},${Math.round(R.camY)},${R.zoom.toFixed(3)},${W}x${H}`;
+    if (camKey === fogCam && T - fogAt < 0.066 && fogRT) return;
+    fogCam = camKey; fogAt = T;
     if (!fogRT) {
-      fogRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: 1 });
+      fogRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: FOGRES });
       fogScene = new PIXI.Container();
       const black = new PIXI.Sprite(PIXI.Texture.WHITE);
       black.tint = 0x06040c; black.alpha = 0.86;
@@ -548,19 +564,35 @@
     /* remembered ground: a lighter veil over country you have had eyes on, so a map you have
      * walked stays a map. Erased at partial strength BEFORE the full-strength sight holes, so
      * ground you can see right now still comes out clear. */
+    /* The memory layer lives in its OWN render target, rebuilt only when the camera or the
+     * memory changes and composited as one sprite the rest of the time. Its geometry is
+     * hundreds of rects and it carries a blur, so running it every frame was pure waste. */
     let mem = fogScene._mem;
     if (!mem) {
       mem = fogScene._mem = new PIXI.Graphics();
-      mem.blendMode = 'erase';
       /* the memory is kept on a coarse grid; blurred, its edge reads as "you have been here"
        * rather than as the resolution the sim files it at */
       fogScene._memBlur = new PIXI.BlurFilter({ strength: 8 });
       mem.filters = [fogScene._memBlur];
-      fogScene.addChild(mem);
+      memScene = new PIXI.Container();
+      memScene.addChild(mem);
+      fogScene._memSp = new PIXI.Sprite();
+      fogScene._memSp.blendMode = 'erase';
+      fogScene.addChild(fogScene._memSp);
     }
-    mem.clear();
+    if (!memRT) {
+      memRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: FOGRES });
+      fogScene._memSp.texture = memRT;
+      fogScene._memKey = '';
+    }
     const sm = view.seen;
-    if (sm) {
+    /* Rebuilding hundreds of rects every frame was most of what was left of the fog's cost.
+     * The memory only moves when the CAMERA moves or new ground is walked, so key on that. */
+    const memKey = sm ? `${Math.round(R.camX)},${Math.round(R.camY)},${R.zoom.toFixed(3)},${sm.v}` : 'x';
+    if (memKey !== fogScene._memKey) {
+      fogScene._memKey = memKey;
+      mem.clear();
+      if (sm) {
       const cw = sm.cell;
       const vr = R.viewRect();
       const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(sm.gw - 1, (vr.x1 / cw | 0) + 1);
@@ -580,6 +612,8 @@
       }
       mem.fill({ color: 0xffffff, alpha: 1 - C.FOG.keep });
       fogScene._memBlur.strength = Math.max(3, Math.min(24, sm.cell * scale * 0.55));
+      }
+      app.renderer.render({ container: memScene, target: memRT, clear: true });
     }
     const need = view.visSources.length;
     while (fogScene._holes.length < need) {
@@ -603,13 +637,16 @@
      * union is cut back out of it; what survives is exactly the outer boundary. Sight sources
      * include every unit, so an O(n²) outline walk is out of the question — this is one pass. */
     if (!rimRT) {
-      rimRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: 1 });
+      rimRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: FOGRES });
       if (!rimScene) {
         rimScene = new PIXI.Container();
-        rimScene._band = new PIXI.Graphics();
-        rimScene._cut = new PIXI.Graphics();
-        rimScene._cut.blendMode = 'erase';
-        rimScene.addChild(rimScene._band, rimScene._cut);
+        /* sprite POOLS, not Graphics: the sources are the units, so this set changes every
+         * frame, and re-tessellating a couple of hundred circles each time was pure waste.
+         * Sprites only have their transform touched. */
+        rimScene._bandG = new PIXI.Container();
+        rimScene._cutG = new PIXI.Container();
+        rimScene._band = []; rimScene._cut = [];
+        rimScene.addChild(rimScene._bandG, rimScene._cutG);
       }
       if (!stage.fogRim) {
         stage.fogRim = new PIXI.Sprite();
@@ -617,20 +654,28 @@
       }
       stage.fogRim.texture = rimRT;
     }
-    const band = rimScene._band, cut = rimScene._cut;
-    band.clear(); cut.clear();
-    let any = false;
+    const pool = (arr, host, blend, tint, alpha) => (i) => {
+      let sp = arr[i];
+      if (!sp) {
+        sp = arr[i] = new PIXI.Sprite(discTex);
+        sp.anchor.set(0.5); sp.blendMode = blend; sp.tint = tint; sp.alpha = alpha;
+        host.addChild(sp);
+      }
+      return sp;
+    };
+    const bandAt = pool(rimScene._band, rimScene._bandG, 'normal', 0xffe9a8, 0.34);
+    const cutAt = pool(rimScene._cut, rimScene._cutG, 'erase', 0xffffff, 1);
+    let n = 0;
     for (const [x, y, r] of view.visSources) {
       const X = (dx(x, viewer) - R.camX) * scale, Y = (dy(y, viewer) - R.camY) * scale, rr = r * scale;
       if (Y < -rr || Y > H + rr || X < -rr || X > W + rr) continue;
-      band.circle(X, Y, rr);
-      cut.circle(X, Y, Math.max(0.5, rr - 2));
-      any = true;
+      const b2 = bandAt(n), c2 = cutAt(n);
+      b2.visible = c2.visible = true;
+      b2.position.set(X, Y); b2.width = b2.height = rr * 2;
+      c2.position.set(X, Y); c2.width = c2.height = Math.max(1, rr - 2) * 2;
+      n++;
     }
-    if (any) {
-      band.fill({ color: 0xffe9a8, alpha: 0.34 });
-      cut.fill({ color: 0xffffff, alpha: 1 });
-    }
+    for (let i = n; i < rimScene._band.length; i++) { rimScene._band[i].visible = false; rimScene._cut[i].visible = false; }
     app.renderer.render({ container: rimScene, target: rimRT, clear: true });
   }
 

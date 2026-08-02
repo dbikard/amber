@@ -37,18 +37,28 @@ function serve() {
   return new Promise((res) => srv.listen(0, '127.0.0.1', () => res(srv)));
 }
 
+/* Wait for the thing you actually care about instead of guessing at a duration. On success
+ * this returns as soon as it is true; on failure it costs the timeout and the assertion that
+ * follows still reports the real state, so nothing is hidden — it is only faster. */
+async function until(pg, fn, ms = 2500) {
+  try { await pg.waitForFunction(fn, null, { timeout: ms, polling: 40 }); } catch (e) { /* the assertion speaks */ }
+}
+const ready = (pg) => until(pg, () => window.Render && window.Render.ready && window.UI && window.Game);
+const inMatchNow = (pg) => until(pg, () => !!(window.Game && window.Game.game.mode && window.Game.game.world));
+
 /* open a page, walk the menu, and land in a skirmish against a fixed heir */
 async function match(browser, base, renderer) {
   const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
   const errs = [];
   pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
   pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
-  await pg.goto(`${base}/index.html${renderer === '2d' ? '?r=2d' : ''}`, { waitUntil: 'networkidle' });
-  await pg.waitForTimeout(900);
-  await pg.click('#btn-skirmish'); await pg.waitForTimeout(250);
+  await pg.goto(`${base}/index.html${renderer === '2d' ? '?r=2d' : ''}`, { waitUntil: 'domcontentloaded' });
+  await ready(pg);
+  await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
   await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
     .find((e) => /julian/i.test(e.textContent)).click());
-  await pg.waitForTimeout(2200);
+  await inMatchNow(pg);
+  await until(pg, () => window.Game.game.world.units.length >= 0 && window.Render.ready);
   return { pg, errs };
 }
 
@@ -65,8 +75,8 @@ async function match(browser, base, renderer) {
   {
     suite('menu');
     const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
-    await pg.goto(`${base}/index.html?r=2d`, { waitUntil: 'networkidle' });
-    await pg.waitForTimeout(900);
+    await pg.goto(`${base}/index.html?r=2d`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
     const hidden = (id) => pg.evaluate((i) => document.getElementById(i).classList.contains('hidden'), id);
     await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
     ok('the skirmish row opens', !(await hidden('skirmish-row')));
@@ -95,7 +105,7 @@ async function match(browser, base, renderer) {
     await pg.evaluate(() => { window.UI.setDifficulty('squire'); });
     await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
       .find((e) => /julian/i.test(e.textContent)).click());
-    await pg.waitForTimeout(2000);
+    await inMatchNow(pg);
     const applied = await pg.evaluate(() => {
       const C = window.CONST, g = window.Game.game;
       return { eco: g.world.players[1].eco, mine: g.world.players[0].eco, want: C.DIFFICULTY.squire.eco };
@@ -362,12 +372,12 @@ async function match(browser, base, renderer) {
     /* ---------------- input routing ---------------- */
     suite(`${r} · input`);
     let p = await nearSeat(110, 0);
-    await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(400);
+    await pg.mouse.click(p.x, p.y); await until(pg, () => window.UI.sheetOpen());
     ok('a build sheet opens on bare ground', await sheetOpen());
     p = await nearSeat(-110, 40);
-    await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(400);
+    await pg.mouse.click(p.x, p.y); await until(pg, () => !window.UI.sheetOpen());
     ok('tapping outside closes it rather than opening another', !(await sheetOpen()));
-    await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(400);
+    await pg.mouse.click(p.x, p.y); await until(pg, () => window.UI.sheetOpen());
     ok('a second tap then opens the sheet normally', await sheetOpen());
 
     /* an ARMED flag must still act through an open sheet, not merely dismiss it */
@@ -555,6 +565,61 @@ async function match(browser, base, renderer) {
     }
     await pg.evaluate(() => window.UI.closeSheet());
 
+    /* ---------------- companies ---------------- *
+     * A dozen halls used to mean a dozen flags. Raising one now asks which standard it
+     * answers to, and the tray shows one chip per COMPANY — which is the difference between
+     * three things to think about and twelve. */
+    suite(`${r} · companies`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const co = await pg.evaluate(async () => {
+      const W = window.World, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 999999;
+      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      const free = (bt, rad) => {
+        for (let a = 0; a < 48; a++) {
+          const th = a / 48 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+          if (W.placementError(g.world, 0, x, y, bt) === null) return { x, y };
+        }
+        return null;
+      };
+      const hall = (rad, want) => {
+        const at = free('barracks', rad);
+        if (!at) return null;
+        W.applyCommand(g.world, 0, { c: 'build', ...at, bt: 'barracks', co: want });
+        for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+        g.world.events.length = 0;
+        return g.world.players[0].buildings[g.world.players[0].buildings.length - 1];
+      };
+      const a1 = hall(190, 'new'), a2 = hall(245, null);
+      if (!a1 || !a2) return { ok: false, why: 'no room for two halls' };
+      const id = a1.co;
+      W.applyCommand(g.world, 0, { c: 'assign', id: a2.id, co: id });
+      W.update(g.world, C.SIM_DT);
+      window.UI.flags({ players: g.world.players }, 0, null);
+      await new Promise((res) => requestAnimationFrame(res));
+      const chips = [...document.querySelectorAll('#flag-tray .fbtn')];
+      const before = chips.length;
+      /* post it, and see the gold chip admit that part of the army no longer answers it */
+      const site = g.world.map.sites.find((q) => q.kind === 'node');
+      W.applyCommand(g.world, 0, { c: 'rally', co: id, site: site.id });
+      window.UI.flags({ players: g.world.players }, 0, null);
+      await new Promise((res) => requestAnimationFrame(res));
+      const royal = document.querySelector('#flag-tray .fbtn');
+      return { ok: true, halls: 2, companies: g.world.players[0].companies.length,
+               chips: before, coChips: document.querySelectorAll('#flag-tray .fbtn.co').length,
+               royalWarns: !!royal.querySelector('.fcount.away'),
+               sameCo: a1.co === a2.co };
+    });
+    ok('the scenario set up', co.ok, co.why || '');
+    if (co.ok) {
+      ok('two halls can muster into ONE company', co.sameCo && co.companies === 1,
+         `${co.companies} companies for ${co.halls} halls`);
+      ok('and the tray shows one chip for it, not one per hall', co.coChips === 1,
+         `${co.coChips} company chips, ${co.chips} chips in all`);
+      ok('the gold flag says when part of the army no longer answers it', co.royalWarns);
+    }
+
     /* ---------------- the back button ---------------- *
      * Start from a clean slate: the input suite deliberately leaves a sheet open, and a
      * tap on ground with a sheet already up DISMISSES rather than opens. */
@@ -562,22 +627,22 @@ async function match(browser, base, renderer) {
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
     await pg.waitForTimeout(200);
     p = await nearSeat(110, 0);
-    await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(400);
+    await pg.mouse.click(p.x, p.y); await until(pg, () => window.UI.sheetOpen());
     ok('a build sheet is open', await sheetOpen());
-    await pg.goBack(); await pg.waitForTimeout(400);
+    await pg.goBack(); await until(pg, () => !window.UI.sheetOpen());
     ok('back closes the sheet', !(await sheetOpen()));
     ok('back did not leave the match', await inMatch());
     await pg.evaluate(() => document.querySelector('#flag-tray .fbtn').click());
     await pg.waitForTimeout(200);
     ok('a flag is armed', await pg.evaluate(() => window.Game.game.armedFlag !== null));
-    await pg.goBack(); await pg.waitForTimeout(400);
+    await pg.goBack(); await until(pg, () => window.Game.game.armedFlag === null);
     ok('back disarms the flag', await pg.evaluate(() => window.Game.game.armedFlag === null));
     ok('still in the match', await inMatch());
-    await pg.click('#pw-storm'); await pg.waitForTimeout(200);
+    await pg.click('#pw-storm'); await until(pg, () => !!window.Game.game.targeting);
     ok('the storm is arming', await pg.evaluate(() => !!window.Game.game.targeting));
-    await pg.goBack(); await pg.waitForTimeout(400);
+    await pg.goBack(); await until(pg, () => !window.Game.game.targeting);
     ok('back cancels the storm aim', await pg.evaluate(() => !window.Game.game.targeting));
-    await pg.goBack(); await pg.waitForTimeout(500);
+    await pg.goBack(); await until(pg, () => !window.Game.game.mode);
     ok('back with nothing open returns to the menu', !(await inMatch()));
     ok('and the game itself is still open',
        await pg.evaluate(() => !document.getElementById('menu').classList.contains('hidden')));

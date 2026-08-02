@@ -736,10 +736,11 @@
           grp.add(pad, buildingModel(b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt));
           if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
-            const idx = pl.buildings.indexOf(b);
+            /* the hall flies its COMPANY's colour — gold if it answers to the War Banner */
             const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
             const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
-              new THREE.MeshBasicMaterial({ color: PENNANT[Math.max(0, idx) % PENNANT.length], side: THREE.DoubleSide }));
+              new THREE.MeshBasicMaterial({ color: b.co ? PENNANT[(b.co - 1) % PENNANT.length] : 0xffd98a,
+                                            side: THREE.DoubleSide }));
             pf.position.set(14, 38, 8);
             grp.add(pole, pf);
           }
@@ -808,21 +809,21 @@
     /* company standards: one pennant per detached company, ringed around its post */
     const me = view.players[viewer];
     const active = new Set();
-    me.buildings.forEach((s, i) => {
-      if (!s.rally) return;
+    const cos = (me.companies || []).filter((co) => co.rally);
+    cos.forEach((s, i) => {
       active.add(s.id);
       let f = coFlags.get(s.id);
       if (!f) {
         f = new THREE.Group();
         const pole = meshOf([part(cyl(0.7, 0.7, 30, 5), 0xd8c8a8, 0, 15, 0)]);
         const pf = new THREE.Mesh(new THREE.PlaneGeometry(13, 8).translate(6.5, 0, 0),
-          new THREE.MeshBasicMaterial({ color: PENNANT[i % PENNANT.length], side: THREE.DoubleSide }));
+          new THREE.MeshBasicMaterial({ color: PENNANT[(s.id - 1) % PENNANT.length], side: THREE.DoubleSide }));
         pf.position.set(0, 26, 0);
         f.add(pole, pf); f._flag = pf;
         worldG.add(f);
         coFlags.set(s.id, f);
       }
-      const a2 = (i / Math.max(1, me.buildings.length)) * Math.PI * 2;
+      const a2 = (i / Math.max(1, cos.length)) * Math.PI * 2;
       const fx2 = s.rally.x + Math.cos(a2) * 32, fz2 = s.rally.y + Math.sin(a2) * 32;
       f.position.set(fx2, groundH(fx2, fz2), fz2);
       f.rotation.y = curViewerRotOwn();

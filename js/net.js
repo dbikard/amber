@@ -173,6 +173,8 @@
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
         banner: mine ? pl.banner : null,   // the banner is a strategic secret
         musterPaused: mine ? pl.musterPaused : false,
+        /* your own companies and where their standards stand; a rival's are a secret */
+        companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally })) : [],
         buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)).map((b) => ({
           id: b.id, bt: b.bt, level: b.level, x: Math.round(b.x), y: Math.round(b.y),
           hp: Math.round(b.hp), maxHp: b.maxHp, node: b.node,
@@ -180,7 +182,7 @@
           raise: b.raise > 0 ? Math.round(b.raise * 10) / 10 : 0, raiseFor: b.raiseFor || 0,
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
-          rally: mine && b.rally ? b.rally : null
+          co: mine ? b.co : 0            // which company a hall musters into is yours to know
         })),
         /* what the viewer remembers of works they can no longer see */
         ghosts: mine ? [] : Object.entries(world.players[viewer].ghosts)

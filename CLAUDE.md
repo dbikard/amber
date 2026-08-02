@@ -78,6 +78,9 @@ human could see (see `AI.view()`).
   Skip with AMBER_NO_BUMP=1. sw.js precaches per-version; update flow lives in game.js setupPWA().
 - Balance changes: run `node sim.js` before and after; keep the targets in
   DESIGN_PRINCIPLES.md green. `node sim.js --a=brand --b=julian --n=40` for a matchup.
+- The suite prints its slowest suites when a run is slow — start there rather than bisecting
+  by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
+  the same problem. Wait on a condition (`until`) rather than a fixed sleep.
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page (both renderers) for input, camera, the writ, HUD layering, the back

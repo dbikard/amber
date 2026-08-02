@@ -96,13 +96,17 @@
   /* ---------------- flag tray: the army's orders, always at thumb's reach ---------------- */
   const PENNANT_CSS = ['#e8ecff', '#64d8d8', '#c48eff', '#ff9ad8', '#9adcff', '#ffc27a', '#b0e8a0', '#d8b0ff'];
   let trayHash = '';
+  /* a company's colour follows its ID, which never repeats — so a standard keeps its colour
+   * for the whole match instead of shuffling every time some other hall is razed */
+  UI.coColor = (id) => PENNANT_CSS[(id - 1) % PENNANT_CSS.length];
   UI.flags = function (view, viewer, armed) {
     const tray = $('flag-tray');
     const me = view.players[viewer];
-    const rows = [];
-    me.buildings.forEach((s, i) => {
-      if (C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) rows.push([s.id, !!s.rally, i]);
-    });
+    /* ONE chip per company, not per hall: a dozen barracks under three standards is three
+     * flags to think about, which is the whole point of companies */
+    const cos = me.companies || [];
+    const halls = (id) => me.buildings.filter((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.co === id).length;
+    const rows = cos.map((co) => [co.id, !!co.rally, halls(co.id)]);
     const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
     if (hash === trayHash) return;
     trayHash = hash;
@@ -116,13 +120,34 @@
       tray.appendChild(b);
       return b;
     };
-    mk('royal', '⚑', '', '#ffd98a');
-    for (const [id, detached, i] of rows) {
-      const b = mk(id, '⚐', 'co', PENNANT_CSS[i % PENNANT_CSS.length]);
-      if (detached) {
+    const royal = mk('royal', '⚑', '', '#ffd98a');
+    /* The gold flag moves the ARMY — but not a company posted afield, which is the whole
+     * point of posting one. That is invisible until you count flags, so say it here: if any
+     * of your force is answering somebody else's standard, the gold chip shows how many
+     * standards that is, and the Recall on the Seat's sheet brings every one of them home. */
+    const afield = rows.filter((r) => r[1]).length;
+    royal.title = afield ? afield + ' standard(s) posted afield do not answer the War Banner'
+                         : 'the whole army answers the War Banner';
+    if (afield) {
+      const w2 = document.createElement('span');
+      w2.className = 'fcount away';
+      w2.textContent = afield;
+      royal.appendChild(w2);
+    }
+    for (const [id, afield, n] of rows) {
+      const col = UI.coColor(id);
+      const b = mk(id, '⚐', 'co', col);
+      b.title = n + (n === 1 ? ' hall' : ' halls');
+      if (n > 1) {
+        const c2 = document.createElement('span');
+        c2.className = 'fcount';
+        c2.textContent = n;
+        b.appendChild(c2);
+      }
+      if (afield) {
         const d = document.createElement('span');
         d.className = 'dot';
-        d.style.background = PENNANT_CSS[i % PENNANT_CSS.length];
+        d.style.background = col;
         b.appendChild(d);
       }
     }
@@ -185,6 +210,34 @@
     busy: 'your masons are already at work — one rises at a time',
     unique: 'you have one already'
   };
+  /* The standard chooser, used twice: once before raising a hall, once on the hall's own
+   * sheet to move it later. Companies exist so that a dozen halls need not mean a dozen
+   * flags — so choosing one has to be as easy as accepting the default. */
+  function standardCards(el, me, current, pick) {
+    const cos = me.companies || [];
+    const row = (label, blurb, color, on, val) => {
+      const b = document.createElement('button');
+      b.className = 'card' + (on ? ' chosen' : '');
+      b.dataset.co = val;
+      b.innerHTML = `<span class="c-ico" style="color:${color}">${val === 0 ? '⚑' : '⚐'}</span>` +
+                    `<span class="c-name">${label}</span><span class="c-cost">${on ? '✓' : ''}</span>` +
+                    `<span class="c-blurb">${blurb}</span>`;
+      b.addEventListener('click', () => pick(val));
+      el.appendChild(b);
+    };
+    row('The War Banner', 'Its muster marches with the army wherever the gold flag stands',
+        '#ffd98a', current === 0, 0);
+    for (const co of cos) {
+      const n = me.buildings.filter((q) => C.BUILDINGS[q.bt] && C.BUILDINGS[q.bt].spawns && q.co === co.id).length;
+      row('Standard ' + co.id,
+          (n ? n + (n === 1 ? ' hall musters' : ' halls muster') + ' under it' : 'no hall under it yet') +
+          (co.rally ? ' · posted afield' : ' · with the Banner'),
+          UI.coColor(co.id), current === co.id, co.id);
+    }
+    row('A new standard', 'Raise a company of its own, with its own flag in the tray',
+        '#b8a878', false, 'new');
+  }
+
   function cardBody(d, bt, bad) {
     return `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
            `<span class="c-cost">◆ ${d.cost}</span>` +
@@ -201,7 +254,19 @@
       card.dataset.bt = bt;            // ...and re-asks the sim why, so a card can unlock in place
       card.dataset.bad = bad || '';
       card.innerHTML = cardBody(d, bt, bad);
-      card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(at.x, at.y, bt); UI.closeSheet(); });
+      card.addEventListener('click', () => {
+        if (card.classList.contains('locked')) return;
+        /* a hall that musters troops asks which standard it answers to — everything else
+         * simply goes up */
+        if (d.spawns && el._me) {
+          el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — under which standard?</div>`;
+          standardCards(el, el._me, 0, (co) => { H.onBuild(at.x, at.y, bt, co); UI.closeSheet(); });
+          addCancel(el);
+          return;
+        }
+        H.onBuild(at.x, at.y, bt);
+        UI.closeSheet();
+      });
       el.appendChild(card);
     }
     /* the sheet remembers WHERE it was opened and HOW to ask, so the answer can change while
@@ -210,8 +275,9 @@
     el._why = why || null;
   }
   const freshSheet = () => { const el = $('sheet'); el._why = null; el._raising = null; return el; };
-  UI.buildSheet = function (at, essence, why) {
+  UI.buildSheet = function (at, essence, why, me) {
     const el = freshSheet();
+    el._me = me || null;
     el.innerHTML = `<div class="sheet-title">Raise a work here ${trChip(essence)}</div>`;
     buildCards(el, at, essence, why);
     addCancel(el);
@@ -235,9 +301,10 @@
   const raiseLine = (s) =>
     `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
     'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.';
-  UI.upSheet = function (s, essence, walking) {
+  UI.upSheet = function (s, essence, walking, me) {
     const d = C.BUILDINGS[s.bt], face = towerFace(s);
     const el = freshSheet();
+    el._me = me || null;
     el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${face.blurb}</div>`;
     /* still scaffolding: it earns nothing, musters nobody and holds no ground yet, and there
@@ -286,13 +353,26 @@
       b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, s.br); UI.closeSheet(); });
       el.appendChild(b);
     }
-    if (d.spawns) {
-      const detached = !!s.rally;
+    if (d.spawns && me) {
+      const co = (me.companies || []).find((q) => q.id === s.co) || null;
       const info = document.createElement('div');
       info.className = 'sheet-blurb';
-      info.textContent = detached ? '⚐ Its company holds a standard afield — see the flag tray'
-                                  : '⚑ Its company follows the War Banner — its flag waits in the tray';
+      info.innerHTML = co
+        ? `<b style="color:${UI.coColor(co.id)}">⚐ Standard ${co.id}</b>` +
+          (co.rally ? ' — posted afield; its flag is in the tray' : ' — with the War Banner')
+        : '⚑ Its muster marches under the War Banner';
       el.appendChild(info);
+      const change = document.createElement('button');
+      change.className = 'card';
+      change.id = 'change-standard';
+      change.innerHTML = '<span class="c-ico">⚐</span><span class="c-name">Change its standard</span>' +
+                         '<span class="c-blurb">Move this hall to another company, or back under the Banner</span>';
+      change.addEventListener('click', () => {
+        el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — under which standard?</div>`;
+        standardCards(el, me, s.co || 0, (want) => { H.onAssign(s.id, want); UI.closeSheet(); });
+        addCancel(el);
+      });
+      el.appendChild(change);
     }
     if (s.bt === 'shrine') {
       const b = document.createElement('button');
@@ -317,6 +397,7 @@
   UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, at, why) {
     freshSheet();
     const el = $('sheet');
+    el._me = pinfo || null;
     const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder === -1 ? 'unclaimed'
       : st.holder === viewer ? 'yours' : 'the rival’s';
     el.innerHTML = `<div class="sheet-title">${site.name} ${trChip(essence)}</div>` +
