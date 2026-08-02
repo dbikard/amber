@@ -42,7 +42,9 @@
     stage.target = new PIXI.Graphics();
     stage.vignette = new PIXI.Sprite();
     app.stage.addChild(stage.world, stage.fog, stage.vignette, stage.mini, stage.target);
-    holeTex = makeRadialTex(256, [[0, 'rgba(255,255,255,1)'], [0.55, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
+    /* the falloff decides how legible the edge of sight is: 0.55 was a 45% smear and the
+     * boundary read as haze rather than as a line you could plan against */
+    holeTex = makeRadialTex(256, [[0, 'rgba(255,255,255,1)'], [0.82, 'rgba(255,255,255,1)'], [1, 'rgba(255,255,255,0)']]);
     R.resize();
     R.ready = true;
     app.renderer.render(app.stage);
@@ -307,10 +309,6 @@
         ringFx(ex, ey, 0xffb090, 0.35, 22, ev.pi === viewer ? 0xff5a4a : null);
       } else if (ev.e === 'hurtpost') {
         if (ev.pi === viewer) ringFx(ex, ey, 0xff8a5a, 1.2, 44, 0xff8a5a);
-      } else if (ev.e === 'post' || ev.e === 'postup') {
-        ringFx(ex, ey, 0xffe9a8, 0.8, 44);
-      } else if (ev.e === 'postdie') {
-        ringFx(ex, ey, 0xcfc6d8, 0.8, 44, ev.pi === viewer ? 0xff5a4a : null);
       } else if (ev.e === 'build' || ev.e === 'up') {
         if (ev.pi === viewer) ringFx(ex, ey, 0xffe9a8, 0.6, 34);
       } else if (ev.e === 'walk' || ev.e === 'pattern' || ev.e === 'trump') {
@@ -349,28 +347,16 @@
       const sf = siteFx.get(s.id);
       if (!sf) continue;
       const st = view.sites[s.id];
-      const hash = st ? [st.owner, st.live, st.post && st.post.bt, st.post && st.post.level, st.post && st.post.hp | 0].join('|') : 'x';
+      const hash = st ? [st.holder, st.live].join('|') : 'x';
       if (hash !== sf.hash) {
         sf.hash = hash;
         sf.ring.clear(); sf.bar.clear(); sf.pips.clear();
         sf.post.visible = false;
-        if (st) {
-          if (st.owner >= 0) {
-            sf.ring.circle(0, 0, 40).stroke({ width: 2, color: st.owner === viewer ? 0xffd98a : 0xff8a96, alpha: st.live ? 0.65 : 0.35 });
-          }
-          if (st.post) {
-            sf.post.visible = true;
-            sf.post.texture = tex(S.post[st.post.bt]);
-            sf.post.width = 60; sf.post.height = 60;
-            sf.post.alpha = st.live ? 1 : 0.55;
-            for (let lv = 1; lv < st.post.level; lv++)
-              sf.pips.circle(-12 + lv * 12, 24, 3).fill(0xffe9a8);
-            if (st.live && st.post.hp != null && st.post.hp < st.post.maxHp) {
-              sf.bar.rect(-24, -52, 48, 4).fill({ color: 0x000000, alpha: 0.7 });
-              sf.bar.rect(-24, -52, 48 * Math.max(0, st.post.hp / st.post.maxHp), 4)
-                .fill(st.owner === viewer ? 0xffd98a : 0xff8a96);
-            }
-          }
+        /* who draws on this spring — a ring in their colour, dimmed if this is memory */
+        if (st && st.holder != null && st.holder >= 0) {
+          const col = st.holder === viewer ? 0xffd98a : 0xff8a96;
+          sf.ring.circle(0, 0, 44).stroke({ width: 3, color: col, alpha: st.live ? 0.8 : 0.4 });
+          sf.ring.circle(0, 0, 44).fill({ color: col, alpha: st.live ? 0.07 : 0.03 });
         }
       }
     }
@@ -462,13 +448,19 @@
   function updateCities(view, viewer) {
     const own = cityFx.own, foe = cityFx.foe;
     const me = view.players[viewer], en = view.players[1 - viewer];
-    /* the writ: the ground you may raise a work on */
-    own.claim.clear();
-    if (R.placing) {
-      own.claim.circle(own.cx, own.cy, C.CLAIM.seat).fill({ color: 0xffd98a, alpha: 0.05 });
-      for (const b of me.buildings)
-        if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].claim)
-          own.claim.circle(dx(b.x, viewer), dy(b.y, viewer), C.CLAIM.gate).fill({ color: 0xffd98a, alpha: 0.05 });
+    /* THE WRIT — always drawn, because you cannot plan around a boundary you cannot see.
+     * A faint warm wash inside, and a bright edge on the union of the claim discs. */
+    const anchors = global.Terrain.claimAnchors(view, viewer);
+    const key = global.Terrain.claimKey(anchors);
+    if (key !== own.claimKey) {
+      own.claimKey = key;
+      own.claim.clear();
+      for (const a of anchors) own.claim.circle(a.x, a.y, a.r).fill({ color: 0xffd98a, alpha: 0.045 });
+      const segs = global.Terrain.claimOutline(anchors);
+      for (const [x1, y1, x2, y2] of segs) own.claim.moveTo(x1, y1).lineTo(x2, y2);
+      own.claim.stroke({ width: 3, color: 0xffd98a, alpha: 0.5 });
+      for (const [x1, y1, x2, y2] of segs) own.claim.moveTo(x1, y1).lineTo(x2, y2);
+      own.claim.stroke({ width: 1.2, color: 0xfff3d0, alpha: 0.9 });
     }
     /* every work of both sides, drawn where it actually stands */
     own.deco.clear();
@@ -548,7 +540,7 @@
       fogRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: 1 });
       fogScene = new PIXI.Container();
       const black = new PIXI.Sprite(PIXI.Texture.WHITE);
-      black.tint = 0x06040c; black.alpha = 0.62;
+      black.tint = 0x06040c; black.alpha = 0.86;
       fogScene.addChild(black);
       fogScene._black = black; fogScene._holes = [];
       stage.fog.texture = fogRT;
@@ -565,11 +557,20 @@
       if (i >= need) { hs.visible = false; continue; }
       const [x, y, r] = view.visSources[i];
       const X = (dx(x, viewer) - R.camX) * scale, Y = (dy(y, viewer) - R.camY) * scale, rr = r * scale;
-      hs.visible = !(Y < -rr || Y > H + rr);
+      hs.visible = !(Y < -rr || Y > H + rr || X < -rr || X > W + rr);
       hs.position.set(X, Y);
       hs.width = hs.height = rr * 2;
     }
     app.renderer.render({ container: fogScene, target: fogRT, clear: true });
+    /* A warm rim on the edge of sight. Without it the veil fades off into nothing and there
+     * is no line to plan against — you cannot tell where you stop seeing. */
+    const rim = stage.fogRim || (stage.fogRim = (() => { const gg = new PIXI.Graphics(); app.stage.addChildAt(gg, app.stage.getChildIndex(stage.fog) + 1); return gg; })());
+    rim.clear();
+    for (const [x, y, r] of view.visSources) {
+      const X = (dx(x, viewer) - R.camX) * scale, Y = (dy(y, viewer) - R.camY) * scale, rr = r * scale;
+      if (Y < -rr || Y > H + rr || X < -rr || X > W + rr) continue;
+      rim.circle(X, Y, rr).stroke({ width: 1.5, color: 0xffe9a8, alpha: 0.10 });
+    }
   }
 
   /* ---------------- minimap + targeting (screen space) ---------------- */

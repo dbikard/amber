@@ -202,5 +202,42 @@
     return { canvas: cv2, trees, rocks };
   }
 
-  global.Terrain = { bake, dx, dy };
+  /* ---------------- the edge of your writ ----------------
+   * The claim is a UNION of discs, and a union of discs has no closed-form outline — but it
+   * does have an exact one if you walk each circle and keep only the arc that is not swallowed
+   * by another disc. Returns line segments in world space, smooth rather than stair-stepped,
+   * and cheap enough to redo whenever a Gate rises or falls.
+   * Shared so both renderers draw the SAME boundary the sim enforces. */
+  function claimOutline(anchors) {
+    const segs = [], N = 96;
+    for (const a of anchors) {
+      let prev = null;
+      for (let i = 0; i <= N; i++) {
+        const th = (i / N) * Math.PI * 2;
+        const x = a.x + Math.cos(th) * a.r, y = a.y + Math.sin(th) * a.r;
+        let buried = false;
+        for (const b of anchors) {
+          if (b === a) continue;
+          const dxb = x - b.x, dyb = y - b.y;
+          if (dxb * dxb + dyb * dyb < b.r * b.r - 1) { buried = true; break; }
+        }
+        if (buried) { prev = null; continue; }
+        if (prev) segs.push([prev[0], prev[1], x, y]);
+        prev = [x, y];
+      }
+    }
+    return segs;
+  }
+  /* the discs your writ is made of: the Seat, and every work that carries a claim */
+  function claimAnchors(view, viewer) {
+    const me = view.players[viewer], out = [];
+    const seat = view.map.sites[view.map.cities[viewer]];
+    out.push({ x: seat.x, y: seat.y, r: C.CLAIM.seat });
+    for (const b of me.buildings)
+      if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].claim) out.push({ x: b.x, y: b.y, r: C.CLAIM.gate });
+    return out;
+  }
+  const claimKey = (anchors) => anchors.map((a) => (a.x | 0) + ',' + (a.y | 0) + ',' + a.r).join(';');
+
+  global.Terrain = { bake, dx, dy, claimOutline, claimAnchors, claimKey };
 })(typeof window !== 'undefined' ? window : globalThis);

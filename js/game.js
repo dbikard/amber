@@ -243,8 +243,6 @@
       else if (ev.e === 'breach') UI.banner(ev.pi === game.viewer ? 'Your walls are BREACHED — they are inside!' : 'The walls of ' + game.names[1 - game.viewer] + '’s city are breached!', ev.pi === game.viewer ? 'warn' : 'alert');
       else if (ev.e === 'hurtwall') { if (ev.pi === game.viewer) UI.banner('Your walls are under attack', 'warn'); }
       else if (ev.e === 'hurtcity') { if (ev.pi === game.viewer) UI.banner('The enemy is inside your city!', 'warn'); }
-      else if (ev.e === 'postdie') UI.banner(ev.pi === game.viewer ? 'Your outpost at ' + siteName(ev.site) + ' has fallen' : 'An outpost at ' + siteName(ev.site) + ' falls', ev.pi === game.viewer ? 'warn' : '');
-      else if (ev.e === 'post' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' raises works at ' + siteName(ev.site), '');
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
     }
   }

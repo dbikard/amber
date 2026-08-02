@@ -431,6 +431,7 @@
       worldG.remove(c2);
     }
     siteObjs.clear(); unitIM = {}; unitFace.clear(); coFlags.clear();
+    writG = null; writKey = '';
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
     fx = [];
 
@@ -646,10 +647,9 @@
       else if (ev.e === 'rift') ringFx(ev.x, ev.y, 0x5ad584, 3.0, 46, 0x7dff9e);
       else if (ev.e === 'siege') ringFx(ev.x, ev.y, 0xffb090, 0.35, 18, ev.pi === viewer ? 0xff5a4a : null);
       else if (ev.e === 'hurtpost') { if (ev.pi === viewer) ringFx(ev.x, ev.y, 0xff8a5a, 1.2, 44, 0xff8a5a); }
-      else if (ev.e === 'post' || ev.e === 'postup') ringFx(ev.x, ev.y, 0xffe9a8, 0.8, 44);
-      else if (ev.e === 'postdie') ringFx(ev.x, ev.y, 0xcfc6d8, 0.8, 44, ev.pi === viewer ? 0xff5a4a : null);
+      /* build/up carry the work's own position now — there is no slot ring to look it up in */
       else if (ev.e === 'build' || ev.e === 'up') {
-        if (ev.pi === viewer) { const c2 = slotCenterWorld(ev.slot); ringFx(c2.x, c2.z, 0xffe9a8, 0.6, 30); }
+        if (ev.pi === viewer && ev.x != null) ringFx(ev.x, ev.y, 0xffe9a8, 0.6, 30);
       } else if (ev.e === 'raze') ringFx(ev.x, ev.y, 0xff7a4a, 1.1, 52, ev.pi === viewer ? 0xff5a4a : null);
       else if (ev.e === 'hurtcity' || ev.e === 'hurtwall') {
         const city = view.map.sites[view.map.cities[ev.pi]];
@@ -684,6 +684,7 @@
     updateUnits(view, viewer, dt);
     updateSites(view, viewer);
     updateCities(view, viewer);
+    updateWrit(view, viewer);
     updateBanner(view, viewer);
     updateStorms(view, viewer);
     updateFxs(dt);
@@ -744,28 +745,17 @@
       const so = siteObjs.get(s.id);
       if (!so) continue;
       const st = view.sites[s.id];
-      const hash = st ? [st.owner, st.live, st.post && st.post.bt, st.post && st.post.level].join('|') : 'x';
+      const hash = st ? [st.holder, st.live].join('|') : 'x';
       if (hash !== so.hash) {
         so.hash = hash;
-        so.ring.visible = !!(st && st.owner >= 0);
-        if (st && st.owner >= 0) {
-          so.ring.material.color.setHex(st.owner === viewer ? 0xffd98a : 0xff8a96);
+        so.ring.visible = !!(st && st.holder != null && st.holder >= 0);
+        if (so.ring.visible) {
+          so.ring.material.color.setHex(st.holder === viewer ? 0xffd98a : 0xff8a96);
           so.ring.material.opacity = st.live ? 0.65 : 0.3;
         }
+        /* nothing is built ON a site any more — a Gate is a work standing near one, and the
+         * city group draws it. All this left behind was a model of an outpost that is gone. */
         while (so.postG.children.length) { const m = so.postG.children.pop(); m.geometry && m.geometry.dispose(); }
-        if (st && st.post) {
-          const m = buildingModel(st.post.bt);
-          m.rotation.y = curViewerRotOwn();
-          if (!st.live) m.material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.55 });
-          so.postG.add(m);
-          if (st.post.bt === 'sgate') {
-            const swirl = new THREE.Mesh(new THREE.CircleGeometry(9, 14),
-              new THREE.MeshBasicMaterial({ color: 0x8fa8ff, transparent: true, opacity: 0.8 }));
-            swirl.position.set(0, 20, curViewer === 0 ? 1 : -1);
-            swirl.rotation.y = curViewerRotOwn();
-            so.postG.add(swirl);
-          }
-        }
       }
     }
   }
@@ -828,6 +818,28 @@
       }
     }
   }
+  /* THE WRIT, in three dimensions: the union boundary of your claim discs, laid on the
+   * ground it actually follows. Rebuilt only when a claiming work rises or falls. */
+  let writG = null, writKey = '';
+  function updateWrit(view, viewer) {
+    const anchors = global.Terrain.claimAnchors(view, viewer);
+    const key = global.Terrain.claimKey(anchors);
+    if (key === writKey) return;
+    writKey = key;
+    if (writG) { writG.geometry.dispose(); writG.removeFromParent(); writG = null; }
+    const segs = global.Terrain.claimOutline(anchors);
+    if (!segs.length) return;
+    const pts = [];
+    for (const [x1, y1, x2, y2] of segs) {
+      pts.push(new THREE.Vector3(x1, groundH(x1, y1) + 3, y1));
+      pts.push(new THREE.Vector3(x2, groundH(x2, y2) + 3, y2));
+    }
+    writG = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.85 }));
+    worldG.add(writG);
+  }
+
   function updateBanner(view, viewer) {
     const b = view.players[viewer].banner;
     bannerG.visible = b >= 0;
@@ -926,7 +938,7 @@
     const g = octx;
     g.clearRect(0, 0, W, H);
     /* fog of war, projected: dark veil with soft elliptical holes at each vision source */
-    g.fillStyle = 'rgba(6,4,12,0.55)';
+    g.fillStyle = 'rgba(6,4,12,0.86)';
     g.fillRect(0, 0, W, H);
     g.globalCompositeOperation = 'destination-out';
     for (const [x, y, r2] of view.visSources) {
@@ -938,13 +950,28 @@
       const cy2 = (eV1.y + eV2.y) / 2;
       g.save();
       g.translate(c2.x, cy2); g.scale(1, ry / rx);
-      const gr = g.createRadialGradient(0, 0, rx * 0.55, 0, 0, rx);
+      /* a tight falloff: the edge of sight should read as an edge, not a smear */
+      const gr = g.createRadialGradient(0, 0, rx * 0.82, 0, 0, rx);
       gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = gr;
       g.beginPath(); g.arc(0, 0, rx, 0, 7); g.fill();
       g.restore();
     }
     g.globalCompositeOperation = 'source-over';
+    /* a warm rim on the edge of sight, so there is a LINE to plan against rather than a
+     * gradient that fades off into nothing */
+    g.strokeStyle = 'rgba(255,233,168,0.10)'; g.lineWidth = 1.5;
+    for (const [x, y, r2] of view.visSources) {
+      const c2 = proj(x, 2, y);
+      if (!c2.ok) continue;
+      const eH = proj(x + r2, 2, y), eV1 = proj(x, 2, y - r2), eV2 = proj(x, 2, y + r2);
+      const rx = Math.abs(eH.x - c2.x), ry = Math.max(8, Math.abs(eV1.y - eV2.y) / 2);
+      if (c2.y < -ry * 2 || c2.y > H + ry * 2 || rx < 2) continue;
+      g.save();
+      g.translate(c2.x, (eV1.y + eV2.y) / 2); g.scale(1, ry / rx);
+      g.beginPath(); g.arc(0, 0, rx, 0, 7); g.stroke();
+      g.restore();
+    }
     /* unit hp slivers */
     for (const u of view.units) {
       if (u.hp >= u.maxHp) continue;
@@ -966,18 +993,6 @@
       g.strokeText(s.name, p.x, p.y + 30);
       g.fillStyle = 'rgba(222,204,164,0.85)';
       g.fillText(s.name, p.x, p.y + 30);
-      if (st.post) {
-        const top = proj(s.x, 52, s.y);
-        for (let lv = 1; lv < st.post.level; lv++) {
-          g.fillStyle = '#ffe9a8';
-          g.beginPath(); g.arc(top.x - 12 + lv * 12, p.y + 16, 2.6, 0, 7); g.fill();
-        }
-        if (st.live && st.post.hp != null && st.post.hp < st.post.maxHp) {
-          g.fillStyle = '#000a'; g.fillRect(top.x - 22, top.y - 6, 44, 4);
-          g.fillStyle = st.owner === viewer ? '#ffd98a' : '#ff8a96';
-          g.fillRect(top.x - 22, top.y - 6, 44 * Math.max(0, st.post.hp / st.post.maxHp), 4);
-        }
-      }
     }
     /* castle + wall bars */
     for (const pi of [viewer, 1 - viewer]) {
