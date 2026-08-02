@@ -129,6 +129,16 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       skewed pair wins.
       Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
       the nearest place they have never seen and only assault a Seat they have found.
+- [x] **No cap on works; the masons are the constraint.** `MAX_BUILDINGS = 14` is gone —
+      hold as much country as you can defend. What is rationed instead is construction: ONE
+      work rises at a time, and each takes time (Gate 10s, Tower 11s, Barracks 13s, Spire 17s,
+      Shrine 26s). An unfinished work is a shell — paid for and breakable, but it earns
+      nothing, musters nobody, shoots at nothing, watches nothing and holds no ground, and it
+      cannot be upgraded. `placementError` gained `busy`, deliberately as the LAST word: what
+      is wrong with the *ground* is what you need to know while you wait, so `ground`,
+      `crowded`, `claim` and `unique` all still speak first.
+      Upgrades remain instant — the same one-at-a-time rule could reasonably cover them too,
+      but that changes what an upgrade costs you defensively, so it is a separate decision.
 - [x] **The standard goes anywhere.** Planting a flag used to demand a site and refused
       everything else ("the standard needs ground to stand on"). A standard is an ORDER TO
       MARCH, not a claim: banner and rally now carry a free point `{x, y, site}` (site = -1

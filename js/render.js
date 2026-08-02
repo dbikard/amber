@@ -471,12 +471,20 @@
       const X = dx(b.x, curViewer), Y = dy(b.y, curViewer);
       sp.visible = true;
       sp.texture = tex(S.b[b.bt] || S.b.gate);
-      sp.width = sp.height = 54;
+      /* a work still going up is scaffolding: small, pale, and growing as it rises, with a
+       * ring of progress round it so the wait is legible from across the map */
+      const up = b.raise > 0 ? 1 - b.raise / (b.raiseFor || 1) : 1;
+      sp.width = sp.height = 54 * (b.raise > 0 ? 0.55 + 0.45 * up : 1);
       sp.position.set(X, Y);
-      sp.alpha = ghost ? 0.38 : 1;
+      sp.alpha = ghost ? 0.38 : (b.raise > 0 ? 0.5 : 1);
+      if (b.raise > 0 && mine) {
+        own.deco.circle(X, Y, 26).stroke({ width: 2, color: 0x8a7a54, alpha: 0.5 });
+        own.deco.arc(X, Y, 26, -Math.PI / 2, -Math.PI / 2 + up * Math.PI * 2)
+          .stroke({ width: 3, color: 0xffe9a8, alpha: 0.95 });
+      }
       /* the 2D fallback has one tower sprite — the branch reads as its metal */
       sp.tint = mine ? (b.bt === 'tower' && b.br ? (b.br === 'cannon' ? 0xffb090 : 0xbcd8ff) : 0xffffff) : 0xd08a94;
-      if (mine) {
+      if (mine && !b.raise) {
         for (let lv = 1; lv < b.level; lv++) own.deco.circle(X - 12 + lv * 12, Y + 24, 3).fill(0xffe9a8);
         if (b.id === R.selected)
           own.sel.circle(X, Y, 30).stroke({ width: 3, color: 0xffe9a8, alpha: 0.55 + 0.4 * Math.sin(T * 5.5) });

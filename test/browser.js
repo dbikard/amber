@@ -95,6 +95,13 @@ async function match(browser, base, renderer) {
       const lid = sh.classList.contains('hidden') ? window.innerHeight - 20 : sh.getBoundingClientRect().top - 40;
       let s = R.project(c.x + a, c.y + b);
       for (let i = 0; i < 90 && s.y > lid; i++) { R.pan(0, -20); s = R.project(c.x + a, c.y + b); }
+      /* the offset is a starting guess: works and springs accumulate as a match runs, so walk
+       * outward until the renderer agrees there is nothing but ground under the finger */
+      const bare = (p) => R.hitBuilding(p.x, p.y) < 0 && R.hitSite(p.x, p.y, g.world, 0, false) < 0;
+      for (let k = 1; k <= 12 && !bare(s); k++) {
+        const q = R.project(c.x + a * (1 + k * 0.22), c.y + b * (1 + k * 0.22));
+        if (q.y < lid && q.y > 80 && q.x > 20 && q.x < window.innerWidth - 20) s = q;
+      }
       return { x: s.x, y: s.y, lid: Math.round(lid) };
     }, [ox, oy]);
 
@@ -227,12 +234,31 @@ async function match(browser, base, renderer) {
       const W = window.World, C = window.CONST, g = window.Game.game;
       const c = g.world.map.sites[g.world.map.cities[0]];
       g.world.players[0].essence = 99000;
+      /* one work rises at a time now, so the masons have to finish each before the next —
+       * including whatever an earlier suite left them holding */
+      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) {
+        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
+      }
       let built = 0;
       for (let a = 0; a < 40 && built < 3; a++) {
         const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
-        if (!W.placementError(g.world, 0, x, y, 'barracks')) { W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'barracks' }); built++; }
+        if (W.placementError(g.world, 0, x, y, 'barracks')) continue;
+        if (!W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'barracks' }).ok) continue;
+        built++;
+        for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) {
+          W.update(g.world, C.SIM_DT); g.world.events.length = 0;
+        }
       }
-      for (let i = 0; i < 30 * 150 && g.world.winner === null; i++) { W.update(g.world, C.SIM_DT); g.world.events.length = 0; }
+      /* Hold the match open. This suite runs a couple of sim-minutes forward, which is long
+       * enough for somebody to actually WIN — and every suite after this one would then be
+       * driving the end screen instead of the game. */
+      for (let i = 0; i < 30 * 150 && g.world.winner === null; i++) {
+        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
+        if (i % 30 === 0) {
+          g.world.players[0].castleHp = C.CASTLE_HP; g.world.players[1].castleHp = C.CASTLE_HP;
+          g.world.players[0].pattern = 0; g.world.players[1].pattern = 0;
+        }
+      }
       window.Render.setZoom(1.35); window.Render.lookAt(c.x, c.y);
       const mine = g.world.units.filter((u) => u.owner === 0);
       const d = mine.map((u) => Math.hypot(u.x - c.x, u.y - c.y)).sort((a, b) => a - b);
@@ -313,14 +339,28 @@ async function match(browser, base, renderer) {
     await pg.waitForTimeout(200);
     const node = await pg.evaluate(() => {
       const R = window.Render, g = window.Game.game;
-      const s = g.world.map.sites.find((x) => x.kind === 'node');
-      const sheetTop = document.getElementById('sheet').getBoundingClientRect().top;
-      R.lookAt(s.x, s.y);
-      let q = R.project(s.x, s.y);
-      /* the sheet covers the bottom of the screen — pan until the target sits above it */
-      for (let i = 0; i < 90 && q.y > sheetTop - 40; i++) { R.pan(0, -30); q = R.project(s.x, s.y); }
-      return { id: s.id, x: q.x, y: q.y, before: g.world.players[0].banner };
+      const seat = g.world.map.sites[g.world.map.cities[0]];
+      const sh = document.getElementById('sheet');
+      const lid = sh.classList.contains('hidden') ? window.innerHeight - 20 : sh.getBoundingClientRect().top - 40;
+      /* Try the nodes furthest from the Seat first — a node inside the court is ambiguous by
+       * design, since a standard may be planted anywhere on it. Then CONFIRM with the
+       * renderer's own hit test that the point we are about to tap really is that node: a node
+       * near the map's rim cannot always be panned clear of the sheet, and a tap that misses
+       * looks exactly like a broken input path. */
+      const cands = g.world.map.sites.filter((x) => x.kind === 'node')
+        .sort((p, q) => Math.hypot(q.x - seat.x, q.y - seat.y) - Math.hypot(p.x - seat.x, p.y - seat.y));
+      R.setZoom(1);
+      for (const s of cands) {
+        R.lookAt(s.x, s.y);
+        let q = R.project(s.x, s.y);
+        for (let i = 0; i < 90 && q.y > lid; i++) { R.pan(0, -30); q = R.project(s.x, s.y); }
+        if (q.y > lid || q.y < 60 || q.x < 20 || q.x > window.innerWidth - 20) continue;
+        if (R.hitSite(q.x, q.y, g.world, 0, true) !== s.id) continue;
+        return { id: s.id, x: q.x, y: q.y, before: g.world.players[0].banner && g.world.players[0].banner.site };
+      }
+      return null;
     });
+    ok('a node can be brought somewhere tappable', !!node);
     await pg.mouse.click(node.x, node.y); await pg.waitForTimeout(300);
     const banner = await pg.evaluate(() => window.Game.game.world.players[0].banner);
     ok('an armed flag still plants through an open sheet', banner && banner.site === node.id,
@@ -331,18 +371,21 @@ async function match(browser, base, renderer) {
     const open = await pg.evaluate(() => {
       const R = window.Render, C = window.CONST, g = window.Game.game;
       const c = g.world.map.sites[g.world.map.cities[0]];
-      R.setZoom(1); R.lookAt(c.x, c.y);
-      /* somewhere clear of every site, on screen, and clear of the sheet */
       const sh = document.getElementById('sheet');
       const lid = sh.classList.contains('hidden') ? window.innerHeight - 20 : sh.getBoundingClientRect().top - 40;
-      for (let rad = 200; rad < 900; rad += 40) for (let a = 0; a < 36; a++) {
-        const th = a / 36 * Math.PI * 2, wx = c.x + Math.cos(th) * rad, wy = c.y + Math.sin(th) * rad;
-        if (wx < 20 || wy < 20 || wx > C.MAP.W - 20 || wy > C.MAP.H - 20) continue;
-        if (g.world.map.sites.some((q) => Math.hypot(q.x - wx, q.y - wy) < 170)) continue;
-        const p2 = R.project(wx, wy);
-        if (!p2.ok) continue;
-        if (p2.x < 30 || p2.x > window.innerWidth - 30 || p2.y < 90 || p2.y > lid) continue;
-        return { x: p2.x, y: p2.y, wx, wy };
+      /* Sweep SCREEN points and ask the renderer's own hit test whether each lands on a site.
+       * Guessing a "clear" world radius has to second-guess the Seat's flag radius and the
+       * projection at once; hitSite is the very thing the tap will consult. Several camera
+       * setups, because on some worlds the Seat's own surroundings are crowded with springs. */
+      const setups = [[1, c.x, c.y], [C.VIEW.min, c.x, c.y], [1, C.MAP.W / 2, C.MAP.H / 2]];
+      for (const [zm, lx, ly] of setups) {
+        R.setZoom(zm); R.lookAt(lx, ly);
+        for (let py = 110; py < lid; py += 12) for (let px = 30; px < window.innerWidth - 30; px += 12) {
+          if (R.hitSite(px, py, g.world, 0, true) >= 0) continue;
+          const w2 = R.toWorld(px, py, 0);
+          if (!w2 || w2.x < 30 || w2.y < 30 || w2.x > C.MAP.W - 30 || w2.y > C.MAP.H - 30) continue;
+          return { x: px, y: py, wx: w2.x, wy: w2.y };
+        }
       }
       return null;
     });

@@ -50,6 +50,16 @@ for (const seed of SEEDS.slice(0, 3)) {
   ok(`seed ${seed}: a unit can walk Seat to Seat`, !blocked && i < 40000, blocked ? 'no route' : `${(i / 30).toFixed(1)}s`);
 }
 
+/* one work rises at a time and takes time to rise, so a test that wants three of them has to
+ * wait for the masons like anyone else */
+function raise(w, pi, x, y, bt) {
+  const r = World.applyCommand(w, pi, { c: 'build', x, y, bt });
+  if (!r.ok) return r;
+  for (let i = 0; i < 30 * 40 && w.players[pi].buildings.some((b) => b.raise > 0); i++) World.update(w, C.SIM_DT);
+  w.events.length = 0;
+  return r;
+}
+
 /* ---------------- the rules ---------------- */
 suite('placement rules');
 {
@@ -89,7 +99,7 @@ suite('placement rules');
     const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
     if (!World.placementError(w, 0, x, y, 'shrine')) spot = { x, y };
   }
-  ok('a Shrine can be raised', !!spot && World.applyCommand(w, 0, { c: 'build', ...spot, bt: 'shrine' }).ok);
+  ok('a Shrine can be raised', !!spot && raise(w, 0, spot.x, spot.y, 'shrine').ok);
   let spot2 = null;
   for (let a = 0; a < 40 && !spot2; a++) {
     const th = a / 40 * Math.PI * 2 + 0.08, x = c.x + Math.cos(th) * 260, y = c.y + Math.sin(th) * 260;
@@ -108,12 +118,87 @@ suite('command grammar');
     if (!World.placementError(w, 0, x, y, 'tower')) { World.applyCommand(w, 0, { c: 'build', x, y, bt: 'tower' }); built = pl.buildings[0]; }
   }
   ok('a work is raised with an id and a position', built && built.id > 0 && isFinite(built.x));
+  eq('it cannot be upgraded while it is still going up', World.applyCommand(w, 0, { c: 'up', id: built.id }).err, 'raising');
+  for (let i = 0; i < 30 * 40 && built.raise > 0; i++) World.update(w, C.SIM_DT);
+  w.events.length = 0;
   eq('the tower fork demands a branch', World.applyCommand(w, 0, { c: 'up', id: built.id }).err, 'branch');
   eq('an unknown branch is refused', World.applyCommand(w, 0, { c: 'up', id: built.id, br: 'lasers' }).err, 'branch');
   ok('the fork takes a branch', World.applyCommand(w, 0, { c: 'up', id: built.id, br: 'cannon' }).ok);
   World.applyCommand(w, 0, { c: 'up', id: built.id, br: 'bolt' });
   eq('the branch is permanent', built.br, 'cannon');
   eq('an unknown work id is refused', World.applyCommand(w, 0, { c: 'up', id: 999999 }).err, 'id');
+}
+
+suite('the masons')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 99000;
+  ok('there is no ceiling on works', C.MAX_BUILDINGS === undefined);
+
+  const free = (bt, r) => {
+    for (let a = 0; a < 48; a++) {
+      const th = a / 48 * Math.PI * 2, x = c.x + Math.cos(th) * r, y = c.y + Math.sin(th) * r;
+      if (World.placementError(w, 0, x, y, bt) === null) return { x, y };
+    }
+    return null;
+  };
+  const at = free('barracks', 190);
+  ok('open ground to build on', !!at);
+  let far2 = null;
+  for (let r = C.CLAIM.seat + 120; r < 900 && !far2; r += 40)
+    for (let a2 = 0; a2 < 24 && !far2; a2++) {
+      const th = a2 / 24 * Math.PI * 2, p2 = { x: c.x + Math.cos(th) * r, y: c.y + Math.sin(th) * r };
+      if (World.placementError(w, 0, p2.x, p2.y, 'tower') === 'claim') far2 = p2;
+    }
+  ok('ground beyond the writ to test with', !!far2);
+  const spent = pl.essence;
+  ok('a work is ordered', World.applyCommand(w, 0, { c: 'build', ...at, bt: 'barracks' }).ok);
+  const b = pl.buildings[0];
+  eq('it is paid for at once', pl.essence, spent - C.BUILDINGS.barracks.cost);
+  near('and it starts as a shell', b.hp, C.BUILDINGS.barracks.hp * C.RAISE.hpFrom, 1);
+  ok('with a raise timer', b.raise > 0 && b.raiseFor === C.BUILDINGS.barracks.raise);
+
+  /* one at a time */
+  let anyBusy = null;
+  for (let a2 = 0; a2 < 48 && !anyBusy; a2++) {
+    const th = a2 / 48 * Math.PI * 2, x = c.x + Math.cos(th) * 250, y = c.y + Math.sin(th) * 250;
+    if (World.placementError(w, 0, x, y, 'tower') === 'busy') anyBusy = { x, y };
+  }
+  ok('a second work is refused while the masons work', !!anyBusy, 'no spot reported busy');
+
+  /* ...but the masons are the LAST word: a spot that could never bear a work says so instead,
+   * because that is the part worth knowing while you wait */
+  eq('the ground still speaks first', World.placementError(w, 0, c.x, c.y, 'tower'), 'crowded');
+  eq('and so does the writ', World.placementError(w, 0, far2.x, far2.y, 'tower'), 'claim');
+
+  /* a shell is good for nothing */
+  const src = World.visionSources(w, 0);
+  ok('a shell watches nothing', !src.some((q) => Math.abs(q[0] - b.x) < 1 && Math.abs(q[1] - b.y) < 1));
+  const before = w.units.length;
+  for (let i = 0; i < 30 * 5; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('a shell musters nobody', w.units.filter((u) => u.owner === 0).length, before);
+
+  /* ...until the masons are done */
+  for (let i = 0; i < 30 * 40 && b.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('it finishes', b.raise, 0);
+  eq('at full strength', Math.round(b.hp), C.BUILDINGS.barracks.hp);
+  ok('and it watches again', World.visionSources(w, 0).some((q) => Math.abs(q[0] - b.x) < 1));
+  const at2 = free('tower', 250);
+  ok('the masons are free for the next', !!at2 && World.applyCommand(w, 0, { c: 'build', ...at2, bt: 'tower' }).ok);
+
+  /* the cap is really gone: keep raising until well past the old limit of 14 */
+  for (let n = 0; n < 22; n++) {
+    for (let i = 0; i < 30 * 40 && pl.buildings.some((q) => q.raise > 0); i++) World.update(w, C.SIM_DT);
+    w.events.length = 0;
+    let placed = false;
+    for (let r = 170; r < 420 && !placed; r += 26) {
+      const spot = free('tower', r);
+      if (spot) placed = World.applyCommand(w, 0, { c: 'build', ...spot, bt: 'tower' }).ok;
+    }
+    if (!placed) break;
+  }
+  ok('an heir may hold more works than the old cap of 14', pl.buildings.length > 14,
+     `${pl.buildings.length} works standing`);
 }
 
 suite('the standard')
@@ -169,7 +254,7 @@ suite('the muster ground')
   let built = 0;
   for (let a = 0; a < 40 && built < 3; a++) {
     const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
-    if (!World.placementError(w, 0, x, y, 'barracks')) { World.applyCommand(w, 0, { c: 'build', x, y, bt: 'barracks' }); built++; }
+    if (!World.placementError(w, 0, x, y, 'barracks') && raise(w, 0, x, y, 'barracks').ok) built++;
   }
   eq('three barracks stand', built, 3);
   for (let i = 0; i < 30 * 180; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }

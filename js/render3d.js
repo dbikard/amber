@@ -722,7 +722,9 @@
       if (!g.own) for (const gh of (pl.ghosts || [])) if (!want.has(gh.id)) want.set(gh.id, { b: gh, ghost: true });
 
       for (const [id, { b, ghost }] of want) {
-        const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + (ghost ? '~' : '');
+        /* a work still going up gets its own key, so finishing it rebuilds the group at full
+         * colour rather than leaving the scaffolding materials behind */
+        const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
@@ -751,11 +753,18 @@
             if (!o.material) return;
             o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.34;
           });
+          /* scaffolding: pale and see-through, and it grows out of the ground as it rises */
+          else if (b.raise > 0) grp.traverse((o) => {
+            if (!o.material) return;
+            o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.55;
+            if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), 0.5);
+          });
           worldG.add(grp);
           w = { grp, key, pad };
           g.works.set(id, w);
         }
         w.grp.position.set(b.x, groundH(b.x, b.y) + 1.5, b.y);
+        w.grp.scale.y = b.raise > 0 ? 0.3 + 0.7 * (1 - b.raise / (b.raiseFor || 1)) : 1;
         w.seen = true;
         if (g.own) w.pad.material.color.setHex(R.selected === id ? 0x8a6c3c : 0x46382a);
       }

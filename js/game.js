@@ -162,7 +162,8 @@
       else if (r.err === 'claim') UI.banner('Beyond your writ — your Gates carry it outward', 'warn');
       else if (r.err === 'ground') UI.banner('The ground will not bear it', 'warn');
       else if (r.err === 'crowded') UI.banner('Too close to another work', 'warn');
-      else if (r.err === 'full') UI.banner('You hold as many works as you can keep', 'warn');
+      else if (r.err === 'busy') UI.banner('Your masons are already at work', 'warn');
+      else if (r.err === 'raising') UI.banner('It is not finished yet', 'warn');
       else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
       else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
     }

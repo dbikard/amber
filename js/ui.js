@@ -149,7 +149,7 @@
     taken: 'that spring is already drawn upon',
     presence: 'no troops of yours stand there to claim it',
     contested: 'the enemy stands there',
-    full: 'you hold as many works as you can keep',
+    busy: 'your masons are already at work — one rises at a time',
     unique: 'you have one already'
   };
   function buildCards(el, at, essence, why) {
@@ -162,7 +162,8 @@
       if (!bad) card.dataset.cost = d.cost;   // live affordability: UI.tick unlocks it when income catches up
       card.innerHTML = `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
                        `<span class="c-cost">◆ ${d.cost}</span>` +
-                       `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}</span>${bad ? '' : rateTag(bt, 1)}`;
+                       `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}` +
+                       `${bad || !d.raise ? '' : ' <b>· ' + d.raise + 's to raise</b>'}</span>${bad ? '' : rateTag(bt, 1)}`;
       card.addEventListener('click', () => { if (card.classList.contains('locked')) return; H.onBuild(at.x, at.y, bt); UI.closeSheet(); });
       el.appendChild(card);
     }
@@ -194,6 +195,20 @@
     const el = $('sheet');
     el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${face.blurb}</div>`;
+    /* still scaffolding: it earns nothing, musters nobody and holds no ground yet, and there
+     * is nothing to offer but the wait */
+    if (s.raise > 0) {
+      const pct = Math.round((1 - s.raise / (s.raiseFor || 1)) * 100);
+      const w = document.createElement('div');
+      w.className = 'sheet-blurb';
+      w.innerHTML = `<b>🔨 Rising — ${pct}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
+                    `Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.`;
+      el.appendChild(w);
+      addCancel(el);
+      el._openedAt = performance.now();
+      el.classList.remove('hidden');
+      return;
+    }
     /* the Watchtower fork: the level-2 upgrade is a CHOICE, offered as two cards */
     const forking = s.bt === 'tower' && !s.br && s.level + 1 === C.BUILDINGS.tower.fork;
     if (forking) {

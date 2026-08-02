@@ -73,7 +73,7 @@
   function nodeHolder(world, site) {
     for (let pi = 0; pi < 2; pi++)
       for (const b of world.players[pi].buildings)
-        if (b.bt === 'gate' && b.node === site.id) return pi;
+        if (b.bt === 'gate' && !b.raise && b.node === site.id) return pi;
     return -1;
   }
 
@@ -86,7 +86,7 @@
     const c = cityOf(world, pi);
     if (d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat) return true;
     for (const b of world.players[pi].buildings)
-      if (C.BUILDINGS[b.bt].claim && d2(x, y, b.x, b.y) < C.CLAIM.gate * C.CLAIM.gate) return true;
+      if (!b.raise && C.BUILDINGS[b.bt].claim && d2(x, y, b.x, b.y) < C.CLAIM.gate * C.CLAIM.gate) return true;
     return false;
   }
   function groundBears(world, x, y) {
@@ -112,11 +112,14 @@
     const def = C.BUILDINGS[bt];
     if (!def) return 'type';
     const pl = world.players[pi];
-    if (pl.buildings.length >= C.MAX_BUILDINGS) return 'full';
     if (def.unique && pl.buildings.some((b) => b.bt === bt)) return 'unique';
     if (!groundBears(world, x, y)) return 'ground';
     if (!clearOfWorks(world, x, y)) return 'crowded';
-    if (inClaim(world, pi, x, y)) return null;
+    /* The masons are the last word, not the first: what is wrong with the GROUND is worth
+     * knowing while you wait, and a card that can never be built here should say so rather
+     * than blame the masons. */
+    const busy = pl.buildings.some((b) => b.raise > 0) ? 'busy' : null;
+    if (inClaim(world, pi, x, y)) return busy;
     /* outside the writ: only a Gate, only at a free node, only where your troops stand */
     if (!def.claim) return 'claim';
     const site = nodeAt(world, x, y);
@@ -124,7 +127,7 @@
     if (nodeHolder(world, site) !== -1) return 'taken';
     if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'presence';
     if (world.units.some((u) => u.owner !== pi && u.owner !== 2 && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
-    return null;
+    return busy;
   }
 
   /* ---------------- vision & exploration ---------------- */
@@ -133,7 +136,7 @@
     const city = cityOf(world, pi);
     src.push([city.x, city.y, C.VISION.city]);
     for (const b of world.players[pi].buildings)
-      src.push([b.x, b.y, C.BUILDINGS[b.bt].vision || C.VISION.build]);
+      if (!b.raise) src.push([b.x, b.y, C.BUILDINGS[b.bt].vision || C.VISION.build]);
     for (const u of world.units)
       if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
     return src;
@@ -235,11 +238,15 @@
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       pl.essence -= def.cost;
       const site = def.claim ? nodeAt(world, x, y) : null;
+      /* it goes up as a SHELL: paid for, standing, breakable — and good for nothing until
+       * the masons are done with it */
       const b = { id: world.nextId++, bt: cmd.bt, level: 1, x, y,
                   cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
-                  hp: def.hp, maxHp: def.hp, lastHurt: -99,
+                  raise: def.raise || 0, raiseFor: def.raise || 0,
+                  hp: def.hp * C.RAISE.hpFrom, maxHp: def.hp, lastHurt: -99,
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
                   rally: null };   // null = the company follows the royal War Banner
+      if (!b.raise) b.hp = def.hp;
       pl.buildings.push(b);
       emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y });
       return { ok: true };
@@ -247,6 +254,7 @@
     if (cmd.c === 'up') {
       const s = bldOf(world, pi, cmd.id);
       if (!s) return { ok: false, err: 'id' };
+      if (s.raise > 0) return { ok: false, err: 'raising' };
       if (s.level >= C.MAX_LEVEL) return { ok: false, err: 'max' };
       /* the Watchtower fork: the level-2 upgrade must name a branch, and it is forever */
       let br = s.br;
@@ -423,6 +431,15 @@
       for (const b of pl.buildings) {
         const def = C.BUILDINGS[b.bt];
         const sp = b;
+        /* under construction: the masons work, the shell fills out, and it does nothing else.
+         * Damage does not stop the work — it just means there is less of it standing. */
+        if (b.raise > 0) {
+          b.raise = Math.max(0, b.raise - dt);
+          const done = 1 - b.raise / b.raiseFor;
+          b.hp = Math.max(b.hp, def.hp * (C.RAISE.hpFrom + (1 - C.RAISE.hpFrom) * done));
+          if (b.raise <= 0) emit(world, { e: 'raised', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
+          continue;
+        }
         if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
         /* a Gate on a spring of Shadow draws far more than one that merely stands about */
         if (b.bt === 'gate') income += (b.node >= 0 ? def.nodeIncome : def.income)[b.level - 1];

@@ -176,6 +176,8 @@
         buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)).map((b) => ({
           id: b.id, bt: b.bt, level: b.level, x: Math.round(b.x), y: Math.round(b.y),
           hp: Math.round(b.hp), maxHp: b.maxHp, node: b.node,
+          /* an unfinished work reads as a shell to BOTH sides — it is plainly scaffolding */
+          raise: b.raise > 0 ? Math.round(b.raise * 10) / 10 : 0, raiseFor: b.raiseFor || 0,
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
           rally: mine && b.rally ? b.rally : null

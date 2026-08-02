@@ -19,7 +19,10 @@
     const enCity = pl.explored[enCityId] ? World.cityOf(world, 1 - me) : null;
     const have = {};
     for (const b of pl.buildings) have[b.bt] = (have[b.bt] || 0) + 1;
-    const free = C.MAX_BUILDINGS - pl.buildings.length;
+    /* no ceiling on works any more — what is rationed is the masons. `free` now means
+     * "are they idle", and `raising` is what they are busy with. */
+    const raising = pl.buildings.find((b) => b.raise > 0) || null;
+    const free = raising ? 0 : 1;
 
     const myUnits = [], visHostiles = [], threats = [];
     let push = 0;
@@ -47,7 +50,7 @@
     const enemyArmy = visHostiles.filter((u) => u.owner === 1 - me).length;
     const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
     return {
-      t: world.t, me, pl, world, have, free,
+      t: world.t, me, pl, world, have, free, raising,
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
       visHostiles, threats, push, enemyArmy, mySprings,
@@ -228,7 +231,7 @@
         wants.push('barracks', 'gate');
         if (v.enemyWalking) wants.push(...(v.enemyArmy >= 2 ? ['shrine', 'barracks', 'spire'] : ['barracks', 'spire', 'barracks']));
         else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
-        return wants.slice(0, C.MAX_BUILDINGS);
+        return wants;
       },
       upPref: ['gate', 'shrine', 'barracks', 'tower', 'spire'],
       towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
@@ -347,7 +350,7 @@
        * Gates drawing on a node come first — that is where the essence actually is. */
       if (saving) return;
       for (const bt of P.upPref) {
-        const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL)
+        const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise)
                        .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
         for (const b of cands) {
           /* the Watchtower fork: an heir's doctrine picks the branch, and keeps it after */

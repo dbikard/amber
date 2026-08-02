@@ -5,7 +5,6 @@
   const CONST = {};
 
   CONST.SIM_DT = 1 / 30;          // fixed timestep (browser + sim identical)
-  CONST.MAX_BUILDINGS = 14;       // works a single heir may hold standing at once
   /* the city is a real place: a walled disc with the Tower of the Seat at its heart */
   /* seatR is the Seat-tower's own ground: no work may stand inside it, and a tap inside it
    * opens the Seat's sheet. ONE number, so the two can never disagree — they did, and the
@@ -17,6 +16,12 @@
    * the Seat's own country plus the country around every Shadow Gate you hold — so expanding
    * what you can build IS taking the map, which is the anti-stall model in one rule. */
   CONST.CLAIM = { seat: 430, gate: 300 };
+  /* There is no ceiling on how many works an heir may hold — hold as much country as you can
+   * defend. What is rationed is the MASONS: one work rises at a time, and it takes time to
+   * rise. An unfinished work is a shell — it earns nothing, musters nobody, shoots at nothing
+   * and claims no ground — but it can be broken, so an over-reach can be punished. */
+  CONST.RAISE = { hpFrom: 0.25 };   // a shell starts at this fraction of its finished hp
+
   CONST.BUILD = { foot: 34, gap: 10 };   // footprint radius, and clearance between works
   /* a Shadow Gate within this of an essence node draws from it (and claims it) */
   CONST.NODE = { r: 96 };
@@ -102,19 +107,19 @@
     /* A Gate away from a spring is a WAYSTONE: it extends your writ and watches the road,
      * and it trickles. The essence is in the springs, and the springs are out on the map —
      * that is the whole anti-stall model, and it only holds if home gates cannot replace it. */
-    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true,
+    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 10,
                 income: [1, 1.5, 2], nodeIncome: [4.5, 7, 10.5], hp: 300, vision: 300,
                 blurb: 'On a spring of Shadow it draws deep. Anywhere else it merely trickles — but your writ runs where your Gates stand.' },
-    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360,
+    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360, raise: 13,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },
-    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320,
+    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320, raise: 17,
                 spawns: 'sorcerer', period: [11, 8.8, 7.0],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
-    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480,
+    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480, raise: 11,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, up: [250, 400], unique: true, hp: 450,
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, up: [250, 400], unique: true, hp: 450, raise: 26,
                 drain: [12, 14, 16], rate: [0.22, 0.29, 0.38],  // essence/sec → %/sec (L1 walk ≈ 7.6 min)
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
   };
