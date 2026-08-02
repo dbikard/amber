@@ -30,8 +30,18 @@ Color language is law: **gold = you**, **crimson = rival**, **sickly green = Cha
 rifts tear before they spawn).
 
 ### 6. AI plays fair
-Same fog, same prices, same cooldowns as a human. Difficulty = better policy + faster
-reactions + less noise, never map hacks or discounts.
+Same fog, same prices, same cooldowns as a human — never map hacks, never a discount the
+player cannot have. An easier footing takes things AWAY from the heir; it never gives it
+less than the truth about the board.
+
+Difficulty was once described as "better policy + faster reactions + less noise". Measured,
+that was wrong: an heir polled at half the rate, or skipping 45% of its turns outright, still
+won its mirror 42–50% of the time, because its decisions are "spend the essence on the next
+thing in the plan" and the essence is still there a few seconds later. The two knobs that
+actually bite are **what it draws from the ground** (`eco`) and **the hour it will march on
+your Seat** (`hold`) — and both are needed, because cutting income ALONE brings the assault
+sooner: a poorer heir builds less realm and comes for you earlier. The ladder is checked the
+way any other number here is, with `test/headless.js` "the solo ladder" holding the shape.
 
 ## Validation: the simulator is the referee
 

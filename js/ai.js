@@ -295,6 +295,7 @@
     if (!P) throw new Error('unknown bot: ' + kind);
     const interval = (P.interval || 1.5) * (opts.slow || 1);
     const noise = opts.noise != null ? opts.noise : (P.noise || 0);
+    const hold = opts.hold || 0;   // s before this heir will march on your Seat at all
     let timer = interval * 0.5, rng = null;
     let mission = null;   // {site, bt, since} — march there, build, move on
 
@@ -354,7 +355,15 @@
       }
 
       /* the banner: defend home under threat > mission site > personality call */
-      const want = homeThreat ? v.myCity.id : (mission ? mission.site : P.banner(v));
+      let want = homeThreat ? v.myCity.id : (mission ? mission.site : P.banner(v));
+      /* AN EASIER FOOTING IS ALSO A LATER ONE. Income alone could not do this job: measured
+       * against the weakest baseline we ship, an heir at eco 0.8 still had an army on the
+       * player's ground at 5.3 minutes, and cutting income further only made it come sooner,
+       * because a poorer heir builds less realm and marches earlier. So the assault itself
+       * is held: until the named hour the heir expands, garrisons and defends, but does not
+       * march on your Seat. It is not weakened in the fight it eventually brings — it just
+       * gives you the opening minutes to learn the board. */
+      if (hold && v.t < hold && v.enCity && want === v.enCityId) want = v.myCity.id;
       if (want !== v.banner) issue({ c: 'banner', site: want });
 
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.

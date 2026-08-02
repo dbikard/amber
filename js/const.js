@@ -22,15 +22,20 @@
    * and claims no ground — but it can be broken, so an over-reach can be punished. */
   CONST.RAISE = { hpFrom: 0.25 };   // a shell starts at this fraction of its finished hp
 
-  /* Solo difficulty. `slow` and `noise` blunt how OFTEN an heir acts and how often it fumbles;
-   * `eco` is what it draws from the same ground. Skirmish used to hand every heir full
-   * strength — the only ramp was the campaign ladder — which is why solo played so hard. */
+  /* Solo difficulty, MEASURED rather than guessed. `slow` and `noise` turned out to be decorative: an heir polled at
+   * half the rate, or skipping 45% of its turns outright, still won its mirror 42-50% of the
+   * time, because its decisions are "spend the essence on the next thing in the plan" and the
+   * essence is still there a few seconds later. `eco` is the only knob that bit — and the
+   * shipped HEIR at 0.80 measured a 50% mirror, i.e. no handicap at all, while still putting
+   * an army on the player's ground at 5.3 minutes. Worse, cutting income alone brings the
+   * assault SOONER, since a poorer heir builds less realm and marches earlier. So the ladder
+   * now runs on income AND on `hold`, the hour before the heir will march on your Seat. */
   CONST.DIFFICULTY = {
-    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 2.0,  noise: 0.45, eco: 0.60,
-               blurb: 'The heir is slow to act and poor. Room to learn the board.' },
-    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.4,  noise: 0.24, eco: 0.80,
-               blurb: 'A real opponent that still leaves you time to build.' },
-    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 1.00,
+    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, eco: 0.55, hold: 720,
+               blurb: 'Poor, and will not march on your Seat for twelve minutes.' },
+    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, eco: 0.72, hold: 360,
+               blurb: 'A real opponent, but not at your gate before you have a realm.' },
+    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 1.00, hold: 0,
                blurb: 'The heir at full strength, as the heirs fight each other.' }
   };
   CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];

@@ -275,6 +275,34 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **The gold banner outranks every company standard.** Reported twice — first as "the main
+      yellow flag sometimes fails to direct all troops", which I could not reproduce, and then
+      as the design it should have been. Both were the same thing: the royal War Banner moved
+      only the men under NO company standard, which once a few halls are up is a shrinking
+      minority. A company is a DETACHMENT from the army, not a rival army, so raising the gold
+      banner now strikes every standing detachment order and the whole force answers as one;
+      planting a company's own standard peels it back off. `onRecall` collapses to the single
+      `banner` command it always meant.
+- [x] **The solo ladder is a ladder.** Reported: the AI is too strong. Measured, and it was
+      worse than that — the DEFAULT footing was no handicap at all. `slow` and `noise` are
+      decorative: an heir polled at half the rate, or skipping 45% of its turns, still won its
+      mirror 42–50% of the time, because its decisions are "spend the essence on the next thing
+      in the plan" and the essence is still there a few seconds later. HEIR at eco 0.80
+      measured a **50% mirror** — PRINCE by another name — while putting an army on the
+      player's ground at 5.3 minutes. And income alone cannot fix it: a poorer heir builds less
+      realm and marches EARLIER, so cutting eco brought the assault sooner.
+      New knob `hold`: the hour before an heir will march on your Seat at all. It expands,
+      garrisons and defends as always, it is not weakened in the fight it eventually brings —
+      it simply gives you the opening minutes. Table retuned on both axes.
+      | footing | eco | hold | mirror | army at 5 min | at your gate |
+      | --- | --- | --- | --- | --- | --- |
+      | SQUIRE | 0.55 | 12m | 8% | 34 | never |
+      | HEIR | 0.72 | 6m | 25% (was 50%) | 47 | 6.0m |
+      | PRINCE | 1.00 | — | 58% | 59 | 7.3m |
+      eco 0.42 was tried and rejected: the heir went broke, never mustered, and lost its Seat
+      to Chaos inside three minutes on some maps. An easy opponent is still an opponent.
+      Bot-vs-bot is untouched (sim bots carry no footing): benedict mirror 42%, med 11.9m
+      before and after. DESIGN_PRINCIPLES §6 rewritten — it described the knobs that don't work.
 - [x] **A rematch keeps the link.** Pairing by QR is the price of getting into a LAN game;
       paying it again to play a second game against the person sitting next to you is not.
       The link is now a LOBBY that outlives the match: the host's end screen offers REMATCH,

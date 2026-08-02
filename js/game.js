@@ -654,10 +654,8 @@
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
+        /* one command: the War Banner already strikes every company standard */
         issue({ c: 'banner', site: view.map.cities[game.viewer] });
-        const me = view.players[game.viewer];
-        for (const co of (me.companies || []))
-          if (co.rally) issue({ c: 'rally', co: co.id, site: -1 });
         UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },
       onMuster: (pause) => issue({ c: 'muster', pause }),

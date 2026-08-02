@@ -350,6 +350,15 @@
       const p = aimAt(world, cmd);
       if (!p) return { ok: false, err: 'where' };
       pl.banner = p;
+      /* THE ROYAL WAR BANNER IS THE GENERAL MUSTER, and it outranks every company standard.
+       * A company is a DETACHMENT from the army, not a rival army: raising the gold banner
+       * strikes every standing detachment order and brings the whole force under it. Plant
+       * that company's own standard again and it peels back off.
+       * Before this the gold flag moved only whoever happened to be under no standard at
+       * all, which once a few halls are up is a shrinking minority — and is exactly the
+       * "the yellow flag doesn't move my army" it looked like from the outside. */
+      for (const co of pl.companies)
+        if (co.rally) { co.rally = null; emit(world, { e: 'rally', pi, co: co.id, site: -1 }); }
       emit(world, { e: 'banner', pi, site: p.site, x: p.x, y: p.y });
       return { ok: true };
     }

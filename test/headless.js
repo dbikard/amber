@@ -499,6 +499,28 @@ suite('companies')
   const banGoals = new Set(w.units.filter((u) => u.owner === 0 && !u.co).map((u) => u.goal && u.goal.site));
   ok('and the Banner men are untouched by it', !banGoals.has(site.id));
 
+  /* THE ROYAL WAR BANNER OUTRANKS EVERY COMPANY STANDARD. A company is a detachment from
+   * the army, not a rival army: raising the gold banner strikes every standing detachment
+   * order and the whole force answers as one. Before this it moved only the men under no
+   * standard at all — a shrinking minority once a few halls are up. */
+  const gold = w.map.sites.filter((s) => s.kind !== 'city' && s.id !== site.id)
+    .sort((a, b) => Math.hypot(b.x - c.x, b.y - c.y) - Math.hypot(a.x - c.x, a.y - c.y))[0];
+  ok('the War Banner can be raised elsewhere', World.applyCommand(w, 0, { c: 'banner', site: gold.id }).ok);
+  eq('and it strikes every company standard', pl.companies.filter((q) => q.rally).length, 0);
+  World.update(w, C.SIM_DT);
+  const host = w.units.filter((u) => u.owner === 0);
+  ok('the company still has men', host.some((u) => u.co === co));
+  eq('and the WHOLE army answers the Banner, company men included',
+     host.filter((u) => !u.goal || u.goal.site !== gold.id).length, 0, `${host.length} troops`);
+  /* …and a detachment can peel back off, or the standards would be one-use */
+  ok('a company can post its standard again', World.applyCommand(w, 0, { c: 'rally', co, site: site.id }).ok);
+  World.update(w, C.SIM_DT);
+  const peeled = w.units.filter((u) => u.owner === 0 && u.co === co);
+  ok('and takes its own men back with it',
+     peeled.length > 0 && peeled.every((u) => u.goal && u.goal.site === site.id), `${peeled.length} troops`);
+  ok('while the rest hold to the Banner',
+     w.units.filter((u) => u.owner === 0 && !u.co).every((u) => u.goal && u.goal.site === gold.id));
+
   /* re-assignment: a hall can be moved, and its own men move with it */
   const before = w.units.filter((u) => u.owner === 0 && u.from === h3.id).length;
   ok('the third hall has men of its own', before > 0, `${before}`);
@@ -740,6 +762,54 @@ suite('no walls, for now')
   eq('the wall command is refused', World.applyCommand(w, 0, { c: 'wall' }).err, 'cmd');
   ok('no player carries wall state', w.players.every((p) => p.wallHp === undefined));
   ok('no rampart survives in the nav layer', C.NAV.rampartR === undefined);
+}
+
+/* The solo ladder has to be a LADDER. It was not: `slow` and `noise` are decorative — an heir
+ * polled at half the rate still won its mirror — so the shipped HEIR at eco 0.80 was a 50%
+ * mirror, i.e. no handicap at all. Income and the hour it marches are the two knobs that bite,
+ * and both must move monotonically down the table. */
+suite('the solo ladder')
+{
+  const D = C.DIFFICULTY, order = C.DIFFICULTY_UI;
+  eq('the hardest footing is a full-strength heir', D.prince.eco, 1);
+  eq('...that comes for you when it likes', D.prince.hold, 0);
+  ok('the default is not the hardest', C.DIFFICULTY_DEFAULT !== 'prince', C.DIFFICULTY_DEFAULT);
+  for (let i = 1; i < order.length; i++) {
+    const lo = D[order[i - 1]], hi = D[order[i]];
+    ok(`${hi.name} draws more from the ground than ${lo.name}`, hi.eco > lo.eco, `${lo.eco} → ${hi.eco}`);
+    ok(`...and comes for you sooner`, hi.hold < lo.hold, `${lo.hold}s → ${hi.hold}s`);
+  }
+  ok('every footing is a real handicap', order.filter((k) => D[k].eco < 0.9).length >= 2,
+     order.map((k) => D[k].eco).join(' '));
+
+  /* and `hold` must actually hold: an heir on the easiest footing does not march on your
+   * Seat inside the hour it was given, however well the fight is going for it. Several
+   * seeds, because one map is an anecdote — and because an heir CAN lose its Seat early to
+   * Chaos or to a lucky baseline, which is a different thing from never having played. */
+  const hold = D.squire.hold;
+  let worst = 1e9, built = 0, lived = 0;
+  for (const seed of [1000, 7, 42]) {
+    const w = World.createWorld(seed, 2);
+    const bots = [AI.make('random'), AI.make('benedict', D.squire)];
+    w.players[1].eco = D.squire.eco;
+    const iss = [0, 1].map((pi) => (cmd) => World.applyCommand(w, pi, cmd));
+    const c0 = World.cityOf(w, 0);
+    let peak = 0;
+    for (let i = 0; i < 30 * (hold - 30) && w.winner === null; i++) {
+      for (const f of [0, 1]) bots[f].step(w, f, iss[f], C.SIM_DT);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      const b = w.players[1].banner;
+      if (b) worst = Math.min(worst, Math.hypot(b.x - c0.x, b.y - c0.y));
+      peak = Math.max(peak, w.players[1].buildings.length);
+    }
+    if (peak > 1) built++;
+    if (w.players[1].castleHp > 0) lived++;
+  }
+  ok('a Squire never points its banner at your Seat inside its hour',
+     worst > C.CITY.r, `nearest the banner came: ${Math.round(worst)}`);
+  ok('...and spends the time building a realm of its own', built >= 2, `${built} of 3 maps`);
+  ok('...an heir, not a victim: it is still standing when its hour comes', lived >= 2,
+     `${lived} of 3 maps`);
 }
 
 /* Chaos is the price of the best ground, not a doomsday timer (DESIGN_PRINCIPLES §4). It may
