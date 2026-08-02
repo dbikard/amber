@@ -118,12 +118,12 @@
    * distinction had nothing left to mean. up = upgrade costs to L2/L3; effect arrays are
    * [L1,L2,L3]. `claim` marks a work whose country you may build in. */
   CONST.BUILDINGS = {
-    /* A Gate away from a spring is a WAYSTONE: it extends your writ and watches the road,
-     * and it trickles. The essence is in the springs, and the springs are out on the map —
-     * that is the whole anti-stall model, and it only holds if home gates cannot replace it. */
+    /* A Gate stands ON a spring and nowhere else. It is the only thing that draws Shadow out
+     * of the ground, so the essence is out on the map and your writ can only follow it there.
+     * That is the whole anti-stall model, and it holds because there is no home substitute. */
     gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 10,
-                income: [1, 1.5, 2], nodeIncome: [4.5, 7, 10.5], hp: 300, vision: 300,
-                blurb: 'On a spring of Shadow it draws deep. Anywhere else it merely trickles — but your writ runs where your Gates stand.' },
+                nodeIncome: [4.5, 7, 10.5], hp: 300, vision: 300, onNode: true,
+                blurb: 'Raised ON a spring of Shadow, and only there. It draws deep, and your writ runs where your Gates stand.' },
     barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360, raise: 13,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },

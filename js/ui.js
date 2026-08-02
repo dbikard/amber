@@ -178,6 +178,7 @@
     ground: 'the ground will not bear it — wood, rock or water',
     crowded: 'too close to another work',
     claim: 'beyond your writ — hold a Gate nearer, or take a spring',
+    nospring: 'a Gate draws Shadow out of the ground — it stands on a spring, and only there',
     taken: 'that spring is already drawn upon',
     presence: 'no troops of yours stand there to claim it',
     contested: 'the enemy stands there',

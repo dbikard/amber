@@ -242,15 +242,22 @@ async function match(browser, base, renderer) {
       const before = outline();
       g.world.players[0].essence = 9000;
       const seat = g.world.map.sites[g.world.map.cities[0]];
+      /* a Gate stands on a SPRING and nowhere else, so aim at the one in the starting writ
+       * rather than sweeping a circle and trusting that a spring happens to lie on it */
+      const spring = g.world.map.sites.filter((q) => q.kind === 'node')
+        .map((q) => ({ q, d: Math.hypot(q.x - seat.x, q.y - seat.y) }))
+        .sort((m, n) => m.d - n.d)[0];
       let placed = false;
-      for (let a = 0; a < 40 && !placed; a++) {
-        const th = a / 40 * Math.PI * 2, x = seat.x + Math.cos(th) * 300, y = seat.y + Math.sin(th) * 300;
-        if (!W.placementError(g.world, 0, x, y, 'gate')) { W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'gate' }); placed = true; }
-      }
-      return { placed, before, after: outline() };
+      for (let rr = 18; rr < window.CONST.NODE.r && !placed; rr += 12)
+        for (let a = 0; a < 24 && !placed; a++) {
+          const th = a / 24 * Math.PI * 2;
+          const x = spring.q.x + Math.cos(th) * rr, y = spring.q.y + Math.sin(th) * rr;
+          if (!W.placementError(g.world, 0, x, y, 'gate')) { W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'gate' }); placed = true; }
+        }
+      return { placed, before, after: outline(), at: Math.round(spring.d) };
     });
-    ok('raising a Gate extends the writ', grew.placed && grew.after > grew.before,
-       `${grew.before} -> ${grew.after} segments`);
+    ok('raising a Gate on the nearest spring extends the writ', grew.placed && grew.after > grew.before,
+       `spring at ${grew.at}: ${grew.before} -> ${grew.after} segments`);
 
     /* ---------------- the army is on screen ---------------- *
      * Troops went invisible in 3D: an InstancedMesh is culled against a bounding sphere built

@@ -155,6 +155,56 @@ suite('command grammar');
   eq('an unknown work id is refused', World.applyCommand(w, 0, { c: 'up', id: 999999 }).err, 'id');
 }
 
+suite('a Gate stands on a spring')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 99000;
+  /* bare ground inside your own writ takes any ordinary work — and refuses a Gate */
+  let bare = null;
+  for (let rad = 170; rad < C.CLAIM.seat - 40 && !bare; rad += 20)
+    for (let a = 0; a < 40 && !bare; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 0, x, y, 'barracks') === null && !World.nodeAt(w, x, y)) bare = { x, y };
+    }
+  ok('bare ground inside the writ', !!bare);
+  eq('...bears a Barracks', World.placementError(w, 0, bare.x, bare.y, 'barracks'), null);
+  eq('...but refuses a Gate', World.placementError(w, 0, bare.x, bare.y, 'gate'), 'nospring');
+
+  /* the spring in your writ takes one */
+  const spring = w.map.sites.filter((s) => s.kind === 'node')
+    .map((s) => ({ s, d: Math.hypot(s.x - c.x, s.y - c.y) })).sort((a, b) => a.d - b.d)[0];
+  let on = null;
+  for (let rr = 18; rr < C.NODE.r && !on; rr += 12)
+    for (let a = 0; a < 24 && !on; a++) {
+      const th = a / 24 * Math.PI * 2;
+      const x = spring.s.x + Math.cos(th) * rr, y = spring.s.y + Math.sin(th) * rr;
+      if (World.placementError(w, 0, x, y, 'gate') === null) on = { x, y };
+    }
+  ok('a spring in the writ takes a Gate', !!on, spring.s.name);
+  ok('and raising it works', !!on && World.applyCommand(w, 0, { c: 'build', ...on, bt: 'gate' }).ok);
+  for (let i = 0; i < 30 * 40 && pl.buildings.some((b) => b.raise > 0); i++) World.update(w, C.SIM_DT);
+  w.events.length = 0;
+  const g = pl.buildings.find((b) => b.bt === 'gate');
+  ok('the Gate knows its spring', g && g.node === spring.s.id);
+  /* the far side of the same spring: clear of the Gate that stands there, so the reason we
+   * get back is that the spring is spoken for, not that the ground is crowded */
+  let other = null;
+  for (let rr = 20; rr < C.NODE.r && !other; rr += 10)
+    for (let a = 0; a < 24 && !other; a++) {
+      const th = a / 24 * Math.PI * 2;
+      const x = spring.s.x + Math.cos(th) * rr, y = spring.s.y + Math.sin(th) * rr;
+      if (World.placementError(w, 0, x, y, 'gate') === 'taken') other = { x, y };
+    }
+  ok('a second Gate on the same spring is refused as taken', !!other);
+
+  /* every Gate now draws deep — there is no trickling waystone left to draw shallow */
+  ok('a Gate has no off-spring income table at all', C.BUILDINGS.gate.income === undefined);
+  const base = w.players[1].incomeRate;
+  World.update(w, C.SIM_DT);
+  ok('and it pays the spring rate', pl.incomeRate >= C.BASE_INCOME + C.BUILDINGS.gate.nodeIncome[0] - 0.01,
+     `${pl.incomeRate.toFixed(1)} vs base ${base.toFixed(1)}`);
+}
+
 suite('the masons')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);

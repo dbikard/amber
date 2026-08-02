@@ -121,14 +121,14 @@
      * ground, else the middle of the world */
     const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
     const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
-    /* a Gate belongs on a spring. Only when every reachable one is held does an heir
-     * settle for a waystone behind the Seat — the trickle is not worth much. */
+    /* a Gate stands on a spring or nowhere — there is no waystone to settle for any more */
     if (bt === 'gate') {
       const free = nearestOf(v, v.nodes.own.concat(v.nodes.mid)).filter((s) => !held(v, s));
       for (const site of free) {
         const at = spotAt(v, site, 'gate');
         if (at) return at;
       }
+      return null;
     }
     /* Works cluster. The old ring put every plot at r=104 and that tight knot is what made
      * a defence a defence — spread over 380 of ground, towers are eaten one at a time. */

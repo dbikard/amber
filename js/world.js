@@ -80,9 +80,11 @@
 
   /* ---------------- where a work may stand ----------------
    * Your writ runs from the Seat and from every Shadow Gate you hold. Inside it, on ground
-   * that will bear a building, clear of other works — that is the whole rule. A Gate is the
-   * exception: it may be raised at an unheld essence node you have troops standing on and
-   * the enemy does not, which is how a claim grows in the first place. */
+   * that will bear a building, clear of other works — that is the whole rule for ordinary
+   * works. A Gate is different in both directions: it may ONLY stand on a spring, because a
+   * Gate draws Shadow up out of the ground and there is nothing to draw anywhere else — and
+   * in exchange it may be raised on a spring BEYOND your writ, if your troops hold it and the
+   * enemy's do not. That is how a claim grows in the first place. */
   function inClaim(world, pi, x, y) {
     const c = cityOf(world, pi);
     if (d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat) return true;
@@ -120,15 +122,19 @@
      * knowing while you wait, and a card that can never be built here should say so rather
      * than blame the masons. */
     const busy = pl.buildings.some((b) => b.raise > 0) ? 'busy' : null;
+    /* a Gate stands on a spring or it does not stand: inside your writ or out, that is first */
+    if (def.claim) {
+      const site = nodeAt(world, x, y);
+      if (!site) return 'nospring';
+      if (nodeHolder(world, site) !== -1) return 'taken';
+      if (inClaim(world, pi, x, y)) return busy;
+      /* beyond the writ it must be a spring your troops hold and the enemy's do not */
+      if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'presence';
+      if (world.units.some((u) => u.owner !== pi && u.owner !== 2 && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
+      return busy;
+    }
     if (inClaim(world, pi, x, y)) return busy;
-    /* outside the writ: only a Gate, only at a free node, only where your troops stand */
-    if (!def.claim) return 'claim';
-    const site = nodeAt(world, x, y);
-    if (!site) return 'claim';
-    if (nodeHolder(world, site) !== -1) return 'taken';
-    if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'presence';
-    if (world.units.some((u) => u.owner !== pi && u.owner !== 2 && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
-    return busy;
+    return 'claim';
   }
 
   /* ---------------- vision & exploration ---------------- */
@@ -443,7 +449,7 @@
         }
         if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
         /* a Gate on a spring of Shadow draws far more than one that merely stands about */
-        if (b.bt === 'gate') income += (b.node >= 0 ? def.nodeIncome : def.income)[b.level - 1];
+        if (b.bt === 'gate') income += b.node >= 0 ? def.nodeIncome[b.level - 1] : 0;
         else if (def.spawns) {
           if (pl.musterPaused) { b.cd = Math.max(b.cd, 0.5); continue; }
           const price = C.UNITS[def.spawns].cost;

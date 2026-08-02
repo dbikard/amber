@@ -129,6 +129,14 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       skewed pair wins.
       Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
       the nearest place they have never seen and only assault a Seat they have found.
+- [x] **A Shadow Gate stands on a spring, and only there.** The off-spring "waystone" — a
+      Gate anywhere in your writ, trickling 1/1.5/2 — is gone, along with the `income` table
+      that fed it. A Gate is the one thing that draws Shadow out of the ground, so the essence
+      is out on the map and your writ can only follow it there. New refusal `nospring`; the
+      beyond-the-writ rule (a free spring your troops hold and the enemy's do not) is
+      unchanged, and is now the ONLY way a claim grows. Measured over 12 minutes the heirs
+      hold 8–10 of 14 springs and the income gap between an expanding and a turtling side runs
+      65 v 13, which is the anti-stall model doing its job.
 - [x] **Solo difficulty (SQUIRE / HEIR / PRINCE).** Skirmish always handed the heir full
       strength — the only ramp was the campaign ladder — so solo played as hard as the heirs
       play each other. Difficulty now blunts how often an heir acts (`slow`, `noise`) AND what
