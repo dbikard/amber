@@ -239,6 +239,15 @@ async function match(browser, base, renderer) {
       return { n: mine.length, median: Math.round(d[d.length >> 1] || 0), buried: d.filter((x) => x < C.CITY.seatR).length };
     });
     ok('a garrison musters', army.n > 10, `${army.n} troops`);
+    /* remembered ground has to reach the renderer, or the fog has nothing to soften */
+    const mem = await pg.evaluate(() => {
+      const R = window.Render, g = window.Game.game;
+      const v = g.world.players[0].seen;
+      return { has: !!v, cells: v ? v.g.reduce((a, b) => a + b, 0) : 0, of: v ? v.g.length : 0 };
+    });
+    ok('the renderer is given the ground you have walked', mem.has && mem.cells > 20,
+       `${mem.cells} of ${mem.of} cells remembered`);
+    ok('and it is not simply the whole map', mem.cells < mem.of, `${mem.cells}/${mem.of}`);
     ok('the army stands in the court, not on the tower', army.median > 90,
        `median ${army.median} from the Seat, ${army.buried} of ${army.n} still on its own ground`);
     await pg.waitForTimeout(600);

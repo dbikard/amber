@@ -72,6 +72,12 @@
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
   CONST.VISION = { city: 420, unit: 260, build: 240 };   // a work may override via def.vision
 
+  /* Ground you have HAD eyes on stays on the map under a lighter veil once your troops move
+   * on — a country you have walked should not go black again behind you. `keep` is how much
+   * of the full veil remains over remembered ground; `cell` is the grain the memory is kept
+   * at, coarse enough to cost nothing and fine enough that the edge reads as terrain. */
+  CONST.FOG = { cell: 26, keep: 0.45 };
+
   /* ---- Navigation (open world, stage 2): units move continuously over a cost grid ----
    * The site web is baked in as corridors — free within freeR of a path or site, ramping
    * to maxCost, impassable past edgeR. Stage 3 replaces this with real terrain.

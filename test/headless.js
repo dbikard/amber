@@ -183,6 +183,36 @@ suite('the muster ground')
      `furthest ${Math.round(d[d.length - 1])}`);
 }
 
+suite('remembered ground')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  const mask = pl.seen;
+  const count = () => mask.g.reduce((a, b) => a + b, 0);
+  const at = (x, y) => mask.g[((y / mask.cell) | 0) * mask.gw + ((x / mask.cell) | 0)];
+  ok('you know your own surroundings from the start', count() > 20, `${count()} cells`);
+  ok('and nothing beyond them', count() < mask.g.length / 3, `${count()} of ${mask.g.length}`);
+
+  /* march a column to a far site: the ground it crosses must be remembered */
+  const far = w.map.sites.filter((s) => s.kind !== 'city')
+    .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y))[3];
+  ok('an unvisited place is unknown ground', !at(far.x, far.y), far.name);
+  pl.essence = 99000; pl.powers.trump = 0;
+  World.applyCommand(w, 0, { c: 'power', k: 'trump' });
+  World.applyCommand(w, 0, { c: 'banner', site: far.id });
+  const before = count();
+  for (let i = 0; i < 30 * 300; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('marching reveals new ground', count() > before, `${before} -> ${count()} cells`);
+  ok('the place it marched to is now known', !!at(far.x, far.y), far.name);
+
+  /* and it STAYS known once the column comes home — a map you have walked is still a map */
+  const walked = count();
+  World.applyCommand(w, 0, { c: 'banner', site: w.map.cities[0] });
+  for (let i = 0; i < 30 * 300; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('ground stays remembered after the troops leave', !!at(far.x, far.y));
+  ok('and the memory never shrinks', count() >= walked, `${walked} -> ${count()}`);
+  ok('but it is still not the whole map', count() < mask.g.length, `${count()} of ${mask.g.length}`);
+}
+
 suite('no walls, for now')
 {
   ok('the rampart is gone from the build table', !C.BUILDINGS.rampart);

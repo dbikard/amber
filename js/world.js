@@ -45,6 +45,7 @@
         banner: -1,             // site id the army marches on; -1 = defend home
         musterPaused: false,    // the Seat can halt the muster to hoard essence
         explored: {},           // siteId -> last-known {kind, owner}
+        seen: newSeenMask(),    // coarse grid of ground you have ever had eyes on
         ghosts: {}              // buildingId -> last-seen {bt, level, x, y, owner} (fog memory)
       })),
       units: [], storms: [], events: [],
@@ -137,6 +138,33 @@
       if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
     return src;
   }
+  /* ---------------- remembered ground ----------------
+   * `explored` remembers SITES; this remembers the LAND. One byte per cell, marked wherever
+   * a vision source has ever reached, so the renderers can keep walked country on the map
+   * under a lighter veil instead of letting it go black the moment the column leaves. */
+  function newSeenMask() {
+    const gw = Math.ceil(C.MAP.W / C.FOG.cell), gh = Math.ceil(C.MAP.H / C.FOG.cell);
+    return { g: new Uint8Array(gw * gh), gw, gh, cell: C.FOG.cell, v: 0 };
+  }
+  function markSeen(mask, src) {
+    const cw = mask.cell;
+    for (let i = 0; i < src.length; i++) {
+      const cx = src[i][0], cy = src[i][1], r = src[i][2], r2 = r * r;
+      const gx0 = Math.max(0, ((cx - r) / cw) | 0), gx1 = Math.min(mask.gw - 1, ((cx + r) / cw) | 0);
+      const gy0 = Math.max(0, ((cy - r) / cw) | 0), gy1 = Math.min(mask.gh - 1, ((cy + r) / cw) | 0);
+      for (let gy = gy0; gy <= gy1; gy++) {
+        const dy2 = (gy + 0.5) * cw - cy;
+        for (let gx = gx0; gx <= gx1; gx++) {
+          const k = gy * mask.gw + gx;
+          if (mask.g[k]) continue;
+          const dx2 = (gx + 0.5) * cw - cx;
+          if (dx2 * dx2 + dy2 * dy2 <= r2) { mask.g[k] = 1; mask.v++; }
+        }
+      }
+    }
+    return mask;
+  }
+
   function seen(src, x, y) {
     for (let i = 0; i < src.length; i++) {
       const s = src[i];
@@ -155,6 +183,7 @@
      * before. Finding the rival's is the whole early game now. */
     for (const s of world.map.sites)
       if (seen(src, s.x, s.y)) pl.explored[s.id] = { kind: s.kind, name: s.name };
+    markSeen(pl.seen, src);
     /* the new fog rule: a rival's work is visible only while you can SEE it, and remembered
      * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
     for (let o = 0; o < 2; o++) {
@@ -598,6 +627,7 @@
   }
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
-                   visionSources, placementError, inClaim, nodeAt, nodeHolder, bldOf };
+                   visionSources, placementError, inClaim, nodeAt, nodeHolder, bldOf,
+                   newSeenMask, markSeen };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

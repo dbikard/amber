@@ -20,7 +20,7 @@
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
-  let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null;
+  let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null, guestSeen = null;
 
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
@@ -56,7 +56,7 @@
     game.viewer = Net.isHost ? 0 : 1;
     game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
     game.names = ['Corwin', 'Eric'];
-    guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null;
+    guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     game.world = Net.isHost ? World.createWorld(seed) : null;
     refWorld = Net.isHost ? null : World.createWorld(seed);   // guest: map geometry only
     Render.resize();
@@ -194,6 +194,7 @@
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y)),
       storms: world.storms.filter((s) => see(s.x, s.y)),
       visSources: World.visionSources(world, viewer),
+      seen: world.players[viewer].seen,   // ground you have ever had eyes on
       see
     };
   }
@@ -219,7 +220,12 @@
     for (const u of units) if (u.owner === 1) src.push([u.x, u.y, C.VISION.unit]);
     const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
     /* the guest builds the same world from the same seed, so terrain needs no wire at all */
+    /* the guest remembers the land itself. Nothing about it needs to cross the wire — it is
+     * built from the same sight the guest already computes for its own fog. */
+    if (!guestSeen) guestSeen = World.newSeenMask();
+    World.markSeen(guestSeen, src);
     return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
+             seen: guestSeen,
              foeSeen: !!(snap.sites[refWorld.map.cities[0]] && snap.sites[refWorld.map.cities[0]].live !== undefined),
              sites: snap.sites, units, storms: snap.storms, visSources: src, see };
   }

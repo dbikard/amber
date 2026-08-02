@@ -537,6 +537,33 @@
       stage.fog.texture = fogRT;
     }
     fogScene._black.width = W; fogScene._black.height = H;
+    /* remembered ground: a lighter veil over country you have had eyes on, so a map you have
+     * walked stays a map. Erased at partial strength BEFORE the full-strength sight holes, so
+     * ground you can see right now still comes out clear. */
+    let mem = fogScene._mem;
+    if (!mem) { mem = fogScene._mem = new PIXI.Graphics(); mem.blendMode = 'erase'; fogScene.addChild(mem); }
+    mem.clear();
+    const sm = view.seen;
+    if (sm) {
+      const cw = sm.cell;
+      const vr = R.viewRect();
+      const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(sm.gw - 1, (vr.x1 / cw | 0) + 1);
+      const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(sm.gh - 1, (vr.y1 / cw | 0) + 1);
+      for (let gy = gy0; gy <= gy1; gy++) {
+        /* runs of remembered cells become ONE rect: fewer, and no seam where two rects meet */
+        let run = -1;
+        for (let gx = gx0; gx <= gx1 + 1; gx++) {
+          const on = gx <= gx1 && sm.g[gy * sm.gw + gx];
+          if (on && run < 0) run = gx;
+          else if (!on && run >= 0) {
+            const X = (run * cw - R.camX) * scale, Y = (gy * cw - R.camY) * scale;
+            mem.rect(X, Y, (gx - run) * cw * scale + 1, cw * scale + 1);
+            run = -1;
+          }
+        }
+      }
+      mem.fill({ color: 0xffffff, alpha: 1 - C.FOG.keep });
+    }
     const need = view.visSources.length;
     while (fogScene._holes.length < need) {
       const hs = new PIXI.Sprite(holeTex);

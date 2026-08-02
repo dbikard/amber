@@ -880,18 +880,21 @@
   }
 
   /* ---------------- overlay: bars, labels, minimap, targeting ---------------- */
-  /* a scratch the size of the overlay, for compositing the edge-of-sight band */
-  let rimCv = null, rimC2 = null;
-  function rimCtx() {
+  /* scratches the size of the overlay: one for the edge-of-sight band, one for the mask of
+   * remembered ground. Both are composited whole, so neither can seam against itself. */
+  function scratch(store) {
     if (typeof document === 'undefined') return null;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    if (!rimCv) { rimCv = document.createElement('canvas'); rimC2 = rimCv.getContext('2d'); }
-    if (rimCv.width !== W * dpr || rimCv.height !== H * dpr) {
-      rimCv.width = W * dpr; rimCv.height = H * dpr;
-      rimC2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!store.cv) { store.cv = document.createElement('canvas'); store.c2 = store.cv.getContext('2d'); }
+    if (store.cv.width !== W * dpr || store.cv.height !== H * dpr) {
+      store.cv.width = W * dpr; store.cv.height = H * dpr;
+      store.c2.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    return rimC2;
+    return store.c2;
   }
+  const rimStore = {}, memStore = {};
+  const rimCtx = () => scratch(rimStore);
+  const memCtx = () => scratch(memStore);
 
   function overlayPass(view, viewer) {
     const g = octx;
@@ -910,6 +913,45 @@
       const cy2 = (eV1.y + eV2.y) / 2;
       if (cy2 < -ry * 2 || cy2 > H + ry * 2 || rx < 2) continue;
       discs.push([c2.x, cy2, rx, ry]);
+    }
+    /* remembered ground: a lighter veil over country you have had eyes on, so a map you have
+     * walked stays a map. Cut at partial strength FIRST; the sight holes below then clear
+     * whatever you can actually see right now. Only the cells on screen are touched. */
+    const sm = view.seen;
+    if (sm) {
+      const mc = memCtx();
+      if (mc) {
+        mc.clearRect(0, 0, W, H);
+        mc.fillStyle = '#fff';
+        const cw = sm.cell, vr = R.viewRect();
+        const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(sm.gw - 1, (vr.x1 / cw | 0) + 1);
+        const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(sm.gh - 1, (vr.y1 / cw | 0) + 1);
+        mc.beginPath();
+        for (let gy = gy0; gy <= gy1; gy++) {
+          let run = -1;
+          for (let gx = gx0; gx <= gx1 + 1; gx++) {
+            const on = gx <= gx1 && sm.g[gy * sm.gw + gx];
+            if (on && run < 0) run = gx;
+            else if (!on && run >= 0) {
+              /* a run of cells is one ground-hugging quad; under perspective its far edge is
+               * narrower than its near one, so it is projected as a quad, not a rectangle */
+              const wx0 = run * cw, wx1 = gx * cw, wy0 = gy * cw, wy1 = (gy + 1) * cw;
+              const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
+              const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
+              if (a1.ok && b1.ok && c1.ok && d1.ok) {
+                mc.moveTo(a1.x, a1.y); mc.lineTo(b1.x, b1.y); mc.lineTo(c1.x, c1.y); mc.lineTo(d1.x, d1.y); mc.closePath();
+              }
+              run = -1;
+            }
+          }
+        }
+        mc.fill();
+        g.globalCompositeOperation = 'destination-out';
+        g.globalAlpha = 1 - C.FOG.keep;
+        g.drawImage(memStore.cv, 0, 0, W, H);
+        g.globalAlpha = 1;
+        g.globalCompositeOperation = 'source-over';
+      }
     }
     g.globalCompositeOperation = 'destination-out';
     for (const [cx2, cy2, rx, ry] of discs) {
@@ -933,15 +975,20 @@
       rc.clearRect(0, 0, W, H);
       rc.fillStyle = 'rgba(255,233,168,0.34)';
       rc.beginPath();
-      for (const [cx2, cy2, rx, ry] of discs) rc.ellipse(cx2, cy2, rx, ry, 0, 0, 7);
+      /* moveTo before each: like arc(), ellipse() draws a line from the current point to where
+       * it starts, so a path of many ellipses is stitched together by chords and fills as a
+       * fan of black shards across the map. Each needs its own subpath. */
+      for (const [cx2, cy2, rx, ry] of discs) { rc.moveTo(cx2 + rx, cy2); rc.ellipse(cx2, cy2, rx, ry, 0, 0, 7); }
       rc.fill();
       rc.globalCompositeOperation = 'destination-out';
       rc.beginPath();
-      for (const [cx2, cy2, rx, ry] of discs)
-        rc.ellipse(cx2, cy2, Math.max(0.5, rx - 2), Math.max(0.5, ry - 2 * (ry / rx)), 0, 0, 7);
+      for (const [cx2, cy2, rx, ry] of discs) {
+        const ix = Math.max(0.5, rx - 2), iy = Math.max(0.5, ry - 2 * (ry / rx));
+        rc.moveTo(cx2 + ix, cy2); rc.ellipse(cx2, cy2, ix, iy, 0, 0, 7);
+      }
       rc.fill();
       rc.globalCompositeOperation = 'source-over';
-      g.drawImage(rimCv, 0, 0, W, H);
+      g.drawImage(rimStore.cv, 0, 0, W, H);
     }
     /* unit hp slivers */
     for (const u of view.units) {
