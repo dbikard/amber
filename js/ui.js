@@ -33,6 +33,10 @@
     $('pw-trump').addEventListener('click', () => H.onPower('trump'));
     $('end-next').addEventListener('click', () => H.onEndNext());
     $('end-menu').addEventListener('click', () => H.onEndMenu());
+    $('end-copy').addEventListener('click', () => UI.copyRecord($('end-copy')));
+    $('end-save').addEventListener('click', () => UI.saveRecord());
+    $('menu-record').addEventListener('click', () => UI.copyRecord($('menu-record')));
+    $('record-close').addEventListener('click', () => $('record-box').classList.add('hidden'));
 
     /* skirmish: how hard, then which heir. The difficulty sticks between matches — it is a
      * preference, not a per-match question, and asking it twice would be nagging. */
@@ -84,6 +88,13 @@
     $('end').classList.add('hidden');
     UI.closeSheet();
     $('btn-campaign').textContent = campaignLabel;
+    /* the match you WALKED OUT OF is often the one worth sending — a game that went badly
+     * enough to abandon never reaches the end screen, so the chronicle is offered here too */
+    const has = !!(global.Rec && global.Rec.recorded && global.Rec.recorded());
+    const btn = $('menu-record');
+    btn.classList.toggle('hidden', !has);
+    btn.textContent = '📜 CHRONICLE OF THE LAST MATCH';
+    $('record-box').classList.add('hidden');
   };
   UI.startMatch = function (rivalName) {
     $('menu').classList.add('hidden');
@@ -127,12 +138,11 @@
       return b;
     };
     const royal = mk('royal', '⚑', '', '#ffd98a');
-    /* The gold flag moves the ARMY — but not a company posted afield, which is the whole
-     * point of posting one. That is invisible until you count flags, so say it here: if any
-     * of your force is answering somebody else's standard, the gold chip shows how many
-     * standards that is, and the Recall on the Seat's sheet brings every one of them home. */
+    /* The War Banner is the general muster and outranks every company standard, so raising it
+     * calls the detachments in too. The count says how many standards that would strike —
+     * useful to know BEFORE you tap, since it undoes orders you gave on purpose. */
     const afield = rows.filter((r) => r[1]).length;
-    royal.title = afield ? afield + ' standard(s) posted afield do not answer the War Banner'
+    royal.title = afield ? 'the War Banner calls in ' + afield + ' posted standard(s) as well'
                          : 'the whole army answers the War Banner';
     if (afield) {
       const w2 = document.createElement('span');
@@ -548,6 +558,43 @@
     nx.textContent = nextLabel || '';
     nx.classList.toggle('hidden', !nextLabel);
     nx.disabled = ready === false;
+    $('end-copy').textContent = '📜 COPY THE CHRONICLE';
+    $('end-save').textContent = 'SAVE';
+    $('record-box').classList.add('hidden');
+  };
+
+  /* ---------------- the chronicle ----------------
+   * A match a human played leaves no trace, so every "the heir is too strong" has to be
+   * argued from memory. These two buttons put the whole match somewhere it can be pasted
+   * or attached. Clipboard first, because pasting is the point; a textarea if the browser
+   * refuses (no secure context, no permission), because a refusal must not be a dead end. */
+  const recordText = () => (global.Rec && global.Rec.text ? global.Rec.text() : 'AMBER — nothing recorded.');
+  UI.copyRecord = function (btn) {
+    const txt = recordText();
+    btn = btn || $('end-copy');
+    const fallback = () => {
+      const ta = $('record-text');
+      $('record-box').classList.remove('hidden');
+      ta.value = txt;
+      ta.focus(); ta.select();
+      btn.textContent = 'SELECT IT ALL AND COPY';
+    };
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return fallback();
+    navigator.clipboard.writeText(txt)
+      .then(() => { btn.textContent = '✓ COPIED — PASTE IT ANYWHERE'; })
+      .catch(fallback);
+  };
+  UI.saveRecord = function () {
+    const txt = recordText();
+    const name = 'amber-' + (global.GAME_VERSION || 'x') + '-' + Date.now() + '.txt';
+    try {
+      const url = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      $('end-save').textContent = '✓ SAVED';
+    } catch (e) { UI.copyRecord(); }
   };
 
   global.UI = UI;

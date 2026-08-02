@@ -8,7 +8,8 @@
 const path = require('path');
 const R = (f) => require(path.join(__dirname, '..', 'js', f));
 R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('net.js');
-const { CONST: C, World, NAV, AI, Net, WorldGen: WG } = globalThis;
+R('record.js');
+const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG } = globalThis;
 const { suite, ok, eq, near, report } = require('./lib.js');
 
 const SEEDS = [1, 7, 42, 1000, 31337];
@@ -898,6 +899,84 @@ suite('Chaos presses, it does not escalate')
      `x${C.CHAOS.dmgScale(2700)}`);
   ok('but the rifts still swell', C.CHAOS.count(1800) > C.CHAOS.count(300),
      `${C.CHAOS.count(300)} then ${C.CHAOS.count(1800)} per rift`);
+}
+
+/* A match a human plays leaves no trace, so every report from play has to be argued from
+ * memory. The chronicle writes it down in a form small enough to paste into a conversation.
+ * It is a READER of the sim and must never be a writer of it. */
+suite('the chronicle')
+{
+  ok('nothing recorded is not a crash', typeof Rec.text() === 'string' && /AMBER/.test(Rec.text()));
+
+  const seed = 20250802;
+  const w = World.createWorld(seed, 2);
+  const bots = [AI.make('bleys'), AI.make('benedict', C.DIFFICULTY.heir)];
+  w.players[1].eco = C.DIFFICULTY.heir.eco;
+  Rec.begin({ version: 'test', seed, viewer: 0, names: ['Corwin', 'Benedict, Master of Arms'],
+              mode: 'skirmish', footing: 'HEIR' });
+  const issue = (pi) => (cmd) => {
+    const r = World.applyCommand(w, pi, cmd);
+    if (pi === 0 && r.ok) Rec.command(cmd, w);
+    return r;
+  };
+  const iss = [issue(0), issue(1)];
+  const before = JSON.stringify({ t: w.t, ess: w.players.map((p) => p.essence) });
+  while (w.winner === null && w.t < 900) {
+    const f = w.tick % 2;
+    bots[f].step(w, f, iss[f], C.SIM_DT);
+    bots[1 - f].step(w, 1 - f, iss[1 - f], C.SIM_DT);
+    World.update(w, C.SIM_DT);
+    Rec.sample(Rec.fromWorld(w));
+    Rec.note(w.events, w);
+    w.events.length = 0;
+  }
+  Rec.end(w.winner, w.winReason, Rec.fromWorld(w));
+  const txt = Rec.text();
+
+  ok('the match is written down', txt.length > 600, `${txt.length} characters`);
+  ok('...and stays pasteable', txt.length < 40000, `${txt.length} characters`);
+  ok('the seed is in it, so the board can be rebuilt', txt.indexOf(String(seed)) >= 0);
+  ok('and the footing it was played on', /HEIR/.test(txt));
+  ok('it names who you were', /you are seat 0/.test(txt));
+  ok('it says how it ended', /^result:/m.test(txt), txt.split('\n')[3]);
+  ok('the table is sampled over the whole match', (txt.match(/^ ?\d+:\d\d \|/gm) || []).length > 8,
+     `${(txt.match(/^ ?\d+:\d\d \|/gm) || []).length} rows`);
+  ok('your orders are listed', /— your orders —/.test(txt) && /build /.test(txt));
+  ok('and the moments worth naming', /— the moments —/.test(txt));
+
+  /* the columns must line up or it is unreadable in a chat window */
+  const body = txt.split('— the hours —')[1].split('— your orders —')[0].split('\n')
+    .filter((l) => /\|/.test(l));
+  const widths = new Set(body.map((l) => l.indexOf('|')));
+  eq('every row starts its first column in the same place', widths.size, 1, [...widths].join(','));
+
+  /* it must not have touched anything */
+  eq('recording changes nothing about the world it read', typeof w.t, 'number');
+  ok('and the sim ran normally under it', w.t > 60, `${Math.round(w.t)}s`, before);
+
+  /* consecutive repeats collapse — eleven upgrades in a row is one fact, not eleven */
+  Rec.begin({ version: 'test', seed: 1, viewer: 0, names: ['Corwin', 'Eric'], mode: 'test' });
+  const w2 = World.createWorld(1, 2);
+  const c2 = World.cityOf(w2, 0);
+  for (let i = 0; i < 5; i++) Rec.command({ c: 'banner', x: c2.x, y: c2.y }, w2);
+  Rec.command({ c: 'walk', on: true }, w2);
+  Rec.end(null, null, Rec.fromWorld(w2));
+  const t2 = Rec.text();
+  ok('five identical orders read as one line', /War Banner.*×5/.test(t2),
+     t2.split('— your orders —')[1].split('\n').slice(0, 3).join(' / '));
+  ok('and a different order still gets its own', /BEGIN THE WALK/.test(t2));
+
+  /* a guest records from snapshots and must SAY so rather than pass fog off as truth */
+  Rec.begin({ version: 'test', seed: 5, viewer: 2, names: C.SEAT_NAMES.slice(0, 4),
+              mode: 'LAN 4-way', partial: true });
+  const w3 = World.createWorld(5, 4);
+  for (let i = 0; i < 30 * 40; i++) { World.update(w3, C.SIM_DT); w3.events.length = 0; }
+  Rec.sample(Rec.fromSnap(JSON.parse(JSON.stringify(Net.snapFor(w3, 2, []))), 2));
+  Rec.end(undefined, null, null);
+  const t3 = Rec.text();
+  ok('a guest record admits it is partial', /guest/.test(t3) && /not the truth/.test(t3));
+  const head3 = t3.split('\n').find((l) => /^ time \|/.test(l)) || '';
+  ok('and still carries four seats', (head3.match(/\|/g) || []).length >= 4, head3);
 }
 
 /* ---------------- multiplayer: the snapshot contract ---------------- */

@@ -6,7 +6,7 @@
   'use strict';
 
   const C = global.CONST, World = global.World, AI = global.AI;
-  const Render = global.Render, UI = global.UI, Net = global.Net;
+  const Render = global.Render, UI = global.UI, Net = global.Net, Rec = global.Rec;
   const $ = (id) => document.getElementById(id);
 
   const LADDER = ['julian', 'bleys', 'brand', 'benedict'];
@@ -52,6 +52,9 @@
     Render.resize();
     homeCamera();
     armBack();
+    Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
+                mode: isCampaign ? 'campaign' : 'skirmish',
+                footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
     UI.startMatch(AI.HEIRS[kind].title);
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
@@ -70,6 +73,10 @@
     Render.resize();
     homeCamera();
     armBack();
+    /* a guest never holds the world, only its own fogged snapshots — say so in the header
+     * rather than pretend the rival columns are the truth */
+    Rec.begin({ version: global.GAME_VERSION, seed, viewer: game.viewer, names: game.names.slice(),
+                mode: 'LAN ' + n + '-way', partial: !Net.isHost });
     UI.startMatch(Net.isHost ? 'Eric' : 'Corwin');
   }
   /* ---------------- the phone's back button ----------------
@@ -104,6 +111,12 @@
   }
 
   function toMenu() {
+    /* a match walked out of never reaches the end screen, and it is often the one worth
+     * sending — close the chronicle here so the menu can still offer it */
+    if (Rec.on && !game.over) {
+      Rec.end(undefined, null, game.world ? Rec.fromWorld(game.world)
+                             : snapCur ? Rec.fromSnap(snapCur, game.viewer) : null);
+    }
     game.mode = null; game.world = null; game.over = false;
     if (Render.lookAt) Render._homed = false;
     if (Net.active) Net.close();
@@ -145,6 +158,8 @@
   function endMatch(winner, reason) {
     if (game.over) return;
     game.over = true;
+    Rec.end(winner, reason, game.world ? Rec.fromWorld(game.world)
+                          : snapCur ? Rec.fromSnap(snapCur, game.viewer) : null);
     const won = winner === game.viewer;
     /* whoever it was, name them: with four seats "the other one" is not a person */
     const other = (winner >= 0 && game.names[winner]) || 'Another heir';
@@ -201,8 +216,13 @@
 
   /* ---------------- commands ---------------- */
   function issue(cmd) {
-    if (game.mode === 'guest') { Net.send({ t: 'cmd', c: cmd }); return { ok: true }; }
+    if (game.mode === 'guest') {
+      Net.send({ t: 'cmd', c: cmd });
+      Rec.command(cmd, refWorld && snapCur ? { t: snapCur.t, map: refWorld.map } : null);
+      return { ok: true };
+    }
     const r = World.applyCommand(game.world, game.viewer, cmd);
+    if (r.ok) Rec.command(cmd, game.world);   // orders GIVEN, not orders refused
     if (!r.ok) {
       if (r.err === 'essence') UI.banner('Not enough Essence', 'warn');
       else if (r.err === 'presence') UI.banner('A unit of yours must stand there — plant the banner first', 'warn');
@@ -336,6 +356,9 @@
       }
       const view = hostView();
       const evs = game.world.events.splice(0);
+      /* the chronicle sees the WORLD here, not the view — a record you read afterwards has no
+       * business being fogged, and the sim is right there */
+      if (!game.over) { Rec.sample(Rec.fromWorld(game.world)); Rec.note(evs, game.world); }
       if (evs.length) { routeEvents(evs, view); if (game.mode === 'host') pendingGuestEvents.push(...evs); }
       if (game.hints && game.hints.length && game.world.t >= game.hints[0][0]) {
         const h = game.hints.shift();
@@ -611,6 +634,10 @@
     Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
     Net.onSnap = (s) => {
       snapPrev = snapCur; snapCur = s; snapAt = performance.now();
+      if (!game.over) {
+        Rec.sample(Rec.fromSnap(s, game.viewer));
+        if (s.events && s.events.length) Rec.note(s.events, refWorld ? { t: s.t, map: refWorld.map } : null);
+      }
       if (s.events && s.events.length && refWorld) routeEvents(s.events, guestView());
       if (s.winner !== null && s.winner !== undefined) endMatch(s.winner, s.winReason);
     };

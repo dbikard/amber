@@ -33,6 +33,7 @@ js/render3d.js  — ALL drawing: Three.js, pitched camera; takes a "view" + view
 js/render_select.js — hands game.js the renderer, or null when the device has no WebGL
 js/qrcode.js    — QR encoder (verbatim from perils)
 js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
+js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
 js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners
 js/game.js      — orchestration: modes, fixed-timestep loop, input routing, MP wiring (last)
 sim.js          — Node balance runner: mirror / gradient / round-robin / durations
@@ -119,3 +120,7 @@ human could see (see `AI.view()`).
 - **Add a unit**: `const.js` stats → spawn source in `world.js` → sprite → sim.
 - **Add an heir**: personality entry in `ai.js` HEIRS block + menu entry in `ui.js`.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
+- **A report from play**: ask for the chronicle. The end screen (and the menu, after an
+  abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,
+  the moments — as text. `node sim.js` plays bots and cannot see what a human's match felt
+  like; the chronicle can. `Rec` reads the sim and never writes to it.

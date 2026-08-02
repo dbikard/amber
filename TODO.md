@@ -275,6 +275,22 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **The chronicle** (`js/record.js`, headless-safe). Balance arguments are settled by
+      `node sim.js`, which plays bots — a match a HUMAN played left no trace at all, so every
+      report from play had to be re-derived from first principles. A match now writes itself
+      down: a header (build, seed, footing, seats, result, your peaks), a table sampled every
+      20 sim-seconds of essence / income / works / army / Pattern / castle for every seat plus
+      the fiends alive, the orders you gave with the hour you gave them, and the moments worth
+      naming. About 5 KB for a six-minute game — small enough to paste into a conversation, and
+      the seed in the header rebuilds the exact board.
+      It records the TRUTH where the truth is at hand (solo and host hold the world); a guest
+      only has its own snapshots and the header says so rather than pass fog off as fact.
+      Two buttons on the end screen: COPY (clipboard, because pasting is the point) and SAVE
+      (a .txt to attach). A browser that refuses the clipboard gets a box to select by hand —
+      a refusal must not be a dead end. And because the match you WALK OUT OF is often the
+      telling one, `toMenu` closes the record and the menu offers it too.
+      Consecutive identical orders collapse (`War Banner ×5`), so a heavy tapper cannot turn
+      it into a megabyte. `Rec` is a READER of the sim and never a writer — a test asserts it.
 - [x] **A walk is held, not banked.** Reported from play: the Pattern is now winnable by hand,
       but breaking the rival's Seat — or their Shrine — still is not. Both halves were real.
       Progress was PERMANENT the instant it was bought, so the Shrine was a savings account:

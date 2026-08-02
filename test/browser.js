@@ -893,6 +893,69 @@ async function match(browser, base, renderer) {
     ok('but a host whose guest left is offered nothing', again.goneHidden, `label "${again.goneLabel}"`);
     ok('the rematch path raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
+    /* The chronicle is only worth having if it comes OFF the phone. Clipboard first, because
+     * pasting is the whole point; a selectable textarea when the browser refuses, because a
+     * refusal must not be a dead end. */
+    suite(`${r} · the chronicle comes off the phone`);
+    const chron = await pg.evaluate(async () => {
+      const { Game, Net, Rec } = window;
+      const out = {};
+      let clipped = null;
+      /* pretend the clipboard works, and then pretend it does not */
+      const realClip = navigator.clipboard;
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: (t) => { clipped = t; return Promise.resolve(); } }
+      });
+      Net.isHost = false; Net.active = false; Net.peers = [];
+      window.Game.game.mode = null;
+      document.getElementById('btn-skirmish').click();
+      [...document.querySelectorAll('#skirmish-row button')].find((e) => /julian/i.test(e.textContent)).click();
+      await new Promise((res) => setTimeout(res, 200));
+      out.recording = Rec.on;
+      /* the table samples once a frame, so run the sim in chunks with frames between them —
+       * a fast-forward inside ONE frame is one row however many minutes it covers */
+      for (let i = 0; i < 8; i++) {
+        window.__step(25);
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      }
+      Game.game.world.events.push({ e: 'win', winner: 0, reason: 'castle' });
+      await new Promise((res) => setTimeout(res, 200));
+      out.ended = !document.getElementById('end').classList.contains('hidden');
+      out.hasButtons = !!document.getElementById('end-copy') && !!document.getElementById('end-save');
+      document.getElementById('end-copy').click();
+      await new Promise((res) => setTimeout(res, 120));
+      out.copied = clipped;
+      out.label = document.getElementById('end-copy').textContent;
+      /* now the refusal path */
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true, value: { writeText: () => Promise.reject(new Error('nope')) }
+      });
+      document.getElementById('end-copy').click();
+      await new Promise((res) => setTimeout(res, 120));
+      const ta = document.getElementById('record-text');
+      out.fellBack = !document.getElementById('record-box').classList.contains('hidden') && ta.value.length > 200;
+      document.getElementById('record-close').click();
+      out.closed = document.getElementById('record-box').classList.contains('hidden');
+      /* and a match walked out of is still offered, because that is often the telling one */
+      document.getElementById('end-menu').click();
+      await new Promise((res) => setTimeout(res, 150));
+      out.menuOffers = !document.getElementById('menu-record').classList.contains('hidden');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: realClip });
+      return out;
+    });
+    ok('a match records itself from the moment it starts', chron.recording);
+    ok('the end screen offers the chronicle', chron.ended && chron.hasButtons);
+    ok('tapping COPY puts the whole match on the clipboard',
+       !!chron.copied && chron.copied.length > 400, `${(chron.copied || '').length} characters`);
+    ok('...with the seed in it, so the board can be rebuilt', /seed \d+/.test(chron.copied || ''));
+    ok('...and the table of hours', /— the hours —/.test(chron.copied || ''));
+    ok('the button says it worked', /COPIED/.test(chron.label), chron.label);
+    ok('a browser that refuses the clipboard gets a box to copy from by hand', chron.fellBack);
+    ok('...which closes again', chron.closed);
+    ok('and the menu still offers the last match', chron.menuOffers);
+    ok('the chronicle raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+
     suite(`${r} · console`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();

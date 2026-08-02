@@ -159,6 +159,18 @@ body {
 #end h2.won { color: #ffe9a8; text-shadow: 0 0 24px rgba(255, 220, 150, 0.6); }
 #end h2.lost { color: #e08a96; text-shadow: 0 0 24px rgba(220, 90, 110, 0.4); }
 #end p { font-size: 14px; font-style: italic; color: #b8a878; max-width: 320px; line-height: 1.6; }
+/* the chronicle's last resort: a browser that will not reach the clipboard still has to let
+ * you get the text out, so it goes somewhere you can select it by hand */
+#record-box {
+  position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; padding: 16px; background: #08050ee6;
+}
+#record-text {
+  width: min(94vw, 560px); flex: 1; max-height: 76vh; padding: 8px;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; line-height: 1.35;
+  color: #d8cba8; background: #120c1c; border: 1px solid #5a4c30; border-radius: 6px;
+  white-space: pre; overflow: auto;
+}
 
 /* ---------------- scanner ---------------- */
 #scanner { position: fixed; inset: 0; z-index: 50; background: #000; }
