@@ -1,12 +1,12 @@
 /* game.js — orchestration (v0.2): modes, fixed-timestep loop, camera drag + tap routing,
  * campaign, and LAN duel wiring (QR pairing from Perils; host-authoritative fogged sync).
- * Builds the source-agnostic `view` render.js consumes: live world (sp/host) or
+ * Builds the source-agnostic `view` the renderer consumes: live world (sp/host) or
  * snapshot + seed-rebuilt map geometry (guest). */
 (function (global) {
   'use strict';
 
   const C = global.CONST, World = global.World, AI = global.AI;
-  const Render = global.Render, UI = global.UI, Net = global.Net, S = global.SPRITES;
+  const Render = global.Render, UI = global.UI, Net = global.Net;
   const $ = (id) => document.getElementById(id);
 
   const LADDER = ['julian', 'bleys', 'brand', 'benedict'];
@@ -551,8 +551,15 @@
 
   /* ---------------- boot ---------------- */
   async function boot() {
-    S.init();
-    await Render.init($('game'));   // PixiJS app init is async
+    /* No WebGL, no game — and say so, instead of failing into a black screen */
+    if (!Render) {
+      const m = $('menu');
+      if (m) m.innerHTML = '<h1 style="font-size:34px;letter-spacing:6px">AMBER</h1>' +
+        '<p class="lore">This device has no working WebGL, which Amber needs to draw the world.' +
+        '<br>Try another browser, or turn on hardware acceleration.</p>';
+      return;
+    }
+    await Render.init($('game'));
     window.addEventListener('resize', Render.resize);
     UI.init({
       onCampaign: () => {

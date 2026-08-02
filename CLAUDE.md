@@ -28,8 +28,9 @@ js/rng.js       — seeded RNG (headless-safe)
 js/const.js     — content tables: BUILDINGS, UNITS, POWERS, CHAOS, HEIRS (headless-safe)
 js/world.js     — sim core: createWorld / applyCommand / update(world, dt) (headless-safe)
 js/ai.js        — bot policies: personalities + random/greedy baselines (headless-safe)
-js/sprites.js   — procedural painterly sprites pre-rendered to offscreen canvases (browser)
-js/render.js    — all canvas drawing; takes a "view" object + viewer index (browser, ISOLATED)
+js/terrain.js   — bakes the painted ground + shared writ-outline helpers (browser)
+js/render3d.js  — ALL drawing: Three.js, pitched camera; takes a "view" + viewer (ISOLATED)
+js/render_select.js — hands game.js the renderer, or null when the device has no WebGL
 js/qrcode.js    — QR encoder (verbatim from perils)
 js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
 js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners
@@ -81,9 +82,11 @@ human could see (see `AI.view()`).
 - The suite prints its slowest suites when a run is slow — start there rather than bisecting
   by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
   the same problem. Wait on a condition (`until`) rather than a fixed sleep.
-- The two renderers run CONCURRENTLY (`runRenderer`), each buffering its own rows and timings
-  and splicing them back in a fixed order, so a parallel run reports like a sequential one.
-  Anything shared between them (localStorage keys, the menu page) has to stay read-only.
+- There is ONE renderer. A second, Pixi-based one was kept for years as a "fallback for
+  devices without WebGL"; Pixi has been WebGL-only since v7, so it was never a fallback and
+  died on a black screen when it was called on. WebGL is now a stated requirement, said
+  plainly at boot. `runRenderer` still buffers its own rows/timings, which is what a second
+  renderer or viewport size would need to run alongside.
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page (both renderers) for input, camera, the writ, HUD layering, the back
@@ -91,12 +94,12 @@ human could see (see `AI.view()`).
   Screen positions in tests must come from `Render.project`/`toWorld`, never re-derived —
   a test that reimplements the projection tests itself, not the game.
 - Colors: gold=player, crimson=rival, green=Chaos, blue-white=Pattern. Don't drift.
-- `render.js` stays isolated: game logic never draws; drawing never mutates the world.
+- `render3d.js` stays isolated: game logic never draws; drawing never mutates the world.
 
 ## Common Tasks
 
 - **Add a building**: table entry in `const.js` (cost/up/effect) → handle in `world.js`
-  (spawn/aura/etc.) → sprite in `sprites.js` → card auto-appears in the build sheet →
+  (spawn/aura/etc.) → geometry in `render3d.js` `buildingModel` → card auto-appears →
   teach the AI when to want it (`ai.js` desired-counts) → `node sim.js`.
 - **Add a unit**: `const.js` stats → spawn source in `world.js` → sprite → sim.
 - **Add an heir**: personality entry in `ai.js` HEIRS block + menu entry in `ui.js`.

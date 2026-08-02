@@ -137,6 +137,18 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       NOT answering it. Colours follow a company's id, which never repeats: pennants used to
       be indexed by `buildings.indexOf(b)`, so every razed hall reshuffled the colours of the
       survivors. Commands: `build {co}`, `rally {co}`, and a new `assign {id, co}`.
+- [x] **The 2D renderer is gone.** Its only justification was as a fallback for devices
+      without WebGL — and it ran on PixiJS, WebGL-only since v7, so a device that could not
+      run 3D could not run it either: it died a little later on a black screen with
+      "CanvasRenderer is not yet implemented" (verified by simulating a no-WebGL device).
+      Meanwhile it was unreachable except via an undocumented `?r=2d`, cost every player a
+      650 KB vendor download, and taxed every feature twice — the fog memory, the writ, the
+      edge-of-sight rim, company pennants, construction shells and HUD layering were all
+      written twice this session alone.
+      Removed: `render.js` (724 lines), `sprites.js` (237, its only consumer), `pixi.min.js`.
+      WebGL is now a stated requirement with a plain message at boot instead of a black
+      screen. Suite 37s → 28s; download roughly halved.
+      Kept: `terrain.js`, which bakes the ground for the 3D renderer too.
 - [x] **The suite: 94s → ~37s.** Most of it was the renderer fix above (browser-test time is
       frame time). The rest: the two renderers now run concurrently, each buffering its rows
       and timings so the report still reads in a fixed order; fixed sleeps (13s of them)

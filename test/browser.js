@@ -52,7 +52,7 @@ async function match(browser, base, renderer) {
   const errs = [];
   pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
   pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
-  await pg.goto(`${base}/index.html${renderer === '2d' ? '?r=2d' : ''}`, { waitUntil: 'domcontentloaded' });
+  await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await ready(pg);
   await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
   await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
@@ -75,7 +75,7 @@ async function match(browser, base, renderer) {
   {
     suite('menu');
     const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
-    await pg.goto(`${base}/index.html?r=2d`, { waitUntil: 'domcontentloaded' });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await ready(pg);
     const hidden = (id) => pg.evaluate((i) => document.getElementById(i).classList.contains('hidden'), id);
     await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
@@ -118,10 +118,9 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
-  /* The two renderers are independent pages, so they run CONCURRENTLY — most of a browser run
-   * is frame time, and there are cores sitting idle while one of them paints. Each branch
-   * collects its own results and timings; they are spliced back in a fixed order afterwards,
-   * so a parallel run still reports exactly like a sequential one. */
+  /* There is one renderer now. This still buffers its own rows and timings rather than
+   * writing to the shared reporter — it costs nothing, and it is what a second renderer, or a
+   * second viewport size, would need in order to run alongside it. */
   async function runRenderer(r) {
     const rows = [], times = [];
     let group = '', markAt = Date.now();
@@ -367,21 +366,6 @@ async function match(browser, base, renderer) {
     ok('the sheet stacks above the HUD', layer.sheet > layer.hud, `#sheet z=${layer.sheet}`);
     ok('a power button is the topmost thing at its own centre', layer.hitInHud, `got ${layer.hitId}`);
 
-    /* ---------------- art coverage ---------------- *
-     * A missing sprite does not throw — render.js falls back to the Gate — so a work can
-     * quietly wear the wrong art for months. That is exactly how the rampart lost its wall. */
-    if (r === '2d') {
-      suite('2d · art');
-      const gaps = await pg.evaluate(() => {
-        const S = window.SPRITES, C = window.CONST;
-        return {
-          works: Object.keys(C.BUILDINGS).filter((bt) => !S.b[bt]),
-          units: Object.keys(C.UNITS).filter((ut) => !S.u || !S.u[ut])
-        };
-      });
-      ok('every building type has its own sprite', gaps.works.length === 0, gaps.works.join(', '));
-      ok('every unit type has its own sprite', gaps.units.length === 0, gaps.units.join(', '));
-    }
 
     /* ---------------- input routing ---------------- */
     suite(`${r} · input`);
@@ -724,8 +708,8 @@ async function match(browser, base, renderer) {
     return { rows, times };
   }
 
-  const done = await Promise.all([runRenderer('2d'), runRenderer('3d')]);
-  for (const d of done) record(d.rows, d.times);
+  const done = await runRenderer('3d');
+  record(done.rows, done.times);
 
   await browser.close();
   srv.close();

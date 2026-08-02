@@ -1,16 +1,19 @@
-/* render_select.js — picks the renderer before game.js loads.
- * 3D (Three.js, AoE2-pitch camera) by default; ?r=2d forces the Pixi painted-map
- * renderer; devices without working WebGL fall back to 2D automatically. */
+/* render_select.js — the renderer, and the one hard requirement for running at all.
+ *
+ * There used to be a second, Canvas-flavoured renderer here, kept as a fallback for devices
+ * without WebGL. It was never a fallback: it ran on PixiJS, which has been WebGL-only since
+ * v7, so a device that could not run the 3D renderer could not run that one either — it
+ * simply died a little later, on a black screen, with "CanvasRenderer is not yet
+ * implemented". Better to say plainly what the game needs. */
 (function (global) {
   'use strict';
-  const q = new URLSearchParams(location.search).get('r');
-  let use3d = q !== '2d' && !!global.THREE && !!global.Render3D;
-  if (use3d) {
+  let ok = !!global.THREE && !!global.Render3D;
+  if (ok) {
     try {
       const c = document.createElement('canvas');
-      use3d = !!(c.getContext('webgl2') || c.getContext('webgl'));
-    } catch (e) { use3d = false; }
+      ok = !!(c.getContext('webgl2') || c.getContext('webgl'));
+    } catch (e) { ok = false; }
   }
-  global.Render = use3d ? global.Render3D : global.Render2D;
-  global.RENDER_MODE = use3d ? '3d' : '2d';
+  global.Render = ok ? global.Render3D : null;
+  global.RENDER_MODE = ok ? '3d' : 'none';
 })(typeof window !== 'undefined' ? window : globalThis);
