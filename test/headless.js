@@ -205,6 +205,78 @@ suite('a Gate stands on a spring')
      `${pl.incomeRate.toFixed(1)} vs base ${base.toFixed(1)}`);
 }
 
+suite('two, three or four heirs')
+{
+  ok('Chaos owns no seat index a player could hold', C.CHAOS_ID < 0);
+  eq('four is the ceiling', C.MAX_PLAYERS, 4);
+  ok('every seat has a name', C.SEAT_NAMES.length >= C.MAX_PLAYERS);
+
+  for (const n of [2, 3, 4]) {
+    const w = World.createWorld(1000, n);
+    eq(`${n} heirs: that many players`, w.players.length, n);
+    eq(`${n} heirs: that many Seats`, w.map.cities.length, n);
+    const named = new Set(w.map.cities.map((id) => w.map.sites[id].name));
+    eq(`${n} heirs: each Seat named for its own`, named.size, n);
+    /* every Seat must reach every other, or somebody is playing a different match */
+    const stranded = NAV.audit(w.nav, w.map);
+    eq(`${n} heirs: nothing stranded`, stranded.length, 0, stranded.join(','));
+    let closest = Infinity;
+    for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+      const p = World.cityOf(w, a), q = World.cityOf(w, b);
+      closest = Math.min(closest, Math.hypot(p.x - q.x, p.y - q.y));
+    }
+    ok(`${n} heirs: no two Seats crowd each other`, closest > C.CLAIM.seat * 2,
+       `closest pair ${Math.round(closest)}`);
+    /* and each opens with a spring it can draw on, exactly as a duel does */
+    for (let pi = 0; pi < n; pi++) {
+      const cs = World.cityOf(w, pi);
+      const own = w.map.sites.filter((q) => q.kind === 'node' && Math.hypot(q.x - cs.x, q.y - cs.y) <= C.CLAIM.seat);
+      ok(`${n} heirs: seat ${pi} opens with a spring`, own.length > 0);
+    }
+    /* it runs */
+    for (let i = 0; i < 30 * 90; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    eq(`${n} heirs: still running after 90s`, w.winner, null);
+    ok(`${n} heirs: Chaos is on the board and owned by nobody`,
+       w.units.every((u) => u.owner === C.CHAOS_ID || (u.owner >= 0 && u.owner < n)));
+  }
+}
+
+suite('a Seat falls')
+{
+  /* a duel ends when a Seat falls; a free-for-all only loses an heir */
+  const topple = (w, pi) => {
+    const by = (pi + 1) % w.players.length;
+    w.players[pi].castleHp = 1;
+    w.players[by].essence = 99999; w.players[by].powers.trump = 0;
+    World.applyCommand(w, by, { c: 'power', k: 'trump' });
+    const u = w.units.find((q) => q.id === w.players[by].championId);
+    const cs = World.cityOf(w, pi);
+    u.x = cs.x; u.y = cs.y;
+    for (let i = 0; i < 30 * 25 && !w.players[pi].out && w.winner === null; i++) {
+      World.update(w, C.SIM_DT); w.events.length = 0;
+    }
+  };
+
+  const duel = World.createWorld(1000, 2);
+  topple(duel, 1);
+  eq('a duel ends on the first fall', duel.winner, 0);
+  eq('...by the castle', duel.winReason, 'castle');
+
+  const ffa = World.createWorld(1000, 4);
+  const b1 = ffa.players[3].buildings.length;
+  topple(ffa, 3);
+  ok('a fourth heir can fall', ffa.players[3].out);
+  eq('...without ending the match', ffa.winner, null);
+  eq('their works are gone', ffa.players[3].buildings.length, 0, `${b1} before`);
+  eq('and their men with them', ffa.units.filter((u) => u.owner === 3).length, 0);
+  topple(ffa, 2);
+  eq('a third can fall too', ffa.winner, null);
+  topple(ffa, 1);
+  eq('the last heir standing takes the throne', ffa.winner, 0);
+  eq('...by the castle', ffa.winReason, 'castle');
+  ok('the fallen stay fallen', ffa.players.filter((p) => p.out).length === 3);
+}
+
 suite('the Pattern is not upgraded')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
@@ -472,8 +544,11 @@ suite('remembered ground')
   ok('and nothing beyond them', count() < mask.g.length / 3, `${count()} of ${mask.g.length}`);
 
   /* march a column to a far site: the ground it crosses must be remembered */
-  const far = w.map.sites.filter((s) => s.kind !== 'city')
-    .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y))[3];
+  /* the nearest site the Seat cannot already SEE — asking the mask itself rather than
+   * assuming a rank in the distance order, which the map layout is free to change */
+  const far = w.map.sites.filter((s) => s.kind !== 'city' && !at(s.x, s.y))
+    .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y))[0];
+  ok('there is unknown ground to march to', !!far, far && far.name);
   ok('an unvisited place is unknown ground', !at(far.x, far.y), far.name);
   pl.essence = 99000; pl.powers.trump = 0;
   World.applyCommand(w, 0, { c: 'power', k: 'trump' });

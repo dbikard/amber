@@ -19,25 +19,30 @@
   /* ---------------- the world ----------------
    * Generated fresh, every match, by js/worldgen.js. No template, no mirror, no corridors —
    * and therefore no way to know where the other Seat stands until somebody walks there. */
-  function buildMap(seed) {
-    const gen = WG.build(seed, RNG);
+  function buildMap(seed, players) {
+    const gen = WG.build(seed, RNG, players);
     if (!gen) return null;
     for (const s of gen.sites) { s.lastHurt = -99; }
     return { sites: gen.sites, cities: gen.cities, nodes: gen.nodes,
              gen, skew: gen.skew, apart: gen.apart };
   }
 
-  function createWorld(seed) {
+  /* `players` is 2..4. Two is a duel and behaves exactly as it always did; more is a
+   * free-for-all, where toppling a Seat ELIMINATES that heir rather than ending the match,
+   * and the last one left takes the throne. */
+  function createWorld(seed, players) {
     const rng = RNG.make(seed >>> 0);
-    const map = buildMap(seed >>> 0);
+    const map = buildMap(seed >>> 0, players);
+    const seats = map.cities;
     const world = {
       seed: seed >>> 0, rng,
       t: 0, tick: 0,
       winner: null, winReason: null,
       map,
-      players: [0, 1].map(() => ({
+      players: seats.map(() => ({
         essence: C.START_ESSENCE,
         castleHp: C.CASTLE_HP,
+        out: false,             // toppled: still on the board as a ruin, but out of the match
         eco: 1,                 // income handicap: 1 = full strength (always 1 in a duel)
         /* COMPANIES. A standard is its own thing, not a property of a barracks: several halls
          * may muster into one company, which is what keeps the flag tray readable once you
@@ -62,7 +67,7 @@
       vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
     };
     world.nav = NAV.build(world.map.gen);
-    for (let pi = 0; pi < 2; pi++) {
+    for (let pi = 0; pi < world.players.length; pi++) {
       world.players[pi].banner = aimAt(world, { site: world.map.cities[pi] });
       exploreAround(world, pi);   // you know your own surroundings from the start
     }
@@ -78,7 +83,7 @@
   };
   /* which player, if any, already draws from this node */
   function nodeHolder(world, site) {
-    for (let pi = 0; pi < 2; pi++)
+    for (let pi = 0; pi < world.players.length; pi++)
       for (const b of world.players[pi].buildings)
         if (b.bt === 'gate' && !b.raise && b.node === site.id) return pi;
     return -1;
@@ -107,10 +112,10 @@
   }
   function clearOfWorks(world, x, y) {
     const need = C.BUILD.foot * 2 + C.BUILD.gap;
-    for (let pi = 0; pi < 2; pi++)
+    for (let pi = 0; pi < world.players.length; pi++)
       for (const b of world.players[pi].buildings)
         if (d2(x, y, b.x, b.y) < need * need) return false;
-    for (let pi = 0; pi < 2; pi++) {   // and never inside the Seat itself
+    for (let pi = 0; pi < world.players.length; pi++) {   // and never inside the Seat itself
       const c = cityOf(world, pi);
       if (d2(x, y, c.x, c.y) < C.CITY.seatR * C.CITY.seatR) return false;
     }
@@ -136,7 +141,7 @@
       if (inClaim(world, pi, x, y)) return busy;
       /* beyond the writ it must be a spring your troops hold and the enemy's do not */
       if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'presence';
-      if (world.units.some((u) => u.owner !== pi && u.owner !== 2 && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
+      if (world.units.some((u) => u.owner !== pi && u.owner !== C.CHAOS_ID && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
       return busy;
     }
     if (inClaim(world, pi, x, y)) return busy;
@@ -189,8 +194,8 @@
     return false;
   }
   function refreshVision(world) {
-    world.vis = [visionSources(world, 0), visionSources(world, 1)];
-    for (let pi = 0; pi < 2; pi++) exploreAround(world, pi);
+    world.vis = world.players.map((q, pi) => visionSources(world, pi));
+    for (let pi = 0; pi < world.players.length; pi++) exploreAround(world, pi);
   }
   function exploreAround(world, pi) {
     const src = world.vis ? world.vis[pi] : visionSources(world, pi);
@@ -202,7 +207,7 @@
     markSeen(pl.seen, src);
     /* the new fog rule: a rival's work is visible only while you can SEE it, and remembered
      * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
-    for (let o = 0; o < 2; o++) {
+    for (let o = 0; o < world.players.length; o++) {
       for (const b of world.players[o].buildings) {
         if (o === pi) { pl.ghosts[b.id] = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o }; continue; }
         if (seen(src, b.x, b.y)) pl.ghosts[b.id] = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o };
@@ -394,19 +399,19 @@
     /* per-owner, so a full army can never starve the muster of Chaos or of the other side */
     let mine = 0;
     for (const u of world.units) if (u.owner === owner) mine++;
-    if (mine >= (owner === 2 ? C.CAP.chaos : C.CAP.player)) return 0;
+    if (mine >= (owner === C.CHAOS_ID ? C.CAP.chaos : C.CAP.player)) return 0;
     const def = C.UNITS[kind];
-    const scale = owner === 2 ? C.CHAOS.hpScale(world.t) : 1;
-    const home = owner === 2 ? null : cityOf(world, owner);
+    const scale = owner === C.CHAOS_ID ? C.CHAOS.hpScale(world.t) : 1;
+    const home = owner === C.CHAOS_ID ? null : cityOf(world, owner);
     const u = {
       id: world.nextId++, owner, kind,
       x: (atX != null ? atX : home.x) + world.rng.range(-26, 26),
       y: (atY != null ? atY : home.y + (owner === 0 ? -60 : 60)) + world.rng.range(-16, 16),
       ox: world.rng.range(-24, 24), oy: world.rng.range(-24, 24),   // personal formation offset
       hp: def.hp * scale, maxHp: def.hp * scale,
-      dmg: def.dmg * (owner === 2 ? C.CHAOS.dmgScale(world.t) : 1),
+      dmg: def.dmg * (owner === C.CHAOS_ID ? C.CHAOS.dmgScale(world.t) : 1),
       cd: 0,
-      goal: goal != null ? goal : (owner === 2 ? aimAt(world, { site: world.map.cities[world.chaosParity++ % 2] }) : world.players[owner].banner),
+      goal: goal != null ? goal : (owner === C.CHAOS_ID ? aimAt(world, { site: world.map.cities[world.chaosParity++ % world.players.length] }) : world.players[owner].banner),
       co: co != null ? co : 0,   // the COMPANY it musters into; 0 = under the royal War Banner
       from: from != null ? from : -1   // the hall that raised it, so re-assigning one moves its men
     };
@@ -426,15 +431,17 @@
    * a city. Works are just places now, so a barracks out on the map is besieged exactly
    * like one in the court. */
   function acquire(world, u, radius) {
+    /* a fallen heir has nothing left to attack — and their Seat is a ruin, not a target */
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
     const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
     for (const v of world.units) {
       if (v.hp <= 0 || v.owner === u.owner) continue;
       consider(Math.sqrt(d2(u.x, u.y, v.x, v.y)), v, 'unit', v.x, v.y);
     }
-    for (let ci = 0; ci < 2; ci++) {
+    for (let ci = 0; ci < world.players.length; ci++) {
       if (ci === u.owner) continue;
       const tp = world.players[ci];
+      if (tp.out) continue;
       const cs = world.map.sites[world.map.cities[ci]];
       const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
       for (const b of tp.buildings)
@@ -456,7 +463,7 @@
       if (b.bt === 'shrine') pl.walking = false;
       if (C.BUILDINGS[b.bt].spawns) pruneCos(world, pi);
       /* a fallen mustering hall is a fallen standard: its company rallies to the banner */
-      delete world.players[0].ghosts[b.id]; delete world.players[1].ghosts[b.id];
+      for (const q of world.players) delete q.ghosts[b.id];
     } else if (world.t - (pl.slotAlert || -99) > 12) {
       pl.slotAlert = world.t;
       emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y });
@@ -471,13 +478,14 @@
     if (world.tick % 6 === 0 || !world.vis) refreshVision(world);   // 5 Hz vision refresh
 
     /* players: income, city buildings, powers, the walk.
-     * Alternate which seat is served first — otherwise player 0's towers always shoot
-     * before player 1's within a tick, and player 0 wins every simultaneous finish. The
-     * unit loop below has always done this; the player loop should too. */
-    const pFwd = world.tick % 2 === 0;
-    for (let k = 0; k < 2; k++) {
-      const pi = pFwd ? k : 1 - k;
+     * ROTATE which seat is served first — otherwise seat 0's towers always shoot before the
+     * others' within a tick, and seat 0 wins every simultaneous finish. With four of them a
+     * flip is not enough; the offset has to walk the whole ring. */
+    const np = world.players.length, off = world.tick % np;
+    for (let k = 0; k < np; k++) {
+      const pi = (k + off) % np;
       const pl = world.players[pi];
+      if (pl.out) continue;
       const city = cityOf(world, pi);
       let income = C.BASE_INCOME;
       let drain = 0;   // ACTUAL spend rate this tick — the HUD never lies again
@@ -581,7 +589,7 @@
                  world.map.sites[world.map.cities[0]];
       const n = C.CHAOS.count(t);
       emit(world, { e: 'rift', x: at.x, y: at.y });
-      for (let i = 0; i < n; i++) spawnUnit(world, 2, 'fiend', at.x, at.y);
+      for (let i = 0; i < n; i++) spawnUnit(world, C.CHAOS_ID, 'fiend', at.x, at.y);
       world.chaosNext = t + C.CHAOS.interval(t);
     }
     if (!world.surged && t > 600) { world.surged = true; emit(world, { e: 'surge' }); }
@@ -607,14 +615,14 @@
       const def = C.UNITS[u.kind];
       u.cd -= dt;
       /* the banner moves the army */
-      if (u.owner !== 2) {
+      if (u.owner !== C.CHAOS_ID) {
         const pl2 = world.players[u.owner];
         const co = u.co ? coOf(world, u.owner, u.co) : null;   // its company, if it still exists
         const want = co && co.rally ? co.rally : pl2.banner;
         if (u.goal !== want) u.goal = want;
       }
       /* garrisons of an open city still see farther out */
-      const home = u.owner !== 2 && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
+      const home = u.owner !== C.CHAOS_ID && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
       const foe = acquire(world, u, def.aggro + (home ? 140 : 0));
       if (foe) {
         const reach = def.range + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
@@ -627,11 +635,7 @@
               const tp = world.players[foe.t.pi];
               tp.castleHp -= u.dmg;
               emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y });
-              if (tp.castleHp <= 0) {
-                /* a player toppling the Seat wins; Chaos toppling it crowns the survivor */
-                win(world, u.owner === 2 ? 1 - foe.t.pi : u.owner, 'castle');
-                return;
-              }
+              if (tp.castleHp <= 0 && !tp.out) { if (topple(world, foe.t.pi, u.owner)) return; }
             }
             u.cd = def.atk;
             if (def.range > 40) emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
@@ -651,7 +655,7 @@
          * stands on that ground and an army standing with it simply vanishes under the
          * castle — which is what happened when the walls went and took the garrison's ring
          * with them. A stable per-soldier angle keeps the ring even instead of jostling. */
-        if (u.owner !== 2) {
+        if (u.owner !== C.CHAOS_ID) {
           const cs = cityOf(world, u.owner);
           if (d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR) {
             const ang = (u.id * 2.39996) % (Math.PI * 2);          // golden angle: no clumps
@@ -692,6 +696,25 @@
         world.units.splice(i, 1);
       }
     }
+  }
+
+  /* A Seat falls. In a duel that ends it. In a free-for-all it puts one heir OUT — their
+   * works and their men go with them, and the throne waits for whoever is left last. */
+  function topple(world, pi, by) {
+    const pl = world.players[pi];
+    pl.out = true; pl.castleHp = 0;
+    pl.buildings.length = 0;
+    pl.walking = false;
+    for (let i = world.units.length - 1; i >= 0; i--) if (world.units[i].owner === pi) world.units.splice(i, 1);
+    for (const q of world.players) for (const id of Object.keys(q.ghosts)) if (q.ghosts[id].owner === pi) delete q.ghosts[id];
+    emit(world, { e: 'fall', pi, by: by === C.CHAOS_ID ? -1 : by });
+    const left = world.players.map((q, k) => (q.out ? -1 : k)).filter((k) => k >= 0);
+    if (left.length <= 1) {
+      /* the last heir standing takes it — and if Chaos took the last two, nobody does */
+      win(world, left.length ? left[0] : (by === C.CHAOS_ID ? -1 : by), 'castle');
+      return true;
+    }
+    return false;
   }
 
   function win(world, winner, reason) {

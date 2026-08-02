@@ -71,7 +71,7 @@
     hill: 0.635,        // above this is high ground
     cliff: 0.755,       // …and above this, impassable crag
     minLand: 0.34,      // a world whose largest landmass is smaller than this is rerolled
-    nodes: 14, nodesMin: 9, nodeGap: 300, springNear: 200, springFar: 400,     // springs: how many, and how far apart
+    nodes: 14, nodesMin: 9, nodeGap: 300, springNear: 200, springFar: 400, seatApartMulti: 0.62,     // springs: how many, and how far apart
     vantages: 8, vantGap: 240,
     inland: 300,        // a Seat may not stand closer than this to the edge of the world
     seatRoom: 300,      // buildable cells required around a Seat
@@ -79,6 +79,14 @@
     maxSkew: 6,         // reject a pairing whose two sides differ by more than this
     relief: 150         // world units of height between the lowest water and the highest crag
   };
+  /* whose Seat is whose, by index — up to four now */
+  CONST.SEAT_NAMES = ['Corwin', 'Eric', 'Bleys', 'Fiona'];
+  CONST.MAX_PLAYERS = 4;
+  /* Chaos is not a player and never had a seat, but it owned unit index 2 — which was safe
+   * only while there were exactly two players. It now sits somewhere no player index can
+   * reach, so a four-way match cannot mistake the third heir for the black road. */
+  CONST.CHAOS_ID = -1;
+
   CONST.SITE_NAMES = {
     node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn',
            'the Deep Font', 'the Still Water', 'the Glass Rill', 'the Cold Cistern',

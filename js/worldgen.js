@@ -180,7 +180,7 @@
   /* ---------------- choosing the two Seats ----------------
    * This is where fairness lives now. Score many far-apart pairs on what each side has in
    * reach and keep the pair whose two sides differ least. */
-  function placeCities(land, reach, nodes, rng) {
+  function placeCities(land, reach, nodes, rng, want) {
     const { W, H, cw, terra } = land, n = W * H;
     const seats = [];
     for (let i = 0; i < n; i++) {
@@ -192,7 +192,7 @@
       if (roomAt(land, i, C.CITY.r + 60) < C.WORLD.seatRoom) continue;
       seats.push(i);
     }
-    if (seats.length < 2) return null;
+    if (seats.length < want) return null;
 
     const near = (p, r) => {
       let k = 0, r2 = r * r;
@@ -235,32 +235,48 @@
       usableCache.set(i, k);
       return k;
     };
-    const want2 = C.WORLD.seatApart * C.WORLD.seatApart;
+    /* Four Seats cannot stand as far apart as two can on the same ground, so what counts as
+     * "far enough" scales with how many there are. */
+    const apart = C.WORLD.seatApart * (want > 2 ? C.WORLD.seatApartMulti : 1);
+    const apart2 = apart * apart;
+    /* the three things a Seat is judged on, and the one that disqualifies it outright */
+    const traits = (i, p) => {
+      const u = usable(i, p);
+      return u < 1 ? null : [u, near(p, 900), roomAt(land, i, 460)];
+    };
+    const spread = (xs) => Math.max(...xs) - Math.min(...xs);
     let best = null;
     for (let tries = 0; tries < 900; tries++) {
-      const a = seats[Math.floor(rng.next() * seats.length)];
-      const b = seats[Math.floor(rng.next() * seats.length)];
-      if (a === b) continue;
-      const pa = cellXY(land, a), pb = cellXY(land, b);
-      const d2 = (pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2;
-      if (d2 < want2) continue;
-      /* what each Seat actually has: springs close, springs at arm's length, room to build */
-      const fa = [usable(a, pa), near(pa, 900), roomAt(land, a, 460)];
-      const fb = [usable(b, pb), near(pb, 900), roomAt(land, b, 460)];
-      /* a Seat with no spring it can actually DRAW ON is dead, however many it can see */
-      /* -1 means a spring sits right on top of that Seat — reject the pair outright */
-      if (fa[0] < 1 || fb[0] < 1) continue;
-      const skew = Math.abs(fa[0] - fb[0]) * 3 + Math.abs(fa[1] - fb[1])
-                 + Math.abs(fa[2] - fb[2]) / 60;
-      const far = Math.sqrt(d2);
+      /* Grow a SET greedily from a random first Seat: each next one must stand clear of every
+       * Seat already chosen. Scoring whole sets is what makes four of them fair to each other
+       * rather than merely fair in pairs. */
+      const picked = [], pts = [], fs = [];
+      for (let guard = 0; picked.length < want && guard < 220; guard++) {
+        const i = seats[Math.floor(rng.next() * seats.length)];
+        if (picked.includes(i)) continue;
+        const p = cellXY(land, i);
+        if (pts.some((q) => (p.x - q.x) ** 2 + (p.y - q.y) ** 2 < apart2)) continue;
+        const f = traits(i, p);
+        if (!f) continue;
+        picked.push(i); pts.push(p); fs.push(f);
+      }
+      if (picked.length < want) continue;
+      /* fairness is the SPREAD across all of them, not the gap between two */
+      const skew = spread(fs.map((f) => f[0])) * 3 + spread(fs.map((f) => f[1]))
+                 + spread(fs.map((f) => f[2])) / 60;
+      let far = Infinity;
+      for (let a = 0; a < pts.length; a++)
+        for (let b = a + 1; b < pts.length; b++)
+          far = Math.min(far, Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y));
       const score = skew * 10 - far / 260;              // fair first, far second
-      if (!best || score < best.score) best = { score, a, b, pa, pb, skew, far };
+      if (!best || score < best.score) best = { score, seats: picked, pts, skew, far };
     }
     return best;
   }
 
   /* ---------------- the whole world ---------------- */
-  G.build = function (seed, RNG) {
+  G.build = function (seed, RNG, players) {
+    const want = Math.max(2, Math.min(4, players || 2));
     for (let attempt = 0; attempt < 24; attempt++) {
       const s = (seed + attempt * 7919) >>> 0;
       const rng = RNG.make(s);
@@ -271,17 +287,16 @@
       const nodes = placeNodes(land, reach, rng);
       if (nodes.length < C.WORLD.nodesMin) continue;
       const vants = placeVantages(land, reach, nodes, rng);
-      const seats = placeCities(land, reach, nodes, rng);
+      const seats = placeCities(land, reach, nodes, rng, want);
       if (!seats || seats.skew > C.WORLD.maxSkew) continue;
 
-      /* sites: the two Seats, then springs, then high ground */
+      /* sites: the Seats, then springs, then high ground */
       const sites = [];
       const add = (x, y, kind) => {
         sites.push({ id: sites.length, x, y, kind, name: null, lastHurt: -99 });
         return sites.length - 1;
       };
-      const c0 = add(seats.pa.x, seats.pa.y, 'city');
-      const c1 = add(seats.pb.x, seats.pb.y, 'city');
+      for (const p of seats.pts) add(p.x, p.y, 'city');
       for (const p of nodes) add(p.x, p.y, 'node');
       for (const p of vants) add(p.x, p.y, 'vantage');
 
@@ -305,18 +320,17 @@
           land.elev[i] = lvl; land.terra[i] = T.PLAIN;
         }
       };
-      flatten(seats.pa); flatten(seats.pb);
+      for (const p of seats.pts) flatten(p);
       /* and a spring must be standable, not a rock */
       for (const p of nodes) {
         const i = Math.floor(p.y / land.cw) * land.W + Math.floor(p.x / land.cw);
         if (!G.BUILDABLE[land.terra[i]]) land.terra[i] = T.PLAIN;
       }
 
-      /* the flattening may have joined or cut things: the Seats must still reach each other */
-      const startA = Math.floor(seats.pa.y / land.cw) * land.W + Math.floor(seats.pa.x / land.cw);
-      const fin = floodFrom(land, startA);
+      /* the flattening may have joined or cut things: EVERY Seat must still reach the others */
       const cellOf = (p) => Math.floor(p.y / land.cw) * land.W + Math.floor(p.x / land.cw);
-      if (!fin.seen[cellOf(seats.pb)]) continue;
+      const fin = floodFrom(land, cellOf(seats.pts[0]));
+      if (seats.pts.some((p) => !fin.seen[cellOf(p)])) continue;
       const live = sites.filter((st) => fin.seen[cellOf(st)]);
       if (live.length < sites.length - 2) continue;      // too much stranded: try another world
       const kept = [];
@@ -336,8 +350,7 @@
           : (st.kind === 'node' ? 'a Spring of Shadow' : 'a High Place');
       }
       const cityIds = kept.filter((x) => x.kind === 'city').map((x) => x.id);
-      kept[cityIds[0]].name = 'the City of Corwin';
-      kept[cityIds[1]].name = 'the City of Eric';
+      cityIds.forEach((id, k) => { kept[id].name = 'the City of ' + C.SEAT_NAMES[k]; });
 
       return {
         sites: kept, cities: cityIds,

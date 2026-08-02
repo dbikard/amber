@@ -40,20 +40,25 @@
   /* ---------------- blockers ----------------
    * Nothing a player builds bars a path today — walls come back with the piece-by-piece
    * implementation. The mask survives as an empty layer so the field cache, the version
-   * counter and every caller keep their shape for that work. */
+   * counter and every caller keep their shape for that work.
+   * One layer per player, plus one for Chaos, which has no seat and no index of its own. */
   function masksFor(nav, world) {
     if (nav.maskVer === world.navVersion) return nav.masks;
     const n = nav.W * nav.H;
-    nav.masks = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
+    nav.masks = [];
+    for (let i = 0; i <= world.players.length; i++) nav.masks.push(new Uint8Array(n));
     nav.maskVer = world.navVersion;
     nav.fields.clear();
     return nav.masks;
   }
+  /* Chaos rides the last layer; everyone else rides their own */
+  const maskOf = (nav, world, owner) =>
+    masksFor(nav, world)[owner >= 0 ? owner : world.players.length];
 
   /* ---------------- flow fields (Dijkstra out from the goal) ---------------- */
   const SQ2 = Math.SQRT2;
   function buildField(nav, world, owner, goal) {
-    const W = nav.W, H = nav.H, n = W * H, cost = nav.cost, mask = masksFor(nav, world)[owner];
+    const W = nav.W, H = nav.H, n = W * H, cost = nav.cost, mask = maskOf(nav, world, owner);
     const elev = nav.elev;
     const dist = new Float32Array(n).fill(Infinity);
     /* binary heap of cell indices keyed by tentative distance */
