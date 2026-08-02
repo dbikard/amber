@@ -488,7 +488,16 @@
     if (b.hp <= 0) {
       emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
       pl.buildings.splice(i, 1);
-      if (b.bt === 'shrine') pl.walking = false;
+      if (b.bt === 'shrine') {
+        /* throwing the Shrine down tears the walker off the Pattern and costs them ground
+         * they have already paid for — the whole point of going after one */
+        pl.walking = false;
+        if (pl.pattern > 0) {
+          pl.pattern = Math.max(0, pl.pattern - C.BUILDINGS.shrine.breakLoss);
+          while (pl.alertIdx > 0 && pl.pattern < C.PATTERN_ALERTS[pl.alertIdx - 1].at) pl.alertIdx--;
+          emit(world, { e: 'shrinefell', pi, x: b.x, y: b.y, pattern: pl.pattern });
+        }
+      }
       if (C.BUILDINGS[b.bt].spawns) pruneCos(world, pi);
       /* a fallen mustering hall is a fallen standard: its company rallies to the banner */
       for (const q of world.players) delete q.ghosts[b.id];
@@ -585,26 +594,37 @@
       if (pl.powers.storm > 0) pl.powers.storm -= dt;
       if (pl.powers.trump > 0) pl.powers.trump -= dt;
 
+      const sdef = C.BUILDINGS.shrine;
+      let channelled = false;
       if (pl.walking) {
         const shrine = pl.buildings.find((b) => b.bt === 'shrine');
         if (!shrine) pl.walking = false;
         else {
-          const def = C.BUILDINGS.shrine;
-          const want = def.drain[shrine.level - 1] * dt;
+          const want = sdef.drain[shrine.level - 1] * dt;
           /* pay what you can and walk that far. All-or-nothing froze a poor walker at 1%
            * forever — income 4/s against a drain of 12/s meant the Pattern, the game's
            * absolute clock, simply stopped ticking. */
           const pay = Math.min(want, pl.essence);
           if (pay > 0) {
+            channelled = true;
             pl.essence -= pay;
             pl.drainRate += pay / dt;   // actual, not theoretical
-            pl.pattern += def.rate[shrine.level - 1] * dt * (pay / want);
+            pl.pattern += sdef.rate[shrine.level - 1] * dt * (pay / want);
             while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
               emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
             }
             if (pl.pattern >= 100) { win(world, pi, 'pattern'); return; }
           }
         }
+      }
+      /* THE LINES FADE WHEN NOBODY WALKS THEM. A walk is a thing you hold, not a balance you
+       * bank: stop channelling — by choice, by poverty, or because somebody threw your Shrine
+       * down — and the Pattern lets go of you. Without this the Shrine was a savings account
+       * and an assault on a walker bought the attacker nothing they could not simply rebuy. */
+      if (!channelled && pl.pattern > 0) {
+        pl.pattern = Math.max(0, pl.pattern - sdef.decay * dt);
+        /* the alerts speak again if they climb back past the mark */
+        while (pl.alertIdx > 0 && pl.pattern < C.PATTERN_ALERTS[pl.alertIdx - 1].at) pl.alertIdx--;
       }
     }
 
@@ -760,6 +780,6 @@
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf,
-                   newSeenMask, markSeen };
+                   newSeenMask, markSeen, hurtBuilding };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

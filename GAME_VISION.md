@@ -24,8 +24,11 @@ open along it and spew fiends at both sides, escalating until someone wins — t
    conditions. Chaos is the *price of the best ground*, not a doomsday timer (see
    `OPEN_WORLD_PLAN.md` §2). The Pattern is the absolute clock: if nobody attacks, someone
    walks and wins, so no match can draw.
-4. **The walk is a declaration.** Starting the Pattern walk is *revealed to the rival* —
-   the ultimate greed play. It forces the defender to attack.
+4. **The walk is a declaration you must keep making.** Starting the Pattern walk is
+   *revealed to the rival* — the ultimate greed play. It forces the defender to attack, and
+   attacking has to be worth it: the lines **fade** whenever nobody is channelling, and
+   throwing the Shrine down tears the walker off the Pattern and costs them ground they had
+   already paid for. A walk is a thing you hold under fire, never a balance you bank.
 5. **The AI heirs are the content.** Each rival sibling is a distinct strategy personality;
    the single-player campaign is the succession ladder through the family.
 

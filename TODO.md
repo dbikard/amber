@@ -275,6 +275,27 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **A walk is held, not banked.** Reported from play: the Pattern is now winnable by hand,
+      but breaking the rival's Seat — or their Shrine — still is not. Both halves were real.
+      Progress was PERMANENT the instant it was bought, so the Shrine was a savings account:
+      walk while rich, stop while poor, and nothing already paid for was ever at risk. Which
+      is exactly why razing a rival's Shrine felt pointless — it cost them 380 essence and the
+      time to raise another, and not one point of the walk.
+      Three changes, in the order they matter:
+      - the lines **fade** whenever nobody is channelling (`decay` 0.05 %/s), so a pause costs
+        you and poverty costs you. It is a cost, not a reset: a minute of standing still gives
+        back 3 points, not the walk.
+      - throwing the Shrine down tears the walker off the Pattern AND takes `breakLoss` = 22
+        points with it, announced to both sides. The assault is now the answer it looked like.
+      - and it is a heavier commitment: drain 24 → 32/s, rate 0.22 → 0.175 %/s — ~9.5 minutes
+        and ~18k essence at full pay, up from ~7.6 minutes and ~10.9k.
+      Measured with `node sim.js`: the Pattern went from the DEFAULT route to a minority one
+      without vanishing. benedict mirror [castle:11 pattern:13] → [castle:17 pattern:7], med
+      11.9m → 14.8m; bleys/julian [pattern:14 castle:10] → [pattern:10 castle:14], med 25.0m
+      → 28.5m; greedy mirror unchanged at 3.9m; no draws at the cap in either.
+      A first pass at drain 34 / rate 0.155 was measured and pulled back: it cut the mirror to
+      4 Pattern wins in 24 and put a draw back on the board at the 45-minute cap, which is the
+      anti-stall failing.
 - [x] **The gold banner outranks every company standard.** Reported twice — first as "the main
       yellow flag sometimes fails to direct all troops", which I could not reproduce, and then
       as the design it should have been. Both were the same thing: the royal War Banner moved

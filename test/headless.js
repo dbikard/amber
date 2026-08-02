@@ -450,6 +450,66 @@ suite('the Pattern is not upgraded')
      `${crawled.toFixed(3)}% in a second`);
 }
 
+/* A WALK IS HELD, NOT BANKED. Progress used to be permanent the instant it was bought, which
+ * made the Shrine a savings account — walk when rich, stop when poor, and nothing already paid
+ * for was ever at risk. It also made an assault on a walker pointless: razing the Shrine cost
+ * them 380 essence and the time to raise another, and not one point of the walk. */
+suite('the lines fade')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  const def = C.BUILDINGS.shrine;
+  pl.essence = 999999;
+  w.chaosNext = 1e9;   // this is about the walk, not about who happens to raze the Shrine
+  let at = null;
+  for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+    for (let a = 0; a < 40 && !at; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 0, x, y, 'shrine') === null) at = { x, y };
+    }
+  ok('a Shrine stands', !!at && raise(w, 0, at.x, at.y, 'shrine').ok);
+  const sh = pl.buildings.find((b) => b.bt === 'shrine');
+
+  World.applyCommand(w, 0, { c: 'walk', on: true });
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const walked = pl.pattern;
+  ok('a minute of walking gets you somewhere', walked > 5, `${walked.toFixed(1)}%`);
+
+  /* stop, and the Pattern lets go */
+  World.applyCommand(w, 0, { c: 'walk', on: false });
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const faded = walked - pl.pattern;
+  near('a minute of standing still gives some of it back', faded, def.decay * 60, 0.2,
+       `lost ${faded.toFixed(2)}% of ${walked.toFixed(1)}%`);
+  ok('but it does not evaporate — a pause is a cost, not a reset', pl.pattern > walked * 0.5,
+     `${pl.pattern.toFixed(1)}% left`);
+
+  /* and it never runs past zero */
+  pl.pattern = 0.01;
+  for (let i = 0; i < 30 * 10; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('the walk cannot go negative', pl.pattern, 0);
+
+  /* THE ASSAULT. Throwing the Shrine down tears the walker off the Pattern and costs them
+   * ground they had already paid for — the whole reason to go after one. */
+  pl.pattern = 60;
+  World.applyCommand(w, 0, { c: 'walk', on: true });
+  World.update(w, C.SIM_DT); w.events.length = 0;
+  ok('the walk is under way again', pl.walking);
+  World.hurtBuilding(w, 0, sh.id, sh.hp + 1);
+  ok('the Shrine is thrown down', !pl.buildings.some((b) => b.bt === 'shrine'));
+  ok('...which tears the walker off the Pattern', !pl.walking);
+  near('...and costs them what they had paid for', 60 - pl.pattern, def.breakLoss, 0.5,
+       `${pl.pattern.toFixed(1)}% left of 60%`);
+  ok('the loss is announced', w.events.some((e) => e.e === 'shrinefell' && e.pi === 0),
+     w.events.map((e) => e.e).join(','));
+
+  /* rebuilding is not a full refund: the ground lost stays lost */
+  w.events.length = 0;
+  pl.essence = 999999;
+  ok('a new Shrine can be raised', raise(w, 0, at.x, at.y, 'shrine').ok);
+  ok('but the walk resumes from where it was left, not from where it stood',
+     pl.pattern < 60 - def.breakLoss + 1, `${pl.pattern.toFixed(1)}%`);
+}
+
 suite('companies')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);

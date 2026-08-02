@@ -304,6 +304,11 @@
       }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
       else if (ev.e === 'hurtcity') { if (ev.pi === game.viewer) UI.banner('The enemy is inside your city!', 'warn'); }
+      /* the Shrine falling is the single biggest thing an assault can do — say what it cost */
+      else if (ev.e === 'shrinefell') UI.banner(ev.pi === game.viewer
+        ? '✴ Your Shrine is thrown down — the Pattern lets go of you (' + Math.round(ev.pattern) + '%)'
+        : '✴ ' + game.names[ev.pi] + ' is torn off the Pattern — ' + Math.round(ev.pattern) + '% left',
+        ev.pi === game.viewer ? 'warn' : 'alert')
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
     }
   }

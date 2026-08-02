@@ -157,10 +157,18 @@
     /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk
      * is meant to be a commitment you pay for in essence you are not spending on an army —
      * an upgrade path only made it cheaper AND faster, so it was never a commitment at all.
-     * drain = essence/sec while walking, rate = %/sec: ~7.6 minutes and ~10.9k essence. */
+     *
+     * A WALK MUST BE HELD, NOT SAVED UP. Progress used to be permanent the moment it was
+     * bought, which made the Shrine a savings account: walk whenever you happen to be rich,
+     * stop when you are not, and nothing you had already paid for was ever at risk. That is
+     * why breaking a rival's Shrine felt pointless — it cost them 380 essence and the time to
+     * raise another, and not one point of the walk. Now the lines FADE whenever nobody is
+     * channelling (`decay`, %/sec), and throwing the Shrine down costs the walker `breakLoss`
+     * points outright. An assault on a walker is now the answer it always looked like.
+     * drain = essence/sec while walking, rate = %/sec: ~9.5 minutes and ~18k essence. */
     shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 450, raise: 26,
-                drain: [24], rate: [0.22],
-                blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED, and it is expensive.' }
+                drain: [32], rate: [0.175], decay: 0.05, breakLoss: 22,
+                blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
 
