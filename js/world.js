@@ -427,7 +427,8 @@
     /* per-owner, so a full army can never starve the muster of Chaos or of the other side */
     let mine = 0;
     for (const u of world.units) if (u.owner === owner) mine++;
-    if (mine >= (owner === C.CHAOS_ID ? C.CAP.chaos : C.CAP.player)) return 0;
+    const cap = owner === C.CHAOS_ID ? C.CAP.chaos : C.CAP.player;
+    if (cap > 0 && mine >= cap) return 0;
     const def = C.UNITS[kind];
     const scale = owner === C.CHAOS_ID ? C.CHAOS.hpScale(world.t) : 1;
     const home = owner === C.CHAOS_ID ? null : cityOf(world, owner);
@@ -455,6 +456,33 @@
       emit(world, { e: 'die', x: victim.x, y: victim.y, kind: victim.kind, owner: victim.owner });
     }
   }
+  /* ---------------- who is near whom ----------------
+   * Target acquisition used to walk EVERY unit for every unit, once a tick. That is fine at
+   * a hundred men and quadratic at a thousand — and the muster cap was the only thing keeping
+   * the number small. A uniform grid rebuilt once a tick turns it into a look at the nine
+   * cells around you, which is what lets the cap go. The cell is the widest aggro on the
+   * board, so the nine cells always cover the whole search radius. */
+  const BIN = 280;
+  function rebin(world) {
+    const bins = world.bins || (world.bins = new Map());
+    bins.clear();
+    for (const v of world.units) {
+      if (v.hp <= 0) continue;
+      const k = ((v.y / BIN) | 0) * 100003 + ((v.x / BIN) | 0);
+      const cell = bins.get(k);
+      if (cell) cell.push(v); else bins.set(k, [v]);
+    }
+  }
+  /* every live unit within `radius` of a point, through the same grid. The visitor may not
+   * add or remove units — collect first, act after, as the splash does. */
+  function forNear(world, x, y, radius, fn) {
+    const gx = (x / BIN) | 0, gy = (y / BIN) | 0, reach = Math.max(1, Math.ceil(radius / BIN));
+    for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+      const cell = world.bins.get((gy + dy) * 100003 + (gx + dx));
+      if (!cell) continue;
+      for (const v of cell) if (v.hp > 0) fn(v);
+    }
+  }
   /* nearest hostile target within radius: units, any standing work, and the Seat-tower at
    * a city. Works are just places now, so a barracks out on the map is besieged exactly
    * like one in the court. */
@@ -462,9 +490,16 @@
     /* a fallen heir has nothing left to attack — and their Seat is a ruin, not a target */
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
     const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
-    for (const v of world.units) {
-      if (v.hp <= 0 || v.owner === u.owner) continue;
-      consider(Math.sqrt(d2(u.x, u.y, v.x, v.y)), v, 'unit', v.x, v.y);
+    const gx = (u.x / BIN) | 0, gy = (u.y / BIN) | 0;
+    /* a radius wider than one cell (the Seat's own garrison sees further) needs a wider ring */
+    const reach = Math.max(1, Math.ceil(radius / BIN));
+    for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+      const cell = world.bins.get((gy + dy) * 100003 + (gx + dx));
+      if (!cell) continue;
+      for (const v of cell) {
+        if (v.hp <= 0 || v.owner === u.owner) continue;
+        consider(Math.sqrt(d2(u.x, u.y, v.x, v.y)), v, 'unit', v.x, v.y);
+      }
     }
     for (let ci = 0; ci < world.players.length; ci++) {
       if (ci === u.owner) continue;
@@ -513,6 +548,10 @@
     world.t += dt; world.tick++;
     const t = world.t;
     if (world.tick % 6 === 0 || !world.vis) refreshVision(world);   // 5 Hz vision refresh
+    /* one pass over the army, so every "what is near me" this tick is a look at nine cells
+     * instead of a walk of the whole board. Men mustered DURING the tick are not in it and
+     * are simply unseen for a thirtieth of a second, which nothing can tell. */
+    rebin(world);
 
     /* players: income, city buildings, powers, the walk.
      * ROTATE which seat is served first — otherwise seat 0's towers always shoot before the
@@ -553,9 +592,14 @@
           b.cd -= dt;
           if (b.cd <= 0) {
             if (b.paid >= price - 1e-6) {
-              b.paid -= price;
-              spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.co, b.id);
-              b.cd += per;
+              /* A RECRUIT REFUSED IS A RECRUIT UNPAID. spawnUnit turns men away at the cap,
+               * and the price was being taken anyway — an army standing at its ceiling paid
+               * a measured 6 essence a second for soldiers who never appeared. Take the
+               * money only when a man actually walks out of the hall. */
+              if (spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.co, b.id)) {
+                b.paid -= price;
+                b.cd += per;
+              } else b.cd = 0.5;   // full up: try again shortly, and keep the war chest
             } else b.cd = 0;   // timer ready; the recruit marches the moment he's paid
           }
         } else if (b.bt === 'tower') {
@@ -563,21 +607,22 @@
           if (b.cd <= 0) {
             const st = towerStats(b);
             let best = null, bd = st.range * st.range;
-            for (const u of world.units) {
-              if (u.hp <= 0 || u.owner === pi) continue;
+            forNear(world, sp.x, sp.y, st.range, (u) => {
+              if (u.owner === pi) return;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
               if (dd < bd) { bd = dd; best = u; }
-            }
+            });
             if (best) {
               hurt(world, best, st.dmg, pi);
               /* the cannon answers the column, not the man: the burst falls off away
                * from the ball, so a crowd bleeds but no single foe dies to the splash */
               if (st.splash > 0 && st.splashDmg > 0) {
-                const r2 = st.splash * st.splash;
-                for (const u of world.units) {
-                  if (u.hp <= 0 || u.owner === pi || u === best) continue;
-                  if (d2(u.x, u.y, best.x, best.y) < r2) hurt(world, u, st.splashDmg, pi);
-                }
+                const r2 = st.splash * st.splash, hits = [];
+                forNear(world, best.x, best.y, st.splash, (u) => {
+                  if (u.owner === pi || u === best) return;
+                  if (d2(u.x, u.y, best.x, best.y) < r2) hits.push(u);
+                });
+                for (const u of hits) hurt(world, u, st.splashDmg, pi);
               }
               emit(world, { e: 'shot', pi, id: b.id, x: b.x, y: b.y, to: { x: best.x, y: best.y }, br: b.br || null, splash: st.splash });
               b.cd = st.atk;
@@ -677,11 +722,15 @@
           : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
         if (foe.d <= reach) {
           if (u.cd <= 0) {
+            /* an Engine's blow is made for stone: `siege` multiplies it against a work or a
+             * Seat and against nothing else, which is what makes the Works a siege train
+             * rather than simply better soldiers */
+            const wall = u.dmg * (def.siege || 1);
             if (foe.kind === 'unit') hurt(world, foe.t, u.dmg, u.owner);
-            else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, u.dmg);
+            else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, wall);
             else if (foe.kind === 'tower') {
               const tp = world.players[foe.t.pi];
-              tp.castleHp -= u.dmg;
+              tp.castleHp -= wall;
               emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y });
               if (tp.castleHp <= 0 && !tp.out) { if (topple(world, foe.t.pi, u.owner)) return; }
             }

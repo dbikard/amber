@@ -114,10 +114,13 @@ human could see (see `AI.view()`).
 
 ## Common Tasks
 
-- **Add a building**: table entry in `const.js` (cost/up/effect) → handle in `world.js`
-  (spawn/aura/etc.) → geometry in `render3d.js` `buildingModel` → card auto-appears →
-  teach the AI when to want it (`ai.js` desired-counts) → `node sim.js`.
-- **Add a unit**: `const.js` stats → spawn source in `world.js` → sprite → sim.
+- **Add a building**: table entry in `const.js` (cost/up/effect) + `BUILD_ORDER_UI` → handle
+  in `world.js` (spawn/aura/etc.) → geometry in `render3d.js` `buildingModel` → card
+  auto-appears → teach the AI when to want it (`ai.js` plans/upPref, and the `rear` set if it
+  is economy rather than a fighting position) → `node sim.js`.
+- **Add a unit**: `const.js` `UNITS` stats → spawn source in `world.js` → a case in
+  `render3d.js` `unitGeo` → sim. The renderer buckets by every key in `UNITS`, so a kind with
+  no geometry silently draws as a soldier — add the case.
 - **Add an heir**: personality entry in `ai.js` HEIRS block + menu entry in `ui.js`.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an

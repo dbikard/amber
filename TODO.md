@@ -275,6 +275,33 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **No ceiling on the muster, and a Siege Works to spend on.** The first chronicle from
+      real play said it plainly: army pinned at exactly 110 from minute six, **21,966 essence
+      banked** at the end, both Seats at 100% for seventeen of seventeen minutes, 59 works
+      razed and 26 lost. The treasury had stopped being a decision by minute four, because
+      every tap it could flow through was shut: the muster capped, and the masons rate-limit
+      works to ~14.6 essence/s against an income of 50.
+      Found on the way and fixed: **a hall at the cap still CHARGED for recruits `spawnUnit`
+      turned away** — measured at 6 essence a second, silently. The price is taken only when
+      a man walks out of the hall.
+      The cap was load-bearing for performance, so that went first. Target acquisition walked
+      every unit for every unit — fine at a hundred, quadratic at a thousand — and is now a
+      look at the nine grid cells around you (`rebin`/`forNear`, also used by towers and by
+      cannon splash). The renderer's instance buffers were a fixed 260, which past the cap is
+      a *silent truncation*, and now grow in doublings; and its "forget the dead" pass was
+      `units.some()` per remembered id, the one place the renderer went quadratic. Measured:
+      sim 4.55 → 1.89 ms/tick at 1200 men (6% of realtime), frame cost at 1400 down 1.8×,
+      fogged snapshot 27 KB against a 120 KB budget. Played out with no cap, armies settle at
+      **125-239 a side** — the economy is the brake, exactly as hoped.
+      **The Siege Works** (300, mustering Engines) is the other half. A Seat is 2500 hit
+      points behind towers and men are a poor tool for stone. An Engine is slow, short-ranged,
+      half a soldier in a fight at four times the price — and `siege: 14` against a work or a
+      Seat, which is seven soldiers' worth of stone-breaking. It arrives escorted or not at
+      all. Julian, Bleys, Corwin and Benedict all reach for one.
+      `node sim.js`, before → after: **bleys/julian 28.5m → 12.2m and 25% → 58%** — the turtle
+      can now be broken, which was the whole complaint; benedict mirror 14.8m → 15.2m; greedy
+      mirror unchanged. Two timeouts appeared across 96 games where there had been none —
+      worth watching, not yet a stall.
 - [x] **The chronicle** (`js/record.js`, headless-safe). Balance arguments are settled by
       `node sim.js`, which plays bots — a match a HUMAN played left no trace at all, so every
       report from play had to be re-derived from first principles. A match now writes itself

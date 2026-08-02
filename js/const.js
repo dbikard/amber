@@ -148,6 +148,14 @@
     barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360, raise: 13,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },
+    /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
+     * hit points behind towers — so "win by force" meant grinding a rival's outworks forever
+     * while neither Seat took a scratch. An Engine is slow, fragile in a fight and useless at
+     * holding ground; against a work or a Seat it is worth four of the men it costs. It has
+     * to be escorted, which is the point: the Works turn a war chest into a threat. */
+    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 380, raise: 20,
+                spawns: 'engine', period: [24, 19, 15],
+                blurb: 'Builds Engines: slow, and made for breaking works and Seats rather than men. They need an escort.' },
     spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320, raise: 17,
                 spawns: 'sorcerer', period: [11, 8.8, 7.0],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
@@ -170,7 +178,7 @@
                 drain: [32], rate: [0.175], decay: 0.05, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
-  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
+  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'siege', 'shrine'];
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].
@@ -201,7 +209,12 @@
     soldier:  { hp: 70,  dmg: 9,  atk: 0.9, range: 18,  speed: 53, aggro: 140, bounty: 6,  size: 10, cost: 16 },
     sorcerer: { hp: 40,  dmg: 15, atk: 1.4, range: 130, speed: 47, aggro: 170, bounty: 10, size: 9,  cost: 28 },
     champion: { hp: 420, dmg: 34, atk: 0.8, range: 22,  speed: 59, aggro: 160, bounty: 40, size: 14, cost: 0 },
-    fiend:    { hp: 55,  dmg: 11, atk: 1.0, range: 16,  speed: 62, aggro: 260, bounty: 12, size: 10, cost: 0 }
+    fiend:    { hp: 55,  dmg: 11, atk: 1.0, range: 16,  speed: 62, aggro: 260, bounty: 12, size: 10, cost: 0 },
+    /* `siege` multiplies damage against a WORK or a Seat, and nothing else. An Engine swings
+     * every 2.4s for 12 — five damage a second against men, which is half a soldier at four
+     * times the price — and 168 against stone, which is seven soldiers' worth. It cannot
+     * outrange a tower and it cannot run, so it arrives escorted or it does not arrive. */
+    engine:   { hp: 260, dmg: 12, atk: 2.4, range: 150, speed: 30, aggro: 190, bounty: 30, size: 14, cost: 70, siege: 14 }
   };
 
   CONST.POWERS = {
@@ -236,11 +249,21 @@
     { at: 90,    msg: ' nears the final veil of the Pattern!' }
   ];
 
-  /* Unit caps are PER OWNER. A single global cap of 240 deadlocked the game: one player's
-   * army filled it and then nobody could muster — including Chaos, which had 55,694 rift
-   * spawns silently refused in a measured 45-minute stall. A cap that can starve the third
-   * army is a cap that can freeze the board. */
-  CONST.CAP = { player: 110, chaos: 70 };
+  /* NO CEILING ON AN HEIR'S MUSTER. There was one, at 110, and a chronicle from play showed
+   * exactly what it cost: an army pinned at 110 from minute six, twenty-two thousand essence
+   * banked with nowhere to go, and a match that could not be won by force because the
+   * treasury had stopped being a decision. THE ECONOMY IS THE BRAKE — every recruit is paid
+   * for continuously, so the muster settles where income says it should. Measured over played
+   * matches with the ceiling lifted, armies land at 125-239 a side rather than running away.
+   *
+   * The ceiling was also load-bearing for performance, so that had to go first: target
+   * acquisition is a grid lookup instead of a walk of the whole board, and the renderer's
+   * instance buffers grow instead of silently truncating at 260. At 1200 men the sim costs
+   * 1.9 ms a tick (6% of realtime) and a fogged snapshot is 27 KB against a 120 KB budget.
+   *
+   * Chaos keeps its cap. That one is not a player's choice — it is a director that would
+   * otherwise spawn without limit, which is what a doomsday timer looks like. */
+  CONST.CAP = { player: 0, chaos: 70 };   // 0 = no ceiling
 
   CONST.MAX_LEVEL = 3;
   CONST.EVENT_CAP = 160;   // renderer-queue safety cap

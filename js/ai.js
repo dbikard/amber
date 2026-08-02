@@ -143,7 +143,9 @@
     }
     /* Works cluster. The old ring put every plot at r=104 and that tight knot is what made
      * a defence a defence — spread over 380 of ground, towers are eaten one at a time. */
-    const rear = bt === 'gate' || bt === 'shrine' || bt === 'spire';
+    /* the Works are a yard, not a fighting position: put them behind the Seat with the rest
+     * of the economy and let the Engines make the walk out */
+    const rear = bt === 'gate' || bt === 'shrine' || bt === 'spire' || bt === 'siege';
     return sweep(v, bt, c.x, c.y, rear ? toFoe + Math.PI : toFoe, 86, 30, 5);
   }
   /* a work raised out on the map, at the site the mission marched to */
@@ -169,8 +171,8 @@
        * every heir was winning the same way. Towers first, patience, the Pattern only after
        * the grind has failed to finish it. */
       plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine',
-                   'tower', 'barracks', 'tower', 'gate'],
-      upPref: ['tower', 'gate', 'barracks'],
+                   'tower', 'barracks', 'siege', 'tower', 'gate'],
+      upPref: ['tower', 'gate', 'barracks', 'siege'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
@@ -185,9 +187,9 @@
     bleys: {
       title: 'Bleys of the Flame',
       interval: 1.8, noise: 0.20,
-      plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'spire',
-                   'barracks', 'spire', 'barracks', 'tower'],
-      upPref: ['barracks', 'spire', 'gate', 'tower'],
+      plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'siege',
+                   'spire', 'barracks', 'siege', 'spire', 'barracks', 'tower'],
+      upPref: ['barracks', 'siege', 'spire', 'gate', 'tower'],
       towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
       missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
       banner: (v) => v.army >= 6 ? strike(v) : seek(v),   // scout, stage, then storm the gates
@@ -219,8 +221,8 @@
       title: 'Corwin of Amber',
       interval: 1.4, noise: 0.10,
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks',
-                   'tower', 'barracks', 'spire', 'gate'],
-      upPref: ['barracks', 'gate', 'spire', 'tower'],
+                   'siege', 'tower', 'barracks', 'spire', 'gate'],
+      upPref: ['barracks', 'gate', 'siege', 'spire', 'tower'],
       towerBranch: () => 'bolt',
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
       banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
@@ -242,9 +244,13 @@
         wants.push('barracks', 'gate');
         if (v.enemyWalking) wants.push(...(v.enemyArmy >= 2 ? ['shrine', 'barracks', 'spire'] : ['barracks', 'spire', 'barracks']));
         else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
+        /* a Seat is 2500 hit points behind towers, and men are a poor tool for stone. Once
+         * the Master of Arms has a realm to pay for it he raises a train and means it. */
+        if (v.t > 300 && v.army >= 8) wants.push('siege');
+        if (v.t > 540) wants.push('siege');
         return wants;
       },
-      upPref: ['gate', 'barracks', 'tower', 'spire'],
+      upPref: ['gate', 'barracks', 'siege', 'tower', 'spire'],
       towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
       missions: (v) => [wantGates('own', 2), wantWatch(1),
                         ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : [])],

@@ -901,6 +901,95 @@ suite('Chaos presses, it does not escalate')
      `${C.CHAOS.count(300)} then ${C.CHAOS.count(1800)} per rift`);
 }
 
+/* THE MUSTER HAS NO CEILING. It had one, at 110, and a chronicle from play showed the cost:
+ * an army pinned there from minute six and twenty-two thousand essence banked with nowhere to
+ * go. The economy is the brake now — and the ceiling was load-bearing for performance, so the
+ * scan that made it necessary has to stay cheap. */
+suite('no ceiling on the muster')
+{
+  eq('an heir musters as many as it can pay for', C.CAP.player, 0);
+  ok('Chaos still has one — a director is not a player', C.CAP.chaos > 0, `${C.CAP.chaos}`);
+
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 9e9;
+  w.chaosNext = 1e9;
+  let halls = 0;
+  for (let a = 0; a < 60 && halls < 4; a++) {
+    const th = a / 60 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
+    if (World.placementError(w, 0, x, y, 'barracks') === null && raise(w, 0, x, y, 'barracks').ok) halls++;
+  }
+  eq('four halls stand', halls, 4);
+  const t0 = Date.now();
+  for (let i = 0; i < 30 * 900; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const ms = Date.now() - t0;
+  const army = w.units.filter((u) => u.owner === 0).length;
+  ok('an army grows past the old ceiling', army > 110, `${army} troops`);
+  /* and the sim is still real-time: 900 seconds of play must cost far less than 900 seconds */
+  ok('and the sim keeps up with a big one', ms < 90000, `${(ms / 1000).toFixed(1)}s for 15 minutes of play, ${army} troops`);
+
+  /* A RECRUIT REFUSED IS A RECRUIT UNPAID. With a ceiling in force the halls charged for men
+   * the cap turned away — measured at 6 essence a second, silently. */
+  const w2 = World.createWorld(1000), p2 = w2.players[0], c2 = World.cityOf(w2, 0);
+  p2.essence = 9e9; w2.chaosNext = 1e9;
+  for (let a = 0; a < 60; a++) {
+    const th = a / 60 * Math.PI * 2, x = c2.x + Math.cos(th) * 200, y = c2.y + Math.sin(th) * 200;
+    if (World.placementError(w2, 0, x, y, 'barracks') === null && raise(w2, 0, x, y, 'barracks').ok) break;
+  }
+  const was = C.CAP.player;
+  C.CAP.player = 4;   // a ceiling, just for this
+  for (let i = 0; i < 30 * 200; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  eq('the ceiling holds when there is one', w2.units.filter((u) => u.owner === 0).length, 4);
+  const purse = p2.essence;
+  for (let i = 0; i < 30 * 60; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  ok('and a full army is charged nothing for the men it cannot raise', p2.essence >= purse,
+     `${(p2.essence - purse).toFixed(0)} over a minute at the ceiling`);
+  C.CAP.player = was;
+}
+
+/* A Seat is 2500 hit points behind towers, and men are a poor tool for stone: "win by force"
+ * meant grinding outworks forever while neither Seat took a scratch. The Engine is the answer,
+ * and it is only an answer if it is BETTER at stone and WORSE at men than what it costs. */
+suite('the Siege Works')
+{
+  const eng = C.UNITS.engine, sol = C.UNITS.soldier, def = C.BUILDINGS.siege;
+  ok('the Works are on the build sheet', C.BUILD_ORDER_UI.includes('siege'));
+  eq('and they muster Engines', def.spawns, 'engine');
+  const perEss = (u, mult) => (u.dmg * (mult ? (u.siege || 1) : 1)) / u.atk / u.cost;
+  ok('an Engine beats soldiery against stone, essence for essence',
+     perEss(eng, true) > perEss(sol, true) * 1.5,
+     `${perEss(eng, true).toFixed(2)} vs ${perEss(sol, true).toFixed(2)} damage/s per essence`);
+  ok('...and loses to it badly against men', perEss(eng, false) < perEss(sol, false) * 0.35,
+     `${perEss(eng, false).toFixed(2)} vs ${perEss(sol, false).toFixed(2)}`);
+  ok('it cannot outrange a tower, so it needs an escort',
+     eng.range < C.BUILDINGS.tower.range[0], `${eng.range} vs ${C.BUILDINGS.tower.range[0]}`);
+  ok('and it cannot run', eng.speed < sol.speed * 0.7, `${eng.speed} vs ${sol.speed}`);
+
+  /* the whole point, in the sim rather than on paper: it breaks a Seat */
+  const w = World.createWorld(1000);
+  w.chaosNext = 1e9;
+  const foe = World.cityOf(w, 1);
+  const put = (kind, n) => {
+    for (let i = 0; i < n; i++) {
+      const d = C.UNITS[kind];
+      w.units.push({ id: w.nextId++, owner: 0, kind, x: foe.x + i * 3, y: foe.y + 20, ox: 0, oy: 0,
+                     hp: 1e9, maxHp: 1e9, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 });
+    }
+  };
+  const bite = (kind, n) => {
+    w.players[1].castleHp = C.CASTLE_HP;
+    w.units.length = 0;
+    put(kind, n);
+    for (let i = 0; i < 30 * 20; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    return C.CASTLE_HP - w.players[1].castleHp;
+  };
+  /* the same money, spent two ways: five Engines or twenty-two soldiers */
+  const byEngine = bite('engine', 5), bySoldier = bite('soldier', Math.round(5 * eng.cost / sol.cost));
+  ok('five Engines break more Seat than the soldiers they cost', byEngine > bySoldier,
+     `${Math.round(byEngine)} vs ${Math.round(bySoldier)} hp in twenty seconds`);
+  ok('and it is a real bite, not a scratch', byEngine > C.CASTLE_HP * 0.4,
+     `${Math.round(byEngine)} of ${C.CASTLE_HP}`);
+}
+
 /* A match a human plays leaves no trace, so every report from play has to be argued from
  * memory. The chronicle writes it down in a form small enough to paste into a conversation.
  * It is a READER of the sim and must never be a writer of it. */

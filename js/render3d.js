@@ -162,6 +162,16 @@
       } else {
         p.push(part(cone(12, 16, 8), 0x5a4a68, 0, 62, 0));
       }
+    } else if (bt === 'siege') {
+      /* a timber yard: a low shed, a stack of beams, and a half-built arm on trestles —
+       * unmistakably a place where engines are made rather than another hall of men */
+      p.push(part(box(44, 14, 30), woodR, 0, 7, 0));
+      p.push(part(box(48, 3, 34), 0x4a3a26, 0, 15, 0));
+      p.push(part(box(6, 20, 6), 0x8a6c46, -14, 25, -8));
+      p.push(part(box(6, 20, 6), 0x8a6c46, 12, 25, -8));
+      p.push(part(box(40, 4, 4), 0xa08050, -1, 36, -8));
+      p.push(part(box(10, 10, 10), 0x6a6270, 16, 38, -8));
+      for (let i = 0; i < 3; i++) p.push(part(cyl(2.4, 2.4, 26, 6), 0x7a5c3c, 16, 18 + i * 5, 12, Math.PI / 2));
     } else if (bt === 'spire') {
       p.push(part(cyl(4, 9, 58, 7), 0x6a5a8a, 0, 29, 0));
       p.push(part(sph(5), 0xc48eff, 0, 62, 0));
@@ -191,6 +201,16 @@
       p.push(part(sph(4.2), 0xeeeeee, 0, 21.5, 0));
       p.push(part(box(1.6, 16, 4), 0xffffff, 6.5, 14, 0));
       p.push(part(box(2, 4, 2), 0xff8888, 0, 27, 0));
+    } else if (kind === 'engine') {
+      /* a trebuchet on a cart: a low hull, rollers either side, a mast and a throwing arm
+       * with the counterweight hauled back. Squat and wide, so a siege train reads as one
+       * even at the far zoom, where a soldier is four pixels. */
+      p.push(part(box(15, 5, 10), 0x6b5236, 0, 4, 0));
+      p.push(part(cyl(3.6, 3.6, 3, 8), 0x4a3a26, -4, 3, 0));
+      p.push(part(cyl(3.6, 3.6, 3, 8), 0x4a3a26, 4, 3, 0));
+      p.push(part(box(2.2, 15, 2.2), 0x8a6c46, 0, 13, 0));
+      p.push(part(box(13, 2, 2), 0xa08050, -2, 19, 0));
+      p.push(part(box(5, 5, 5), 0xa8a8b0, -7.5, 17, 0));
     } else {   // fiend
       p.push(part(sph(5.5), 0x8899aa, 0, 6, 0));
       p.push(part(sph(3.4), 0x99aabb, 4.5, 10, 0));
@@ -663,23 +683,37 @@
     overlayPass(view, viewer);
   };
 
+  /* every kind in the unit table gets a bucket, so adding one to const.js needs nothing here */
+  const KINDS = Object.keys(C.UNITS);
+  function makeIM(kind, room) {
+    const im = new THREE.InstancedMesh(unitGeo(kind), MAT, room);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    /* An InstancedMesh is culled against a bounding sphere derived from its instance
+     * matrices — computed ONCE, on the first frustum test, and cached. The trees get away
+     * with it because their matrices are final before that test; these are written afresh
+     * every frame, so the sphere was fixed forever around the world's origin corner and
+     * the whole army was culled the moment the camera looked anywhere else. */
+    im.frustumCulled = false;
+    im._room = room;
+    return im;
+  }
   function updateUnits(view, viewer, dt) {
-    const byKind = { soldier: [], sorcerer: [], champion: [], fiend: [] };
-    for (const u of view.units) byKind[u.kind].push(u);
-    for (const kind of Object.keys(byKind)) {
+    const byKind = {};
+    for (const k of KINDS) byKind[k] = [];
+    for (const u of view.units) if (byKind[u.kind]) byKind[u.kind].push(u);
+    for (const kind of KINDS) {
+      const list = byKind[kind];
       let im = unitIM[kind];
+      /* the buffer was a fixed 260, which was the old muster cap plus Chaos. With no ceiling
+       * on the muster that is a silent truncation — the men past 260 simply would not be
+       * drawn — so it grows instead, in doublings, and never shrinks back. */
+      if (im && list.length > im._room) { im.removeFromParent(); im.dispose(); im = null; }
       if (!im) {
-        im = unitIM[kind] = new THREE.InstancedMesh(unitGeo(kind), MAT, 260);
-        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        /* An InstancedMesh is culled against a bounding sphere derived from its instance
-         * matrices — computed ONCE, on the first frustum test, and cached. The trees get away
-         * with it because their matrices are final before that test; these are written afresh
-         * every frame, so the sphere was fixed forever around the world's origin corner and
-         * the whole army was culled the moment the camera looked anywhere else. */
-        im.frustumCulled = false;
+        let room = Math.max(256, (unitIM[kind] ? unitIM[kind]._room : 0) * 2);
+        while (room < list.length) room *= 2;
+        im = unitIM[kind] = makeIM(kind, room);
         worldG.add(im);
       }
-      const list = byKind[kind];
       for (let i = 0; i < list.length; i++) {
         const u = list[i];
         let f = unitFace.get(u.id);
@@ -706,7 +740,14 @@
       im.instanceMatrix.needsUpdate = true;
       if (im.instanceColor) im.instanceColor.needsUpdate = true;
     }
-    for (const id of unitFace.keys()) if (!view.units.some((u) => u.id === id)) unitFace.delete(id);
+    /* forget the dead. This asked `view.units.some(...)` per remembered id, which is a scan of
+     * the whole army for every man in it — the one place the renderer went quadratic, and it
+     * was invisible while a cap held the army to a hundred. */
+    if (unitFace.size > view.units.length) {
+      const live = new Set();
+      for (const u of view.units) live.add(u.id);
+      for (const id of unitFace.keys()) if (!live.has(id)) unitFace.delete(id);
+    }
   }
 
   function updateSites(view, viewer) {
