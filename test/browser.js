@@ -822,6 +822,77 @@ async function match(browser, base, renderer) {
        `ess-n ${lan4.ess}, seat 2 has ${lan4.want}`);
     ok('four-player guest rendering raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
+    /* A REMATCH KEEPS THE LINK. Pairing by QR is the price of getting into a LAN game; paying
+     * it again to play a second game against the person sitting next to you is not. The host
+     * rolls a new seed and re-sends the lobby's own start message; the guest is already
+     * listening for it. Both sides are checked here — the guest first, since it must come out
+     * of the end screen with nothing more than a message arriving. */
+    suite(`${r} · a rematch on the same link`);
+    const again = await pg.evaluate(async () => {
+      const { Game, Net, World } = window;
+      const out = {};
+      /* --- the guest --- */
+      Net.isHost = false; Net.localIdx = 1; Net.active = true; Net.peerGone = false;
+      Net.send = () => {};
+      Game.startMP(9001, 2, 1);
+      const hw = World.createWorld(9001, 2);
+      hw.winner = 0; hw.winReason = 'castle';
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, []))));
+      await new Promise((res) => setTimeout(res, 60));
+      const nx = document.getElementById('end-next');
+      out.guestEnded = !document.getElementById('end').classList.contains('hidden');
+      out.guestLabel = nx.textContent;
+      out.guestDead = nx.disabled;               // only the host may deal a new match
+      out.guestLinked = Net.active;              // ...and the link is NOT torn down
+      /* the host says "again" — the guest needs no tap at all */
+      Net.onStart({ seed: 9002, seats: 2, idx: 1 });
+      await new Promise((res) => setTimeout(res, 60));
+      out.guestBack = document.getElementById('end').classList.contains('hidden')
+                   && Game.game.mode === 'guest' && Game.game.over === false;
+
+      /* --- the host --- */
+      const sent = [];
+      Net.isHost = true; Net.localIdx = 0; Net.active = true; Net.peerGone = false;
+      Net.peers = [{ idx: 1, dc: { readyState: 'open', send: () => {} }, pc: null }];
+      Net.send = (o) => sent.push(o);
+      Game.startMP(9003, 2, 0);
+      const w = Game.game.world;
+      /* the loop ends the match off the sim's own win event, so raise one */
+      w.events.push({ e: 'win', winner: 0, reason: 'pattern' });
+      await new Promise((res) => setTimeout(res, 120));
+      out.hostLabel = document.getElementById('end-next').textContent;
+      document.getElementById('end-next').click();
+      await new Promise((res) => setTimeout(res, 120));
+      out.starts = sent.filter((o) => o.t === 'start');
+      out.hostBack = document.getElementById('end').classList.contains('hidden')
+                  && Game.game.mode === 'host' && Game.game.over === false;
+      out.hostLinked = Net.active;
+      out.newWorld = !!Game.game.world && Game.game.world !== w;
+
+      /* --- and NOT when somebody has left --- */
+      Game.startMP(9004, 2, 0);
+      Net.peers = [];                            // the guest is gone
+      Game.game.world.events.push({ e: 'win', winner: 0, reason: 'castle' });
+      await new Promise((res) => setTimeout(res, 120));
+      out.goneLabel = document.getElementById('end-next').textContent;
+      out.goneHidden = document.getElementById('end-next').classList.contains('hidden');
+      return out;
+    });
+    ok('a guest that loses is left on the end screen', again.guestEnded);
+    ok('and told the host holds the next match', /AWAITING/.test(again.guestLabel), again.guestLabel);
+    ok('with no button it can press', again.guestDead);
+    ok('and its link still up', again.guestLinked);
+    ok('a start message alone puts the guest back in a match', again.guestBack);
+    ok('the host is offered a rematch', again.hostLabel === 'REMATCH', again.hostLabel);
+    ok('tapping it re-sends the lobby start message', again.starts.length === 1,
+       JSON.stringify(again.starts));
+    ok('with a new seed and the same seats', again.starts.length === 1 && again.starts[0].seats === 2
+       && again.starts[0].idx === 1 && again.starts[0].seed !== 9003, JSON.stringify(again.starts[0]));
+    ok('the host is back in a match on a fresh world', again.hostBack && again.newWorld);
+    ok('and nobody re-paired', again.hostLinked);
+    ok('but a host whose guest left is offered nothing', again.goneHidden, `label "${again.goneLabel}"`);
+    ok('the rematch path raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+
     suite(`${r} · console`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();

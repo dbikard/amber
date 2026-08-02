@@ -133,6 +133,12 @@ body {
   border: 1px solid #c9a44f; border-radius: 8px; box-shadow: 0 2px 12px #0009;
 }
 .mbtn:active { background: #3a2e4e; }
+.mbtn:disabled { border-color: #5a4c30; color: #8f8467; box-shadow: none; }
+.mbtn:disabled:active { background: linear-gradient(#2a2138, #171020); }
+/* a guest waiting on the host's rematch: the button is a STATUS, not an offer, and the
+ * pulse is what says so — "AWAITING THE HOST" sitting dead still reads as a broken button */
+#end-next:disabled { animation: waiting 2.2s ease-in-out infinite; }
+@keyframes waiting { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.95; } }
 .mbtn.small { width: auto; padding: 9px 14px; font-size: 12px; }
 #skirmish-row, .lan-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 92vw; }
 .diff-row { display: flex; gap: 6px; justify-content: center; flex-basis: 100%; }

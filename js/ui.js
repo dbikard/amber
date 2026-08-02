@@ -534,14 +534,20 @@
   };
 
   /* ---------------- end screen ---------------- */
-  UI.end = function (won, sub, nextLabel) {
+  /* `ready` false leaves the button showing but dead — a guest waiting on the host's rematch
+   * needs to be told that is what is happening, not handed a button that does nothing. An
+   * empty label means there is no next match to offer at all, so the button goes away. */
+  UI.end = function (won, sub, nextLabel, ready) {
     $('hud').classList.add('hidden');
     UI.closeSheet();
     $('end').classList.remove('hidden');
     $('end-title').textContent = won ? 'THE THRONE IS YOURS' : 'THE SUCCESSION PASSES YOU BY';
     $('end-title').className = won ? 'won' : 'lost';
     $('end-sub').textContent = sub;
-    $('end-next').textContent = nextLabel;
+    const nx = $('end-next');
+    nx.textContent = nextLabel || '';
+    nx.classList.toggle('hidden', !nextLabel);
+    nx.disabled = ready === false;
   };
 
   global.UI = UI;

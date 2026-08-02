@@ -275,6 +275,21 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **A rematch keeps the link.** Pairing by QR is the price of getting into a LAN game;
+      paying it again to play a second game against the person sitting next to you is not.
+      The link is now a LOBBY that outlives the match: the host's end screen offers REMATCH,
+      which rolls a fresh seed and re-sends the very start message the lobby sends, and every
+      guest is already listening for it (`Net.onStart`), so nobody scans anything. A guest's
+      end screen says AWAITING THE HOST on a dead, slowly pulsing button — the host is the
+      authority on when a match begins, this one included — and a start message alone puts it
+      back in play. Seats are peer indices, so replaying with the same count keeps everyone
+      where they were; if an heir has DROPPED that is no longer true (a seat with nobody
+      behind it would stand in the new world and be walked over), so the rematch is offered
+      only while everyone who played is still linked, and the button simply goes away when
+      they are not. Drawing the end screen was split from ending the match, because what
+      comes next can change while the screen is up.
+      Fixed in passing: the losing line named the winner as `names[1 - viewer]`, which with
+      four seats is "the other one" and, from seat 2, `undefined`.
 - [x] **Chaos stops escalating.** Reported from play: the fiends are too strong. They were.
       `hpScale` and `dmgScale` both ramped without a ceiling and multiplied into each other,
       so measured against the stat block a lone fiend ate 5 soldiers by minute 10, 9 by

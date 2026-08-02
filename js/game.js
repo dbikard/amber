@@ -58,6 +58,7 @@
    * both out with the start message, so a guest never has to guess its own index. */
   function startMP(seed, seats, mySeat) {
     const n = Math.max(2, Math.min(C.MAX_PLAYERS, seats || 2));
+    game.seats = n;
     game.mode = Net.isHost ? 'host' : 'guest';
     game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
     Net.localIdx = game.viewer;
@@ -145,18 +146,57 @@
     if (game.over) return;
     game.over = true;
     const won = winner === game.viewer;
-    const other = game.names[1 - game.viewer];
-    const sub = reason === 'pattern'
+    /* whoever it was, name them: with four seats "the other one" is not a person */
+    const other = (winner >= 0 && game.names[winner]) || 'Another heir';
+    game.endWon = won;
+    game.endSub = reason === 'pattern'
       ? (won ? 'You have walked the Pattern to its blazing heart and spoken your name.'
              : other + ' has walked the Pattern to its heart. The universe rearranges.')
       : (won ? 'The rival Seat of Power lies in ruin along the black road.'
              : 'Your Seat of Power lies in ruin. The road took it.');
-    let nextLabel = 'REMATCH';
+    game.endNext = null;
     if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
       localStorage.setItem('amber_rung', String(rung() + 1));
-      nextLabel = rung() >= LADDER.length ? 'THE THRONE AWAITS' : 'FACE ' + firstName(LADDER[rung()]).toUpperCase();
+      game.endNext = rung() >= LADDER.length ? 'THE THRONE AWAITS' : 'FACE ' + firstName(LADDER[rung()]).toUpperCase();
     }
-    UI.end(won, sub, nextLabel);
+    endScreen();
+  }
+  /* drawn separately from the ending itself, because what comes NEXT can change while the
+   * screen is up — a guest dropping takes the host's rematch with it */
+  function endScreen() {
+    let nextLabel = game.endNext || 'REMATCH', ready = true;
+    if (game.endNext) { /* the ladder already named the next rung */ }
+    else if (game.mode === 'host') {
+      /* the link is still up: a rematch costs a tap, not another QR */
+      if (!canRematch()) nextLabel = '';
+    } else if (game.mode === 'guest') {
+      /* the host is the authority on when a match starts, this one included */
+      nextLabel = Net.active && !Net.peerGone ? 'AWAITING THE HOST' : '';
+      ready = false;
+    }
+    UI.end(game.endWon, game.endSub, nextLabel, ready);
+  }
+
+  /* ---------------- rematch on the same link ----------------
+   * Two people in the same room should not scan a QR twice to play twice. The link is a LOBBY
+   * that outlives the match: the host rolls a fresh seed and sends the very same start message
+   * the lobby sends, and every guest is already listening for it, so nobody scans anything.
+   * The seat each guest holds is its peer index, so replaying with the same count keeps
+   * everyone where they were. If somebody has dropped, that is no longer true — a seat with
+   * nobody behind it would stand in the new world and be walked over — so the rematch is
+   * offered only while every heir who played is still linked. */
+  function canRematch() {
+    return Net.isHost && Net.active && !Net.peerGone && Net.seated() === game.seats;
+  }
+  function rematch() {
+    if (!canRematch()) {
+      UI.banner('An heir has left the link — pair again from the menu', 'warn');
+      toMenu(); return;
+    }
+    const seed = (Math.random() * 0xffffffff) >>> 0, seats = game.seats;
+    for (const p of Net.peers)
+      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
+    startMP(seed, seats, 0);
   }
 
   /* ---------------- commands ---------------- */
@@ -573,6 +613,10 @@
       if (game.mode === 'host' || game.mode === 'guest') {
         UI.banner('The Trump link is severed', 'warn');
         if (game.mode === 'guest' && !game.over) setTimeout(toMenu, 2500);
+        /* on the end screen the link IS the offer of a rematch. Losing it there is not fatal
+         * — nobody is mid-match — but the button must stop promising a game that can no
+         * longer be dealt, so redraw the screen with what is actually left. */
+        else if (game.over) endScreen();
       } else say('link lost');
     };
   }
@@ -630,7 +674,8 @@
         if (game.mode === 'sp') {
           if (game.campaign) { const r = Math.min(rung(), LADDER.length - 1); startSP(LADDER[r], RUNG_OPTS[r], true); }
           else startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
-        } else toMenu();
+        } else if (game.mode === 'host') rematch();
+        else toMenu();
       },
       onEndMenu: toMenu
     });
