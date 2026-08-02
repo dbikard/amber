@@ -37,7 +37,7 @@
       map,
       players: [0, 1].map(() => ({
         essence: C.START_ESSENCE,
-        castleHp: C.CASTLE_HP, wallHp: 0, wallLevel: 0, wallHurt: -99, wallAlert: -99,
+        castleHp: C.CASTLE_HP,
         pattern: 0, walking: false, revealed: false, alertIdx: 0,
         buildings: [],          // free placement: every work knows where it stands
         powers: { storm: 0, trump: 0 },
@@ -55,7 +55,7 @@
     };
     world.nav = NAV.build(world.map.gen);
     for (let pi = 0; pi < 2; pi++) {
-      world.players[pi].banner = world.map.cities[pi];
+      world.players[pi].banner = aimAt(world, { site: world.map.cities[pi] });
       exploreAround(world, pi);   // you know your own surroundings from the start
     }
     return world;
@@ -171,19 +171,6 @@
   }
 
   /* ---------------- pathfinding: the nav grid does the walking ---------------- */
-  /* the flow field said "no way through": find the wall that is in the way */
-  function nearestBlocker(world, u) {
-    let target = null, bd = Infinity;
-    for (let pi = 0; pi < 2; pi++) {
-      if (pi === u.owner) continue;
-      for (const b of world.players[pi].buildings) {
-        if (b.bt !== 'rampart') continue;
-        const dd = d2(u.x, u.y, b.x, b.y);
-        if (dd < bd) { bd = dd; target = b; }
-      }
-    }
-    return target;
-  }
 
   /* ---------------- commands ---------------- */
   /* a tower's live stats: shared until the level-2 fork, per-branch after it */
@@ -223,20 +210,9 @@
                   cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
                   hp: def.hp, maxHp: def.hp, lastHurt: -99,
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
-                  rally: -1 };   // -1 = the company follows the royal War Banner
+                  rally: null };   // null = the company follows the royal War Banner
       pl.buildings.push(b);
-      if (cmd.bt === 'rampart') world.navVersion++;   // the ways through Shadow have changed
       emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y });
-      return { ok: true };
-    }
-    if (cmd.c === 'wall') {
-      if (pl.wallLevel >= C.MAX_LEVEL) return { ok: false, err: 'max' };
-      const cost = pl.wallLevel === 0 ? C.WALL.cost : C.WALL.up[pl.wallLevel - 1];
-      if (pl.essence < cost) return { ok: false, err: 'essence' };
-      pl.essence -= cost;
-      pl.wallLevel++;
-      pl.wallHp = C.WALL.hp[pl.wallLevel - 1];
-      emit(world, { e: 'wallup', pi, level: pl.wallLevel });
       return { ok: true };
     }
     if (cmd.c === 'up') {
@@ -254,10 +230,6 @@
       pl.essence -= cost;
       s.level++;
       if (br) s.br = br;
-      if (s.bt === 'rampart') {
-        s.maxHp = C.BUILDINGS.rampart.hpUp[s.level - 2];
-        s.hp = s.maxHp;
-      }
       emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
       return { ok: true };
     }
@@ -276,16 +248,17 @@
       /* company orders: a mustering building's troops hold their own front */
       const b = bldOf(world, pi, cmd.id);
       if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'id' };
-      if (cmd.site >= 0 && !world.map.sites[cmd.site]) return { ok: false, err: 'site' };
-      b.rally = cmd.site;
-      emit(world, { e: 'rally', pi, id: b.id, site: cmd.site });
+      const p = aimAt(world, cmd);
+      if (!p) { b.rally = null; emit(world, { e: 'rally', pi, id: b.id, site: -1 }); return { ok: true }; }
+      b.rally = p;
+      emit(world, { e: 'rally', pi, id: b.id, site: p.site, x: p.x, y: p.y });
       return { ok: true };
     }
     if (cmd.c === 'banner') {
-      const site = world.map.sites[cmd.site];
-      if (!site) return { ok: false, err: 'site' };
-      pl.banner = site.id;
-      emit(world, { e: 'banner', pi, site: site.id });
+      const p = aimAt(world, cmd);
+      if (!p) return { ok: false, err: 'where' };
+      pl.banner = p;
+      emit(world, { e: 'banner', pi, site: p.site, x: p.x, y: p.y });
       return { ok: true };
     }
     if (cmd.c === 'power') {
@@ -315,6 +288,19 @@
     return { ok: false, err: 'cmd' };
   }
 
+  /* A standard may be planted ANYWHERE — on a site, or on bare open ground. It is an order
+   * to march, not a claim, so there is nothing to validate beyond "is it on the map": if the
+   * ground turns out to be unreachable the column walks at it and gets as close as the land
+   * allows. Returns {x, y, site} — site is the site id when one was named, else -1 — or null
+   * for "no aim given", which means rejoin the War Banner. */
+  function aimAt(world, cmd) {
+    const s = cmd && cmd.site != null && cmd.site >= 0 ? world.map.sites[cmd.site] : null;
+    if (s) return { x: s.x, y: s.y, site: s.id };
+    if (!cmd || cmd.x == null || cmd.y == null) return null;
+    return { x: Math.max(0, Math.min(C.MAP.W, +cmd.x || 0)),
+             y: Math.max(0, Math.min(C.MAP.H, +cmd.y || 0)), site: -1 };
+  }
+
   /* ---------------- units ---------------- */
   function spawnUnit(world, owner, kind, atX, atY, goal, co) {
     /* per-owner, so a full army can never starve the muster of Chaos or of the other side */
@@ -332,7 +318,7 @@
       hp: def.hp * scale, maxHp: def.hp * scale,
       dmg: def.dmg * (owner === 2 ? C.CHAOS.dmgScale(world.t) : 1),
       cd: 0,
-      goal: goal != null ? goal : (owner === 2 ? world.map.cities[world.chaosParity++ % 2] : world.players[owner].banner),
+      goal: goal != null ? goal : (owner === 2 ? aimAt(world, { site: world.map.cities[world.chaosParity++ % 2] }) : world.players[owner].banner),
       co: co != null ? co : -1   // company = its mustering hall's id; -1 follows the royal banner
     };
     world.units.push(u);
@@ -347,9 +333,9 @@
       emit(world, { e: 'die', x: victim.x, y: victim.y, kind: victim.kind, owner: victim.owner });
     }
   }
-  /* nearest hostile target within radius: units, any standing work, and — at a city —
-   * the wall (from outside), or the Seat-tower (once inside). Works are just places now,
-   * so a barracks out on the map is besieged exactly like one in the court. */
+  /* nearest hostile target within radius: units, any standing work, and the Seat-tower at
+   * a city. Works are just places now, so a barracks out on the map is besieged exactly
+   * like one in the court. */
   function acquire(world, u, radius) {
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
     const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
@@ -362,20 +348,10 @@
       const tp = world.players[ci];
       const cs = world.map.sites[world.map.cities[ci]];
       const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
-      const walled = tp.wallHp > 0;
-      for (const b of tp.buildings) {
-        /* a work sheltering inside a standing wall cannot be reached from outside */
-        if (walled && d2(b.x, b.y, cs.x, cs.y) < C.CITY.r * C.CITY.r) continue;
+      for (const b of tp.buildings)
         consider(Math.sqrt(d2(u.x, u.y, b.x, b.y)), { pi: ci, id: b.id }, 'work', b.x, b.y);
-      }
       if (dc > C.CITY.r + radius) continue;
-      if (walled) {
-        /* the wall bars the way — batter it where you stand */
-        const k2 = C.CITY.r / (dc || 1);
-        consider(Math.max(0, dc - C.CITY.r), { pi: ci }, 'wall', cs.x + (u.x - cs.x) * k2, cs.y + (u.y - cs.y) * k2);
-      } else {
-        consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
-      }
+      consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
     }
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
@@ -389,30 +365,11 @@
       emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
       pl.buildings.splice(i, 1);
       if (b.bt === 'shrine') pl.walking = false;
-      if (b.bt === 'rampart') world.navVersion++;   // the road is open again
       /* a fallen mustering hall is a fallen standard: its company rallies to the banner */
       delete world.players[0].ghosts[b.id]; delete world.players[1].ghosts[b.id];
     } else if (world.t - (pl.slotAlert || -99) > 12) {
       pl.slotAlert = world.t;
       emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y });
-    }
-  }
-  function hurtWall(world, pi, dmg) {
-    const pl = world.players[pi];
-    pl.wallHp -= dmg; pl.wallHurt = world.t;
-    if (pl.wallHp <= 0) { pl.wallHp = 0; emit(world, { e: 'breach', pi }); }
-    else if (world.t - pl.wallAlert > 12) { pl.wallAlert = world.t; emit(world, { e: 'hurtwall', pi }); }
-  }
-  /* no hostile sets foot inside a walled city */
-  function clampWalls(world, u) {
-    for (let ci = 0; ci < 2; ci++) {
-      if (ci === u.owner || world.players[ci].wallHp <= 0) continue;
-      const cs = world.map.sites[world.map.cities[ci]];
-      const dd = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
-      if (dd < C.CITY.r + 3) {
-        const k2 = (C.CITY.r + 3) / (dd || 1);
-        u.x = cs.x + (u.x - cs.x) * k2; u.y = cs.y + (u.y - cs.y) * k2;
-      }
     }
   }
 
@@ -423,7 +380,7 @@
     const t = world.t;
     if (world.tick % 6 === 0 || !world.vis) refreshVision(world);   // 5 Hz vision refresh
 
-    /* players: income, city buildings, powers, walls, the walk.
+    /* players: income, city buildings, powers, the walk.
      * Alternate which seat is served first — otherwise player 0's towers always shoot
      * before player 1's within a tick, and player 0 wins every simultaneous finish. The
      * unit loop below has always done this; the player loop should too. */
@@ -490,10 +447,6 @@
       if (pl.powers.storm > 0) pl.powers.storm -= dt;
       if (pl.powers.trump > 0) pl.powers.trump -= dt;
 
-      /* walls self-mend when unbothered */
-      if (pl.wallLevel > 0 && pl.wallHp > 0 && t - pl.wallHurt > 10)
-        pl.wallHp = Math.min(C.WALL.hp[pl.wallLevel - 1], pl.wallHp + C.STRUCT_REGEN * dt);
-
       if (pl.walking) {
         const shrine = pl.buildings.find((b) => b.bt === 'shrine');
         if (!shrine) pl.walking = false;
@@ -555,43 +508,19 @@
       if (u.owner !== 2) {
         const pl2 = world.players[u.owner];
         const cb = u.co >= 0 ? bldOf(world, u.owner, u.co) : null;   // its mustering hall, if it still stands
-        const want = cb && cb.rally != null && cb.rally >= 0 ? cb.rally : pl2.banner;
+        const want = cb && cb.rally ? cb.rally : pl2.banner;
         if (u.goal !== want) u.goal = want;
-      }
-      /* garrison duty: flag home + walls standing → man the ramparts. Take a post on the
-       * ring, mass toward the threatened arc, hurl from the parapet — and NEVER step
-       * outside. Sortying is a choice the player makes by moving the flag. */
-      if (u.owner !== 2) {
-        const plG = world.players[u.owner];
-        if (plG.wallHp > 0 && u.goal === world.map.cities[u.owner]) {
-          const cs = cityOf(world, u.owner);
-          const foe = acquire(world, u, def.aggro + 160);
-          if (foe && u.cd <= 0 && foe.kind === 'unit' &&
-              foe.d <= Math.max(def.range, 85) + C.UNITS[foe.t.kind].size) {
-            hurt(world, foe.t, u.dmg, u.owner);
-            u.cd = def.atk;
-            emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
-          }
-          const ang = foe ? Math.atan2(foe.y - cs.y, foe.x - cs.x) : Math.atan2(u.oy || 1, u.ox || 1);
-          const px2 = cs.x + Math.cos(ang) * (C.CITY.r - 10), py2 = cs.y + Math.sin(ang) * (C.CITY.r - 10);
-          const dd2 = Math.sqrt(d2(u.x, u.y, px2, py2));
-          if (dd2 > 6) { const mv = def.speed * dt / dd2; u.x += (px2 - u.x) * mv; u.y += (py2 - u.y) * mv; }
-          const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
-          if (dc > C.CITY.r - 4) { const k2 = (C.CITY.r - 4) / (dc || 1); u.x = cs.x + (u.x - cs.x) * k2; u.y = cs.y + (u.y - cs.y) * k2; }
-          continue;
-        }
       }
       /* garrisons of an open city still see farther out */
       const home = u.owner !== 2 && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
       const foe = acquire(world, u, def.aggro + (home ? 140 : 0));
       if (foe) {
         const reach = def.range + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
-          : foe.kind === 'wall' ? 6 : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
+          : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
         if (foe.d <= reach) {
           if (u.cd <= 0) {
             if (foe.kind === 'unit') hurt(world, foe.t, u.dmg, u.owner);
             else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, u.dmg);
-            else if (foe.kind === 'wall') { hurtWall(world, foe.t.pi, u.dmg); emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y }); }
             else if (foe.kind === 'tower') {
               const tp = world.players[foe.t.pi];
               tp.castleHp -= u.dmg;
@@ -608,13 +537,12 @@
         } else {
           const mv = def.speed * dt / (foe.d || 1);
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
-          clampWalls(world, u);
         }
         continue;
       }
       /* march: the flow field carries the column; within sight of the goal each soldier
        * peels off to his own place in the line, so an army arrives spread, not stacked */
-      const gs = world.map.sites[u.goal];
+      const gs = u.goal;
       if (gs) {
         const gx = gs.x + u.ox, gy = gs.y + u.oy;
         const dgoal = Math.sqrt(d2(u.x, u.y, gx, gy));
@@ -625,16 +553,16 @@
           const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);
           if (s3) { vx = s3.x; vy = s3.y; }
           else {
-            /* walled off — go break what bars the way (or push on if nothing does) */
-            const bl = nearestBlocker(world, u);
-            const bx = bl ? bl.x : gx, by = bl ? bl.y : gy;
-            const db = Math.sqrt(d2(u.x, u.y, bx, by)) || 1;
-            vx = (bx - u.x) / db; vy = (by - u.y) / db;
+            /* No route the grid will admit — the goal may be a crag, a lake, or simply
+             * beyond a barrier. Head at it anyway and let the terrain decide how far you
+             * get. A standard planted on impassable ground is an order to try, not an
+             * error to refuse. */
+            const db = Math.sqrt(d2(u.x, u.y, gx, gy)) || 1;
+            vx = (gx - u.x) / db; vy = (gy - u.y) / db;
           }
         }
         u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
       }
-      clampWalls(world, u);
     }
 
     /* bury the dead */

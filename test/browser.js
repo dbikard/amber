@@ -277,8 +277,44 @@ async function match(browser, base, renderer) {
     });
     await pg.mouse.click(node.x, node.y); await pg.waitForTimeout(300);
     const banner = await pg.evaluate(() => window.Game.game.world.players[0].banner);
-    ok('an armed flag still plants through an open sheet', banner === node.id,
-       `banner ${node.before} -> ${banner}`);
+    ok('an armed flag still plants through an open sheet', banner && banner.site === node.id,
+       `banner site ${node.before} -> ${banner && banner.site}`);
+
+    /* the standard must also take BARE GROUND — the sim has nothing to refuse, and the tap
+     * path must not invent a refusal of its own */
+    const open = await pg.evaluate(() => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      R.setZoom(1); R.lookAt(c.x, c.y);
+      /* somewhere clear of every site, on screen, and clear of the sheet */
+      const sh = document.getElementById('sheet');
+      const lid = sh.classList.contains('hidden') ? window.innerHeight - 20 : sh.getBoundingClientRect().top - 40;
+      for (let rad = 200; rad < 900; rad += 40) for (let a = 0; a < 36; a++) {
+        const th = a / 36 * Math.PI * 2, wx = c.x + Math.cos(th) * rad, wy = c.y + Math.sin(th) * rad;
+        if (wx < 20 || wy < 20 || wx > C.MAP.W - 20 || wy > C.MAP.H - 20) continue;
+        if (g.world.map.sites.some((q) => Math.hypot(q.x - wx, q.y - wy) < 170)) continue;
+        const p2 = R.project(wx, wy);
+        if (!p2.ok) continue;
+        if (p2.x < 30 || p2.x > window.innerWidth - 30 || p2.y < 90 || p2.y > lid) continue;
+        return { x: p2.x, y: p2.y, wx, wy };
+      }
+      return null;
+    });
+    ok('found open ground on screen to plant on', !!open);
+    if (open) {
+      await pg.evaluate(() => document.querySelector('#flag-tray .fbtn').click());
+      await pg.waitForTimeout(150);
+      await pg.mouse.click(open.x, open.y); await pg.waitForTimeout(300);
+      const bare = await pg.evaluate(() => ({
+        b: window.Game.game.world.players[0].banner,
+        warn: [...document.querySelectorAll('#banner-wrap .banner')].map((e) => e.textContent).join(' | ')
+      }));
+      ok('a standard plants on bare ground', !!bare.b && bare.b.site === -1,
+         `banner ${JSON.stringify(bare.b)}`);
+      ok('it lands where the finger did', bare.b && Math.hypot(bare.b.x - open.wx, bare.b.y - open.wy) < 90,
+         bare.b ? `off by ${Math.round(Math.hypot(bare.b.x - open.wx, bare.b.y - open.wy))}` : '');
+      ok('and no refusal is shown', !/needs ground|cannot/i.test(bare.warn), bare.warn);
+    }
 
     /* the bottom-right controls must stay on screen however many flags there are */
     const tray = await pg.evaluate(() => {

@@ -55,7 +55,7 @@
       nodes,
       myPattern: pl.pattern, walking: pl.walking,
       enemyWalking: en.revealed && en.walking, enemyPattern: en.revealed ? en.pattern : 0,
-      powers: pl.powers, banner: pl.banner
+      powers: pl.powers, banner: pl.banner ? pl.banner.site : -1
     };
   }
 
@@ -94,7 +94,6 @@
   /* expansion mission wants, in priority order. Each: {bt, pick(v) → site|null} */
   const wantGates = (bucket, n) => ({ bt: 'gate', pick: (v) => nearestOf(v, v.nodes[bucket]).filter((s) => !held(v, s)).slice(0, n)[0] || null });
   const wantWatch = (n) => ({ bt: 'tower', pick: (v) => ownVantages(v).filter((s) => !worksNear(v, s.x, s.y, 'tower', 120)).slice(0, n)[0] || null });
-  const wantRampart = () => ({ bt: 'rampart', pick: (v) => { const s = ownChoke(v); return s && !worksNear(v, s.x, s.y, 'rampart', 130) ? s : null; } });
 
   /* ---------------- placement doctrine ----------------
    * Free ground means an heir must choose WHERE, not just what. The doctrine is the old
@@ -159,10 +158,9 @@
                    'tower', 'barracks', 'tower', 'gate'],
       upPref: ['tower', 'gate', 'barracks', 'shrine'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
-      missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2), wantRampart()],
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
       banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (v.unexplored > 2 && v.army >= 4 ? seek(v) : v.myCity.id),
-      wall: (v) => v.t > 60,
       /* the LAST resort, and it has to be genuinely last: at eight minutes he was simply
        * out-walking Brand, which is greed's whole job. Matches run 14-20m now. */
       walk: (v) => v.have.shrine && v.t > 900 && v.threats.length <= 2 && v.essence > 240,
@@ -179,7 +177,6 @@
       towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
       missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
       banner: (v) => v.army >= 6 ? strike(v) : seek(v),   // scout, stage, then storm the gates
-      wall: (v) => v.myCastle < 800 || v.t > 260,
       walk: () => false, pauseWalk: () => false,
       storm: stormPush(4),
       trump: (v) => v.push >= 2 || v.threats.length >= 5
@@ -197,9 +194,8 @@
       /* Greed must still MINE. Keeping Brand's army home to guard the walk was tried and
        * measured: it starves him (2 wins across the field) because the walk's drain has to
        * come from somewhere, and under the new economy that somewhere is the springs. */
-      missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantRampart()],
+      missions: (v) => [wantGates('own', 2), wantGates('mid', 2)],
       banner: (v) => (v.unexplored > 3 && v.army >= 5 ? seek(v) : v.myCity.id),   // the army buys him time, but must still find the springs
-      wall: (v) => v.t > 120 || !!v.have.shrine,   // Brand walls early — the walk needs a keep
       walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > 360,
       pauseWalk: () => false,
       storm: stormDefend(2),
@@ -216,7 +212,6 @@
       banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
         ? v.enCityId
         : (v.unexplored > 2 ? seek(v) : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id),
-      wall: (v) => v.t > 150,
       walk: (v) => v.have.shrine && v.essence > 260 && (v.enemyCastle < v.myCastle || v.threats.length === 0),
       pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 4,
       storm: stormPush(3),
@@ -238,14 +233,12 @@
       upPref: ['gate', 'shrine', 'barracks', 'tower', 'spire'],
       towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
       missions: (v) => [wantGates('own', 2), wantWatch(1),
-                        ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : []),
-                        ...(v.threats.length >= 2 ? [wantRampart()] : [])],
+                        ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : [])],
       banner: (v) => {
         if (v.enCity && v.enemyWalking && (v.enemyArmy < 2 || v.army >= 6)) return v.enCityId;
         if (v.enCity && v.army >= 6) return v.enCityId;
         return v.unexplored > 2 && v.army >= 4 ? seek(v) : ownChoke(v).id;
       },
-      wall: (v) => v.threats.length >= 1 || v.t > 110,
       walk: (v) => v.have.shrine && v.essence > 200 &&
                    (v.threats.length <= 1 || (v.enemyWalking && v.enemyPattern > v.myPattern)),
       pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 3,
@@ -308,9 +301,6 @@
       if (!v.walking && (P.walk(v) || (late && v.have.shrine))) issue({ c: 'walk', on: true });
       else if (v.walking && !late && P.pauseWalk(v)) issue({ c: 'walk', on: false });
 
-      /* raiders at the gates: walls before anything else */
-      if (v.pl.wallLevel === 0 && v.threats.length >= 2 && v.essence >= C.WALL.cost) issue({ c: 'wall' });
-
       /* city: first unmet want in the plan (save up for it) */
       let saving = false;
       const wants = P.plan(v), seenW = {};
@@ -323,12 +313,6 @@
           } else saving = v.free > 0;
           break;
         }
-      }
-
-      /* the city walls: personality-timed; re-raised to the next level when rich */
-      if (P.wall && v.pl.wallLevel < C.MAX_LEVEL && P.wall(v)) {
-        const wcost = v.pl.wallLevel === 0 ? C.WALL.cost : C.WALL.up[v.pl.wallLevel - 1];
-        if (v.essence >= wcost + (v.pl.wallLevel ? 160 : 0)) issue({ c: 'wall' });
       }
 
       /* expansion missions: pick one, march the banner there, build on arrival */
@@ -362,7 +346,7 @@
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.
        * Gates drawing on a node come first — that is where the essence actually is. */
       if (saving) return;
-      for (const bt of P.upPref.concat(['rampart'])) {
+      for (const bt of P.upPref) {
         const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL)
                        .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
         for (const b of cands) {

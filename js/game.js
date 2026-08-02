@@ -237,10 +237,14 @@
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
       else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
       else if (ev.e === 'muster') { if (ev.pi === game.viewer) UI.banner(ev.pause ? '⏸ The muster is halted — essence gathers' : '▶ The muster resumes', ''); }
-      else if (ev.e === 'rally') { if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site) : '⚑ The company rejoins the War Banner', ''); }
+      else if (ev.e === 'rally') {
+        /* site >= 0 names a place; a bare point still carries x, so only a rally with
+         * neither is the order to come home */
+        if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site)
+          : ev.x != null ? '⚐ The company posts its standard in open country'
+          : '⚑ The company rejoins the War Banner', '');
+      }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
-      else if (ev.e === 'breach') UI.banner(ev.pi === game.viewer ? 'Your walls are BREACHED — they are inside!' : 'The walls of ' + game.names[1 - game.viewer] + '’s city are breached!', ev.pi === game.viewer ? 'warn' : 'alert');
-      else if (ev.e === 'hurtwall') { if (ev.pi === game.viewer) UI.banner('Your walls are under attack', 'warn'); }
       else if (ev.e === 'hurtcity') { if (ev.pi === game.viewer) UI.banner('The enemy is inside your city!', 'warn'); }
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
     }
@@ -347,10 +351,14 @@
     if (game.armedFlag != null) {
       const id = game.armedFlag;
       game.armedFlag = null;
+      /* A standard goes wherever you point. Tapping a site names it — so the banner reads
+       * "at the Drowned Bell" rather than a bare coordinate — but bare ground is just as
+       * valid an order, and the column pathfinds toward it. There is nothing here to refuse. */
       const siteId = Render.hitSite(x, y, view, game.viewer, true);   // flags: whole court counts
-      if (siteId < 0) UI.banner('The standard needs ground to stand on — tap a site', 'warn');
-      else if (id === 'royal') issue({ c: 'banner', site: siteId });
-      else issue({ c: 'rally', id, site: siteId });   // works carry ids now, not slots
+      const w = Render.toWorld(x, y, game.viewer);
+      const where = siteId >= 0 ? { site: siteId } : { x: w.x, y: w.y };
+      if (id === 'royal') issue({ c: 'banner', ...where });
+      else issue({ c: 'rally', id, ...where });   // works carry ids now, not slots
       return;
     }
     if (game.targeting) {
@@ -376,7 +384,7 @@
       const site = view.map.sites[siteId];
       const foeCity = view.map.cities[1 - game.viewer] === siteId;
       UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
-                   view.players[game.viewer].wallLevel, view.players[game.viewer], view.players[1 - game.viewer],
+                   view.players[game.viewer], view.players[1 - game.viewer],
                    foeCity ? null : { x: site.x, y: site.y }, whyAt(site.x, site.y));
       return;
     }
@@ -546,7 +554,6 @@
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
       onBanner: (site) => issue({ c: 'banner', site }),
-      onWall: () => issue({ c: 'wall' }),
       onFlagArm: (id) => {
         game.targeting = false;
         game.armedFlag = game.armedFlag === id ? null : id;
@@ -560,7 +567,7 @@
         issue({ c: 'banner', site: view.map.cities[game.viewer] });
         const me = view.players[game.viewer];
         for (const b of me.buildings)
-          if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.rally != null && b.rally >= 0)
+          if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.rally)
             issue({ c: 'rally', id: b.id, site: -1 });
         UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },

@@ -129,8 +129,19 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       skewed pair wins.
       Seats sit inland, so there is world to explore on every side. Heirs scout: they march at
       the nearest place they have never seen and only assault a Seat they have found.
+- [x] **The standard goes anywhere.** Planting a flag used to demand a site and refused
+      everything else ("the standard needs ground to stand on"). A standard is an ORDER TO
+      MARCH, not a claim: banner and rally now carry a free point `{x, y, site}` (site = -1
+      on open ground, kept only so the banner text can name a place). Off-map is clamped, and
+      when the flow field admits no route the column heads straight at the goal and gets as
+      close as the land allows.
 - [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
-      Chaos repurposed as the price of the best ground
+      Chaos repurposed as the price of the best ground.
+      The lane-era stand-ins have been REMOVED to clear the ground for this: the Rampart work
+      and the ring-shaped City Walls are both gone, along with the garrison-mans-the-parapet
+      behaviour, wall HP/regen/breach, and the rampart path masks in nav.js. The mask layer
+      itself survives as an empty array so the flow-field cache and its version counter keep
+      the shape the new walls will need.
 - [x] **Retune** (pulled FORWARD, before walls — tuning siege against a broken triangle
       would have been guesswork). Pacing: Seat 1000→2500 hp, walls 900/1500/2200→1600/2600/3800,
       the walk 6min→7.6min at L1, spring income 5/8/12→4.5/7/10.5. Heir doctrine rewritten so

@@ -50,15 +50,6 @@
   /* ---------------- buildings (68×68, gold-stone: only YOUR city shows detail) ---------------- */
   const B = 68;
   const painters = {
-    rampart(g, rng) {   // a stretch of wall
-      stone(g, PAL.stone, 4, 30, 60, 22, 4);
-      for (let x = 6; x < 60; x += 9) { g.fillStyle = PAL.stone.dark; g.fillRect(x, 24, 6, 7); }
-      g.strokeStyle = PAL.stone.line; g.lineWidth = 1;
-      for (let y = 36; y < 50; y += 6) { g.beginPath(); g.moveTo(6, y); g.lineTo(62, y); g.stroke(); }
-      g.beginPath(); g.arc(34, 52, 8, Math.PI, 0); g.lineTo(42, 52); g.lineTo(26, 52); g.closePath();
-      g.fillStyle = '#0d0812'; g.fill();
-      speckle(g, B, B, rng, PAL.stone.light, 20, 0.3);
-    },
     gate(g, rng) {   // a stabilized arch into Shadow
       stone(g, PAL.stone, 8, 22, 52, 40, 6);
       g.beginPath(); g.arc(34, 46, 17, Math.PI, 0); g.lineTo(51, 62); g.lineTo(17, 62); g.closePath();

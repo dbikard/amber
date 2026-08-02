@@ -69,7 +69,7 @@
     const me = view.players[viewer];
     const rows = [];
     me.buildings.forEach((s, i) => {
-      if (C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) rows.push([s.id, s.rally != null && s.rally >= 0, i]);
+      if (C.BUILDINGS[s.bt] && C.BUILDINGS[s.bt].spawns) rows.push([s.id, !!s.rally, i]);
     });
     const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
     if (hash === trayHash) return;
@@ -227,7 +227,7 @@
       el.appendChild(b);
     }
     if (d.spawns) {
-      const detached = s.rally != null && s.rally >= 0;
+      const detached = !!s.rally;
       const info = document.createElement('div');
       info.className = 'sheet-blurb';
       info.textContent = detached ? '⚐ Its company holds a standard afield — see the flag tray'
@@ -251,10 +251,10 @@
   const KIND_BLURB = {
     node: 'A spring of living Shadow. Raise a Gate on it — your troops must be standing here — and it will pay for wars.',
     vantage: 'High ground over the paths. A Watchtower here sees far and shoots farther.',
-    road: 'A milestone of the black road. Chaos favors this ground — a Rampart can bar the way.',
+    road: 'A milestone of the black road. Chaos favors this ground.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity, wallLevel, pinfo, foeInfo, at, why) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, at, why) {
     const el = $('sheet');
     const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder === -1 ? 'unclaimed'
       : st.holder === viewer ? 'yours' : 'the rival’s';
@@ -267,9 +267,7 @@
       if (p2) {
         const stat = document.createElement('div');
         stat.className = 'sheet-blurb';
-        const wl = foeCity ? (p2.wallHp > 0 ? Math.round(p2.wallHp) + ' hp' : 'none')
-          : (p2.wallLevel > 0 ? 'L' + p2.wallLevel + ' · ' + Math.round(p2.wallHp) + '/' + C.WALL.hp[p2.wallLevel - 1] : 'none');
-        stat.innerHTML = `🗼 Seat ${Math.round(p2.castleHp)}/${C.CASTLE_HP} &nbsp; 🧱 Walls ${wl}`;
+        stat.innerHTML = `🗼 Seat ${Math.round(p2.castleHp)}/${C.CASTLE_HP}`;
         el.appendChild(stat);
       }
       if (!foeCity && pinfo) {
@@ -297,18 +295,6 @@
         mu.addEventListener('click', () => { H.onMuster(!pinfo.musterPaused); UI.closeSheet(); });
         el.appendChild(mu);
       }
-    }
-    /* your own city: raise or strengthen the walls */
-    if (site.kind === 'city' && !foeCity && wallLevel != null && wallLevel < C.MAX_LEVEL) {
-      const cost = wallLevel === 0 ? C.WALL.cost : C.WALL.up[wallLevel - 1];
-      const can = essence >= cost;
-      const wc = document.createElement('button');
-      wc.className = 'card' + (can ? '' : ' locked');
-      wc.dataset.cost = cost;
-      wc.innerHTML = `<span class="c-ico">🧱</span><span class="c-name">${wallLevel === 0 ? 'Raise the City Walls' : 'Strengthen the Walls (level ' + (wallLevel + 1) + ')'}</span>` +
-                     `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">A ring no enemy passes while it stands. Self-mends.</span>`;
-      wc.addEventListener('click', () => { if (wc.classList.contains('locked')) return; H.onWall(); UI.closeSheet(); });
-      el.appendChild(wc);
     }
     /* raise a work right here — this is how a spring gets claimed */
     if (site.kind !== 'city' && at) {

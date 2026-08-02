@@ -163,10 +163,6 @@
     } else if (bt === 'shrine') {
       p.push(part(cyl(24, 27, 6, 10), stD, 0, 3, 0));
       p.push(part(cyl(20, 22, 4, 10), st, 0, 8, 0));
-    } else if (bt === 'wall' || bt === 'rampart') {
-      p.push(part(box(52, 18, 10), st, 0, 9, 0));
-      for (let i = -2; i <= 2; i++) p.push(part(box(6, 5, 10), stL, i * 11, 20, 0));
-      if (bt === 'rampart') p.push(part(box(12, 12, 11), stD, 0, 6, 0));
     } else if (bt === 'veiled') {
       p.push(part(sph(16), 0x241a2e, 0, 9, 0));
       p.push(part(sph(10), 0x18101f, 10, 6, 6));
@@ -574,54 +570,6 @@
     g.tower = towerModel(own);
     g.tower.position.set(city.x, 0, city.y);
     g.group.add(g.tower);
-    /* a proper medieval curtain wall: continuous crenellated ring, interval towers with
-     * conical roofs, and gatehouses where the actual roads meet the city */
-    const stW = 0x8f8898, stL = 0xbdb6c8, stD = 0x555064, roofC = 0x5a4a68;
-    /* gatehouses face the nearest places worth going to — there is no road graph left to
-     * read them off, so the three closest sites name the gates */
-    const gateAngs = view.map.sites
-      .filter((n) => n.id !== city.id)
-      .sort((a, b2) => ((a.x - city.x) ** 2 + (a.y - city.y) ** 2) - ((b2.x - city.x) ** 2 + (b2.y - city.y) ** 2))
-      .slice(0, 3)
-      .map((n) => Math.atan2(n.y - city.y, n.x - city.x));
-    const nearGate = (a) => gateAngs.some((ga) => {
-      let d = Math.abs(a - ga) % (Math.PI * 2);
-      if (d > Math.PI) d = Math.PI * 2 - d;
-      return d < 0.16;
-    });
-    const wallParts = [];
-    const N = 40, R2 = C.CITY.r, segLen = 2 * Math.PI * R2 / N + 1.5;
-    for (let i = 0; i < N; i++) {
-      const a = (i + 0.5) / N * Math.PI * 2;
-      if (nearGate(a)) continue;   // the road passes through the gatehouse
-      /* curtain segment (tangential) + merlons on the outer lip */
-      const seg = [part(box(segLen, 24, 9), stW, 0, 12, 0)];
-      seg.push(part(box(segLen, 3, 11), stL, 0, 25.5, 0));
-      for (const mx of [-segLen / 3, segLen / 3]) seg.push(part(box(5.5, 6, 3), stD, mx, 30, 4));
-      for (const geo of seg) wallParts.push(geo.rotateY(-a - Math.PI / 2).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
-    }
-    for (let i = 0; i < 6; i++) {   // interval towers
-      const a = i / 6 * Math.PI * 2 + 0.26;
-      if (nearGate(a)) continue;
-      wallParts.push(part(cyl(11, 13, 40, 7), stW, 0, 20, 0).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
-      wallParts.push(part(cyl(13, 11, 5, 7), stL, 0, 43, 0).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
-      wallParts.push(part(cone(12, 16, 7), roofC, 0, 53, 0).translate(Math.cos(a) * R2, 0, Math.sin(a) * R2));
-    }
-    for (const ga of gateAngs) {    // gatehouse: twin drum towers + lintel over the road
-      for (const off of [-0.14, 0.14]) {
-        const gx = Math.cos(ga + off) * R2, gz = Math.sin(ga + off) * R2;
-        wallParts.push(part(cyl(9, 11, 36, 7), stW, 0, 18, 0).translate(gx, 0, gz));
-        wallParts.push(part(cone(10.5, 13, 7), roofC, 0, 42, 0).translate(gx, 0, gz));
-        /* the faction's banner on each drum */
-        wallParts.push(part(box(1.2, 10, 0.5), own ? 0xffd98a : 0xff8a96, 0, 42, 0).translate(gx * 1.04, 0, gz * 1.04));
-      }
-      wallParts.push(part(box(30, 6, 8), stL, 0, 30, 0)
-        .rotateY(-ga - Math.PI / 2).translate(Math.cos(ga) * R2, 0, Math.sin(ga) * R2));
-    }
-    g.wall = new THREE.Mesh(merge(wallParts), MAT);
-    g.wall.position.set(city.x, 0, city.y);
-    g.wall.visible = false;
-    g.group.add(g.wall);
     /* works are placed things now: their groups are made and destroyed as they rise and fall */
     g.works = new Map();   // building id -> { grp, key, pad }
     worldG.add(g.group);
@@ -660,15 +608,9 @@
       else if (ev.e === 'build' || ev.e === 'up') {
         if (ev.pi === viewer && ev.x != null) ringFx(ev.x, ev.y, 0xffe9a8, 0.6, 30);
       } else if (ev.e === 'raze') ringFx(ev.x, ev.y, 0xff7a4a, 1.1, 52, ev.pi === viewer ? 0xff5a4a : null);
-      else if (ev.e === 'hurtcity' || ev.e === 'hurtwall') {
+      else if (ev.e === 'hurtcity') {
         const city = view.map.sites[view.map.cities[ev.pi]];
         if (ev.pi === viewer) ringFx(ev.x != null ? ev.x : city.x, ev.y != null ? ev.y : city.y, 0xff8a5a, 1.0, 40, 0xff8a5a);
-      } else if (ev.e === 'breach') {
-        const city = view.map.sites[view.map.cities[ev.pi]];
-        ringFx(city.x, city.y, 0xffb090, 1.6, 150, ev.pi === viewer ? 0xff5a4a : null);
-      } else if (ev.e === 'wallup') {
-        const city = view.map.sites[view.map.cities[ev.pi]];
-        if (ev.pi === viewer) ringFx(city.x, city.y, 0xcbb076, 1.2, 150);
       } else if (ev.e === 'walk' || ev.e === 'pattern' || ev.e === 'trump') {
         const city = view.map.sites[view.map.cities[ev.pi]];
         ringFx(city.x, city.y, ev.e === 'trump' ? 0xe8ecff : 0x9cc8ff, 1.3, 90);
@@ -707,18 +649,6 @@
   function updateUnits(view, viewer, dt) {
     const byKind = { soldier: [], sorcerer: [], champion: [], fiend: [] };
     for (const u of view.units) byKind[u.kind].push(u);
-    /* garrison elevation: a walled owner's unit standing in the rampart band is on the walk */
-    const cityBand = [0, 1].map((pi) => {
-      const cs = view.map.sites[view.map.cities[pi]];
-      return { x: cs.x, y: cs.y, up: view.players[pi].wallHp > 0 };
-    });
-    const walkY = (u) => {
-      if (u.owner !== 0 && u.owner !== 1) return 0;
-      const cb = cityBand[u.owner];
-      if (!cb || !cb.up) return 0;
-      const dd = Math.sqrt((u.x - cb.x) ** 2 + (u.y - cb.y) ** 2);
-      return dd > C.CITY.r - 20 && dd < C.CITY.r + 2 ? 24 : 0;
-    };
     for (const kind of Object.keys(byKind)) {
       let im = unitIM[kind];
       if (!im) {
@@ -734,7 +664,7 @@
         const mvx = u.x - f.x, mvy = u.y - f.y;
         if (mvx * mvx + mvy * mvy > 0.5) f.a = Math.atan2(mvx, mvy);
         f.x = u.x; f.y = u.y;
-        dum.position.set(u.x, groundH(u.x, u.y) + walkY(u) + Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
+        dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * 1.6, u.y);
         dum.rotation.set(0, f.a, 0);
         const s2 = u.kind === 'champion' ? 1.25 : 1;
         dum.scale.set(s2, s2, s2);
@@ -774,7 +704,6 @@
       const pl = view.players[pi];
       /* the rival's court stays out of the world until somebody has seen it */
       if (!g.own) { g.group.visible = view.foeSeen !== false; if (!g.group.visible) continue; }
-      g.wall.visible = pl.wallHp > 0;
       /* works stand where they were placed. A rival's work you can no longer see is a
        * ghost — drawn faint, at the place you last saw it. */
       const want = new Map();
@@ -850,10 +779,9 @@
 
   function updateBanner(view, viewer) {
     const b = view.players[viewer].banner;
-    bannerG.visible = b >= 0;
-    if (b >= 0) {
-      const s = view.map.sites[b];
-      bannerG.position.set(s.x + (viewer === 0 ? 26 : -26), groundH(s.x, s.y), s.y);
+    bannerG.visible = !!b;
+    if (b) {
+      bannerG.position.set(b.x + (viewer === 0 ? 26 : -26), groundH(b.x, b.y), b.y);
       bannerG.rotation.y = curViewerRotOwn();
       bannerG._flag.rotation.y = Math.sin(T * 2.6) * 0.25;
     }
@@ -861,7 +789,7 @@
     const me = view.players[viewer];
     const active = new Set();
     me.buildings.forEach((s, i) => {
-      if (s.rally == null || s.rally < 0) return;
+      if (!s.rally) return;
       active.add(s.id);
       let f = coFlags.get(s.id);
       if (!f) {
@@ -874,9 +802,8 @@
         worldG.add(f);
         coFlags.set(s.id, f);
       }
-      const site = view.map.sites[s.rally];
       const a2 = (i / Math.max(1, me.buildings.length)) * Math.PI * 2;
-      const fx2 = site.x + Math.cos(a2) * 32, fz2 = site.y + Math.sin(a2) * 32;
+      const fx2 = s.rally.x + Math.cos(a2) * 32, fz2 = s.rally.y + Math.sin(a2) * 32;
       f.position.set(fx2, groundH(fx2, fz2), fz2);
       f.rotation.y = curViewerRotOwn();
       f._flag.rotation.y = Math.sin(T * 2.2 + i) * 0.3;
@@ -1002,7 +929,7 @@
       g.fillStyle = 'rgba(222,204,164,0.85)';
       g.fillText(s.name, p.x, p.y + 30);
     }
-    /* castle + wall bars */
+    /* castle bars */
     for (const pi of [viewer, 1 - viewer]) {
       if (pi !== viewer && view.foeSeen === false) continue;   // no bar over a Seat you have not found
       const pl = view.players[pi];
@@ -1012,11 +939,6 @@
       g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y - 4, 92, 8);
       g.fillStyle = pi === viewer ? '#ffd98a' : '#ff8a96';
       g.fillRect(p.x - 45, p.y - 3, 90 * Math.max(0, pl.castleHp / C.CASTLE_HP), 6);
-      if (pl.wallHp > 0) {
-        g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y + 6, 92, 5);
-        g.fillStyle = '#cbb076';
-        g.fillRect(p.x - 45, p.y + 7, 90 * Math.min(1, pl.wallHp / C.WALL.hp[2]), 3);
-      }
     }
     /* minimap (same math as 2D, display space) */
     const mb = R.miniBox(), mw = mb.mw, mx = mb.mx, mh = mb.mh, my = mb.my;

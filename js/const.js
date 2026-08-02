@@ -20,7 +20,6 @@
   CONST.BUILD = { foot: 34, gap: 10 };   // footprint radius, and clearance between works
   /* a Shadow Gate within this of an essence node draws from it (and claims it) */
   CONST.NODE = { r: 96 };
-  CONST.WALL = { cost: 150, up: [140, 230], hp: [1600, 2600, 3800] };   // a wall is a WALL
   CONST.CASTLE_HP = 2500;         // retune: a Seat must not fall in ninety seconds of contact
   CONST.START_ESSENCE = 180;
   CONST.BASE_INCOME = 2.5;        // essence/sec before any Shadow Gate
@@ -85,7 +84,6 @@
     cell: 20,          // world units per grid cell (700×2400 → 35×120 cells)
     /* terrain costs live in WorldGen.COST; climbing is charged on top of them */
     slope: 26,         // extra move cost per unit of elevation climbed (descending is free)
-    rampartR: 104,     // an enemy rampart seals its site: must be broken, not walked around
     arrive: 72,        // within this of the goal a unit steers to its own place in the line
     cacheMax: 48       // flow fields held before the cache is dropped
   };
@@ -110,14 +108,11 @@
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
-    rampart:  { name: 'Rampart',       icon: '🛡', cost: 160, up: [140, 240],
-                hp: 700, hpUp: [1050, 1500], vision: 200,
-                blurb: 'Bars the way. Enemies must break it to pass' },
     shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, up: [250, 400], unique: true, hp: 450,
                 drain: [12, 14, 16], rate: [0.22, 0.29, 0.38],  // essence/sec → %/sec (L1 walk ≈ 7.6 min)
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. Walking is REVEALED.' }
   };
-  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'rampart', 'spire', 'shrine'];
+  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'shrine'];
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].

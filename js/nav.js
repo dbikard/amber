@@ -37,29 +37,17 @@
     return cy * nav.W + cx;
   };
 
-  /* ---------------- blockers: an enemy rampart seals its site ---------------- */
+  /* ---------------- blockers ----------------
+   * Nothing a player builds bars a path today — walls come back with the piece-by-piece
+   * implementation. The mask survives as an empty layer so the field cache, the version
+   * counter and every caller keep their shape for that work. */
   function masksFor(nav, world) {
     if (nav.maskVer === world.navVersion) return nav.masks;
-    const n = nav.W * nav.H, cw = nav.cw;
-    const m = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
-    const r = C.NAV.rampartR, r2 = r * r;
-    for (let pi = 0; pi < 2; pi++) {
-      for (const b of world.players[pi].buildings) {
-        if (b.bt !== 'rampart') continue;
-        const gx0 = Math.max(0, Math.floor((b.x - r) / cw)), gx1 = Math.min(nav.W - 1, Math.floor((b.x + r) / cw));
-        const gy0 = Math.max(0, Math.floor((b.y - r) / cw)), gy1 = Math.min(nav.H - 1, Math.floor((b.y + r) / cw));
-        for (let gy = gy0; gy <= gy1; gy++) {
-          for (let gx = gx0; gx <= gx1; gx++) {
-            const dx = (gx + 0.5) * cw - b.x, dy = (gy + 0.5) * cw - b.y;
-            if (dx * dx + dy * dy > r2) continue;
-            for (let o = 0; o < 3; o++) if (o !== pi) m[o][gy * nav.W + gx] = 1;
-          }
-        }
-      }
-    }
-    nav.masks = m; nav.maskVer = world.navVersion;
-    nav.fields.clear();   // every field was drawn against the old walls
-    return m;
+    const n = nav.W * nav.H;
+    nav.masks = [new Uint8Array(n), new Uint8Array(n), new Uint8Array(n)];
+    nav.maskVer = world.navVersion;
+    nav.fields.clear();
+    return nav.masks;
   }
 
   /* ---------------- flow fields (Dijkstra out from the goal) ---------------- */

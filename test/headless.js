@@ -116,6 +116,63 @@ suite('command grammar');
   eq('an unknown work id is refused', World.applyCommand(w, 0, { c: 'up', id: 999999 }).err, 'id');
 }
 
+suite('the standard')
+{
+  const w = World.createWorld(42), pl = w.players[0];
+  const c = World.cityOf(w, 0);
+  ok('a standard starts over its own Seat', !!pl.banner && pl.banner.site === w.map.cities[0]);
+
+  /* named ground: tapping a site should carry the site's id along for the banner text */
+  const spring = w.map.sites.find((s) => s.kind !== 'city');
+  ok('a standard may be planted on a site', World.applyCommand(w, 0, { c: 'banner', site: spring.id }).ok);
+  eq('and it remembers which site', pl.banner.site, spring.id);
+
+  /* bare ground: the whole point. Find the least walkable cell on the map — deep water or
+   * a cliff face — and plant there. It must be ACCEPTED: an order to march is not a claim,
+   * and the column simply gets as close as the land allows. */
+  let worst = null;
+  for (let gy = 0; gy < w.nav.H && !worst; gy++) for (let gx = 0; gx < w.nav.W; gx++) {
+    if (WG.COST[w.nav.terra[gy * w.nav.W + gx]] !== 0) continue;   // 0 = impassable
+    worst = { x: (gx + 0.5) * w.nav.cw, y: (gy + 0.5) * w.nav.cw }; break;
+  }
+  ok('the map has impassable ground to test with', !!worst);
+  const r = World.applyCommand(w, 0, { c: 'banner', x: worst.x, y: worst.y });
+  ok('a standard on impassable ground is ACCEPTED', r.ok, r.err || '');
+  eq('it is remembered as open country, not a site', pl.banner.site, -1);
+  near('and it stands where it was planted', pl.banner.x, worst.x, 1);
+
+  /* off the edge of the world is clamped, never refused */
+  ok('a standard beyond the rim is clamped, not refused',
+     World.applyCommand(w, 0, { c: 'banner', x: -9999, y: 9e9 }).ok);
+  ok('clamped onto the map', pl.banner.x >= 0 && pl.banner.x <= C.MAP.W &&
+     pl.banner.y >= 0 && pl.banner.y <= C.MAP.H, `${pl.banner.x},${pl.banner.y}`);
+
+  /* and the troops actually try: a unit ordered at unreachable ground still closes on it */
+  World.applyCommand(w, 0, { c: 'banner', x: worst.x, y: worst.y });
+  /* a Trump puts a champion on the field at home through a public command */
+  pl.essence = 90000; pl.powers.trump = 0;
+  ok('a champion answers the Trump', World.applyCommand(w, 0, { c: 'power', k: 'trump' }).ok);
+  const uid = pl.championId;
+  const u = w.units.find((q) => q.id === uid);
+  const d0 = Math.hypot(u.x - worst.x, u.y - worst.y);
+  for (let i = 0; i < 30 * 60; i++) World.update(w, C.SIM_DT);
+  const alive = w.units.find((q) => q.id === uid);
+  ok('a unit marches at unreachable ground rather than standing still',
+     !alive || Math.hypot(alive.x - worst.x, alive.y - worst.y) < d0 - 40,
+     alive ? `closed ${Math.round(d0 - Math.hypot(alive.x - worst.x, alive.y - worst.y))} of ${Math.round(d0)}` : 'died en route');
+}
+
+suite('no walls, for now')
+{
+  ok('the rampart is gone from the build table', !C.BUILDINGS.rampart);
+  ok('and from the build sheet order', !C.BUILD_ORDER_UI.includes('rampart'));
+  ok('city walls are gone from the rules', C.WALL === undefined);
+  const w = World.createWorld(7);
+  eq('the wall command is refused', World.applyCommand(w, 0, { c: 'wall' }).err, 'cmd');
+  ok('no player carries wall state', w.players.every((p) => p.wallHp === undefined));
+  ok('no rampart survives in the nav layer', C.NAV.rampartR === undefined);
+}
+
 /* ---------------- multiplayer: the snapshot contract ---------------- */
 suite('multiplayer snapshots');
 {
@@ -145,11 +202,11 @@ suite('multiplayer snapshots');
   /* nothing the rival keeps may ride along */
   const foe = wire.players[0];
   eq('the rival essence is withheld', foe.essence, null);
-  eq('the rival banner is withheld', foe.banner, -1);
+  eq('the rival banner is withheld', foe.banner, null);
   eq('the rival powers are withheld', foe.powers, null);
   eq('the rival muster state is withheld', foe.musterPaused, false);
   ok('rival works carry no branch', foe.buildings.every((b) => b.br === null));
-  ok('rival works carry no rally order', foe.buildings.every((b) => b.rally === -1));
+  ok('rival works carry no rally order', foe.buildings.every((b) => b.rally === null));
 
   /* fog: a rival work in the snapshot must be one the viewer can actually see */
   const canSee = (x, y) => World.canSee(w, 1, x, y);

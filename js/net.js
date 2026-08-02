@@ -164,7 +164,6 @@
       const mine = pi === viewer;
       return {
         castleHp: Math.round(pl.castleHp),
-        wallHp: Math.round(pl.wallHp),
         essence: mine ? pl.essence : null,
         incomeRate: mine ? pl.incomeRate : null,
         drainRate: mine ? pl.drainRate : null,
@@ -172,15 +171,14 @@
         walking: mine || pl.revealed ? pl.walking : false,
         revealed: pl.revealed,
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
-        banner: mine ? pl.banner : -1,   // the banner is a strategic secret
-        wallLevel: mine ? pl.wallLevel : 0,
+        banner: mine ? pl.banner : null,   // the banner is a strategic secret
         musterPaused: mine ? pl.musterPaused : false,
         buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)).map((b) => ({
           id: b.id, bt: b.bt, level: b.level, x: Math.round(b.x), y: Math.round(b.y),
           hp: Math.round(b.hp), maxHp: b.maxHp, node: b.node,
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
-          rally: mine && b.rally != null ? b.rally : -1
+          rally: mine && b.rally ? b.rally : null
         })),
         /* what the viewer remembers of works they can no longer see */
         ghosts: mine ? [] : Object.entries(world.players[viewer].ghosts)

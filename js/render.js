@@ -239,8 +239,8 @@
     aura.width = 520; aura.height = 380; aura.position.set(g.cx, g.cy);
     stage.glow.addChild(aura);
     stage.city.addChild(g.castle);
-    g.wall = new PIXI.Graphics(); g.bars = new PIXI.Graphics();
-    stage.city.addChild(g.wall, g.bars);
+    g.bars = new PIXI.Graphics();
+    stage.city.addChild(g.bars);
     return g;
   }
   function buildCityFoe(view, viewer) {
@@ -255,8 +255,8 @@
     g.castle.anchor.set(0.5); g.castle.width = 200; g.castle.height = 134;
     g.castle.position.set(g.cx, g.cy);
     g.shrineRing = new PIXI.Graphics();
-    g.wall = new PIXI.Graphics(); g.bars = new PIXI.Graphics();
-    stage.city.addChild(g.castle, g.shrineRing, g.wall, g.bars);
+    g.bars = new PIXI.Graphics();
+    stage.city.addChild(g.castle, g.shrineRing, g.bars);
     return g;
   }
 
@@ -358,10 +358,9 @@
     const flag = stage.banner.children[0];
     if (!flag) return;
     const b = view.players[viewer].banner;
-    flag.visible = b >= 0;
-    if (b >= 0) {
-      const s = view.map.sites[b];
-      flag.position.set(dx(s.x, viewer) + 20, dy(s.y, viewer) - 8);
+    flag.visible = !!b;
+    if (b) {
+      flag.position.set(dx(b.x, viewer) + 20, dy(b.y, viewer) - 8);
       flag.rotation = Math.sin(T * 2.4) * 0.06;
     }
     /* company pennants */
@@ -371,10 +370,9 @@
     coG.clear();
     const me = view.players[viewer];
     me.buildings.forEach((s2, i) => {
-      if (s2.rally == null || s2.rally < 0) return;
-      const site = view.map.sites[s2.rally];
+      if (!s2.rally) return;
       const a = (i / Math.max(1, me.buildings.length)) * Math.PI * 2;
-      const X = dx(site.x, viewer) + Math.cos(a) * 32, Y = dy(site.y, viewer) + Math.sin(a) * 32;
+      const X = dx(s2.rally.x, viewer) + Math.cos(a) * 32, Y = dy(s2.rally.y, viewer) + Math.sin(a) * 32;
       coG.moveTo(X, Y).lineTo(X, Y - 26).stroke({ width: 2, color: 0xd8c8a8 });
       coG.poly([X, Y - 26, X + 14, Y - 21, X, Y - 16]).fill(PENNANT[i % PENNANT.length]);
     });
@@ -486,23 +484,17 @@
     /* the rival's court is not drawn until it has been found */
     const foeKnown = view.foeSeen !== false;
     foe.castle.visible = foeKnown;
-    if (foe.wall) foe.wall.visible = foeKnown;
     if (foe.bars) foe.bars.visible = foeKnown;
     for (const b of me.buildings) drawWork(own, b, true, false);
     for (const b of en.buildings) drawWork(own, b, false, false);
     for (const gh of (en.ghosts || [])) if (!live.has(gh.id)) drawWork(own, gh, false, true);
     for (const [id, sp] of own.pool) if (!live.has(id)) { sp.destroy(); own.pool.delete(id); }
-    drawWallsBars(own, me, viewer, true);
-    if (foeKnown) drawWallsBars(foe, en, viewer, false);
-    else { foe.wall.clear(); foe.bars.clear(); }
+    drawSeatBar(own, me, true);
+    if (foeKnown) drawSeatBar(foe, en, false);
+    else foe.bars.clear();
   }
-  function drawWallsBars(g, pl, viewer, own) {
-    g.wall.clear(); g.bars.clear();
-    if (pl.wallHp > 0) {
-      const start = own ? Math.PI : 0, end = own ? 2 * Math.PI : Math.PI;
-      g.wall.arc(g.cx, g.cy + (own ? 10 : -10), 104, start, end)
-        .stroke({ width: 8, color: own ? 0xdcbe82 : 0xdc8c96, alpha: 0.85 });
-    }
+  function drawSeatBar(g, pl, own) {
+    g.bars.clear();
     const hpw = 160, hx = g.cx - hpw / 2, hy = own ? g.cy + 74 : g.cy - 82;
     g.bars.rect(hx - 1, hy - 1, hpw + 2, 8).fill({ color: 0x000000, alpha: 0.75 });
     g.bars.rect(hx, hy, hpw * Math.max(0, pl.castleHp / C.CASTLE_HP), 6).fill(own ? 0xffd98a : 0xff8a96);
