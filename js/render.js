@@ -7,7 +7,7 @@
   'use strict';
 
   const C = global.CONST, S = global.SPRITES;
-  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, ready: false };
+  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, zoom: 1, ready: false };
   let app = null, W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
   let stage = {};            // named layers
   let texCache = new Map();  // canvas -> PIXI.Texture
@@ -52,18 +52,32 @@
     if (!app) return;
     W = window.innerWidth; H = window.innerHeight;
     app.renderer.resize(W, H);
-    /* the map is wider than one screenful now: this is a zoom, not a fit-to-width */
-    scale = W / C.VIEW_W;
-    viewW = W / scale; viewH = H / scale;
+    R.applyZoom();
     if (!R._homed) { R.camX = R.maxCamX() / 2; R.camY = R.maxCamY() / 2; }
     if (fogRT) { fogRT.destroy(true); fogRT = null; }
     makeVignette();
   };
-  /* put the camera over a world point (used at match start to find your own Seat) */
+  /* zoom is a multiplier on how much world fits across the screen */
+  R.applyZoom = function () {
+    R.zoom = Math.max(C.VIEW.min, Math.min(C.VIEW.max, R.zoom || 1));
+    scale = W * R.zoom / C.VIEW_W;
+    viewW = W / scale; viewH = H / scale;
+    R.clampCam();
+  };
+  R.setZoom = function (z) { R.zoom = z; R.applyZoom(); };
+  /* The camera may run PAST the edge of the world by a margin, so a Seat sitting in the
+   * corner can still be brought to the middle of the screen. Clamping hard at the edge left
+   * a corner city stuck small at the top of the view with nowhere further to scroll. */
+  const margX = () => viewW * C.VIEW.overscroll, margY = () => viewH * C.VIEW.overscroll;
+  R.clampCam = function () {
+    R.camX = Math.max(-margX(), Math.min(R.maxCamX() + margX(), R.camX));
+    R.camY = Math.max(-margY(), Math.min(R.maxCamY() + margY(), R.camY));
+  };
   R.lookAt = function (wx, wy) {
     R._homed = true;
-    R.camX = Math.max(0, Math.min(R.maxCamX(), wx - viewW / 2));
-    R.camY = Math.max(0, Math.min(R.maxCamY(), wy - viewH / 2));
+    R.camX = wx - viewW / 2;
+    R.camY = wy - viewH / 2;
+    R.clampCam();
   };
   R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
@@ -77,9 +91,15 @@
     const wx = px / scale + R.camX, wy = py / scale + R.camY;
     return { x: dx(wx, viewer), y: dy(wy, viewer) };
   };
+  /* world → screen, the exact inverse of toWorld. Kept public so tests (and any future UI
+   * anchoring) use the renderer's own projection rather than reimplementing it. */
+  R.project = function (x, y) {
+    return { x: (dx(x) - R.camX) * scale, y: (dy(y) - R.camY) * scale, ok: true };
+  };
   R.pan = function (dpx, dpy) {
-    R.camX = Math.max(0, Math.min(R.maxCamX(), R.camX - (dpx || 0) / scale));
-    R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - (dpy || 0) / scale));
+    R.camX -= (dpx || 0) / scale;
+    R.camY -= (dpy || 0) / scale;
+    R.clampCam();
   };
 
   /* ---------------- hit-testing (ring city) ---------------- */
@@ -101,7 +121,9 @@
   R.hitSite = function (px, py, view, viewer, forFlag) {
     let best = -1, bd = Infinity;
     for (const s of view.map.sites) {
-      const r2 = (s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : 122) : 62) * scale;   // sheets stop at the wall; flags take the whole court
+      /* a sheet-tap on a Seat covers only the tower's own ground, so the courtyard around
+       * it stays tappable as the buildable land it is; a FLAG may be planted on the whole court */
+      const r2 = (s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : C.CITY.seatR) : 62) * scale;
       const X = (dx(s.x, viewer) - R.camX) * scale, Y = (dy(s.y, viewer) - R.camY) * scale;
       const dd = (px - X) * (px - X) + (py - Y) * (py - Y);
       if (dd < r2 * r2 && dd < bd) { bd = dd; best = s.id; }
@@ -122,8 +144,9 @@
   };
   R.minimapJump = function (px, py) {
     const m = MINI();
-    R.camX = Math.max(0, Math.min(R.maxCamX(), ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2));
-    R.camY = Math.max(0, Math.min(R.maxCamY(), ((py - m.my) / m.mh) * C.MAP.H - viewH / 2));
+    R.camX = ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2;
+    R.camY = ((py - m.my) / m.mh) * C.MAP.H - viewH / 2;
+    R.clampCam();
   };
 
   /* ---------------- small texture helpers ---------------- */

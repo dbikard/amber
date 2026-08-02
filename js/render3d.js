@@ -9,7 +9,7 @@
   'use strict';
 
   const C = global.CONST;
-  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, ready: false };
+  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, zoom: 1, ready: false };
   let renderer = null, scene, cam, rig, worldG;
   let overlay = null, octx = null;
   let W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
@@ -230,8 +230,8 @@
     scene.add(sun);
     cam = new THREE.PerspectiveCamera(55, 1, 10, 3600);
     rig = new THREE.Group();
-    /* pitch ~36°, framing CONST.VIEW_W of world across a portrait screen */
-    cam.position.set(0, C.VIEW_W * 1.21, C.VIEW_W * 1.69);
+    /* pitch ~36°; applyZoom() sets the real distance from CONST.VIEW */
+    cam.position.set(0, C.VIEW_W * C.VIEW.camHigh, C.VIEW_W * C.VIEW.camBack);
     cam.lookAt(0, 0, 0);
     rig.add(cam);
     scene.add(rig);
@@ -264,22 +264,53 @@
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     cam.aspect = W / H;
     cam.updateProjectionMatrix();
-    /* the map is wider than one screenful now: this is a zoom, not a fit-to-width */
-    scale = W / C.VIEW_W;
-    viewW = W / scale; viewH = H / scale;
+    R.applyZoom();
     if (!R._homed) { R.camX = R.maxCamX() / 2; R.camY = R.maxCamY() / 2; }
   };
+  /* zoom moves the camera in and out; the rig keeps the same pitch, so the view simply gets
+   * closer to the ground rather than changing character */
+  R.applyZoom = function () {
+    R.zoom = Math.max(C.VIEW.min, Math.min(C.VIEW.max, R.zoom || 1));
+    scale = W * R.zoom / C.VIEW_W;
+    viewW = W / scale; viewH = H / scale;
+    if (cam) {
+      cam.position.set(0, viewW * C.VIEW.camHigh, viewW * C.VIEW.camBack);
+      cam.lookAt(0, 0, 0);
+    }
+    R.clampCam();
+  };
+  R.setZoom = function (z) { R.zoom = z; R.applyZoom(); };
+  /* the camera may run PAST the world's edge by a margin, so a corner Seat can still be
+   * brought to the middle of the screen instead of being stranded small at the top */
+  const margX = () => viewW * C.VIEW.overscroll, margY = () => viewH * C.VIEW.overscroll;
+  R.clampCam = function () {
+    R.camX = Math.max(-margX(), Math.min(R.maxCamX() + margX(), R.camX));
+    R.camY = Math.max(-margY(), Math.min(R.maxCamY() + margY(), R.camY));
+    syncRig();
+  };
+  /* Move the rig the moment the camera moves. It used to be set only inside frame(), so a
+   * lookAt followed by a project or a toWorld read a camera that was still one frame behind
+   * — which is exactly the window a tap lands in. */
+  function syncRig() {
+    if (!rig || !cam) return;
+    rig.position.set(R.camX + viewW / 2, 0, R.camY + viewH * 0.62);
+    rig.rotation.y = 0;
+    rig.updateMatrixWorld(true);
+    cam.updateMatrixWorld(true);
+  }
   R.lookAt = function (wx, wy) {
     /* the rig origin IS what the camera centres on, and the rig sits at camY + 0.62*viewH */
     R._homed = true;
-    R.camX = Math.max(0, Math.min(R.maxCamX(), wx - viewW / 2));
-    R.camY = Math.max(0, Math.min(R.maxCamY(), wy - viewH * 0.62));
+    R.camX = wx - viewW / 2;
+    R.camY = wy - viewH * 0.62;
+    R.clampCam();
   };
   R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
   R.pan = function (dpx, dpy) {
-    R.camX = Math.max(0, Math.min(R.maxCamX(), R.camX - (dpx || 0) / scale));
-    R.camY = Math.max(0, Math.min(R.maxCamY(), R.camY - (dpy || 0) / scale));
+    R.camX -= (dpx || 0) / scale;
+    R.camY -= (dpy || 0) / scale;
+    R.clampCam();
   };
   /* the minimap is a true rectangle of the world, and scrubbing it moves both axes */
   /* A corner map, and a SMALL one. Sized off the map's aspect it grew to half the screen
@@ -295,8 +326,9 @@
   };
   R.minimapJump = function (px, py) {
     const m = MINI();
-    R.camX = Math.max(0, Math.min(R.maxCamX(), ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2));
-    R.camY = Math.max(0, Math.min(R.maxCamY(), ((py - m.my) / m.mh) * C.MAP.H - viewH / 2));
+    R.camX = ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2;
+    R.camY = ((py - m.my) / m.mh) * C.MAP.H - viewH * 0.62;
+    R.clampCam();
   };
 
   /* screen ↔ world via raycast to the ground plane */
@@ -304,10 +336,24 @@
   const ndc = typeof THREE !== 'undefined' ? new THREE.Vector2() : null;
   const groundPlane = typeof THREE !== 'undefined' ? new THREE.Plane(new THREE.Vector3(0, 1, 0), 0) : null;
   const hitV = typeof THREE !== 'undefined' ? new THREE.Vector3() : null;
+  /* Raycast against the GROUND, not against y=0. The world has real relief now, and a ray
+   * stopped at sea level lands well past the hill the finger was actually on — near a Seat,
+   * far enough that a tap aimed at the courtyard came back as a tap on the tower. Three
+   * iterations converge: guess a height, see what is really there, try again. */
   R.toWorld = function (px, py) {
     ndc.set((px / W) * 2 - 1, -(py / H) * 2 + 1);
     rc.setFromCamera(ndc, cam);
+    let h = 0;
+    for (let i = 0; i < 3; i++) {
+      groundPlane.constant = -h;
+      if (!rc.ray.intersectPlane(groundPlane, hitV)) break;
+      const nh = groundH(hitV.x, hitV.z);
+      if (Math.abs(nh - h) < 0.5) { h = nh; break; }
+      h = nh;
+    }
+    groundPlane.constant = -h;
     if (rc.ray.intersectPlane(groundPlane, hitV)) return { x: hitV.x, y: hitV.z };
+    groundPlane.constant = 0;
     return { x: C.MAP.W / 2, y: C.MAP.H / 2 };
   };
   /* the id of the viewer's own work under the finger, or -1 */
@@ -325,7 +371,8 @@
     const w2 = R.toWorld(px, py);
     let best = -1, bd = Infinity;
     for (const s of view.map.sites) {
-      const r2 = s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : 122) : 62;   // sheets stop at the wall; flags take the whole court
+      /* a sheet-tap on a Seat covers only the tower's own ground; a FLAG takes the whole court */
+      const r2 = s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : C.CITY.seatR) : 62;
       const dd = (w2.x - s.x) * (w2.x - s.x) + (w2.y - s.y) * (w2.y - s.y);
       if (dd < r2 * r2 && dd < bd) { bd = dd; best = s.id; }
     }
@@ -336,7 +383,8 @@
     pv.set(x, y, z).project(cam);
     return { x: (pv.x * 0.5 + 0.5) * W, y: (-pv.y * 0.5 + 0.5) * H, ok: pv.z < 1 && pv.z > -1 };
   }
-  R.project = (x, y, z) => proj(x, y, z);   // world → screen (tests + future UI anchoring)
+  /* world (ground) → screen: the inverse of toWorld, same 2-arg shape in both renderers */
+  R.project = (x, y) => proj(x, groundH(x, y) + 2, y);
 
   /* ---------------- world (re)build ---------------- */
   const mapKey = (view, viewer) => (view.mapSeed || 0) + ':' + viewer;
@@ -595,8 +643,7 @@
      * camY = max → own city + build grid at the bottom; camY = 0 → the rival's gates. */
     /* the rig simply follows the camera over the world; there is no fixed enemy direction
      * to anchor a focus track to any more */
-    rig.position.set(R.camX + viewW / 2, 0, R.camY + viewH * 0.62);
-    rig.rotation.y = 0;
+    syncRig();
 
     updateUnits(view, viewer, dt);
     updateSites(view, viewer);

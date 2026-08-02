@@ -7,7 +7,10 @@
   CONST.SIM_DT = 1 / 30;          // fixed timestep (browser + sim identical)
   CONST.MAX_BUILDINGS = 14;       // works a single heir may hold standing at once
   /* the city is a real place: a walled disc with the Tower of the Seat at its heart */
-  CONST.CITY = { r: 150, slotR: 104 };
+  /* seatR is the Seat-tower's own ground: no work may stand inside it, and a tap inside it
+   * opens the Seat's sheet. ONE number, so the two can never disagree — they did, and the
+   * ring between them was buildable ground you could not tap. */
+  CONST.CITY = { r: 150, slotR: 104, seatR: 74 };
 
   /* ---- Free placement (open world, stage 4) ----
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is
@@ -29,7 +32,14 @@
   /* The world is generated fresh every match — no template, no corridors, no mirror.
    * Squarer than before on purpose: a Seat must have world on every side to explore. */
   CONST.MAP = { W: 2000, H: 2400 };
-  CONST.VIEW_W = 820;          // how much world fits across the screen (the zoom)
+  CONST.VIEW_W = 620;          // how much world fits across the screen at zoom 1 (closer in)
+  CONST.VIEW = {
+    min: 0.55, max: 2.6,       // zoom range: 0.55 = survey the country, 2.6 = down among the works
+    overscroll: 0.42,          // how far past the world's edge the camera may run, as a
+                               // fraction of the view — without it a corner Seat is stranded
+                               // small at the top of the screen with nowhere left to scroll
+    camHigh: 1.21, camBack: 1.69   // the 3D rig's height and set-back, in units of the view width
+  };
   CONST.WORLD = {
     freq: 0.030,        // noise frequency in cells — lower makes broader country
     ridge: 0.40,        // how much folded (ridge) noise drives elevation: mountain CHAINS

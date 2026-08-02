@@ -269,10 +269,22 @@
     }
   }
 
-  /* ---------------- input: drag pans, tap acts ---------------- */
+  /* ---------------- input: drag pans, pinch zooms, tap acts ---------------- */
   let pDown = null, dragging = false, miniScrub = false;
+  const touches = new Map();          // active pointers, for the pinch
+  let pinchFrom = 0, pinchZoom = 1;
+  const spread = () => {
+    const p = [...touches.values()];
+    return p.length < 2 ? 0 : Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+  };
   function onDown(e) {
     if (!game.mode) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {          // a second finger: this gesture is a pinch, not a tap
+      pinchFrom = spread(); pinchZoom = Render.zoom || 1;
+      dragging = true; pDown = null; miniScrub = false;
+      return;
+    }
     pDown = { x: e.clientX, y: e.clientY };
     dragging = false;
     miniScrub = Render.hitMinimap(e.clientX, e.clientY);
@@ -280,6 +292,12 @@
   }
   function onMove(e) {
     Render.pointer = { x: e.clientX, y: e.clientY };
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size >= 2) {           // pinch: two fingers set the zoom
+      const now = spread();
+      if (pinchFrom > 8 && now > 8 && Render.setZoom) Render.setZoom(pinchZoom * (now / pinchFrom));
+      return;
+    }
     if (!pDown) return;
     if (miniScrub) { Render.minimapJump(e.clientX, e.clientY); return; }
     /* the map is wider than the screen now — drag pans on BOTH axes */
@@ -291,8 +309,14 @@
     }
     onMove._lx = e.clientX; onMove._ly = e.clientY;
   }
+  function onWheel(e) {
+    if (!game.mode || !Render.setZoom) return;
+    e.preventDefault();
+    Render.setZoom((Render.zoom || 1) * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+  }
   function onUp(e) {
-    const wasTap = pDown && !dragging && !miniScrub;
+    touches.delete(e.pointerId);
+    const wasTap = pDown && !dragging && !miniScrub && touches.size === 0;
     pDown = null; dragging = false; miniScrub = false; onMove._lx = onMove._ly = null;
     if (!wasTap || !game.mode || game.over) return;
     const x = e.clientX, y = e.clientY;
@@ -537,6 +561,8 @@
     cvs.addEventListener('pointerdown', onDown);
     cvs.addEventListener('pointermove', onMove);
     cvs.addEventListener('pointerup', onUp);
+    cvs.addEventListener('pointercancel', onUp);
+    cvs.addEventListener('wheel', onWheel, { passive: false });
     /* kill the synthetic mouse click that follows a touch — it lands on whatever
      * sheet just opened under the finger and 'chooses' a card the player never tapped */
     cvs.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });

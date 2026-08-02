@@ -102,7 +102,7 @@
         if (d2(x, y, b.x, b.y) < need * need) return false;
     for (let pi = 0; pi < 2; pi++) {   // and never inside the Seat itself
       const c = cityOf(world, pi);
-      if (d2(x, y, c.x, c.y) < 74 * 74) return false;
+      if (d2(x, y, c.x, c.y) < C.CITY.seatR * C.CITY.seatR) return false;
     }
     return true;
   }
