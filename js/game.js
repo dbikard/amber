@@ -181,8 +181,9 @@
     const mem = world.players[viewer].explored;
     return {
       t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed,
-      /* the rival's Seat is a rumour until you have seen it */
-      foeSeen: !!world.players[viewer].explored[world.map.cities[1 - viewer]],
+      /* a rival's Seat is a rumour until you have seen it — one flag per seat now, since
+       * with four heirs you may have found one court and not another */
+      seatSeen: world.map.cities.map((id) => !!world.players[viewer].explored[id]),
       /* the SAME fog the wire applies: a rival's works only where you can see them, and
        * ghosts (id-keyed in the world, listed on the view) for the ones you cannot */
       players: world.players.map((pl, pi) => pi === viewer
@@ -231,7 +232,8 @@
     World.markSeen(guestSeen, src);
     return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
              seen: guestSeen,
-             foeSeen: !!(snap.sites[refWorld.map.cities[0]] && snap.sites[refWorld.map.cities[0]].live !== undefined),
+             seatSeen: refWorld.map.cities.map((id, pi) => pi === Net.localIdx ||
+               !!(snap.sites[id] && snap.sites[id].live !== undefined)),
              sites: snap.sites, units, storms: snap.storms, visSources: src, see };
   }
 

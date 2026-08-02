@@ -31,6 +31,9 @@
   R.debugUnitMeshes = () => unitIM;
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
+  /* have I found THIS seat? one flag per seat now; `foeSeen` is the old two-player spelling */
+  const seatFound = (view, pi) => pi === curViewer ||
+    (view.seatSeen ? view.seatSeen[pi] !== false : view.foeSeen !== false);
   const PENNANT = [0xe8ecff, 0x64d8d8, 0xc48eff, 0xff9ad8, 0x9adcff, 0xffc27a, 0xb0e8a0, 0xd8b0ff];
   let coFlags = new Map();
   let fx = [];
@@ -546,7 +549,7 @@
     }
 
     /* cities */
-    cityObjs = { own: buildCity(view, viewer, viewer), foe: buildCity(view, viewer, 1 - viewer) };
+    cityObjs = view.players.map((q, pi) => buildCity(view, viewer, pi));
 
     /* the war banner */
     bannerG = new THREE.Group();
@@ -583,7 +586,14 @@
   function curViewerRotOwn() { return 0; }
 
   /* ---------------- events → fx ---------------- */
-  const TINT = { 0: 0xffd98a, 1: 0xff8a96, 2: 0x7dff9e };
+  /* You are ALWAYS gold — nobody should have to remember which of four colours is theirs —
+   * and every rival keeps a colour of its own, handed out in seat order with the viewer taken
+   * out of the line. Chaos is always green. */
+  const tintOf = (owner, viewer) => {
+    if (owner === C.CHAOS_ID) return C.CHAOS_TINT;
+    if (owner === viewer) return C.SEAT_TINT[0];
+    return C.SEAT_TINT[1 + (owner < viewer ? owner : owner - 1)] || C.SEAT_TINT[1];
+  };
   function ringFx(x, z, color, ttl, big, ping) {
     const m = new THREE.Mesh(new THREE.RingGeometry(6, 9, 20).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
@@ -605,8 +615,8 @@
         boltFx(ev.x, ev.y, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22);
         if (ev.splash > 0) ringFx(ev.to.x, ev.to.y, 0xffb070, 0.32, ev.splash * 0.9);   // the burst
       } else if (ev.e === 'wshot') boltFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
-      else if (ev.e === 'bolt') boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, TINT[ev.from.owner], 0.3);
-      else if (ev.e === 'die') ringFx(ev.x, ev.y, TINT[ev.owner], 0.5, 20);
+      else if (ev.e === 'bolt') boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, tintOf(ev.from.owner, viewer), 0.3);
+      else if (ev.e === 'die') ringFx(ev.x, ev.y, tintOf(ev.owner, viewer), 0.5, 20);
       else if (ev.e === 'rift') ringFx(ev.x, ev.y, 0x5ad584, 3.0, 46, 0x7dff9e);
       else if (ev.e === 'siege') ringFx(ev.x, ev.y, 0xffb090, 0.35, 18, ev.pi === viewer ? 0xff5a4a : null);
       /* build/up carry the work's own position now — there is no slot ring to look it up in */
@@ -681,7 +691,7 @@
         dum.scale.set(s2, s2, s2);
         dum.updateMatrix();
         im.setMatrixAt(i, dum.matrix);
-        im.setColorAt(i, colTmp.setHex(TINT[u.owner === 2 ? 2 : (u.owner === viewer ? 0 : 1)]));
+        im.setColorAt(i, colTmp.setHex(tintOf(u.owner, viewer)));
       }
       im.count = list.length;
       im.instanceMatrix.needsUpdate = true;
@@ -710,11 +720,11 @@
   }
 
   function updateCities(view, viewer) {
-    for (const g of [cityObjs.own, cityObjs.foe]) {
-      const pi = g.own ? viewer : 1 - viewer;
+    for (let pi = 0; pi < cityObjs.length; pi++) {
+      const g = cityObjs[pi];
       const pl = view.players[pi];
-      /* the rival's court stays out of the world until somebody has seen it */
-      if (!g.own) { g.group.visible = view.foeSeen !== false; if (!g.group.visible) continue; }
+      /* a rival's court stays out of the world until somebody has seen THAT one */
+      if (!g.own) { g.group.visible = seatFound(view, pi); if (!g.group.visible) continue; }
       /* works stand where they were placed. A rival's work you can no longer see is a
        * ghost — drawn faint, at the place you last saw it. */
       const want = new Map();
@@ -1020,7 +1030,7 @@
       const p = proj(u.x, groundH(u.x, u.y) + 26, u.y);
       if (!p.ok) continue;
       g.fillStyle = '#000a'; g.fillRect(p.x - 10, p.y, 20, 3);
-      g.fillStyle = u.owner === 2 ? '#7dff9e' : (u.owner === viewer ? '#ffd98a' : '#ff8a96');
+      g.fillStyle = '#' + tintOf(u.owner, viewer).toString(16).padStart(6, '0');
       g.fillRect(p.x - 10, p.y, 20 * Math.max(0, u.hp / u.maxHp), 3);
     }
     /* site labels + structure bars + pips */
@@ -1037,8 +1047,8 @@
       g.fillText(s.name, p.x, p.y + 30);
     }
     /* castle bars */
-    for (const pi of [viewer, 1 - viewer]) {
-      if (pi !== viewer && view.foeSeen === false) continue;   // no bar over a Seat you have not found
+    for (let pi = 0; pi < view.players.length; pi++) {
+      if (!seatFound(view, pi)) continue;   // no bar over a Seat you have not found
       const pl = view.players[pi];
       const cs = view.map.sites[view.map.cities[pi]];
       const p = proj(cs.x, groundH(cs.x, cs.y) + 186, cs.y);
@@ -1059,7 +1069,7 @@
       const X = mpx(dx(s.x, viewer)), Y = mpy(dy(s.y, viewer));
       if (s.kind === 'city') {
         const pi2 = view.map.cities.indexOf(s.id);
-        if (pi2 !== viewer && view.foeSeen === false) continue;
+        if (!seatFound(view, pi2)) continue;
         g.fillStyle = pi2 === viewer ? '#ffd98a' : '#ff8a96';
         g.fillRect(X - 3, Y - 3, 6, 6);
       } else {

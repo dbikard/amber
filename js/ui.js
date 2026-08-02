@@ -163,7 +163,12 @@
   /* ---------------- HUD ---------------- */
   const mmss = (t) => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
   UI.hud = function (view, viewer, incomeRate, targeting) {
-    const me = view.players[viewer], en = view.players[1 - viewer];
+    const me = view.players[viewer];
+    /* with four heirs there is no single "the rival": the top line reports whoever is
+     * furthest along the Pattern among those who have revealed themselves */
+    const rivals = view.players.filter((q, pi) => pi !== viewer && !q.out);
+    const en = rivals.filter((q) => q.revealed).sort((a, b) => b.pattern - a.pattern)[0] || rivals[0] ||
+               { revealed: false, pattern: 0 };
     $('ess-n').textContent = Math.floor(me.essence);
     const er = $('ess-rate');
     er.textContent = (incomeRate >= 0 ? '+' : '') + incomeRate.toFixed(1) + '/s' + (me.musterPaused ? ' ⏸' : '');

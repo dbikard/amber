@@ -59,6 +59,26 @@ async function match(browser, base, renderer) {
     .find((e) => /julian/i.test(e.textContent)).click());
   await inMatchNow(pg);
   await until(pg, () => window.Game.game.world.units.length >= 0 && window.Render.ready);
+  /* One stepper for every suite that fast-forwards. Several of them run the sim minutes
+   * ahead, which is long enough for somebody to WIN — and then every later suite is driving
+   * the end screen instead of the game. Holding the win conditions open is not cheating: no
+   * suite here is about who wins, and the alternative is a flake that surfaces somewhere
+   * unrelated. `raising` waits for the masons instead of a fixed span. */
+  await pg.evaluate(() => {
+    const W = window.World, C = window.CONST;
+    window.__step = (secs, opts) => {
+      const g = window.Game.game, o = opts || {};
+      const ticks = Math.round(secs * 30);
+      for (let i = 0; i < ticks; i++) {
+        if (o.raising && !g.world.players[0].buildings.some((q) => q.raise > 0)) break;
+        if (i % 30 === 0 && !o.letWin) {
+          for (const p of g.world.players) { p.castleHp = C.CASTLE_HP; p.pattern = 0; }
+        }
+        W.update(g.world, C.SIM_DT);
+        g.world.events.length = 0;
+      }
+    };
+  });
   return { pg, errs };
 }
 
@@ -295,29 +315,19 @@ async function match(browser, base, renderer) {
       g.world.players[0].essence = 99000;
       /* one work rises at a time now, so the masons have to finish each before the next —
        * including whatever an earlier suite left them holding */
-      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) {
-        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
-      }
+      window.__step(40, { raising: true });
       let built = 0;
       for (let a = 0; a < 40 && built < 3; a++) {
         const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
         if (W.placementError(g.world, 0, x, y, 'barracks')) continue;
         if (!W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'barracks' }).ok) continue;
         built++;
-        for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) {
-          W.update(g.world, C.SIM_DT); g.world.events.length = 0;
-        }
+        window.__step(40, { raising: true });
       }
       /* Hold the match open. This suite runs a couple of sim-minutes forward, which is long
        * enough for somebody to actually WIN — and every suite after this one would then be
        * driving the end screen instead of the game. */
-      for (let i = 0; i < 30 * 150 && g.world.winner === null; i++) {
-        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
-        if (i % 30 === 0) {
-          g.world.players[0].castleHp = C.CASTLE_HP; g.world.players[1].castleHp = C.CASTLE_HP;
-          g.world.players[0].pattern = 0; g.world.players[1].pattern = 0;
-        }
-      }
+      window.__step(150);
       window.Render.setZoom(1.35); window.Render.lookAt(c.x, c.y);
       const mine = g.world.units.filter((u) => u.owner === 0);
       const d = mine.map((u) => Math.hypot(u.x - c.x, u.y - c.y)).sort((a, b) => a - b);
@@ -480,7 +490,7 @@ async function match(browser, base, renderer) {
       const c = g.world.map.sites[g.world.map.cities[0]];
       g.world.players[0].essence = 99000;
       /* finish anything standing, then start one work so the masons are demonstrably busy */
-      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      window.__step(40, { raising: true });
       let at = null;
       for (let rad = 170; rad < 400 && !at; rad += 20)
         for (let a = 0; a < 40 && !at; a++) {
@@ -506,9 +516,7 @@ async function match(browser, base, renderer) {
       const saidBusy = card() && /masons/i.test(card().textContent);
 
       /* let the masons finish WITHOUT touching the sheet */
-      for (let i = 0; i < 30 * 40 && shell.raise > 0; i++) {
-        W.update(g.world, C.SIM_DT); g.world.events.length = 0;
-      }
+      window.__step(40, { raising: true });
       window.UI.tick(g.world.players[0].essence);
       await new Promise((res) => requestAnimationFrame(res));
       const stillOpen = window.UI.sheetOpen();
@@ -530,7 +538,7 @@ async function match(browser, base, renderer) {
       const W = window.World, C = window.CONST, g = window.Game.game;
       const c = g.world.map.sites[g.world.map.cities[0]];
       g.world.players[0].essence = 99000;
-      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      window.__step(40, { raising: true });
       /* an unheld spring outside the writ, with nobody of ours near it */
       const spring = g.world.map.sites.filter((s) => s.kind === 'node')
         .find((s) => Math.hypot(s.x - c.x, s.y - c.y) > C.CLAIM.seat + 120 &&
@@ -570,7 +578,7 @@ async function match(browser, base, renderer) {
       const W = window.World, C = window.CONST, g = window.Game.game;
       const c = g.world.map.sites[g.world.map.cities[0]];
       g.world.players[0].essence = 999999;
-      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      window.__step(40, { raising: true });
       let sh = g.world.players[0].buildings.find((q) => q.bt === 'shrine');
       if (!sh) {
         let at = null;
@@ -581,7 +589,7 @@ async function match(browser, base, renderer) {
           }
         if (!at) return { ok: false, why: 'nowhere to raise a Shrine' };
         W.applyCommand(g.world, 0, { c: 'build', ...at, bt: 'shrine' });
-        for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+        window.__step(40, { raising: true });
         sh = g.world.players[0].buildings.find((q) => q.bt === 'shrine');
       }
       window.UI.upSheet(sh, g.world.players[0].essence, false, g.world.players[0]);
@@ -605,7 +613,7 @@ async function match(browser, base, renderer) {
       const W = window.World, C = window.CONST, g = window.Game.game;
       const c = g.world.map.sites[g.world.map.cities[0]];
       g.world.players[0].essence = 999999;
-      for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+      window.__step(40, { raising: true });
       const free = (bt, rad) => {
         for (let a = 0; a < 48; a++) {
           const th = a / 48 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
@@ -617,7 +625,7 @@ async function match(browser, base, renderer) {
         const at = free('barracks', rad);
         if (!at) return null;
         W.applyCommand(g.world, 0, { c: 'build', ...at, bt: 'barracks', co: want });
-        for (let i = 0; i < 30 * 40 && g.world.players[0].buildings.some((q) => q.raise > 0); i++) W.update(g.world, C.SIM_DT);
+        window.__step(40, { raising: true });
         g.world.events.length = 0;
         return g.world.players[0].buildings[g.world.players[0].buildings.length - 1];
       };

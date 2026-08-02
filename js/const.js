@@ -86,6 +86,10 @@
    * only while there were exactly two players. It now sits somewhere no player index can
    * reach, so a four-way match cannot mistake the third heir for the black road. */
   CONST.CHAOS_ID = -1;
+  /* Seat colours. You are ALWAYS gold — a player should never have to remember which of four
+   * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
+  CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];
+  CONST.CHAOS_TINT = 0x7dff9e;
 
   CONST.SITE_NAMES = {
     node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn',
