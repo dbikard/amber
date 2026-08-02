@@ -11,7 +11,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { suite, ok, report } = require('./lib.js');
+const { suite, ok, report, record } = require('./lib.js');
 
 const ROOT = path.join(__dirname, '..');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -118,7 +118,21 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
-  for (const r of ['2d', '3d']) {
+  /* The two renderers are independent pages, so they run CONCURRENTLY — most of a browser run
+   * is frame time, and there are cores sitting idle while one of them paints. Each branch
+   * collects its own results and timings; they are spliced back in a fixed order afterwards,
+   * so a parallel run still reports exactly like a sequential one. */
+  async function runRenderer(r) {
+    const rows = [], times = [];
+    let group = '', markAt = Date.now();
+    const suite = (name) => {
+      if (group) times.push([group, Date.now() - markAt]);
+      markAt = Date.now(); group = name;
+    };
+    const ok = (name, cond, detail) => {
+      rows.push({ group, name, pass: !!cond, detail: detail == null ? '' : String(detail) });
+      return !!cond;
+    };
     const { pg, errs } = await match(browser, base, r);
     const sheetOpen = () => pg.evaluate(() => window.UI.sheetOpen());
     const inMatch = () => pg.evaluate(() => !!window.Game.game.mode);
@@ -706,7 +720,12 @@ async function match(browser, base, renderer) {
     suite(`${r} · console`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
+    if (group) times.push([group, Date.now() - markAt]);
+    return { rows, times };
   }
+
+  const done = await Promise.all([runRenderer('2d'), runRenderer('3d')]);
+  for (const d of done) record(d.rows, d.times);
 
   await browser.close();
   srv.close();

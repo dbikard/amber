@@ -81,6 +81,9 @@ human could see (see `AI.view()`).
 - The suite prints its slowest suites when a run is slow — start there rather than bisecting
   by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
   the same problem. Wait on a condition (`until`) rather than a fixed sleep.
+- The two renderers run CONCURRENTLY (`runRenderer`), each buffering its own rows and timings
+  and splicing them back in a fixed order, so a parallel run reports like a sequential one.
+  Anything shared between them (localStorage keys, the menu page) has to stay read-only.
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page (both renderers) for input, camera, the writ, HUD layering, the back

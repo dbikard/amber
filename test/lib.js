@@ -39,4 +39,11 @@ function report(label) {
               (fails.length ? `  \x1b[31m${fails.length} FAILING\x1b[0m` : ''));
   return fails.length;
 }
-module.exports = { suite, ok, eq, near, report, results };
+/* A parallel branch collects its own rows and timings and splices them in afterwards, so a
+ * concurrent run still reports in a stable order instead of interleaving two renderers. */
+function record(rows, times) {
+  for (const r of rows) results.push(r);
+  for (const t of (times || [])) timing.push(t);
+  markAt = Date.now();
+}
+module.exports = { suite, ok, eq, near, report, results, record };

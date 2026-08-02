@@ -137,6 +137,14 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       NOT answering it. Colours follow a company's id, which never repeats: pennants used to
       be indexed by `buildings.indexOf(b)`, so every razed hall reshuffled the colours of the
       survivors. Commands: `build {co}`, `rally {co}`, and a new `assign {id, co}`.
+- [x] **The suite: 94s → ~37s.** Most of it was the renderer fix above (browser-test time is
+      frame time). The rest: the two renderers now run concurrently, each buffering its rows
+      and timings so the report still reads in a fixed order; fixed sleeps (13s of them)
+      replaced by waits on the condition the assertion is about to check — as fast as the game
+      on success, and on failure the assertion still reports the real state; and the harness
+      prints its slowest suites so the next slowdown does not need bisecting by hand.
+      Parallelism gains less than 2x because two software-GL renderers contend for the same
+      cores — the back-button suites go 8.3s each to ~11s each while overlapping.
 - [x] **The 2D renderer was running at about one frame per second.** The fog is two
       full-screen render targets rebuilt every frame (the holes follow the units, so they
       cannot simply be cached) and it was costing ~950ms of a ~1020ms frame. Now: both targets

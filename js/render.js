@@ -25,7 +25,7 @@
   /* ...and it is rebuilt at about 15Hz rather than every frame. Sight changes at walking pace,
    * so nobody can see the difference — but it must be rebuilt IMMEDIATELY when the camera
    * moves, because the veil is drawn in screen space and a stale one would visibly slide. */
-  let fogAt = -1, fogCam = '';
+  let fogAt = -1, fogCam = '', fogFrame = -9, frameNo = 0;
 
   const tex = (cv2) => {
     if (!texCache.has(cv2)) texCache.set(cv2, PIXI.Texture.from(cv2));
@@ -328,7 +328,7 @@
   /* ---------------- per-frame ---------------- */
   R.frame = function (view, viewer, dt) {
     if (!R.ready) return;
-    T += dt;
+    T += dt; frameNo++;
     curView = view; curViewer = viewer;
     if (mapKey(view, viewer) !== lastMapKey) rebuildScene(view, viewer);
 
@@ -548,9 +548,13 @@
 
   /* ---------------- fog of war: soft erase-blend holes ---------------- */
   function updateFog(view, viewer) {
+    /* Two gates, and BOTH must open. The time gate holds it to ~15Hz when frames are quick;
+     * the frame gate is what saves a slow device, where 66ms has always already passed and a
+     * time gate alone can never fire. Either way the camera moving rebuilds at once, because
+     * the veil is drawn in screen space and a stale one would visibly slide. */
     const camKey = `${Math.round(R.camX)},${Math.round(R.camY)},${R.zoom.toFixed(3)},${W}x${H}`;
-    if (camKey === fogCam && T - fogAt < 0.066 && fogRT) return;
-    fogCam = camKey; fogAt = T;
+    if (fogRT && camKey === fogCam && (T - fogAt < 0.066 || frameNo - fogFrame < 2)) return;
+    fogCam = camKey; fogAt = T; fogFrame = frameNo;
     if (!fogRT) {
       fogRT = PIXI.RenderTexture.create({ width: W, height: H, resolution: FOGRES });
       fogScene = new PIXI.Container();
