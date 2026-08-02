@@ -10,7 +10,7 @@
   /* seatR is the Seat-tower's own ground: no work may stand inside it, and a tap inside it
    * opens the Seat's sheet. ONE number, so the two can never disagree — they did, and the
    * ring between them was buildable ground you could not tap. */
-  CONST.CITY = { r: 150, slotR: 104, seatR: 74 };
+  CONST.CITY = { r: 150, seatR: 74 };
 
   /* ---- Free placement (open world, stage 4) ----
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is

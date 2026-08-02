@@ -236,7 +236,6 @@
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
       else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
-      else if (ev.e === 'hurtpost' && ev.pi === game.viewer) UI.banner('Your outpost at ' + siteName(ev.site) + ' is under attack!', 'warn');
       else if (ev.e === 'muster') { if (ev.pi === game.viewer) UI.banner(ev.pause ? '⏸ The muster is halted — essence gathers' : '▶ The muster resumes', ''); }
       else if (ev.e === 'rally') { if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site) : '⚑ The company rejoins the War Banner', ''); }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');

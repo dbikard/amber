@@ -313,6 +313,18 @@
     R.camX = wx - viewW / 2;
     R.camY = wy - viewH * 0.62;
     R.clampCam();
+    /* ...but the rig origin sits on the y=0 PLANE, and what you actually SEE at the middle
+     * of the screen is the GROUND, which stands above it. The centre ray therefore meets the
+     * land short of the rig origin — a constant world-space offset that costs a fixed number
+     * of world units at every zoom, so it grows to hundreds of pixels as you zoom in and the
+     * Seat you asked for drifts off the middle. Correct against the real ground point; two
+     * passes converge because the error shrinks by the ground's slope each time. */
+    for (let i = 0; i < 2; i++) {
+      const c = R.toWorld(W / 2, H / 2);
+      if (!c) break;
+      R.camX += wx - c.x; R.camY += wy - c.y;
+      R.clampCam();
+    }
   };
   R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
   R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
@@ -531,10 +543,8 @@
       const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 }));
       ring.position.y = 1.2; ring.visible = false;
       holder.add(ring);
-      const postG = new THREE.Group();
-      holder.add(postG);
       worldG.add(holder);
-      siteObjs.set(s.id, { holder, ring, postG, hash: '' });
+      siteObjs.set(s.id, { holder, ring, hash: '' });
     }
 
     /* cities */
@@ -646,7 +656,6 @@
       else if (ev.e === 'die') ringFx(ev.x, ev.y, TINT[ev.owner], 0.5, 20);
       else if (ev.e === 'rift') ringFx(ev.x, ev.y, 0x5ad584, 3.0, 46, 0x7dff9e);
       else if (ev.e === 'siege') ringFx(ev.x, ev.y, 0xffb090, 0.35, 18, ev.pi === viewer ? 0xff5a4a : null);
-      else if (ev.e === 'hurtpost') { if (ev.pi === viewer) ringFx(ev.x, ev.y, 0xff8a5a, 1.2, 44, 0xff8a5a); }
       /* build/up carry the work's own position now — there is no slot ring to look it up in */
       else if (ev.e === 'build' || ev.e === 'up') {
         if (ev.pi === viewer && ev.x != null) ringFx(ev.x, ev.y, 0xffe9a8, 0.6, 30);
@@ -754,8 +763,7 @@
           so.ring.material.opacity = st.live ? 0.65 : 0.3;
         }
         /* nothing is built ON a site any more — a Gate is a work standing near one, and the
-         * city group draws it. All this left behind was a model of an outpost that is gone. */
-        while (so.postG.children.length) { const m = so.postG.children.pop(); m.geometry && m.geometry.dispose(); }
+         * city group draws it. Only the ownership ring belongs to the site itself. */
       }
     }
   }

@@ -35,6 +35,7 @@ js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/c
 js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners
 js/game.js      — orchestration: modes, fixed-timestep loop, input routing, MP wiring (last)
 sim.js          — Node balance runner: mirror / gradient / round-robin / durations
+test/run.js     — the whole suite: test/headless.js (Node) + test/browser.js (Playwright)
 ```
 
 Script load order = the order above. Headless files use the UMD pattern
@@ -77,6 +78,12 @@ human could see (see `AI.view()`).
   Skip with AMBER_NO_BUMP=1. sw.js precaches per-version; update flow lives in game.js setupPWA().
 - Balance changes: run `node sim.js` before and after; keep the targets in
   DESIGN_PRINCIPLES.md green. `node sim.js --a=brand --b=julian --n=40` for a matchup.
+- **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
+  the placement rules, the command grammar and the snapshot contract; `test/browser.js`
+  drives a real page (both renderers) for input, camera, the writ, HUD layering, the back
+  button and the LAN guest path. It skips itself cleanly where Playwright is missing.
+  Screen positions in tests must come from `Render.project`/`toWorld`, never re-derived —
+  a test that reimplements the projection tests itself, not the game.
 - Colors: gold=player, crimson=rival, green=Chaos, blue-white=Pattern. Don't drift.
 - `render.js` stays isolated: game logic never draws; drawing never mutates the world.
 

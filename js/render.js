@@ -104,11 +104,7 @@
     R.clampCam();
   };
 
-  /* ---------------- hit-testing (ring city) ---------------- */
-  R.bldRect = function (b) {   // display-space box of a placed work
-    const x = dx(b.x, curViewer), y = dy(b.y, curViewer);
-    return { x: x - 26, y: y - 26, w: 52, h: 52 };
-  };
+  /* ---------------- hit-testing ---------------- */
   /* the id of the viewer's own work under the finger, or -1 */
   R.hitBuilding = function (px, py) {
     if (!curView) return -1;
@@ -213,12 +209,11 @@
       const c2 = new PIXI.Container();
       c2.position.set(dx(s.x, viewer), dy(s.y, viewer));
       const ring = new PIXI.Graphics();
-      const post = new PIXI.Sprite(); post.anchor.set(0.5, 0.62); post.width = 60; post.height = 60;
       const bar = new PIXI.Graphics();
       const pips = new PIXI.Graphics();
-      c2.addChild(ring, post, bar, pips);
+      c2.addChild(ring, bar, pips);
       stage.site.addChild(c2);
-      siteFx.set(s.id, { c: c2, ring, post, bar, pips, hash: '' });
+      siteFx.set(s.id, { c: c2, ring, bar, pips, hash: '' });
     }
 
     /* cities */
@@ -307,8 +302,6 @@
         fx.push({ k: 'rift', obj: gg, ttl: 3.2, max: 3.2, x: ex, y: ey, ping: 0x7dff9e, keep: 'rift' });
       } else if (ev.e === 'siege') {
         ringFx(ex, ey, 0xffb090, 0.35, 22, ev.pi === viewer ? 0xff5a4a : null);
-      } else if (ev.e === 'hurtpost') {
-        if (ev.pi === viewer) ringFx(ex, ey, 0xff8a5a, 1.2, 44, 0xff8a5a);
       } else if (ev.e === 'build' || ev.e === 'up') {
         if (ev.pi === viewer) ringFx(ex, ey, 0xffe9a8, 0.6, 34);
       } else if (ev.e === 'walk' || ev.e === 'pattern' || ev.e === 'trump') {
@@ -351,7 +344,6 @@
       if (hash !== sf.hash) {
         sf.hash = hash;
         sf.ring.clear(); sf.bar.clear(); sf.pips.clear();
-        sf.post.visible = false;
         /* who draws on this spring — a ring in their colour, dimmed if this is memory */
         if (st && st.holder != null && st.holder >= 0) {
           const col = st.holder === viewer ? 0xffd98a : 0xff8a96;
