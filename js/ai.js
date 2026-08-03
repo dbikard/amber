@@ -194,10 +194,20 @@
        * reaches for the Pattern early is just a slower greed, and it collapsed the triangle:
        * every heir was winning the same way. Towers first, patience, the Pattern only after
        * the grind has failed to finish it. */
-      /* the Warden holds a LINE, and a line is stone: he is the one heir who curtains his
-       * approach early, and puts a second run up once the realm can pay for it */
-      plan: () => ['gate', 'tower', 'wall', 'gate', 'barracks', 'tower', 'barracks', 'wall',
-                   'tower', 'shrine', 'tower', 'barracks', 'siege', 'tower', 'gate'],
+      /* THE WARDEN WALLS WHEN HE IS PRESSED, not on a schedule. Stone on a timer was measured
+       * and it does not pay: masons are 1 + gates/3, so an early curtain occupies the only
+       * crew he has and delays his second Gate — he spends 110 essence and a tempo of economy
+       * against opponents who win by WALKING, which no wall touches. Scheduled at slot 3 he
+       * fell 47%→27% against Brand; moved later he was still 40%, against 47% with no wall at
+       * all. Gated on pressure, the stone only goes up when there is something for it to stop. */
+      plan: (v) => {
+        const wants = ['gate', 'tower', 'gate', 'barracks', 'tower'];
+        if (v.threats.length >= 2 || v.enemyArmy >= 3) wants.push('wall');
+        wants.push('barracks', 'tower', 'shrine');
+        if (v.threats.length >= 3) wants.push('wall');
+        wants.push('tower', 'barracks', 'siege', 'tower', 'gate');
+        return wants;
+      },
       upPref: ['tower', 'gate', 'barracks', 'siege'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
