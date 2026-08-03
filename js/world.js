@@ -1057,7 +1057,13 @@
   function topple(world, pi, by) {
     const pl = world.players[pi];
     pl.out = true; pl.castleHp = 0;
+    /* a fallen heir's stone falls with him. In a duel this never mattered — the match ends
+     * on the same tick — but in a free-for-all his curtains would have gone on barring the
+     * ground and stopping shots for the rest of the game, with no wall left standing to
+     * explain why. */
+    const hadWall = pl.buildings.some(isWall);
     pl.buildings.length = 0;
+    if (hadWall) { world.navVersion++; noteWalls(world); }
     pl.walking = false;
     for (let i = world.units.length - 1; i >= 0; i--) if (world.units[i].owner === pi) world.units.splice(i, 1);
     for (const q of world.players) for (const id of Object.keys(q.ghosts)) if (q.ghosts[id].owner === pi) delete q.ghosts[id];

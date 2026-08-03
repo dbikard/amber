@@ -967,6 +967,34 @@ suite('the curtain wall')
   ok('...and the reinforcement is thicker stone', b.maxHp > wasMax, `${wasMax} -> ${b.maxHp}`);
   near('...added to what was standing, not a free repair', b.maxHp - b.hp, 200, 1);
 
+  /* AND A FALLEN HEIR'S STONE FALLS WITH HIM. In a duel the match ends on the same tick and
+   * this was invisible; in a free-for-all his curtains would have gone on barring the ground
+   * for the rest of the game with no wall standing to explain it. */
+  {
+    const f = World.createWorld(1000, 3);
+    f.chaosNext = 1e9;
+    const fc = World.cityOf(f, 1);
+    f.players[1].essence = 100000;
+    let run = null;
+    for (let a2 = 0; a2 < 6.28 && !run; a2 += 0.35)
+      for (let r2 = 110; r2 <= 200 && !run; r2 += 22) {
+        const mx = fc.x + Math.cos(a2) * r2, my = fc.y + Math.sin(a2) * r2;
+        const px = -Math.sin(a2) * 70, py = Math.cos(a2) * 70;
+        if (!World.wallError(f, 1, mx - px, my - py, mx + px, my + py)) run = [mx - px, my - py, mx + px, my + py];
+      }
+    World.applyCommand(f, 1, { c: 'build', bt: 'wall', x: run[0], y: run[1], x2: run[2], y2: run[3] });
+    for (let i = 0; i < 30 * (def.raise + 1); i++) { World.update(f, C.SIM_DT); f.events.length = 0; }
+    eq('a third heir has a curtain standing', f.walls.length, 1);
+    f.players[1].castleHp = 1;
+    const u = { id: f.nextId++, owner: 0, kind: 'soldier', x: fc.x, y: fc.y, ox: 0, oy: 0,
+                hp: 1e9, maxHp: 1e9, dmg: 9999, cd: 0, goal: null, co: 0, from: -1 };
+    f.units.push(u);
+    for (let i = 0; i < 30 * 6 && !f.players[1].out; i++) { World.update(f, C.SIM_DT); f.events.length = 0; }
+    ok('the heir is toppled', f.players[1].out);
+    eq('...and his stone is gone with him', f.walls.length, 0);
+    ok('...and the movement layer knows the ground is open', !f.anyWall);
+  }
+
   /* a breach is a hole: throw it down and the ground opens again */
   settle();
   const ver = w.navVersion;
