@@ -152,14 +152,20 @@
    * you pay for, that stands somewhere, that can be broken. With free placement the
    * distinction had nothing left to mean. up = upgrade costs to L2/L3; effect arrays are
    * [L1,L2,L3]. `claim` marks a work whose country you may build in. */
+  /* EVERY WORK IS TWICE AS HARD TO BREAK as it was. A realm was a sandcastle: 59 razes in one
+   * reported match, 26 in another, and a treadmill of raze-and-rebuild at the same spring that
+   * neither side could ever win. Doubling the stone means an assault on a work is a commitment
+   * rather than a drive-by, which is what makes the Siege Works worth raising and what stops
+   * the outworks churning. The Seat itself is untouched — a tougher Seat pulls the other way
+   * from the clock, and the clock is what was broken. */
   CONST.BUILDINGS = {
     /* A Gate stands ON a spring and nowhere else. It is the only thing that draws Shadow out
      * of the ground, so the essence is out on the map and your writ can only follow it there.
      * That is the whole anti-stall model, and it holds because there is no home substitute. */
     gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 14,
-                nodeIncome: [4.5, 7, 10.5], hp: 300, vision: 300, onNode: true,
+                nodeIncome: [4.5, 7, 10.5], hp: 600, vision: 300, onNode: true,
                 blurb: 'Raised ON a spring of Shadow, and only there. It draws deep, and your writ runs where your Gates stand.' },
-    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360, raise: 18,
+    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 720, raise: 18,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },
     /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
@@ -167,13 +173,13 @@
      * while neither Seat took a scratch. An Engine is slow, fragile in a fight and useless at
      * holding ground; against a work or a Seat it is worth four of the men it costs. It has
      * to be escorted, which is the point: the Works turn a war chest into a threat. */
-    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 380, raise: 28,
+    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 760, raise: 28,
                 spawns: 'engine', period: [24, 19, 15],
                 blurb: 'Builds Engines: slow, and made for breaking works and Seats rather than men. They need an escort.' },
-    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320, raise: 24,
+    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 24,
                 spawns: 'sorcerer', period: [11, 8.8, 7.0],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
-    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480, raise: 15,
+    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 15,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
     /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk
@@ -187,9 +193,18 @@
      * raise another, and not one point of the walk. Now the lines FADE whenever nobody is
      * channelling (`decay`, %/sec), and throwing the Shrine down costs the walker `breakLoss`
      * points outright. An assault on a walker is now the answer it always looked like.
+     * AND IT IS THE CLOCK, SO IT MUST TICK. Paying what you can and walking that far was
+     * right — an all-or-nothing walk froze a poor heir at 1% forever — but proportional pay
+     * has the same disease more slowly: at income 5 against a drain of 32 the walk advances
+     * at a sixth of a percent a minute, which is not a clock, it is a stopped one. Measured
+     * across fourteen mirrors, every match that ran to the 45-minute cap had somebody walking
+     * for the whole of it and BROKE for 90-95% of that; every match that ended had a walker
+     * broke 0-27% of the time. `minRate` is the floor: channel what you have and the Pattern
+     * carries you at no less than this share of full speed. It is still ruinous — every
+     * penny you own goes into the lines and none into an army — it simply cannot stop.
      * drain = essence/sec while walking, rate = %/sec: ~9.5 minutes and ~18k essence. */
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 450, raise: 36,
-                drain: [32], rate: [0.175], decay: 0.05, breakLoss: 22,
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 900, raise: 36,
+                drain: [32], rate: [0.175], minRate: 0.5, decay: 0.05, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'siege', 'shrine'];

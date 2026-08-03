@@ -275,6 +275,28 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **The Pattern is a clock again, and a work is stone rather than sand.**
+      The four draws in twenty-four were the anti-stall failing, and the cause was measurable:
+      across fourteen mirrors, **every match that ran to the 45-minute cap had somebody walking
+      for the whole of it and BROKE for 90-95% of that**; every match that ended had a walker
+      broke 0-27% of the time. Paying proportionally was right — all-or-nothing froze a poor
+      heir at 1% forever — but it has the same disease more slowly: at income 5 against a drain
+      of 32 a walk advances a sixth of a percent a minute, which is not a clock, it is a
+      stopped one. `shrine.minRate` is the floor: channel what you have and the Pattern carries
+      you at no less than half speed. It is still ruinous — every penny goes into the lines and
+      none into an army — it simply cannot stop. Worst possible walk now arrives in 19 minutes.
+      **Every work has twice the hit points** (Gate 300→600, Barracks 360→720, Watchtower
+      480→960, Spire 320→640, Siege Works 380→760, Shrine 450→900). A realm was a sandcastle:
+      59 razes in one reported match, 26 in another, and a raze-and-rebuild treadmill at one
+      spring neither side could win. Breaking a work is a commitment now, which is also what
+      makes an Engine worth raising rather than another handful of men. The **Seat is
+      untouched at 2500** — a tougher Seat pulls against the clock, and the clock is what was
+      broken.
+      `node sim.js`, against v0.7.35: benedict mirror 50%/10.2m with **4 draws → 50%/13.3m with
+      0**, and the win routes even at castle 14 / pattern 10; stalls 2 in 14 → **0 in 14**;
+      greedy mirror unchanged. bleys/julian is 100%/7.3m — Julian's turtle doctrine has no
+      answer to fast expansion and is now simply dead. Left there on purpose: turtling is not
+      meant to be a way to win.
 - [x] **The black road is not the war; the masons follow the Gates.** Two reports from play,
       and my first reading of the chronicle was wrong — I inferred a strategy story from the
       order list instead of testing the mechanic. Tested, it says something else:
@@ -304,7 +326,8 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
         only the second was ever the point.
       Fixed in passing: `hurt` paid the bounty only to seats 0 and 1 — a duel's assumption that
       quietly paid the third and fourth heirs nothing for the whole war.
-      **KNOWN REGRESSION, carried:** the masons are a snowball and the field got worse. Proved
+      **The regression this left is FIXED in the entry above — except the turtle, deliberately.**
+      **(was) KNOWN REGRESSION:** the masons are a snowball and the field got worse. Proved
       by ablation — with everything else new but a single crew bleys/julian is 75%/9.1m; with
       the crews it is 90–100%/5.9m whatever else changes. Capping at 3 and slowing raises were
       both measured and neither fixes it. Against v0.7.34: benedict mirror 63%/15.2m with 1

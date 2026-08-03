@@ -680,7 +680,13 @@
             channelled = true;
             pl.essence -= pay;
             pl.drainRate += pay / dt;   // actual, not theoretical
-            pl.pattern += sdef.rate[shrine.level - 1] * dt * (pay / want);
+            /* THE CLOCK MUST TICK. Paying proportionally is right, but at income 5 against a
+             * drain of 32 it advances a walk by a sixth of a percent a minute, and a clock
+             * that slow is a stopped one — every match measured running to the 45-minute cap
+             * had a walker broke for 90-95% of it. Below `minRate` the Pattern carries you
+             * anyway. You still pay every penny you have; you simply cannot be frozen. */
+            const share = Math.max(sdef.minRate, pay / want);
+            pl.pattern += sdef.rate[shrine.level - 1] * dt * share;
             while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
               emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
             }

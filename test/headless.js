@@ -442,13 +442,22 @@ suite('the Pattern is not upgraded')
   const full = C.BUILDINGS.shrine.drain[0] * (100 / C.BUILDINGS.shrine.rate[0]);
   ok('a whole walk is a serious sum', full > 9000, `${Math.round(full)} essence over ${(100 / C.BUILDINGS.shrine.rate[0] / 60).toFixed(1)} min`);
 
-  /* a poor player walks SLOWER rather than free — partial payment, not a free ride */
+  /* A POOR PLAYER WALKS SLOWER, BUT NEVER STOPS. Partial payment alone had the same disease
+   * as all-or-nothing, only slower: at a sixth of a percent a minute the Pattern is not the
+   * game's clock, it is a stopped one — and every mirror measured running to the 45-minute
+   * cap had a walker broke for 90-95% of it. `minRate` is the floor. */
+  const def = C.BUILDINGS.shrine;
   pl.essence = 0;
   const at0 = pl.pattern;
   for (let i = 0; i < 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
   const crawled = pl.pattern - at0;
-  ok('with an empty treasury the walk all but stops', crawled < C.BUILDINGS.shrine.rate[0] * 0.5,
-     `${crawled.toFixed(3)}% in a second`);
+  ok('an empty treasury slows the walk', crawled < def.rate[0] * 0.95, `${crawled.toFixed(3)}%/s`);
+  ok('...but it does not stop it', crawled >= def.rate[0] * def.minRate * 0.9,
+     `${crawled.toFixed(3)}%/s against a floor of ${(def.rate[0] * def.minRate).toFixed(3)}`);
+  /* which is what makes it a clock: a walk begun on nothing still arrives */
+  const worst = 100 / (def.rate[0] * def.minRate) / 60;
+  ok('so the slowest possible walk still finishes inside a match', worst < 25,
+     `${worst.toFixed(1)} minutes at the floor`);
 }
 
 /* A WALK IS HELD, NOT BANKED. Progress used to be permanent the instant it was bought, which
@@ -1150,6 +1159,23 @@ suite('the Siege Works')
      `${Math.round(byEngine)} vs ${Math.round(bySoldier)} hp in twenty seconds`);
   ok('and it is a real bite, not a scratch', byEngine > C.CASTLE_HP * 0.4,
      `${Math.round(byEngine)} of ${C.CASTLE_HP}`);
+
+  /* A WORK IS STONE, NOT SAND. A realm used to be a sandcastle — 59 razes in one reported
+   * match, 26 in another, and a raze-and-rebuild treadmill at the same spring that neither
+   * side could win. Breaking one has to be a commitment, which is also what makes an Engine
+   * worth raising rather than another handful of men. */
+  const dps = (u) => u.dmg / u.atk;
+  for (const bt of C.BUILD_ORDER_UI) {
+    const b = C.BUILDINGS[bt];
+    const alone = b.hp / dps(sol);
+    ok(`one soldier needs real time to break a ${b.name}`, alone > 55,
+       `${alone.toFixed(0)}s alone, ${b.hp} hit points`);
+  }
+  /* essence for essence, against stone, an Engine is worth well over a soldier */
+  const stoneRate = (u) => dps(u) * (u.siege || 1) / u.cost;
+  ok('and an Engine is far better at it than the men it cost',
+     stoneRate(eng) > stoneRate(sol) * 1.5,
+     `${(stoneRate(eng) / stoneRate(sol)).toFixed(2)}x a soldier's stone-breaking per essence`);
 }
 
 /* A match a human plays leaves no trace, so every report from play has to be argued from
