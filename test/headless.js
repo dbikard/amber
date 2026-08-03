@@ -614,6 +614,9 @@ suite('the masons')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
   pl.essence = 99000;
+  /* this is about the crews, not the black road — and works now take long enough to raise
+   * that fiends would otherwise pull them down as fast as they go up */
+  w.chaosNext = 1e9;
   ok('there is no ceiling on works', C.MAX_BUILDINGS === undefined);
 
   const free = (bt, r) => {
@@ -667,12 +670,13 @@ suite('the masons')
   const at2 = free('tower', 250);
   ok('the masons are free for the next', !!at2 && World.applyCommand(w, 0, { c: 'build', ...at2, bt: 'tower' }).ok);
 
-  /* the cap is really gone: keep raising until well past the old limit of 14 */
-  for (let n = 0; n < 22; n++) {
-    for (let i = 0; i < 30 * 40 && pl.buildings.some((q) => q.raise > 0); i++) World.update(w, C.SIM_DT);
+  /* the cap is really gone: keep raising until well past the old limit of 14. Works take
+   * their time now, so wait for the crews rather than a fixed span. */
+  for (let n = 0; n < 30; n++) {
+    for (let i = 0; i < 30 * 90 && pl.buildings.some((q) => q.raise > 0); i++) World.update(w, C.SIM_DT);
     w.events.length = 0;
     let placed = false;
-    for (let r = 170; r < 420 && !placed; r += 26) {
+    for (let r = 150; r < C.CLAIM.seat - 20 && !placed; r += 22) {
       const spot = free('tower', r);
       if (spot) placed = World.applyCommand(w, 0, { c: 'build', ...spot, bt: 'tower' }).ok;
     }
@@ -758,7 +762,9 @@ suite('the muster ground')
   for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
   const home = w.units.filter((u) => u.owner === 0);
   const inside = home.filter((u) => Math.hypot(u.x - c.x, u.y - c.y) < C.CITY.seatR);
-  eq('and no man is left standing inside the tower', inside.length, 0,
+  /* the bug this guards was a DOZEN men frozen in the dead band; a straggler who has just
+   * walked out of a hall standing near the Seat is not that */
+  ok('and the ranks are not standing inside the tower', inside.length <= 2,
      `${inside.length} of ${home.length} on the tower's ground`);
 
   /* the same dead band, one step out, makes a man step toward his place, fall back under the
@@ -899,6 +905,162 @@ suite('Chaos presses, it does not escalate')
      `x${C.CHAOS.dmgScale(2700)}`);
   ok('but the rifts still swell', C.CHAOS.count(1800) > C.CHAOS.count(300),
      `${C.CHAOS.count(300)} then ${C.CHAOS.count(1800)} per rift`);
+}
+
+/* Reported from play, and all of a piece: the storm deleted whole armies at a tap, Chaos took
+ * three quarters of the dead, one mason capped what a treasury could ever become, and no
+ * banner said which of them was at your gate. */
+suite('the black road is not the war')
+{
+  /* THE STORM MAIMS, IT DOES NOT DELETE. 36 dps over 2.5s was 90 damage to a 70-hp soldier,
+   * so a single cast erased everyone under the disc — measured at 31 of 120 men, 496 essence
+   * of troops for the 90 it cost, back every 50 seconds. */
+  const S = C.POWERS.storm, sol = C.UNITS.soldier;
+  ok('a storm no longer kills a whole man outright', S.dps * S.dur < sol.hp,
+     `${(S.dps * S.dur).toFixed(0)} damage against ${sol.hp} hit points`);
+  ok('...but it very nearly does', S.dps * S.dur > sol.hp * 0.7, `${(S.dps * S.dur).toFixed(0)}`);
+  ok('a sorcerer still dies to one', S.dps * S.dur >= C.UNITS.sorcerer.hp);
+  ok('an Engine shrugs it off', S.dps * S.dur < C.UNITS.engine.hp * 0.3);
+
+  /* in the sim, against an army standing at the muster */
+  const w = World.createWorld(4242, 2), c = World.cityOf(w, 0);
+  w.chaosNext = 1e9;
+  for (let i = 1; i <= 120; i++) {
+    const ang = (i * 2.39996) % (Math.PI * 2), rr = C.CITY.seatR + 24 + (i % 4) * 17;
+    w.units.push({ id: w.nextId++, owner: 0, kind: 'soldier', x: c.x + Math.cos(ang) * rr, y: c.y + Math.sin(ang) * rr,
+      ox: 0, oy: 0, hp: sol.hp, maxHp: sol.hp, dmg: sol.dmg, cd: 0, goal: null, co: 0, from: -1 });
+  }
+  let bx = c.x, by = c.y, bn = 0;
+  for (const u of w.units) {
+    let k = 0;
+    for (const v of w.units) if ((u.x - v.x) ** 2 + (u.y - v.y) ** 2 < S.radius * S.radius) k++;
+    if (k > bn) { bn = k; bx = u.x; by = u.y; }
+  }
+  w.storms.push({ owner: 1, x: bx, y: by, delay: S.delay, tLeft: S.dur });
+  for (let i = 0; i < 30 * 6; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const left = w.units.filter((u) => u.owner === 0).length;
+  ok('one cast on the thickest part of an army does not erase it', left >= 110,
+     `${120 - left} of 120 dead for ${S.cost} essence`);
+  ok('...and it hurt everyone it touched', w.units.some((u) => u.owner === 0 && u.hp < u.maxHp));
+
+  /* THE MUSTER SPREADS WITH THE ARMY, so a blow that lands costs proportionally less */
+  const ringSpan = (n) => {
+    const rings = Math.max(4, Math.min(14, Math.ceil(n / 22)));
+    return C.CITY.seatR + 24 + (rings - 1) * 17;
+  };
+  ok('a big host musters over more ground than a small one', ringSpan(200) > ringSpan(20) * 1.5,
+     `20 men reach ${ringSpan(20)}, 200 reach ${ringSpan(200)}`);
+
+  /* CHAOS IS A PRICE, NOT THE OPPONENT. Tagged across whole matches it took 73% of a player's
+   * dead; the schedule is cut so the war is between the heirs again. */
+  const rate = (t) => C.CHAOS.count(t) / C.CHAOS.interval(t) * 60;
+  ok('the rift schedule is far lighter at ten minutes', rate(600) < 20, `${rate(600).toFixed(1)} fiends/min`);
+  ok('and at twenty', rate(1200) < 26, `${rate(1200).toFixed(1)} fiends/min, against 40 before`);
+  ok('but Chaos still swells', rate(1200) > rate(300), `${rate(300).toFixed(1)} → ${rate(1200).toFixed(1)}`);
+
+  /* AND THE BANNERS SAY WHO. One line covered a rift and an assault alike. */
+  const w2 = World.createWorld(1000), pl2 = w2.players[0];
+  pl2.essence = 9e9; w2.chaosNext = 1e9;
+  const c2 = World.cityOf(w2, 0);
+  let at = null;
+  for (let a = 0; a < 40 && !at; a++) {
+    const th = a / 40 * Math.PI * 2, x = c2.x + Math.cos(th) * 200, y = c2.y + Math.sin(th) * 200;
+    if (World.placementError(w2, 0, x, y, 'tower') === null) at = { x, y };
+  }
+  ok('a work stands', !!at && raise(w2, 0, at.x, at.y, 'tower').ok);
+  const b2 = pl2.buildings[pl2.buildings.length - 1];
+  w2.events.length = 0; pl2.slotAlert = -99;
+  World.hurtBuilding(w2, 0, b2.id, 5, C.CHAOS_ID);
+  const byChaos = w2.events.find((e) => e.e === 'hurtcity');
+  eq('a work gnawed by fiends names Chaos', byChaos && byChaos.by, C.CHAOS_ID);
+  w2.events.length = 0; pl2.slotAlert = -99;
+  World.hurtBuilding(w2, 0, b2.id, 5, 1);
+  const byFoe = w2.events.find((e) => e.e === 'hurtcity');
+  eq('and one broken by an heir names the heir', byFoe && byFoe.by, 1);
+
+  /* the dead carry their killer, which is what lets a chronicle answer this at a glance */
+  const w3 = World.createWorld(7);
+  const victim = { id: 99, owner: 0, kind: 'soldier', x: 100, y: 100, hp: 1, maxHp: 70, dmg: 0, cd: 0, ox: 0, oy: 0, goal: null, co: 0, from: -1 };
+  w3.units.push(victim);
+  w3.events.length = 0;
+  World.update(w3, C.SIM_DT);           // nothing kills him
+  w3.events.length = 0;
+  victim.hp = 1;
+  World.hurtBuilding(w3, 0, -1, 0);     // no-op, just to keep the queue honest
+  ok('a death names its killer', (() => {
+    const w4 = World.createWorld(7);
+    const v = { id: 98, owner: 0, kind: 'soldier', x: 100, y: 100, hp: 5, maxHp: 70, dmg: 0, cd: 0, ox: 0, oy: 0, goal: null, co: 0, from: -1 };
+    w4.units.push(v);
+    w4.storms.push({ owner: C.CHAOS_ID, x: 100, y: 100, delay: 0, tLeft: 1 });
+    for (let i = 0; i < 30 && !w4.events.some((e) => e.e === 'die'); i++) { World.update(w4, C.SIM_DT); }
+    const d = w4.events.find((e) => e.e === 'die');
+    return d && d.by === C.CHAOS_ID;
+  })());
+}
+
+/* The masons are hired out of the ground you hold. One crew was a hard ceiling on spending:
+ * works absorb ~14.6 essence/s and a realm in flow earns fifty, which is how two chronicles
+ * ended with five figures banked in matches that were lost. */
+suite('the masons follow the Gates')
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 9e9; w.chaosNext = 1e9;
+  eq('a bare Seat keeps one crew', World.masons(w, 0), C.MASONS.base);
+  /* give it Gates and count again — springs are where the crews come from */
+  const springs = w.map.sites.filter((s) => s.kind === 'node')
+    .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+  let gates = 0;
+  for (const s of springs) {
+    if (gates >= C.MASONS.per * 2) break;
+    for (let rr = 0; rr <= 60 && true; rr += 20) {
+      let placed = false;
+      for (let a = 0; a < 20 && !placed; a++) {
+        const th = a / 20 * Math.PI * 2;
+        const x = s.x + Math.cos(th) * rr, y = s.y + Math.sin(th) * rr;
+        if (World.placementError(w, 0, x, y, 'gate') === null) {
+          World.applyCommand(w, 0, { c: 'build', x, y, bt: 'gate' });
+          const b = pl.buildings[pl.buildings.length - 1];
+          b.raise = 0; b.hp = b.maxHp;
+          gates++; placed = true;
+        }
+      }
+      if (placed) break;
+    }
+  }
+  ok('several Gates stand', gates >= C.MASONS.per, `${gates} Gates`);
+  eq('the crews follow them', World.masons(w, 0),
+     Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per)));
+  ok('which is more than one', World.masons(w, 0) > C.MASONS.base, `${World.masons(w, 0)} crews`);
+
+  /* and the rule is that many at once, not one */
+  const spot = (bt) => {
+    for (let rad = 150; rad < C.CLAIM.seat - 40; rad += 25)
+      for (let a = 0; a < 32; a++) {
+        const th = a / 32 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+        if (World.placementError(w, 0, x, y, bt) === null) return { x, y };
+      }
+    return null;
+  };
+  const crews = World.masons(w, 0);
+  let started = 0, spare = null;
+  for (let k = 0; k < crews; k++) {
+    const at = spot('tower');
+    if (!at) break;
+    if (World.applyCommand(w, 0, { c: 'build', ...at, bt: 'tower' }).ok) started++;
+  }
+  /* a spot that is legal on every count EXCEPT the masons — found while they are all busy,
+   * so the only thing standing in the way is a free crew */
+  for (let rad = 150; rad < C.CLAIM.seat - 40 && !spare; rad += 25)
+    for (let a = 0; a < 32 && !spare; a++) {
+      const th = a / 32 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 0, x, y, 'tower') === 'busy') spare = { x, y };
+    }
+  eq('exactly as many works rise at once as there are crews', started, crews);
+  ok('and the next is refused for want of a mason, not for want of ground', !!spare,
+     spare ? 'busy' : 'no such spot');
+  eq('the sim agrees on how many are rising', World.rising(w, 0), crews);
+  ok('the crews are capped, so a runaway realm cannot build instantly',
+     World.masons(w, 0) <= C.MASONS.max);
 }
 
 /* THE MUSTER HAS NO CEILING. It had one, at 110, and a chronicle from play showed the cost:

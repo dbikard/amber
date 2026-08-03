@@ -21,6 +21,20 @@
    * rise. An unfinished work is a shell — it earns nothing, musters nobody, shoots at nothing
    * and claims no ground — but it can be broken, so an over-reach can be punished. */
   CONST.RAISE = { hpFrom: 0.25 };   // a shell starts at this fraction of its finished hp
+  /* THE MASONS FOLLOW THE GATES. One work at a time was a clean rule and a hard ceiling on
+   * spending: works absorb at most ~14.6 essence a second, and a realm in full flow earns
+   * fifty. A treasury with nowhere to go is a treasury that has stopped being a decision —
+   * which is exactly what two chronicles from play showed, twenty-two thousand and eleven
+   * thousand essence banked in matches that were lost.
+   * So the crews are hired out of the ground you hold: every `per` finished Shadow Gates buys
+   * another. It is the same anti-stall model as the writ — taking the map is what lets you
+   * build — and it cannot run away, because Gates are finite and contested.
+   * Crews multiply TEMPO as well as spending, and only the second was ever the point: at four
+   * crews on the old timings a mirror finished in 10.3m against a 15-30 target. So every work
+   * takes about 40% longer to raise. Four crews at the slower pace still absorb 43 essence a
+   * second against the single crew's 15 — the ceiling the chronicles kept hitting — while a
+   * realm grows at something near the old rate. */
+  CONST.MASONS = { base: 1, per: 3, max: 4 };
 
   /* Solo difficulty, MEASURED rather than guessed. `slow` and `noise` turned out to be decorative: an heir polled at
    * half the rate, or skipping 45% of its turns outright, still won its mirror 42-50% of the
@@ -142,10 +156,10 @@
     /* A Gate stands ON a spring and nowhere else. It is the only thing that draws Shadow out
      * of the ground, so the essence is out on the map and your writ can only follow it there.
      * That is the whole anti-stall model, and it holds because there is no home substitute. */
-    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 10,
+    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 14,
                 nodeIncome: [4.5, 7, 10.5], hp: 300, vision: 300, onNode: true,
                 blurb: 'Raised ON a spring of Shadow, and only there. It draws deep, and your writ runs where your Gates stand.' },
-    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360, raise: 13,
+    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 360, raise: 18,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },
     /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
@@ -153,13 +167,13 @@
      * while neither Seat took a scratch. An Engine is slow, fragile in a fight and useless at
      * holding ground; against a work or a Seat it is worth four of the men it costs. It has
      * to be escorted, which is the point: the Works turn a war chest into a threat. */
-    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 380, raise: 20,
+    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 380, raise: 28,
                 spawns: 'engine', period: [24, 19, 15],
                 blurb: 'Builds Engines: slow, and made for breaking works and Seats rather than men. They need an escort.' },
-    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320, raise: 17,
+    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 320, raise: 24,
                 spawns: 'sorcerer', period: [11, 8.8, 7.0],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
-    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480, raise: 11,
+    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 480, raise: 15,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
     /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk
@@ -174,7 +188,7 @@
      * channelling (`decay`, %/sec), and throwing the Shrine down costs the walker `breakLoss`
      * points outright. An assault on a walker is now the answer it always looked like.
      * drain = essence/sec while walking, rate = %/sec: ~9.5 minutes and ~18k essence. */
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 450, raise: 26,
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 450, raise: 36,
                 drain: [32], rate: [0.175], decay: 0.05, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
@@ -218,8 +232,15 @@
   };
 
   CONST.POWERS = {
-    storm: { name: 'Jewel of Judgment', icon: '⛈', cd: 50, cost: 90, radius: 85, dps: 36, dur: 2.5, delay: 1.0,
-             blurb: 'Call the storm upon any place you can see' },
+    /* THE STORM MAIMS, IT DOES NOT DELETE. At 36 dps for 2.5s it dealt 90 damage to a 70-hp
+     * soldier, so every man under the disc simply vanished: measured against an army at the
+     * muster, one cast killed 31 of 120 — 496 essence of troops for the 90 it cost, and it
+     * comes back every 50 seconds. A power that returns five times its price on a single tap
+     * is not a power, it is the game. Sixty damage leaves a full-strength soldier standing on
+     * ten hit points, which is what a storm should be: the blow you open with, not the one
+     * that ends it. Sorcerers still die outright; an Engine barely notices. */
+    storm: { name: 'Jewel of Judgment', icon: '⛈', cd: 50, cost: 90, radius: 85, dps: 24, dur: 2.5, delay: 1.0,
+             blurb: 'Call the storm upon any place you can see. It breaks an army; it does not erase one.' },
     trump: { name: 'Trump of Benedict', icon: '🃏', cd: 100, cost: 160,
              blurb: 'Summon the family champion at your gate (one at a time)' }
   };
@@ -236,9 +257,15 @@
    * now capped: a fiend grows into a soldier's better — about two swords to put down — and
    * stays there. Late Chaos still presses, by being MANY, which is a fight you can win. */
   CONST.CHAOS = {
-    firstAt: 90,                       // s before the first rift
-    interval: (t) => Math.max(15, 46 - t * 0.04),   // s between rifts
-    count: (t) => 2 + Math.floor(t / 150) + (t > 480 ? 2 : 0),  // fiends per rift (surge at 8 min)
+    /* AND IT IS NOT THE MAIN ENEMY EITHER. Capping a fiend's strength left the RATE alone,
+     * which climbed to about 32 fiends a minute — and tagging every player death across four
+     * whole matches found Chaos had taken 73% of them (rival 199, Chaos 572, towers 13). One
+     * game it was 100%. That is not the price of the best ground, it is the opponent. The
+     * schedule is cut to roughly a third: Chaos still swells, and forward country still costs
+     * something to hold, but the war is between the heirs again. */
+    firstAt: 100,                      // s before the first rift
+    interval: (t) => Math.max(20, 50 - t * 0.030),  // s between rifts
+    count: (t) => 2 + Math.floor(t / 190),          // fiends per rift
     hpScale: (t) => Math.min(2.0, 1 + t / 480),
     dmgScale: (t) => Math.min(1.35, 1 + t / 1200)
   };

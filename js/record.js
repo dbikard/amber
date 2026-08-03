@@ -76,7 +76,11 @@
   Rec.begin = function (meta) {
     head = Object.assign({ at: null }, meta);
     rows = []; cmds = []; notes = []; nextAt = 0; lastRift = -99;
-    tally = { built: 0, lost: 0, razed: 0, peakArmy: 0, peakWorks: 0, walkStarted: null, torn: 0 };
+    /* WHO TOOK YOUR MEN. Without this a report from play cannot tell a rival's assault from
+     * the black road — and neither can the player, which is how Chaos came to be taking three
+     * quarters of an army while everyone watched for the rival. */
+    tally = { built: 0, lost: 0, razed: 0, peakArmy: 0, peakWorks: 0, walkStarted: null, torn: 0,
+              deadFoe: 0, deadChaos: 0, sinceFoe: 0, sinceChaos: 0 };
     Rec.on = true;
   };
   Rec.abandon = function () { Rec.on = false; };
@@ -86,6 +90,9 @@
   Rec.sample = function (r) {
     if (!Rec.on || !r || r.t < nextAt) return;
     nextAt = r.t + SAMPLE;
+    /* the dead since the last row, so the table shows WHEN an army went and to whom */
+    r.lostFoe = tally.sinceFoe; r.lostChaos = tally.sinceChaos;
+    tally.sinceFoe = tally.sinceChaos = 0;
     rows.push(r);
     const me = r.players[head.viewer] || r.players[0];
     if (me) {
@@ -125,11 +132,20 @@
     if (!Rec.on || !events || !events.length) return;
     const t = world ? world.t : 0, me = head.viewer;
     for (const ev of events) {
+      /* every man of yours who falls, and to what */
+      if (ev.e === 'die' && ev.owner === me) {
+        if (ev.by === C.CHAOS_ID) { tally.deadChaos++; tally.sinceChaos++; }
+        else if (ev.by != null && ev.by !== me) { tally.deadFoe++; tally.sinceFoe++; }
+        continue;
+      }
       const mine = ev.pi === me;
       if (ev.e === 'raze') {
         if (mine) tally.lost++; else tally.razed++;
         const nm = C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : ev.bt;
-        notes.push([t, (mine ? 'YOUR ' + nm + ' is razed' : 'you raze a rival ' + nm) +
+        /* by WHOM: a Gate gnawed off by fiends is a different fact from one a rival stormed */
+        const hand = ev.by === C.CHAOS_ID ? ' — Chaos'
+          : (ev.by != null && ev.by !== me && head.names[ev.by] ? ' — ' + head.names[ev.by] : '');
+        notes.push([t, (mine ? 'YOUR ' + nm + ' is razed' + hand : 'you raze a rival ' + nm) +
                        (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
       } else if (ev.e === 'walk') {
         if (mine && tally.walkStarted == null) tally.walkStarted = t;
@@ -170,8 +186,9 @@
     const n = rows[0].players.length;
     const cols = [];
     for (let i = 0; i < n; i++) cols.push(i);
-    let out = ' time |' + cols.map((i) => (' ' + tag(i)).padEnd(W)).join('|') + '\n';
-    out += '      |' + cols.map(() => '  ess   in works army  pat  hp'.padEnd(W)).join('|') + '\n';
+    let out = ' time |' + cols.map((i) => (' ' + tag(i)).padEnd(W)).join('|') + '  your dead\n';
+    out += '      |' + cols.map(() => '  ess   in works army  pat  hp'.padEnd(W)).join('|') +
+           ' chaos  foe|Chaos\n';
     for (const r of rows) {
       out += clock(r.t).padStart(5) + ' |';
       out += cols.map((i) => {
@@ -185,7 +202,8 @@
                 (p.pattern > 0 ? p.pattern.toFixed(0) + (p.walking ? '%*' : '% ') : '').padStart(6) +
                 String(Math.round(p.hp / C.CASTLE_HP * 100)).padStart(4)).padEnd(W);
       }).join('|');
-      out += ' ' + r.chaos + '\n';
+      out += String(r.chaos).padStart(6) + '  ' +
+             (r.lostFoe || 0) + '|' + (r.lostChaos || 0) + '\n';
     }
     return out;
   }
@@ -207,6 +225,9 @@
     L.push(head.winner === undefined
       ? 'result: abandoned at ' + clock(head.at || 0)
       : 'result: ' + (won ? 'WON' : 'LOST') + ' at ' + clock(head.at || 0) + ' — by ' + (head.reason || '?') + ', to ' + who);
+    const dead = tally.deadFoe + tally.deadChaos;
+    L.push('YOUR DEAD: ' + dead + ' — ' + tally.deadFoe + ' to the heirs, ' + tally.deadChaos +
+           ' to Chaos' + (dead ? '  (Chaos took ' + Math.round(tally.deadChaos / dead * 100) + '%)' : ''));
     L.push('your peak: ' + tally.peakArmy + ' troops, ' + tally.peakWorks + ' works · ' +
            'works lost ' + tally.lost + ', razed ' + tally.razed +
            (tally.walkStarted != null ? ' · began the walk at ' + clock(tally.walkStarted) : ' · never walked') +

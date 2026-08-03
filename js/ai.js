@@ -30,10 +30,10 @@
     const enCity = pl.explored[enCityId] ? World.cityOf(world, enIdx) : null;
     const have = {};
     for (const b of pl.buildings) have[b.bt] = (have[b.bt] || 0) + 1;
-    /* no ceiling on works any more — what is rationed is the masons. `free` now means
-     * "are they idle", and `raising` is what they are busy with. */
+    /* no ceiling on works any more — what is rationed is the MASONS, and the crews are hired
+     * out of the Gates you hold. `free` is how many are idle. */
     const raising = pl.buildings.find((b) => b.raise > 0) || null;
-    const free = raising ? 0 : 1;
+    const free = Math.max(0, global.World.masons(world, me) - global.World.rising(world, me));
 
     const myUnits = [], visHostiles = [], threats = [];
     let push = 0;

@@ -275,6 +275,44 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **The black road is not the war; the masons follow the Gates.** Two reports from play,
+      and my first reading of the chronicle was wrong — I inferred a strategy story from the
+      order list instead of testing the mechanic. Tested, it says something else:
+      - **The assault was never the problem.** 120 soldiers ordered onto a Seat 1500 units
+        away take it in 33–36 seconds — empty road, 60 defenders, Chaos at ten minutes, all
+        four, even behind eight ballista towers. What fails is *having 120 spare troops*.
+      - **Chaos was taking 73% of the player's dead** (rival 199, Chaos 572, towers 13, tagged
+        across four whole matches; one game 100%). Capping fiend strength had left the RATE
+        alone at ~32/min. Schedule cut about 2.5×: now **26% of the dead overall, median 18% a
+        game**, and the games Chaos still decides are the ones where the heirs never met —
+        which is what it is for.
+      - **One storm deleted an army.** 36 dps × 2.5s = 90 damage against a 70-hp soldier, so
+        everyone under the disc vanished: measured at 31 of 120 men, 496 essence of troops for
+        the 90 it cost, back every 50 seconds. Now 24 dps — 60 damage, which leaves a
+        full-strength soldier on ten hit points. It opens a fight; it does not end one.
+      - **The muster spreads with the host** (rings scale with the army), so a blow that lands
+        on a big army costs proportionally less than one on a small one.
+      - **`the enemy is inside your city!` fired for fiends too**, so a rift gnawing an
+        outlying Gate read exactly like a rival's assault. It names Chaos or the heir now — and
+        `die`/`raze` carry `by`, so the chronicle reports **YOUR DEAD: n to the heirs, m to
+        Chaos** with a per-interval `foe|Chaos` column. That gap is why I misread the first
+        chronicle; the instrument can answer it now.
+      - **The masons follow the Gates** (`MASONS = {base 1, per 3, max 4}`). One crew capped
+        spending at ~15 essence/s against a realm earning fifty — the reason two chronicles
+        ended with five figures banked in matches that were lost. Four crews absorb ~43/s.
+        Works take ~40% longer to raise, because crews multiply TEMPO as well as spending and
+        only the second was ever the point.
+      Fixed in passing: `hurt` paid the bounty only to seats 0 and 1 — a duel's assumption that
+      quietly paid the third and fourth heirs nothing for the whole war.
+      **KNOWN REGRESSION, carried:** the masons are a snowball and the field got worse. Proved
+      by ablation — with everything else new but a single crew bleys/julian is 75%/9.1m; with
+      the crews it is 90–100%/5.9m whatever else changes. Capping at 3 and slowing raises were
+      both measured and neither fixes it. Against v0.7.34: benedict mirror 63%/15.2m with 1
+      draw → 50%/10.2m with **4 draws in 24**; bleys/julian 58%/12.2m → 92%/7.3m. The draws are
+      the anti-stall failing and matter most. Levers not yet tried: the Pattern as a reliable
+      clock again (slowed in v0.7.32 and given decay), `CASTLE_HP` so a rush cannot end a match
+      at seven minutes, tower strength, and Julian's turtle doctrine, which has no answer to
+      fast expansion and is the oldest skew on this list.
 - [x] **No ceiling on the muster, and a Siege Works to spend on.** The first chronicle from
       real play said it plainly: army pinned at exactly 110 from minute six, **21,966 essence
       banked** at the end, both Seats at 100% for seventeen of seventeen minutes, 59 works

@@ -247,7 +247,7 @@
     taken: 'that spring is already drawn upon',
     presence: 'no troops of yours stand there to claim it',
     contested: 'the enemy stands there',
-    busy: 'your masons are already at work — one rises at a time',
+    busy: 'your masons are all at work — every three Shadow Gates you hold hire another crew',
     unique: 'you have one already'
   };
   /* The standard chooser, used twice: once before raising a hall, once on the hall's own

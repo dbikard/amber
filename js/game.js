@@ -229,7 +229,7 @@
       else if (r.err === 'claim') UI.banner('Beyond your writ — your Gates carry it outward', 'warn');
       else if (r.err === 'ground') UI.banner('The ground will not bear it', 'warn');
       else if (r.err === 'crowded') UI.banner('Too close to another work', 'warn');
-      else if (r.err === 'busy') UI.banner('Your masons are already at work', 'warn');
+      else if (r.err === 'busy') UI.banner('Your masons are all at work — hold more Gates to hire another crew', 'warn');
       else if (r.err === 'raising') UI.banner('It is not finished yet', 'warn');
       else if (r.err === 'noup') UI.banner('The Pattern is what it is — there is nothing to raise', 'warn');
       else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
@@ -323,7 +323,15 @@
           : '⚑ The company rejoins the War Banner', '');
       }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
-      else if (ev.e === 'hurtcity') { if (ev.pi === game.viewer) UI.banner('The enemy is inside your city!', 'warn'); }
+      /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
+       * read exactly like a rival's assault — and a player watching for the rival never saw
+       * the black road taking three quarters of their army. */
+      else if (ev.e === 'hurtcity') {
+        if (ev.pi !== game.viewer) continue;
+        if (ev.by === C.CHAOS_ID) UI.banner('Chaos is inside your city!', 'chaos');
+        else if (ev.by != null && ev.by !== game.viewer) UI.banner((game.names[ev.by] || 'The enemy') + ' is inside your city!', 'warn');
+        else UI.banner('Your works are under attack!', 'warn');
+      }
       /* the Shrine falling is the single biggest thing an assault can do — say what it cost */
       else if (ev.e === 'shrinefell') UI.banner(ev.pi === game.viewer
         ? '✴ Your Shrine is thrown down — the Pattern lets go of you (' + Math.round(ev.pattern) + '%)'

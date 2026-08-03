@@ -121,6 +121,20 @@
     }
     return true;
   }
+  /* How many crews an heir can keep working, and how many are working. Hired out of the
+   * ground you hold: every C.MASONS.per finished Gates buys another, so the map is what
+   * lets you spend. A shell claims nothing and hires nobody. */
+  function masons(world, pi) {
+    let gates = 0;
+    for (const b of world.players[pi].buildings)
+      if (b.bt === 'gate' && !b.raise) gates++;
+    return Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
+  }
+  function rising(world, pi) {
+    let n = 0;
+    for (const b of world.players[pi].buildings) if (b.raise > 0) n++;
+    return n;
+  }
   /* the single answer the sim, the UI and the AI all ask. Returns null if legal. */
   function placementError(world, pi, x, y, bt) {
     const def = C.BUILDINGS[bt];
@@ -132,7 +146,7 @@
     /* The masons are the last word, not the first: what is wrong with the GROUND is worth
      * knowing while you wait, and a card that can never be built here should say so rather
      * than blame the masons. */
-    const busy = pl.buildings.some((b) => b.raise > 0) ? 'busy' : null;
+    const busy = rising(world, pi) >= masons(world, pi) ? 'busy' : null;
     /* a Gate stands on a spring or it does not stand: inside your writ or out, that is first */
     if (def.claim) {
       const site = nodeAt(world, x, y);
@@ -452,8 +466,12 @@
     victim.hp -= dmg;
     if (victim.hp <= 0 && !victim.dead) {
       victim.dead = true;
-      if (byOwner === 0 || byOwner === 1) world.players[byOwner].essence += C.UNITS[victim.kind].bounty;
-      emit(world, { e: 'die', x: victim.x, y: victim.y, kind: victim.kind, owner: victim.owner });
+      /* the bounty goes to whoever struck the blow — ANY heir. `=== 0 || === 1` was a duel's
+       * assumption, and it quietly paid seats 2 and 3 nothing for the whole war. */
+      if (byOwner >= 0 && world.players[byOwner]) world.players[byOwner].essence += C.UNITS[victim.kind].bounty;
+      /* `by` is what lets the chronicle say who took your men. Without it a report from play
+       * cannot tell a rival's assault from the black road, and neither can the player. */
+      emit(world, { e: 'die', x: victim.x, y: victim.y, kind: victim.kind, owner: victim.owner, by: byOwner });
     }
   }
   /* ---------------- who is near whom ----------------
@@ -466,8 +484,12 @@
   function rebin(world) {
     const bins = world.bins || (world.bins = new Map());
     bins.clear();
+    const head = world.host || (world.host = []);
+    head.length = 0;
+    for (let i = 0; i < world.players.length; i++) head.push(0);
     for (const v of world.units) {
       if (v.hp <= 0) continue;
+      if (v.owner >= 0) head[v.owner]++;   // how many each heir has standing, counted once
       const k = ((v.y / BIN) | 0) * 100003 + ((v.x / BIN) | 0);
       const cell = bins.get(k);
       if (cell) cell.push(v); else bins.set(k, [v]);
@@ -515,13 +537,13 @@
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
 
-  function hurtBuilding(world, pi, id, dmg) {
+  function hurtBuilding(world, pi, id, dmg, by) {
     const pl = world.players[pi], i = pl.buildings.findIndex((b2) => b2.id === id);
     if (i < 0) return;
     const b = pl.buildings[i];
     b.hp -= dmg; b.lastHurt = world.t;
     if (b.hp <= 0) {
-      emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
+      emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
       pl.buildings.splice(i, 1);
       if (b.bt === 'shrine') {
         /* throwing the Shrine down tears the walker off the Pattern and costs them ground
@@ -538,7 +560,11 @@
       for (const q of world.players) delete q.ghosts[b.id];
     } else if (world.t - (pl.slotAlert || -99) > 12) {
       pl.slotAlert = world.t;
-      emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y });
+      /* WHO is at the gate. This banner fired for anything that scratched a work, so a
+       * rift chewing an outlying Gate read as "the enemy is inside your city" exactly like a
+       * rival's assault — and a player watching for the rival never saw the black road
+       * taking three quarters of their army. */
+      emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y, by: by == null ? null : by });
     }
   }
 
@@ -727,7 +753,7 @@
              * rather than simply better soldiers */
             const wall = u.dmg * (def.siege || 1);
             if (foe.kind === 'unit') hurt(world, foe.t, u.dmg, u.owner);
-            else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, wall);
+            else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, wall, u.owner);
             else if (foe.kind === 'tower') {
               const tp = world.players[foe.t.pi];
               tp.castleHp -= wall;
@@ -757,7 +783,14 @@
           const cs = cityOf(world, u.owner);
           if (d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR) {
             const ang = (u.id * 2.39996) % (Math.PI * 2);          // golden angle: no clumps
-            const rr = C.CITY.seatR + 24 + (u.id % 4) * 17;
+            /* AND THE MUSTER SPREADS WITH THE ARMY. Four fixed rings held a hundred and
+             * thirty men in the same ground twenty stood in, which is a single storm's disc
+             * over a quarter of your force — reported from play, and measured at 31 dead in
+             * one cast. The ring count follows the host, so a bigger army is a wider one and
+             * a blow that lands on it costs proportionally less. */
+            const host = (world.host && world.host[u.owner]) || 1;
+            const rings = Math.max(4, Math.min(14, Math.ceil(host / 22)));
+            const rr = C.CITY.seatR + 24 + (u.id % rings) * 17;
             gx = cs.x + Math.cos(ang) * rr; gy = cs.y + Math.sin(ang) * rr;
             /* The whole ring is muster ground, not just the last few strides. Judging it by
              * NAV.arrive around the Seat CENTRE instead put every soldier in a 30 Hz loop:
@@ -829,6 +862,6 @@
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf,
-                   newSeenMask, markSeen, hurtBuilding };
+                   newSeenMask, markSeen, hurtBuilding, masons, rising };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);
