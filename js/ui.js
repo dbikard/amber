@@ -38,14 +38,16 @@
     $('menu-record').addEventListener('click', () => UI.copyRecord($('menu-record')));
     $('record-close').addEventListener('click', () => $('record-box').classList.add('hidden'));
 
-    /* skirmish: how hard, then which heir. The difficulty sticks between matches — it is a
-     * preference, not a per-match question, and asking it twice would be nagging. */
-    const row = $('skirmish-row');
+    /* THE FOOTING GOVERNS BOTH. It used to live inside the skirmish fold-out, which said —
+     * wrongly — that it had nothing to do with the campaign; the ladder had a private ramp of
+     * its own that no menu ever mentioned. One choice now, above both, and it sticks between
+     * matches because it is a preference and asking twice would be nagging. */
+    const foot = $('footing-row');
     const diffRow = document.createElement('div');
     diffRow.className = 'diff-row';
     const note = document.createElement('div');
     note.className = 'diff-note';
-    const paint = () => {
+    UI.paintFooting = () => {
       const cur = UI.difficulty();
       for (const b of diffRow.children) b.classList.toggle('on', b.dataset.key === cur);
       note.textContent = C.DIFFICULTY[cur].blurb;
@@ -56,11 +58,14 @@
       b.className = 'mbtn small diff';
       b.dataset.key = key;
       b.textContent = d.name;
-      b.addEventListener('click', () => { UI.setDifficulty(key); paint(); });
+      b.addEventListener('click', () => { UI.setDifficulty(key); UI.paintFooting(); });
       diffRow.appendChild(b);
     }
-    row.appendChild(diffRow);
-    row.appendChild(note);
+    foot.appendChild(diffRow);
+    foot.appendChild(note);
+
+    /* the heirs, one card each, in the order the ladder faces them */
+    const row = $('skirmish-row');
     for (const kind of Object.keys(global.AI.HEIRS)) {
       const b = document.createElement('button');
       b.className = 'mbtn small';
@@ -68,7 +73,7 @@
       b.addEventListener('click', () => H.onSkirmish(kind));
       row.appendChild(b);
     }
-    paint();
+    UI.paintFooting();
   };
   /* remembered across sessions; an unknown or missing value falls back to the default */
   UI.difficulty = function () {
@@ -82,12 +87,14 @@
   };
 
   /* ---------------- menu / match lifecycle ---------------- */
-  UI.showMenu = function (campaignLabel) {
+  UI.showMenu = function (campaignLabel, campaignNote) {
     $('menu').classList.remove('hidden');
     $('hud').classList.add('hidden');
     $('end').classList.add('hidden');
     UI.closeSheet();
     $('btn-campaign').textContent = campaignLabel;
+    $('campaign-note').textContent = campaignNote || '';
+    if (UI.paintFooting) UI.paintFooting();
     /* the match you WALKED OUT OF is often the one worth sending — a game that went badly
      * enough to abandon never reaches the end screen, so the chronicle is offered here too */
     const has = !!(global.Rec && global.Rec.recorded && global.Rec.recorded());

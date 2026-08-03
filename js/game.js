@@ -9,9 +9,11 @@
   const Render = global.Render, UI = global.UI, Net = global.Net, Rec = global.Rec;
   const $ = (id) => document.getElementById(id);
 
+  /* The succession, in the order you face it. There used to be a private difficulty ramp here
+   * as well — RUNG_OPTS — which meant the footing the menu offered governed a skirmish and
+   * silently did nothing to the campaign. One knob: the LADDER says WHO, the footing says how
+   * strong, and both are the player's to see. */
   const LADDER = ['julian', 'bleys', 'brand', 'benedict'];
-  const RUNG_OPTS = [{ slow: 1.8, noise: 0.42, eco: 0.65 }, { slow: 1.45, noise: 0.28, eco: 0.80 },
-                     { slow: 1.15, noise: 0.15, eco: 0.92 }, { slow: 1.0, noise: 0.05, eco: 1.0 }];
   const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
 
   const game = {
@@ -25,9 +27,17 @@
 
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
+  const done = () => rung() >= LADDER.length;
   const campaignLabel = () =>
-    rung() >= LADDER.length ? 'THRONE CLAIMED — WALK AGAIN'
-                            : 'CAMPAIGN — FACE ' + firstName(LADDER[rung()]).toUpperCase();
+    done() ? 'THRONE CLAIMED — WALK IT AGAIN'
+           : 'CAMPAIGN — FACE ' + firstName(LADDER[rung()]).toUpperCase();
+  /* what the button will actually do, said out loud. Walking again started you against
+   * BENEDICT — the last rung — because the index was clamped instead of wrapped, so the
+   * reward for finishing the succession was to be dropped straight back at its hardest step. */
+  const campaignNote = () =>
+    done() ? 'the succession begins again, from ' + firstName(LADDER[0])
+           : 'rung ' + (rung() + 1) + ' of ' + LADDER.length +
+             ' · ' + LADDER.map((k, i) => (i < rung() ? '✔' : '·')).join(' ');
 
   /* ---------------- match lifecycle ---------------- */
   function startSP(kind, opts, isCampaign) {
@@ -77,7 +87,8 @@
      * rather than pretend the rival columns are the truth */
     Rec.begin({ version: global.GAME_VERSION, seed, viewer: game.viewer, names: game.names.slice(),
                 mode: 'LAN ' + n + '-way', partial: !Net.isHost });
-    UI.startMatch(Net.isHost ? 'Eric' : 'Corwin');
+    /* with up to four seats there is no single "the rival" — name the table instead */
+    UI.startMatch(n > 2 ? n + ' HEIRS CONTEND' : (Net.isHost ? 'Eric' : 'Corwin'));
   }
   /* ---------------- the phone's back button ----------------
    * Installed as a PWA, Android's back gesture leaves the app. It should dismiss whatever is
@@ -121,7 +132,7 @@
     if (Render.lookAt) Render._homed = false;
     if (Net.active) Net.close();
     if (game.updateReady) { applyUpdate(); return; }   // a new version waited politely for match end
-    UI.showMenu(campaignLabel());
+    UI.showMenu(campaignLabel(), campaignNote());
   }
 
   /* ---------------- PWA: install + live auto-update ----------------
@@ -172,7 +183,9 @@
     game.endNext = null;
     if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
       localStorage.setItem('amber_rung', String(rung() + 1));
-      game.endNext = rung() >= LADDER.length ? 'THE THRONE AWAITS' : 'FACE ' + firstName(LADDER[rung()]).toUpperCase();
+      /* the last rung is not the end of the button: walking again starts the succession over */
+      game.endNext = done() ? 'WALK IT AGAIN — FACE ' + firstName(LADDER[0]).toUpperCase()
+                            : 'FACE ' + firstName(LADDER[rung()]).toUpperCase();
     }
     endScreen();
   }
@@ -675,8 +688,9 @@
     window.addEventListener('resize', Render.resize);
     UI.init({
       onCampaign: () => {
-        const r = Math.min(rung(), LADDER.length - 1);
-        startSP(LADDER[r], RUNG_OPTS[r], true);
+        /* a claimed throne starts the succession OVER, from the first rung */
+        if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
+        startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
       },
       onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
@@ -710,8 +724,10 @@
       },
       onEndNext: () => {
         if (game.mode === 'sp') {
-          if (game.campaign) { const r = Math.min(rung(), LADDER.length - 1); startSP(LADDER[r], RUNG_OPTS[r], true); }
-          else startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
+          if (game.campaign) {
+            if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
+            startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
+          } else startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
         } else if (game.mode === 'host') rematch();
         else toMenu();
       },
@@ -730,7 +746,7 @@
     setupLan();
     setupPWA();
     $('version').textContent = 'v' + (global.GAME_VERSION || '?');
-    UI.showMenu(campaignLabel());
+    UI.showMenu(campaignLabel(), campaignNote());
     requestAnimationFrame((t2) => { lastFrame = t2; requestAnimationFrame(frame); });
   }
 

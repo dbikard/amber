@@ -100,29 +100,36 @@ async function match(browser, base, renderer) {
     const hidden = (id) => pg.evaluate((i) => document.getElementById(i).classList.contains('hidden'), id);
     await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
     ok('the skirmish row opens', !(await hidden('skirmish-row')));
-    await pg.mouse.click(60, 760); await pg.waitForTimeout(200);
+    await pg.mouse.click(60, 60); await pg.waitForTimeout(200);
     ok('tapping away closes the skirmish row', await hidden('skirmish-row'));
     await pg.click('#btn-lan'); await pg.waitForTimeout(200);
     ok('the LAN panel opens', !(await hidden('lan-panel')));
-    await pg.mouse.click(60, 120); await pg.waitForTimeout(200);
+    await pg.mouse.click(60, 60); await pg.waitForTimeout(200);
     ok('tapping away closes the LAN panel', await hidden('lan-panel'));
 
-    /* solo difficulty: a preference that sticks, and that actually reaches the sim */
-    await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
+    /* THE FOOTING GOVERNS BOTH MODES. It used to live inside the skirmish fold-out, which
+     * said — wrongly — that it had nothing to do with the campaign, and the ladder ran on a
+     * private ramp no menu ever mentioned. */
     const diff = await pg.evaluate(() => {
       const C = window.CONST;
-      const btns = [...document.querySelectorAll('#skirmish-row .diff')];
+      const btns = [...document.querySelectorAll('#footing-row .diff')];
       const before = window.UI.difficulty();
-      const marked = btns.filter((b) => b.classList.contains('on')).map((b) => b.dataset.key);
-      return { n: btns.length, before, marked, dflt: C.DIFFICULTY_DEFAULT,
-               keys: btns.map((b) => b.dataset.key) };
+      return { n: btns.length, before, dflt: C.DIFFICULTY_DEFAULT,
+               marked: btns.filter((b) => b.classList.contains('on')).map((b) => b.dataset.key),
+               keys: btns.map((b) => b.dataset.key),
+               inFold: document.querySelectorAll('#skirmish-row .diff').length,
+               visible: !document.getElementById('footing-row').classList.contains('hidden') };
     });
-    ok('every difficulty is offered', diff.n === diff.keys.length && diff.n >= 3, diff.keys.join(','));
+    ok('every footing is offered', diff.n >= 3 && diff.n === diff.keys.length, diff.keys.join(','));
+    ok('and offered outside either fold-out, since it governs both', diff.inFold === 0 && diff.visible);
     ok('one is marked, and it is the remembered choice', diff.marked.length === 1 && diff.marked[0] === diff.before,
        `marked ${diff.marked} vs ${diff.before}`);
     ok('which defaults to something short of full strength', diff.before === diff.dflt && diff.dflt !== 'prince',
        diff.before);
+
+    /* it reaches a SKIRMISH... */
     await pg.evaluate(() => { window.UI.setDifficulty('squire'); });
+    await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
     await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
       .find((e) => /julian/i.test(e.textContent)).click());
     await inMatchNow(pg);
@@ -132,9 +139,50 @@ async function match(browser, base, renderer) {
     });
     ok('the chosen handicap reaches the heir', applied.eco === applied.want, `eco ${applied.eco}`);
     ok('and never touches your own side', applied.mine === 1, `eco ${applied.mine}`);
-    await pg.evaluate(() => { window.UI.setDifficulty(window.CONST.DIFFICULTY_DEFAULT); window.Game.toMenu(); });
-    await pg.waitForTimeout(400);
 
+    /* ...and the CAMPAIGN, which used to ignore it entirely */
+    await pg.evaluate(() => { window.Game.toMenu(); });
+    await pg.waitForTimeout(300);
+    const camp = await pg.evaluate(async () => {
+      const C = window.CONST;
+      localStorage.setItem('amber_rung', '0');
+      window.UI.setDifficulty('prince');
+      window.Game.toMenu();
+      document.getElementById('btn-campaign').click();
+      await new Promise((res) => setTimeout(res, 400));
+      const g = window.Game.game;
+      return { eco: g.world.players[1].eco, want: C.DIFFICULTY.prince.eco,
+               rival: g.names[1], campaign: g.campaign };
+    });
+    ok('the campaign runs on the same footing', camp.eco === camp.want && camp.campaign,
+       `eco ${camp.eco}, wanted ${camp.want}`);
+    ok('and the first rung is the first heir', /julian/i.test(camp.rival), camp.rival);
+
+    /* A CLAIMED THRONE WALKS THE SUCCESSION AGAIN, FROM THE START. The index was clamped
+     * rather than wrapped, so finishing dropped you straight back onto the hardest rung. */
+    const again = await pg.evaluate(async () => {
+      const L = 4;
+      localStorage.setItem('amber_rung', String(L));   // the whole ladder claimed
+      window.Game.toMenu();
+      await new Promise((res) => setTimeout(res, 200));
+      const label = document.getElementById('btn-campaign').textContent;
+      const note = document.getElementById('campaign-note').textContent;
+      document.getElementById('btn-campaign').click();
+      await new Promise((res) => setTimeout(res, 400));
+      return { label, note, rival: window.Game.game.names[1],
+               rung: localStorage.getItem('amber_rung') };
+    });
+    ok('a claimed throne offers the walk again', /AGAIN/i.test(again.label), again.label);
+    ok('and says where it starts', /julian/i.test(again.note), again.note);
+    ok('which is the FIRST heir, not the last', /julian/i.test(again.rival), again.rival);
+    ok('and the ladder is back at its first rung', again.rung === '0', again.rung);
+
+    await pg.evaluate(() => {
+      window.UI.setDifficulty(window.CONST.DIFFICULTY_DEFAULT);
+      localStorage.setItem('amber_rung', '0');
+      window.Game.toMenu();
+    });
+    await pg.waitForTimeout(400);
     await pg.close();
   }
 

@@ -141,6 +141,13 @@ body {
 @keyframes waiting { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.95; } }
 .mbtn.small { width: auto; padding: 9px 14px; font-size: 12px; }
 #skirmish-row, .lan-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 92vw; }
+/* the footing governs BOTH modes, so it reads as a setting above them rather than as part of
+ * either: its own strip, a hair apart from the buttons it applies to */
+#footing-row { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 2px; }
+/* .diff-note carries flex-basis:100% for the ROW it was written for; in a column that is a
+   claim on the whole height, which opened a hand's width of nothing down the middle of the menu */
+#footing-row .diff-note, #campaign-note { flex-basis: auto; }
+#campaign-note { margin: -6px 0 2px; }
 .diff-row { display: flex; gap: 6px; justify-content: center; flex-basis: 100%; }
 .mbtn.diff { border-color: #5a4c30; color: #b8a878; }
 .mbtn.diff.on { border-color: #c9a44f; color: #ffe9a8; box-shadow: 0 0 12px rgba(255, 220, 150, 0.3); }

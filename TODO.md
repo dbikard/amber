@@ -275,6 +275,24 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       (Corwin at 53% is closest); Brand is still weakest at 31 and 0% vs Benedict; up to 6
       draws per 30 at the 45-min cap in Corwin/Benedict; and medians sit at 9–19m against the
       15–30 target rather than inside it.
+- [x] **The menu says what it does.** Four things it was getting wrong, all reported off one
+      screenshot:
+      - **A claimed throne walked you straight back into BENEDICT.** The rung index was
+        clamped to `LADDER.length - 1` rather than wrapped, so the reward for finishing the
+        succession was to be dropped onto its hardest step. It restarts at Julian now, on the
+        end screen as well as the menu, and the button says so.
+      - **The footing governed a skirmish and did nothing to the campaign.** It lived inside
+        the skirmish fold-out, and the ladder ran on a private ramp (`RUNG_OPTS`) that no menu
+        ever mentioned. That ramp is gone: the LADDER says WHO you face, the footing says how
+        strong, and one strip above both modes sets it.
+      - **"LAN DUEL — CORWIN vs ERIC"** has been up to four heirs since v0.7.30. Now "LAN — UP
+        TO FOUR HEIRS", HOST/JOIN THE TABLE, and the HUD names "3 HEIRS CONTEND" rather than a
+        single rival that does not exist at a four-way table.
+      - The campaign button carries its progress underneath — `rung 2 of 4 · ✔ · · ·` — so the
+        ladder is legible without playing it.
+      Fixed on the way: `.diff-note` carries `flex-basis: 100%` for the ROW it was written
+      for, and in a column that is a claim on the whole height — it opened a hand's width of
+      nothing down the middle of the menu the moment the footing moved out of the fold-out.
 - [x] **The Pattern is a clock again, and a work is stone rather than sand.**
       The four draws in twenty-four were the anti-stall failing, and the cause was measurable:
       across fourteen mirrors, **every match that ran to the 45-minute cap had somebody walking
