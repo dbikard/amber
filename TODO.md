@@ -272,6 +272,18 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
         walls only when he is being pressed.
       **Still open from the plan:** towers structurally joining a curtain, partial breaches,
       and the Chaos repurposing of §2.
+      **What the referee said.** Full `node sim.js` before and after, 30 games a matchup, then
+      focused runs on the four rows that changed. A wall bought on a SCHEDULE does not pay:
+      masons are `1 + gates/3`, so an early curtain occupies the only crew a heir has and
+      delays the Gate that would pay for the next one — 110 essence and a tempo of economy
+      spent against opponents who win by walking, which no wall touches. Julian at slot 3 fell
+      47%→27% against Brand with the win reasons moving to pattern:20; moved later he was 40%,
+      still under the 47% he had with no wall at all. Gated on pressure he beats his own
+      baseline everywhere: brand 47→57, corwin 40→43, bleys 0→3, benedict 43→47.
+      Benedict was the control — his wall was threat-gated from the start and he came through
+      51→53. Field: `bleys 110 · benedict 51 · corwin 49 · brand 45 · julian 45`, spread
+      71→65, and Julian is no longer alone at the bottom. Bleys at 110 with no counter is the
+      carried regression from before this work, untouched by it.
 - [x] **Retune** (pulled FORWARD, before walls — tuning siege against a broken triangle
       would have been guesswork). Pacing: Seat 1000→2500 hp, walls 900/1500/2200→1600/2600/3800,
       the walk 6min→7.6min at L1, spring income 5/8/12→4.5/7/10.5. Heir doctrine rewritten so
