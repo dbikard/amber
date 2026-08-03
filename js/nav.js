@@ -49,6 +49,26 @@
     for (let i = 0; i <= world.players.length; i++) nav.masks.push(new Uint8Array(n));
     nav.maskVer = world.navVersion;
     nav.fields.clear();
+    /* A CURTAIN WALL BARS THE GROUND — to everyone but the heir who raised it. Each finished
+     * wall is stamped into every OTHER layer, Chaos's included, so a rival army must break it
+     * or go round while the owner's own columns pass freely. This is the layer the removal
+     * commit kept empty for exactly this. */
+    const W = nav.W, H = nav.H, cw = nav.cw;
+    const t = (C.WALL && C.WALL.thick) || 13, rc = Math.ceil(t / cw);
+    for (const w of world.walls || []) {
+      const len = Math.hypot(w.bx - w.ax, w.by - w.ay);
+      const steps = Math.max(2, Math.ceil(len / (cw * 0.5)));
+      for (let s = 0; s <= steps; s++) {
+        const f = s / steps, px = w.ax + (w.bx - w.ax) * f, py = w.ay + (w.by - w.ay) * f;
+        const gx = Math.floor(px / cw), gy = Math.floor(py / cw);
+        for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
+          const cx = gx + dx, cy = gy + dy;
+          if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
+          const i = cy * W + cx;
+          for (let q = 0; q <= world.players.length; q++) if (q !== w.owner) nav.masks[q][i] = 1;
+        }
+      }
+    }
     return nav.masks;
   }
   /* Chaos rides the last layer; everyone else rides their own */

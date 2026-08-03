@@ -829,15 +829,150 @@ suite('remembered ground')
   ok('but it is still not the whole map', count() < mask.g.length, `${count()} of ${mask.g.length}`);
 }
 
-suite('no walls, for now')
+/* THE CURTAIN WALL. The old city wall was a number on a player — one bar that fell and took
+ * the whole defence with it. This one is a WORK WITH A LENGTH: placed as a line, broken span
+ * by span, and it does exactly three things — it bars the ground to everyone but its owner,
+ * it stops shots crossing it, and it does not stop shots from the men standing ON it. That
+ * last clause is the whole balance of the thing, and it is what these assertions are for. */
+suite('the curtain wall')
 {
+  const def = C.BUILDINGS.wall;
   ok('the rampart is gone from the build table', !C.BUILDINGS.rampart);
-  ok('and from the build sheet order', !C.BUILD_ORDER_UI.includes('rampart'));
-  ok('city walls are gone from the rules', C.WALL === undefined);
-  const w = World.createWorld(7);
-  eq('the wall command is refused', World.applyCommand(w, 0, { c: 'wall' }).err, 'cmd');
-  ok('no player carries wall state', w.players.every((p) => p.wallHp === undefined));
-  ok('no rampart survives in the nav layer', C.NAV.rampartR === undefined);
+  ok('a wall is on the build sheet', C.BUILD_ORDER_UI.includes('wall'));
+  ok('...and it is a work with a length', Array.isArray(def.span) && def.span[0] < def.span[1]);
+  ok('no player carries a single wall bar any more',
+     World.createWorld(7).players.every((p) => p.wallHp === undefined));
+
+  /* placement: the first tap is a point, the second is the run */
+  const w = World.createWorld(1000);
+  w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0);
+  const pl = w.players[0];
+  pl.essence = 100000;
+  const build = (ax, ay, bx, by) => World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: ax, y: ay, x2: bx, y2: by });
+  eq('a run of no length is refused', build(c.x + 90, c.y, c.x + 92, c.y).err, 'short');
+  eq('...and one longer than the span', build(c.x + 90, c.y, c.x + 90 + def.span[1] + 60, c.y).err, 'span');
+  eq('a run reaching outside your writ is refused',
+     build(c.x + C.CLAIM.seat + 40, c.y - 60, c.x + C.CLAIM.seat + 40, c.y + 60).err, 'claim');
+  eq('the first tap alone is judged on what a point can be judged on',
+     World.placementError(w, 0, c.x + 90, c.y, 'wall'), null);
+
+  /* a legal run, laid across the ground beside the Seat */
+  let laid = null;
+  for (let a = 0; a < 6.28 && !laid; a += 0.35) {
+    for (let r = 110; r <= 200 && !laid; r += 22) {
+      const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
+      const px = -Math.sin(a) * 70, py = Math.cos(a) * 70;
+      if (!World.wallError(w, 0, mx - px, my - py, mx + px, my + py)) laid = [mx - px, my - py, mx + px, my + py];
+    }
+  }
+  ok('a curtain can be laid beside the Seat', !!laid);
+  const before = pl.essence;
+  const r1 = build(laid[0], laid[1], laid[2], laid[3]);
+  ok('and the order is accepted', r1.ok, r1.err);
+  eq('it costs what the card says', Math.round(before - pl.essence), def.cost);
+  const b = pl.buildings.find((q) => q.bt === 'wall');
+  ok('it is stored by its MIDPOINT, carrying the far end', b && b.x2 != null);
+  near('the midpoint is the middle of the run', b.x, (laid[0] + laid[2]) / 2, 0.01);
+  const ends = World.wallEnds(b);
+  near('...and the ends come back out of it', ends[0], laid[0], 0.01);
+  near('...both of them', ends[3], laid[3], 0.01);
+  eq('a second run crossing the first is refused',
+     build((laid[0] + laid[2]) / 2 - (laid[3] - laid[1]) * 0.4, (laid[1] + laid[3]) / 2 + (laid[2] - laid[0]) * 0.4,
+           (laid[0] + laid[2]) / 2 + (laid[3] - laid[1]) * 0.4, (laid[1] + laid[3]) / 2 - (laid[2] - laid[0]) * 0.4).err,
+     'crowded');
+
+  /* it is scaffolding until the masons are done, and does nothing at all */
+  ok('it goes up as a shell', b.raise > 0);
+  ok('an unfinished wall bars nothing', !w.anyWall);
+  for (let i = 0; i < 30 * (def.raise + 1); i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('the masons finish it', b.raise, 0);
+  ok('and THEN it is stone', w.anyWall);
+  eq('the standing list holds it', w.walls.length, 1);
+
+  /* ---- what stone does ---- */
+  const mid = { x: b.x, y: b.y };
+  /* the normal, ORIENTED: +d is the field side, -d the side the Seat shelters on. Left to
+   * the raw cross product the sign is whichever way the run happened to be drawn, and half
+   * of what follows would be asserting the opposite of what it says. */
+  let nx = -(ends[3] - ends[1]), ny = ends[2] - ends[0];
+  if (nx * (c.x - mid.x) + ny * (c.y - mid.y) > 0) { nx = -nx; ny = -ny; }
+  const nL = Math.hypot(nx, ny) || 1;
+  const side = (d) => ({ x: mid.x + (nx / nL) * d, y: mid.y + (ny / nL) * d });
+  const put = (owner, at, kind) => {
+    const d = C.UNITS[kind || 'sorcerer'];
+    const u = { id: w.nextId++, owner, kind: kind || 'sorcerer', x: at.x, y: at.y, ox: 0, oy: 0,
+                hp: 1e9, maxHp: 1e9, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
+    w.units.push(u); return u;
+  };
+  /* THE BANNER MOVES THE ARMY — including in a test. Pinning a soldier by writing u.goal
+   * does nothing: the sim rewrites it from the player's banner every tick, so both men
+   * simply marched home and swapped sides of the wall. Plant each banner where its man
+   * already stands and he holds his ground, which is what these assertions are about. */
+  const pin = (u) => { w.players[u.owner].banner = { x: u.x, y: u.y, site: -1 }; return u; };
+  const settle = () => { w.units.length = 0; };
+  const run = (secs) => { for (let i = 0; i < 30 * secs; i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+
+  /* a soldier well behind the wall cannot be shot by one well in front of it */
+  settle();
+  const inner = pin(put(0, side(-C.WALL.man - 30)));   // sheltered, on the Seat's side
+  const outer = pin(put(1, side(C.WALL.man + 30)));    // in the field, in front of the stone
+  run(6);
+  eq('a man behind the curtain is not shot through it', inner.hp, 1e9);
+  eq('...and does not shoot out through it either', outer.hp, 1e9);
+
+  /* come up to your OWN wall and you are on the parapet: you shoot, and you are shot */
+  settle();
+  const manned = pin(put(0, side(-C.WALL.man * 0.5)));
+  const field = pin(put(1, side(C.WALL.man + 30)));
+  run(6);
+  ok('a man on the parapet reaches the field', field.hp < 1e9, field.hp);
+  ok('...and the field reaches back', manned.hp < 1e9, manned.hp);
+  ok('the parapet throws further than the ground does',
+     C.WALL.over > C.UNITS.soldier.range, `${C.WALL.over} vs ${C.UNITS.soldier.range}`);
+
+  /* standing against SOMEBODY ELSE'S wall is not manning it */
+  settle();
+  b.hp = b.maxHp;
+  const hidden = pin(put(0, side(-C.WALL.man - 40)));
+  pin(put(1, side(C.WALL.man * 0.5)));
+  run(6);
+  eq('hugging a rival curtain does not put you on it', hidden.hp, 1e9);
+  ok('...though the wall itself is a target', b.hp < b.maxHp, `${Math.round(b.hp)}/${b.maxHp}`);
+
+  /* nothing walks through it. The banner is planted on the far side of the run — the one
+   * order that would take a column straight through the stone if stone did not stop it. */
+  settle();
+  b.hp = b.maxHp;
+  const far = side(-220);   // past the wall, on the ground it shelters
+  const walker = put(1, side(60), 'soldier');
+  w.players[1].banner = { x: far.x, y: far.y, site: -1 };
+  run(30);
+  const sgn = (nx / nL) * (walker.x - mid.x) + (ny / nL) * (walker.y - mid.y);
+  ok('a rival column does not walk through stone', sgn > 0, sgn.toFixed(1));
+
+  /* ...but the owner passes freely, because it is his wall and it has a gate in it */
+  settle();
+  const mine = put(0, side(60), 'soldier');
+  w.players[0].banner = { x: far.x, y: far.y, site: -1 };
+  run(30);
+  const sgn2 = (nx / nL) * (mine.x - mid.x) + (ny / nL) * (mine.y - mid.y);
+  ok('the heir who raised it walks through his own gate', sgn2 < 0, sgn2.toFixed(1));
+
+  /* a level buys STONE. A wall has no other effect to scale, so an upgrade that did not
+   * thicken it would take essence and do nothing whatever. */
+  b.hp = b.maxHp - 200;
+  const wasMax = b.maxHp;
+  eq('a curtain can be reinforced', World.applyCommand(w, 0, { c: 'up', id: b.id }).ok, true);
+  ok('...and the reinforcement is thicker stone', b.maxHp > wasMax, `${wasMax} -> ${b.maxHp}`);
+  near('...added to what was standing, not a free repair', b.maxHp - b.hp, 200, 1);
+
+  /* a breach is a hole: throw it down and the ground opens again */
+  settle();
+  const ver = w.navVersion;
+  World.hurtBuilding(w, 0, b.id, 1e9, 1);
+  ok('a broken curtain leaves the standing list', w.walls.length === 0 && !w.anyWall);
+  ok('...and the movement layer is told', w.navVersion > ver);
 }
 
 /* The solo ladder has to be a LADDER. It was not: `slow` and `noise` are decorative — an heir

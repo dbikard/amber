@@ -212,8 +212,14 @@
         musterPaused: mine ? pl.musterPaused : false,
         /* your own companies and where their standards stand; a rival's are a secret */
         companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally })) : [],
-        buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)).map((b) => ({
+        /* A CURTAIN IS LONGER THAN ITS MIDDLE. Judging a wall by its centre hid a run whose
+         * near end stood in plain sight, so a wall shows the moment any part of it is seen —
+         * and carries its far end, since a line drawn to one point is not a line. */
+        buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)
+          || (b.x2 != null && (see(b.x2, b.y2) || see(b.x * 2 - b.x2, b.y * 2 - b.y2)))).map((b) => ({
           id: b.id, bt: b.bt, level: b.level, x: Math.round(b.x), y: Math.round(b.y),
+          x2: b.x2 == null ? undefined : Math.round(b.x2),
+          y2: b.y2 == null ? undefined : Math.round(b.y2),
           hp: Math.round(b.hp), maxHp: b.maxHp, node: b.node,
           /* an unfinished work reads as a shell to BOTH sides — it is plainly scaffolding */
           raise: b.raise > 0 ? Math.round(b.raise * 10) / 10 : 0, raiseFor: b.raiseFor || 0,
@@ -224,7 +230,9 @@
         /* what the viewer remembers of works they can no longer see */
         ghosts: mine ? [] : Object.entries(world.players[viewer].ghosts)
           .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
-          .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: Math.round(g.x), y: Math.round(g.y) }))
+          .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: Math.round(g.x), y: Math.round(g.y),
+                               x2: g.x2 == null ? undefined : Math.round(g.x2),
+                               y2: g.y2 == null ? undefined : Math.round(g.y2) }))
       };
     });
     /* sites through the viewer's fog: live truth if visible, memory if explored, else absent */

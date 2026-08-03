@@ -34,8 +34,13 @@ open along it and spew fiends at both sides, escalating until someone wins — t
 
 > **Direction of travel:** the site graph below is being replaced by a continuous open world —
 > free movement over real terrain, free placement inside claimed ground, essence nodes, and
-> walls built piece by piece. See **`OPEN_WORLD_PLAN.md`**. This section describes what ships
+> walls. See **`OPEN_WORLD_PLAN.md`**. This section describes what ships
 > today; it migrates stage by stage.
+>
+> **Walls have shipped, and not as pieces.** The Curtain Wall is one work with a length: two
+> taps lay a run of stone that bars the ground to every heir but its owner and stops shots
+> crossing it — except from the men standing ON it, who throw further than anyone on the
+> ground and are shot at in return. A wall alone kills nobody. See `OPEN_WORLD_PLAN.md` §6.
 
 ## The Board (v0.2 — "The Shadow March": a scrollable map of Shadow)
 

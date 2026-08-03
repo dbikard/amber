@@ -255,7 +255,10 @@
     presence: 'no troops of yours stand there to claim it',
     contested: 'the enemy stands there',
     busy: 'your masons are all at work — every three Shadow Gates you hold hire another crew',
-    unique: 'you have one already'
+    unique: 'you have one already',
+    /* a work with a length has two refusals of its own — both about the RUN, not the spot */
+    short: 'too short a run to be a wall',
+    span: 'too long a run for one wall — build it in stretches'
   };
   /* The standard chooser, used twice: once before raising a hall, once on the hall's own
    * sheet to move it later. Companies exist so that a dozen halls need not mean a dozen
@@ -305,6 +308,10 @@
         if (card.classList.contains('locked')) return;
         /* a hall that musters troops asks which standard it answers to — everything else
          * simply goes up */
+        /* A WORK WITH A LENGTH needs a second point. The card arms it — the tap that
+         * follows names the far end — which is the same arm-then-act idiom as a standard,
+         * so there is nothing new to learn. */
+        if (d.span) { H.onSpan(at.x, at.y, bt); UI.closeSheet(); return; }
         if (d.spawns && el._me) {
           el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — under which standard?</div>`;
           standardCards(el, el._me, 0, (co) => { H.onBuild(at.x, at.y, bt, co); UI.closeSheet(); });

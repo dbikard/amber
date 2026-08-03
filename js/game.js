@@ -19,7 +19,8 @@
   const game = {
     mode: null, world: null, viewer: 0, bot: null,
     names: ['', ''], campaign: false,
-    targeting: false, over: false, lastRiftBanner: -99, armedFlag: null
+    targeting: false, over: false, lastRiftBanner: -99, armedFlag: null,
+    span: null              // a wall half-placed: its anchor, waiting for the far end
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
@@ -47,7 +48,7 @@
     /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
     game.world.players[1].eco = (opts && opts.eco) || 1;
     game.names = ['Corwin', AI.HEIRS[kind].title];
-    game.targeting = false;
+    game.targeting = false; game.span = null; Render.span = null;
     /* first-matches onboarding: teach the banner, the springs, the assault */
     const seenHints = +localStorage.getItem('amber_hints') || 0;
     if (seenHints < 3) {
@@ -76,6 +77,7 @@
     game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
     Net.localIdx = game.viewer;
     game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
+    game.span = null; Render.span = null;
     game.names = C.SEAT_NAMES.slice(0, n);
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     game.world = Net.isHost ? World.createWorld(seed, n) : null;
@@ -105,8 +107,9 @@
     backArmed = false;
     if (!game.mode) return;                       // at the menu: let the browser have it
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
-    if (game.targeting || game.armedFlag != null) {
+    if (game.targeting || game.armedFlag != null || game.span) {
       game.targeting = false; game.armedFlag = null;
+      game.span = null; Render.span = null;
       UI.banner('Cancelled', 'warn');
       armBack(); return;
     }
@@ -247,6 +250,9 @@
       else if (r.err === 'noup') UI.banner('The Pattern is what it is — there is nothing to raise', 'warn');
       else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
       else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
+      /* the two refusals only a work with a LENGTH can earn */
+      else if (r.err === 'short') UI.banner('Too short a run to be a wall', 'warn');
+      else if (r.err === 'span') UI.banner('Too long for one wall — build it in stretches', 'warn');
     }
     return r;
   }
@@ -266,10 +272,12 @@
       players: world.players.map((pl, pi) => pi === viewer
         ? { ...pl, ghosts: [] }
         : { ...pl,
-            buildings: pl.buildings.filter((b) => see(b.x, b.y)),
+            /* a curtain shows the moment any part of it is seen, not only its middle */
+            buildings: pl.buildings.filter((b) => see(b.x, b.y)
+              || (b.x2 != null && (see(b.x2, b.y2) || see(b.x * 2 - b.x2, b.y * 2 - b.y2)))),
             ghosts: Object.entries(world.players[viewer].ghosts)
               .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
-              .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: g.x, y: g.y })) }),
+              .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: g.x, y: g.y, x2: g.x2, y2: g.y2 })) }),
       sites: world.map.sites.map((s) => {
         if (see(s.x, s.y)) return { id: s.id, live: true, holder: World.nodeHolder(world, s) };
         return mem[s.id] ? { id: s.id, live: false, holder: -1 } : null;
@@ -464,6 +472,15 @@
     const x = e.clientX, y = e.clientY;
     const view = game.mode === 'guest' ? (snapCur ? guestView() : null) : hostView();
     if (!view) return;
+    /* the second tap of a wall closes the run — before flags, before sheets, because it is
+     * the thing the player is plainly in the middle of doing */
+    if (game.span) {
+      const from = game.span;
+      game.span = null; Render.span = null;
+      const w = Render.toWorld(x, y, game.viewer);
+      issue({ c: 'build', x: from.x, y: from.y, x2: w.x, y2: w.y, bt: from.bt });
+      return;
+    }
     if (game.armedFlag != null) {
       const id = game.armedFlag;
       game.armedFlag = null;
@@ -694,6 +711,15 @@
       },
       onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
+      /* the first tap of a wall: hold the anchor, show the run, wait for the second */
+      onSpan: (x, y, bt) => {
+        game.span = { x, y, bt };
+        /* remember the pointer the card was tapped with: on a phone there is no hover, and a
+         * preview drawn to a stale finger position reads as "too short" before you have
+         * pointed anywhere at all */
+        Render.span = { x, y, from: Render.pointer };
+        UI.banner('Now tap where the wall should END', 'alert');
+      },
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
       onBanner: (site) => issue({ c: 'banner', site }),

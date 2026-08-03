@@ -98,24 +98,37 @@ cities. A node produces for whoever has a harvesting structure within range of i
 - Harvesting structures are destructible and largely undefended by themselves. Holding
   economy is the reason armies exist.
 
-## 6. Walls
+## 6. Walls — SHIPPED (the Curtain Wall)
 
-Built piece by piece, placed **by dragging a line**.
+Shipped as **one work with a length**, not a chain of segments. The plan called for a run of
+individually-destructible pieces and id-keyed netcode deltas; a single record carrying a
+second end does everything that was actually wanted and costs the wire nothing — a wall rides
+the ordinary building list with `x2`/`y2` beside `x`/`y`. Segments would have bought
+partial breaches at the price of a second netcode path, and that trade was not worth making
+until somebody misses them in play.
 
-- Drag from A to B: the game lays a run of segments along the path, charges per segment, and
-  previews the total against your treasury before you commit. Piece-by-piece tapping stays
-  available for touch-ups and gap-plugging.
-- Segments are individually destructible. A breached segment is a hole an army walks through —
-  this is why walls do not simply win.
-- Segments self-mend when unbothered, as structures do today.
-- **Towers join curtains.** A tower placed on a wall line becomes part of the run: the wall
-  connects to it visually and structurally, and the tower gains a defensive bonus for being
-  manned on the wall.
-- Walls are legal only inside your claim, which keeps wall-spam off the rival's doorstep.
-
-**Netcode consequence:** hundreds of segments cannot ship in a 10 Hz full snapshot. Wall state
-moves to **id-keyed deltas** (segment added / damaged / destroyed), with a full resync on
-join. See §9.
+- **Two taps.** Tap the card, tap the far end. The run is previewed on the ground between
+  them with its length and whether the masons will take it — `span` is 110–300.
+- **It bars the ground to everyone but its owner.** Finished walls are rasterised into every
+  other heir's nav mask (Chaos included), so a rival column routes around or breaks through.
+  Marching is not collision-checked, so anyone standing in another heir's stone is put back
+  on the side they came from.
+- **It stops shots crossing it.** Line of fire is a segment-crossing test against the standing
+  walls. Men behind a curtain are safe.
+- **Except from the men ON it.** Come within `WALL.man` of your OWN wall and you are on the
+  parapet: you throw `WALL.over` (further than any soldier reaches on the ground), and the
+  wall stops covering you — the field can shoot back. **This clause is the whole balance of
+  the thing.** A wall alone kills nobody; a wall that kills is a wall whose defenders are
+  exposed.
+- **Stone is a last-resort target.** A curtain is always the nearest thing to a man standing
+  at it, so weighing it by distance like any other work had assaults hacking masonry while
+  the parapet shot down at them untouched. Walls are considered only when nothing alive is
+  in reach.
+- **A tower shoots over stone.** Towers are taller than curtains: a wall is worth having
+  behind a tower, and is no answer to one.
+- Legal only inside your writ, and never across a Seat's own ground or another work.
+- Not yet done, and deliberately: towers do not structurally join a curtain, and a breach is
+  the whole run rather than a hole in it.
 
 ## 7. Defence and siege trees
 
@@ -208,8 +221,9 @@ AI simultaneously, leaving nothing trustworthy to measure against.
    **The field polarised and stage 6 must repair it** (Brand at 12 wins, median match ~8 min
    against the 15–30 target). Recorded rather than papered over — the sim is the referee,
    and this is what it said.
-5. **Walls and siege** — drag-a-line segments, towers joining curtains, the Siege Works line,
-   and the Chaos repurposing of §2.
+5. **Walls and siege** — the Siege Works line shipped, then the Curtain Wall (§6) as one
+   work with a length rather than drag-a-line segments. Towers joining curtains and the
+   Chaos repurposing of §2 are still open.
 6. **Retune** — match length to 15–30 min, Chaos cadence, heir rebalance, ablation runs.
 
 ## 11. Known risks

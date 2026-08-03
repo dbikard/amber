@@ -9,7 +9,8 @@
   'use strict';
 
   const C = global.CONST;
-  const R = { targeting: false, selected: -1, pointer: null, camX: 0, camY: 0, zoom: 1, ready: false };
+  const R = { targeting: false, span: null, selected: -1, pointer: null,
+              camX: 0, camY: 0, zoom: 1, ready: false };
   let renderer = null, scene, cam, rig, worldG;
   let overlay = null, octx = null;
   let W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
@@ -184,6 +185,40 @@
     }
     return meshOf(p);
   }
+  /* A CURTAIN IS NOT A POINT. Every other work is a model dropped on a spot; a wall is a run
+   * of stone between two ends, and it has to FOLLOW THE GROUND — a single long box laid over
+   * a slope buries one end and floats the other. So it is built as a chain of short courses,
+   * each set at its own ground height and turned along the line, and the whole chain merged
+   * into one mesh. Offsets are relative to the stored midpoint, which is where the group
+   * stands, so the group itself needs no rotation. */
+  function wallModel(b) {
+    const ax = b.x * 2 - b.x2, az = b.y * 2 - b.y2, bx = b.x2, bz = b.y2;
+    const len = Math.hypot(bx - ax, bz - az) || 1;
+    const n = Math.max(2, Math.round(len / 22));
+    const ang = -Math.atan2(bz - az, bx - ax);
+    const th = ((C.WALL && C.WALL.thick) || 13) * 1.6;
+    const base = groundH(b.x, b.y);
+    const st = 0x877c90, stD = 0x4a4258, stL = 0xc6bdd0;
+    const seg = len / n + 2;
+    const p = [];
+    for (let i = 0; i < n; i++) {
+      const f = (i + 0.5) / n, px = ax + (bx - ax) * f, pz = az + (bz - az) * f;
+      const h = groundH(px, pz) - base, ox = px - b.x, oz = pz - b.y;
+      p.push(part(box(seg, 26, th), st, ox, 13, oz, ang));
+      p.push(part(box(seg, 3.5, th + 4), stL, ox, 27, oz, ang));           // the walkway coping
+      /* merlons, every other course, so the top reads as a parapet and not a kerb */
+      if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, 32, oz, ang));
+    }
+    /* the ends are turned into short towers — that is what makes a run look built rather
+     * than extruded, and it marks where the next wall may join */
+    for (const [ex, ez] of [[ax, az], [bx, bz]]) {
+      const h = groundH(ex, ez) - base;
+      p.push(part(cyl(th * 0.62, th * 0.75, 34, 7), st, ex - b.x, 17 + h, ez - b.y));
+      p.push(part(cyl(th * 0.75, th * 0.62, 5, 7), stL, ex - b.x, 36 + h, ez - b.y));
+    }
+    return meshOf(p);
+  }
+
   function unitGeo(kind) {
     const p = [];
     if (kind === 'soldier') {
@@ -433,7 +468,17 @@
     const w2 = R.toWorld(px, py);
     let best = -1, bd = 38 * 38;
     for (const b of curView.players[curViewer].buildings) {
-      const dd = (w2.x - b.x) * (w2.x - b.x) + (w2.y - b.y) * (w2.y - b.y);
+      /* a curtain answers along its WHOLE run — judging it by its midpoint made a long wall
+       * untappable everywhere except the middle of it */
+      let dd;
+      if (b.x2 != null) {
+        const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+        const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;
+        let t = ((w2.x - ax) * vx + (w2.y - ay) * vy) / L2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = ax + vx * t, py = ay + vy * t;
+        dd = (w2.x - px) * (w2.x - px) + (w2.y - py) * (w2.y - py);
+      } else dd = (w2.x - b.x) * (w2.x - b.x) + (w2.y - b.y) * (w2.y - b.y);
       if (dd < bd) { bd = dd; best = b.id; }
     }
     return best;
@@ -784,16 +829,24 @@
       for (const [id, { b, ghost }] of want) {
         /* a work still going up gets its own key, so finishing it rebuilds the group at full
          * colour rather than leaving the scaffolding materials behind */
-        const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '');
+        /* a wall's key carries its ENDS: two runs of the same type are not the same model */
+        const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
+          + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
+          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
           const grp = new THREE.Group();
-          grp.rotation.y = curViewerRotOwn();
-          const pad = new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
-            new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
+          const isW = b.x2 != null;
+          if (!isW) grp.rotation.y = curViewerRotOwn();   // a wall's facing is its own line
+          const pad = isW
+            ? new THREE.Mesh(new THREE.PlaneGeometry(Math.hypot(b.x2 - b.x, b.y2 - b.y) * 2 + 26, 34)
+                .rotateX(-Math.PI / 2).rotateY(-Math.atan2(b.y2 - b.y, b.x2 - b.x)),
+                new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }))
+            : new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
+                new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
           pad.position.y = -0.4;
-          grp.add(pad, buildingModel(b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt));
+          grp.add(pad, isW ? wallModel(b) : buildingModel(b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt));
           if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
             /* the hall flies its COMPANY's colour — gold if it answers to the War Banner */
@@ -1137,6 +1190,31 @@
     const vr = R.viewRect();
     g.strokeRect(mx + (vr.x0 / C.MAP.W) * mw, my + (vr.y0 / C.MAP.H) * mh,
                  ((vr.x1 - vr.x0) / C.MAP.W) * mw, ((vr.y1 - vr.y0) / C.MAP.H) * mh);
+    /* A WALL IS TWO TAPS, and between them the run has to be VISIBLE — a length you cannot
+     * see is a length you cannot judge, and the span limits would just read as refusals.
+     * The line follows the ground from the anchor to wherever the finger is, and says how
+     * long it is and whether that is a wall the masons will build. */
+    if (R.span) {
+      const def = C.BUILDINGS.wall;
+      const a = R.project(R.span.x, R.span.y);
+      const moved = R.pointer && R.pointer !== R.span.from;
+      const w2 = moved ? R.toWorld(R.pointer.x, R.pointer.y) : R.span;
+      const len = Math.hypot(w2.x - R.span.x, w2.y - R.span.y);
+      const ok = !moved || (len >= def.span[0] && len <= def.span[1]);
+      const b2 = R.project(w2.x, w2.y);
+      g.strokeStyle = ok ? '#ffe9a8' : '#ff6a5a';
+      g.lineWidth = 4; g.setLineDash([10, 7]);
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
+      g.setLineDash([]); g.lineWidth = 2;
+      g.beginPath(); g.arc(a.x, a.y, 7, 0, 7); g.stroke();
+      if (moved) {
+        g.font = '600 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'bottom';
+        g.fillStyle = ok ? '#ffe9a8' : '#ff6a5a';
+        g.fillText(Math.round(len) + (ok ? '' : len < def.span[0] ? ' — too short' : ' — too long'),
+                   (a.x + b2.x) / 2, (a.y + b2.y) / 2 - 8);
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      }
+    }
     /* storm targeting */
     if (R.targeting) {
       g.fillStyle = 'rgba(255,90,74,0.06)'; g.fillRect(0, 0, W, H);

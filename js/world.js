@@ -16,6 +16,43 @@
   }
   const d2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
 
+  /* ---------------- a work with a length ----------------
+   * A Curtain Wall is the only work that is a LINE rather than a point: one building record
+   * carrying a second end. Everything else in the sim treats it as a work at its midpoint —
+   * these two helpers are what the rest needs to know it is longer than that. */
+  const isWall = (b) => b.bt === 'wall' && b.x2 != null;
+  /* squared distance from a point to the segment, and where along it the foot falls */
+  function segD2(b, px, py) {
+    const ax = b.x2 != null ? b.x * 2 - b.x2 : b.x, ay = b.y2 != null ? b.y * 2 - b.y2 : b.y;
+    const bx = b.x2 != null ? b.x2 : b.x, by = b.y2 != null ? b.y2 : b.y;
+    const vx = bx - ax, vy = by - ay, len2 = vx * vx + vy * vy;
+    if (len2 < 1e-6) return d2(px, py, ax, ay);
+    let t = ((px - ax) * vx + (py - ay) * vy) / len2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return d2(px, py, ax + vx * t, ay + vy * t);
+  }
+  /* the two ends, from the stored midpoint and far end */
+  const wallEnds = (b) => [b.x * 2 - b.x2, b.y * 2 - b.y2, b.x2, b.y2];
+  /* the point ON the wall a man at (px,py) is standing against — what you aim at when the
+   * stone itself is the target, so an Engine strikes the span in front of it and not the
+   * middle of a run three hundred long */
+  function segNear(b, px, py) {
+    const e = wallEnds(b);
+    const vx = e[2] - e[0], vy = e[3] - e[1], len2 = vx * vx + vy * vy;
+    if (len2 < 1e-6) return { x: b.x, y: b.y };
+    let t = ((px - e[0]) * vx + (py - e[1]) * vy) / len2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return { x: e[0] + vx * t, y: e[1] + vy * t };
+  }
+  /* do segments AB and CD cross? Straight orientation test — no divisions, no edge cases
+   * that matter at the scale a wall and a line of fire meet on. */
+  function crosses(ax, ay, bx, by, cx, cy, dx, dy) {
+    const s = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+    const d1 = s(cx, cy, dx, dy, ax, ay), dd2 = s(cx, cy, dx, dy, bx, by);
+    const d3 = s(ax, ay, bx, by, cx, cy), d4 = s(ax, ay, bx, by, dx, dy);
+    return ((d1 > 0) !== (dd2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  }
+
   /* ---------------- the world ----------------
    * Generated fresh, every match, by js/worldgen.js. No template, no mirror, no corridors —
    * and therefore no way to know where the other Seat stands until somebody walks there. */
@@ -62,6 +99,7 @@
       })),
       units: [], storms: [], events: [],
       nav: null, navVersion: 0,   // movement grid; the version counts changes to what blocks
+      walls: [], anyWall: false,  // the standing curtains, rebuilt whenever one rises or falls
       nextId: 1,
       chaosNext: C.CHAOS.firstAt, chaosParity: 0, surged: false,
       vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
@@ -135,6 +173,101 @@
     for (const b of world.players[pi].buildings) if (b.raise > 0) n++;
     return n;
   }
+  /* ---------------- the stone between you and the field ----------------
+   * MANNING. A wall stops shots crossing it, so troops behind one are safe — and a wall alone
+   * kills nobody. Come within `man` of your OWN finished wall and you are on the parapet:
+   * you shoot over it, and everything below can shoot back. That is the bargain, and it is
+   * what keeps a wall from being a way to win by sitting. */
+  function manning(world, u) {
+    if (!world.anyWall || u.owner === C.CHAOS_ID) return null;
+    const r2 = C.WALL.man * C.WALL.man;
+    for (const w of world.walls)
+      if (w.owner === u.owner && segD2(w.b, u.x, u.y) < r2) return w.b;
+    return null;
+  }
+  /* IS THERE STONE BETWEEN THEM? Every finished wall the line crosses blocks it — with one
+   * exception, and the whole design rests on it: a wall does not hide a man who is manning
+   * IT. Come up to your own parapet and you can shoot out; the same stone that was covering
+   * you stops covering you, and the field can shoot back. Standing off behind it, you are
+   * safe and useless. `skip` is the wall being shot AT, which cannot block the shot at
+   * itself. */
+  function walled(world, ax, ay, bx, by, aOwner, bOwner, skip) {
+    if (!world.anyWall) return false;
+    const r2 = C.WALL.man * C.WALL.man;
+    for (const w of world.walls) {
+      if (w.b === skip) continue;
+      if (!crosses(ax, ay, bx, by, w.ax, w.ay, w.bx, w.by)) continue;
+      if (aOwner === w.owner && segD2(w.b, ax, ay) < r2) continue;   // on it, shooting over
+      if (bOwner === w.owner && segD2(w.b, bx, by) < r2) continue;   // on it, being shot at
+      return true;
+    }
+    return false;
+  }
+  /* NOTHING WALKS THROUGH STONE. The flow field already routes a rival column around a
+   * curtain, but marching is not collision-checked — a soldier steering straight at a goal
+   * he cannot reach would otherwise stroll through the wall as if it were paint. So after he
+   * moves, anyone standing in another heir's stone is put back on the side he came from. The
+   * owner passes freely: it is his wall, and it has a gate in it. */
+  function shove(world, u) {
+    const pad = C.WALL.thick + 6, p2 = pad * pad;
+    for (const w of world.walls) {
+      if (w.owner === u.owner) continue;
+      if (segD2(w.b, u.x, u.y) >= p2) continue;
+      const n = segNear(w.b, u.x, u.y);
+      let dx = u.x - n.x, dy = u.y - n.y, L = Math.sqrt(dx * dx + dy * dy);
+      if (L < 1e-3) { dx = -(w.by - w.ay); dy = w.bx - w.ax; L = Math.sqrt(dx * dx + dy * dy) || 1; }
+      u.x = n.x + (dx / L) * pad; u.y = n.y + (dy / L) * pad;
+    }
+  }
+
+  /* THE STANDING STONE, gathered once. Walls change only when one finishes or falls, so the
+   * list the crossing test walks is rebuilt then and not per shot; `anyWall` lets a match
+   * with no walls in it skip the whole question for nothing. */
+  function noteWalls(world) {
+    world.walls = [];
+    for (let q = 0; q < world.players.length; q++)
+      for (const b of world.players[q].buildings) {
+        if (!isWall(b) || b.raise) continue;
+        const e = wallEnds(b);
+        world.walls.push({ b, owner: q, ax: e[0], ay: e[1], bx: e[2], by: e[3] });
+      }
+    world.anyWall = world.walls.length > 0;
+  }
+
+  /* A WALL IS TWO TAPS. The first says where it starts and can only be checked for what one
+   * point can be checked for; the second is the real placement. `span` says the run is the
+   * wrong length, `ground` that some of it will not stand, `crowded` that it fouls a work or
+   * another wall. Both ends must be inside your writ — you fortify ground you hold. */
+  function wallError(world, pi, ax, ay, bx, by) {
+    const def = C.BUILDINGS.wall, pl = world.players[pi];
+    const len = Math.sqrt(d2(ax, ay, bx, by));
+    if (!isFinite(len) || len < def.span[0]) return 'short';
+    if (len > def.span[1]) return 'span';
+    if (!inClaim(world, pi, ax, ay) || !inClaim(world, pi, bx, by)) return 'claim';
+    /* the ground has to bear the whole run, not just its ends */
+    const steps = Math.max(2, Math.ceil(len / 20));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+      if (!groundBears(world, x, y)) return 'ground';
+      /* never through a Seat's own ground, anyone's */
+      for (let q = 0; q < world.players.length; q++) {
+        const c = cityOf(world, q);
+        if (d2(x, y, c.x, c.y) < C.CITY.seatR * C.CITY.seatR) return 'crowded';
+      }
+    }
+    const probe = { x: (ax + bx) / 2, y: (ay + by) / 2, x2: bx, y2: by };
+    for (let q = 0; q < world.players.length; q++) {
+      for (const o of world.players[q].buildings) {
+        if (isWall(o)) {
+          const e = wallEnds(o);
+          if (crosses(ax, ay, bx, by, e[0], e[1], e[2], e[3])) return 'crowded';
+          if (segD2(o, ax, ay) < 26 * 26 && segD2(o, bx, by) < 26 * 26) return 'crowded';
+        } else if (segD2(probe, o.x, o.y) < C.BUILD.foot * C.BUILD.foot) return 'crowded';
+      }
+    }
+    return rising(world, pi) >= masons(world, pi) ? 'busy' : null;
+  }
+
   /* the single answer the sim, the UI and the AI all ask. Returns null if legal. */
   function placementError(world, pi, x, y, bt) {
     const def = C.BUILDINGS[bt];
@@ -142,6 +275,12 @@
     const pl = world.players[pi];
     if (def.unique && pl.buildings.some((b) => b.bt === bt)) return 'unique';
     if (!groundBears(world, x, y)) return 'ground';
+    /* a wall's FIRST tap: all a single point can be judged on. The run itself is checked when
+     * the second tap lands, by wallError. */
+    if (def.span) {
+      if (!inClaim(world, pi, x, y)) return 'claim';
+      return rising(world, pi) >= masons(world, pi) ? 'busy' : null;
+    }
     if (!clearOfWorks(world, x, y)) return 'crowded';
     /* The masons are the last word, not the first: what is wrong with the GROUND is worth
      * knowing while you wait, and a card that can never be built here should say so rather
@@ -167,8 +306,14 @@
     const src = [];
     const city = cityOf(world, pi);
     src.push([city.x, city.y, C.VISION.city]);
-    for (const b of world.players[pi].buildings)
-      if (!b.raise) src.push([b.x, b.y, C.BUILDINGS[b.bt].vision || C.VISION.build]);
+    for (const b of world.players[pi].buildings) {
+      if (b.raise) continue;
+      const r = C.BUILDINGS[b.bt].vision || C.VISION.build;
+      src.push([b.x, b.y, r]);
+      /* a wall watches from its whole length — a run three hundred long that saw only from
+       * its middle left its own far end in fog */
+      if (isWall(b)) { const e = wallEnds(b); src.push([e[0], e[1], r], [e[2], e[3], r]); }
+    }
     for (const u of world.units)
       if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
     /* somebody else's walk lights their Shrine for you too — the Pattern is not walked in
@@ -242,8 +387,13 @@
      * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
     for (let o = 0; o < world.players.length; o++) {
       for (const b of world.players[o].buildings) {
-        if (o === pi) { pl.ghosts[b.id] = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o }; continue; }
-        if (seen(src, b.x, b.y)) pl.ghosts[b.id] = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o };
+        /* a wall is remembered as the LINE it was, ends and all — a curtain recalled as a
+         * dot on the map is no use to the heir deciding where to break through */
+        const g = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o };
+        if (b.x2 != null) { g.x2 = b.x2; g.y2 = b.y2; }
+        if (o === pi) { pl.ghosts[b.id] = g; continue; }
+        const e = b.x2 != null ? wallEnds(b) : null;
+        if (seen(src, b.x, b.y) || (e && (seen(src, e[0], e[1]) || seen(src, e[2], e[3])))) pl.ghosts[b.id] = g;
       }
     }
   }
@@ -283,9 +433,19 @@
 
     if (cmd.c === 'build') {
       const def = C.BUILDINGS[cmd.bt];
-      const x = +cmd.x, y = +cmd.y;
+      let x = +cmd.x, y = +cmd.y;
       if (!def || !isFinite(x) || !isFinite(y)) return { ok: false, err: 'type' };
-      const bad = placementError(world, pi, x, y, cmd.bt);
+      /* a wall carries a second end, and is stored by its MIDPOINT so every other part of the
+       * sim — vision, fog, the renderer, the minimap — can go on treating a work as a place */
+      let x2 = null, y2 = null;
+      if (def.span) {
+        x2 = +cmd.x2; y2 = +cmd.y2;
+        if (!isFinite(x2) || !isFinite(y2)) return { ok: false, err: 'short' };
+        const badw = wallError(world, pi, x, y, x2, y2);
+        if (badw) return { ok: false, err: badw };
+        x = (x + x2) / 2; y = (y + y2) / 2;
+      }
+      const bad = def.span ? null : placementError(world, pi, x, y, cmd.bt);
       if (bad) return { ok: false, err: bad };
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       pl.essence -= def.cost;
@@ -298,10 +458,14 @@
                   hp: def.hp * C.RAISE.hpFrom, maxHp: def.hp, lastHurt: -99,
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
                   co: 0 };         // 0 = its muster marches under the royal War Banner
+      if (x2 != null) { b.x2 = x2; b.y2 = y2; }
       if (!b.raise) b.hp = def.hp;
       if (def.spawns) b.co = joinCo(world, pi, cmd.co);
       pl.buildings.push(b);
-      emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y, co: b.co });
+      /* a finished wall bars the ground: the flow fields drawn against the old world are all
+       * stale, and the version counter is what tells them so */
+      if (x2 != null && !b.raise) { world.navVersion++; noteWalls(world); }
+      emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y, x2, y2, co: b.co });
       return { ok: true };
     }
     if (cmd.c === 'up') {
@@ -322,6 +486,13 @@
       pl.essence -= cost;
       s.level++;
       if (br) s.br = br;
+      /* a work whose level buys STONE rather than an effect — the Curtain Wall, which has no
+       * effect to buy — grows its hit points, keeping the damage already done to it */
+      if (C.BUILDINGS[s.bt].hpAt) {
+        const was = s.maxHp;
+        s.maxHp = C.BUILDINGS[s.bt].hpAt[s.level - 1];
+        s.hp = Math.min(s.maxHp, s.hp + (s.maxHp - was));
+      }
       emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
       return { ok: true };
     }
@@ -511,7 +682,13 @@
   function acquire(world, u, radius) {
     /* a fallen heir has nothing left to attack — and their Seat is a ruin, not a target */
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
+    /* A WALL IS OPAQUE. Nothing is a target if stone stands in the way — the soldier looks
+     * past it to whatever he CAN see, which is what makes men behind a curtain safe and what
+     * sends an army that wants them to the wall itself. Costs nothing until a wall exists. */
+    const seen = (x, y, owner, skip) => !world.anyWall
+      || !walled(world, u.x, u.y, x, y, u.owner, owner, skip);
     const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
+    const stone = [];   // curtains found on the way: a last resort, not a first choice
     const gx = (u.x / BIN) | 0, gy = (u.y / BIN) | 0;
     /* a radius wider than one cell (the Seat's own garrison sees further) needs a wider ring */
     const reach = Math.max(1, Math.ceil(radius / BIN));
@@ -520,7 +697,8 @@
       if (!cell) continue;
       for (const v of cell) {
         if (v.hp <= 0 || v.owner === u.owner) continue;
-        consider(Math.sqrt(d2(u.x, u.y, v.x, v.y)), v, 'unit', v.x, v.y);
+        const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
+        if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
       }
     }
     for (let ci = 0; ci < world.players.length; ci++) {
@@ -529,10 +707,26 @@
       if (tp.out) continue;
       const cs = world.map.sites[world.map.cities[ci]];
       const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
-      for (const b of tp.buildings)
-        consider(Math.sqrt(d2(u.x, u.y, b.x, b.y)), { pi: ci, id: b.id }, 'work', b.x, b.y);
+      for (const b of tp.buildings) {
+        /* the stone you strike is the span in front of you, not the middle of the run */
+        const w = isWall(b) && !b.raise, aim = w ? segNear(b, u.x, u.y) : b;
+        const d = w ? Math.sqrt(segD2(b, u.x, u.y)) : Math.sqrt(d2(u.x, u.y, b.x, b.y));
+        /* YOU STRIKE THE STONE WHEN THERE IS NOTHING ALIVE TO STRIKE. A curtain is always
+         * the nearest thing to a man standing at it, so judging walls by distance like any
+         * other work meant an assault hacked at the masonry while the parapet above shot
+         * down at it untouched — the exact opposite of the bargain. Walls are held back and
+         * weighed only if nothing else was found. */
+        if (w) { if (d < bestD && seen(aim.x, aim.y, ci, b)) stone.push([d, ci, b.id, aim.x, aim.y]); continue; }
+        if (d < bestD && seen(aim.x, aim.y, ci))
+          consider(d, { pi: ci, id: b.id }, 'work', aim.x, aim.y);
+      }
       if (dc > C.CITY.r + radius) continue;
-      consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
+      if (dc < bestD && seen(cs.x, cs.y, ci)) consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
+    }
+    if (!best && stone.length) {
+      stone.sort((p, q) => p[0] - q[0]);
+      const [d, ci, id, ax, ay] = stone[0];
+      consider(d, { pi: ci, id }, 'work', ax, ay);
     }
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
@@ -545,6 +739,7 @@
     if (b.hp <= 0) {
       emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
       pl.buildings.splice(i, 1);
+      if (isWall(b)) { world.navVersion++; noteWalls(world); }   // a breach is a hole
       if (b.bt === 'shrine') {
         /* throwing the Shrine down tears the walker off the Pattern and costs them ground
          * they have already paid for — the whole point of going after one */
@@ -600,7 +795,11 @@
           b.raise = Math.max(0, b.raise - dt);
           const done = 1 - b.raise / b.raiseFor;
           b.hp = Math.max(b.hp, def.hp * (C.RAISE.hpFrom + (1 - C.RAISE.hpFrom) * done));
-          if (b.raise <= 0) emit(world, { e: 'raised', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
+          if (b.raise <= 0) {
+            /* the ground changes the moment the stone is finished, not when it was paid for */
+            if (isWall(b)) { world.navVersion++; noteWalls(world); }
+            emit(world, { e: 'raised', pi, id: b.id, bt: b.bt, x: b.x, y: b.y });
+          }
           continue;
         }
         if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
@@ -633,6 +832,9 @@
           if (b.cd <= 0) {
             const st = towerStats(b);
             let best = null, bd = st.range * st.range;
+            /* A TOWER SHOOTS OVER STONE. Curtain walls stop arrows thrown by men on the
+             * ground; they do not stop a gun standing higher than they are. So a tower is
+             * worth having behind a wall, and a wall is no answer to a tower. */
             forNear(world, sp.x, sp.y, st.range, (u) => {
               if (u.owner === pi) return;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
@@ -748,9 +950,15 @@
       }
       /* garrisons of an open city still see farther out */
       const home = u.owner !== C.CHAOS_ID && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
-      const foe = acquire(world, u, def.aggro + (home ? 140 : 0));
+      /* ON THE PARAPET. A man up against his own curtain fights from the top of it: he
+       * throws over the stone, `over` far, and is seen and shot at in return. That is the
+       * only way a wall kills anything, and the price of it is that the men who make it kill
+       * are the men who can be killed. */
+      const par = manning(world, u);
+      const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0) + (home ? 140 : 0));
       if (foe) {
-        const reach = def.range + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
+        const rng = par ? Math.max(def.range, C.WALL.over) : def.range;
+        const reach = rng + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
           : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
         if (foe.d <= reach) {
           if (u.cd <= 0) {
@@ -767,11 +975,12 @@
               if (tp.castleHp <= 0 && !tp.out) { if (topple(world, foe.t.pi, u.owner)) return; }
             }
             u.cd = def.atk;
-            if (def.range > 40) emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
+            if (rng > 40) emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
           }
         } else {
           const mv = def.speed * dt / (foe.d || 1);
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
+          if (world.anyWall) shove(world, u);
         }
         continue;
       }
@@ -829,6 +1038,7 @@
           }
         }
         u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
+        if (world.anyWall) shove(world, u);
       }
     }
 
@@ -868,6 +1078,6 @@
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf,
-                   newSeenMask, markSeen, hurtBuilding, masons, rising };
+                   newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -168,6 +168,21 @@
     barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 720, raise: 18,
                 spawns: 'soldier', period: [8, 6.4, 5.0],
                 blurb: 'Musters Soldiers who march the black road' },
+    /* A WALL IS A FIGHTING POSITION, NOT A SHELL. It bars the ground and it stops shots
+     * crossing it — so men behind one are safe — but a wall alone kills nobody. Come UP to
+     * it and you are MANNING it: you shoot over the parapet, and everything below can shoot
+     * back. That is the whole bargain. A wall does not defend you; it lets you defend a line
+     * with fewer men than the open field would need, which frees the rest of the army to be
+     * somewhere else. Turtling behind one is not a way to win, it is a way to be besieged.
+     * It is ONE work with a length, not a run of segments: it rides the same masons, the same
+     * hit points, the same raze and the same snapshot as everything else. Close a pinch with
+     * two or three, and a breach is a hole an army walks through. */
+    /* THE ONE WORK WITH A LENGTH. `span` is how long a run may be; `hpAt` is what the level
+     * buys — a wall has no other effect to scale, so reinforcing it has to mean thicker
+     * stone or the upgrade would take essence and do nothing at all. */
+    wall:     { name: 'Curtain Wall',  icon: '🧱', cost: 110, up: [90, 150], hp: 820, raise: 17,
+                hpAt: [820, 1290, 1880], span: [110, 300], vision: 200,
+                blurb: 'A run of stone. Nothing crosses it and nothing shoots through it — but men who come up to man it can be shot back.' },
     /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
      * hit points behind towers — so "win by force" meant grinding a rival's outworks forever
      * while neither Seat took a scratch. An Engine is slow, fragile in a fight and useless at
@@ -207,7 +222,12 @@
                 drain: [32], rate: [0.175], minRate: 0.5, decay: 0.05, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
-  CONST.BUILD_ORDER_UI = ['gate', 'barracks', 'tower', 'spire', 'siege', 'shrine'];
+  CONST.BUILD_ORDER_UI = ['gate', 'wall', 'barracks', 'tower', 'spire', 'siege', 'shrine'];
+  /* Manning a wall. `man` is how close you must come to be ON the parapet — inside it you can
+   * shoot over and be shot at; outside it the stone is between you and the field. `over` is how
+   * far a man on the wall can reach past it, so a parapet is a short weapon whatever the unit
+   * usually carries. `thick` is what the nav grid bars either side of the line. */
+  CONST.WALL = { man: 32, over: 105, thick: 13 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].

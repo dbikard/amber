@@ -126,8 +126,32 @@
     }
     return null;
   }
+  /* A CURTAIN IS A CHORD, not a spot. An heir walls the side it expects trouble from: a run
+   * laid across the approach at arm's length from the Seat, swept outward and swung either
+   * way until the ground and the writ will take one. Returns the two ends. */
+  function spanFor(v, bt) {
+    const W = global.World, c = v.myCity;
+    const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
+    const def = C.BUILDINGS[bt], half = (def.span[0] + def.span[1]) / 4;
+    for (let ring = 0; ring < 4; ring++) {
+      const r = 120 + ring * 34;
+      for (let k = 0; k < 9; k++) {
+        const a = toFoe + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.42;
+        const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
+        /* perpendicular to the approach: the wall stands ACROSS the road, not along it */
+        const px = -Math.sin(a), py = Math.cos(a);
+        for (const L of [half, half * 1.4, half * 0.7]) {
+          const ax = mx - px * L, ay = my - py * L, bx = mx + px * L, by = my + py * L;
+          if (!W.wallError(v.world, v.me, ax, ay, bx, by)) return { x: ax, y: ay, x2: bx, y2: by };
+        }
+      }
+    }
+    return null;
+  }
   function spotFor(v, bt) {
     const c = v.myCity;
+    if (C.BUILDINGS[bt].span) return spanFor(v, bt);
     /* the front is wherever trouble is expected: the found Seat, else the nearest unknown
      * ground, else the middle of the world */
     const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
@@ -170,8 +194,10 @@
        * reaches for the Pattern early is just a slower greed, and it collapsed the triangle:
        * every heir was winning the same way. Towers first, patience, the Pattern only after
        * the grind has failed to finish it. */
-      plan: () => ['gate', 'tower', 'gate', 'barracks', 'tower', 'barracks', 'tower', 'shrine',
-                   'tower', 'barracks', 'siege', 'tower', 'gate'],
+      /* the Warden holds a LINE, and a line is stone: he is the one heir who curtains his
+       * approach early, and puts a second run up once the realm can pay for it */
+      plan: () => ['gate', 'tower', 'wall', 'gate', 'barracks', 'tower', 'barracks', 'wall',
+                   'tower', 'shrine', 'tower', 'barracks', 'siege', 'tower', 'gate'],
       upPref: ['tower', 'gate', 'barracks', 'siege'],
       towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
@@ -242,6 +268,9 @@
         wants.push('tower');
         if (v.threats.length >= 3) wants.push('tower');
         wants.push('barracks', 'gate');
+        /* the Master of Arms walls when he is being pressed, and not before — stone that is
+         * not being tested is essence that should have been men */
+        if (v.threats.length >= 2 || v.enemyArmy >= 4) wants.push('wall');
         if (v.enemyWalking) wants.push(...(v.enemyArmy >= 2 ? ['shrine', 'barracks', 'spire'] : ['barracks', 'spire', 'barracks']));
         else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
         /* a Seat is 2500 hit points behind towers, and men are a poor tool for stone. Once
@@ -330,7 +359,7 @@
         if ((v.have[bt] || 0) < seenW[bt]) {
           if (v.free > 0 && v.essence >= C.BUILDINGS[bt].cost) {
             const at = spotFor(v, bt);
-            if (at) issue({ c: 'build', x: at.x, y: at.y, bt });
+            if (at) issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt });
           } else saving = v.free > 0;
           break;
         }

@@ -249,13 +249,29 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
-- [ ] **Walls & siege** — drag-a-line segments, towers joining curtains, Siege Works line,
-      Chaos repurposed as the price of the best ground.
-      The lane-era stand-ins have been REMOVED to clear the ground for this: the Rampart work
-      and the ring-shaped City Walls are both gone, along with the garrison-mans-the-parapet
-      behaviour, wall HP/regen/breach, and the rampart path masks in nav.js. The mask layer
-      itself survives as an empty array so the flow-field cache and its version counter keep
-      the shape the new walls will need.
+- [x] **The Curtain Wall.** Walls are back, and they are ONE WORK WITH A LENGTH — a building
+      record carrying a second end (`x2`/`y2`), not a chain of segments. That was the plan's
+      shape (drag-a-line pieces, id-keyed netcode deltas) and it bought nothing the shipped
+      version does not do, at the price of a second netcode path; a wall now rides the
+      ordinary building list and the snapshot did not grow a case.
+      - Two taps: the card arms the run, the next tap names the far end. The ground between
+        them previews the length and whether the masons will take it (span 110–300).
+      - It bars the ground to everyone but its owner — rasterised into every other heir's nav
+        mask, Chaos included — and since marching is not collision-checked, anyone standing
+        in another heir's stone is put back on the side they came from.
+      - It stops shots crossing it. **Except from the men on it**, and that clause is the
+        whole balance of the thing: come within `WALL.man` of your own wall and you throw
+        `WALL.over` (further than any soldier reaches on the ground) and are shot at in
+        return. A wall alone kills nobody; a wall that kills exposes its defenders.
+      - Stone is a LAST-RESORT target. A curtain is the nearest thing to any man standing at
+        it, so weighing it by distance had assaults hacking masonry while the parapet shot
+        down at them untouched — walls are weighed only when nothing alive is in reach.
+      - A tower shoots over stone. Towers are taller: a wall is worth having behind one and
+        is no answer to one.
+      - Julian curtains his approach early (he holds a line, and a line is stone); Benedict
+        walls only when he is being pressed.
+      **Still open from the plan:** towers structurally joining a curtain, partial breaches,
+      and the Chaos repurposing of §2.
 - [x] **Retune** (pulled FORWARD, before walls — tuning siege against a broken triangle
       would have been guesswork). Pacing: Seat 1000→2500 hp, walls 900/1500/2200→1600/2600/3800,
       the walk 6min→7.6min at L1, spring income 5/8/12→4.5/7/10.5. Heir doctrine rewritten so

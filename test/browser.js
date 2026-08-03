@@ -526,6 +526,99 @@ async function match(browser, base, renderer) {
        tray.right <= tray.w + 1 && tray.left >= 0,
        `${tray.n} chips, powers span ${tray.left}..${tray.right} of ${tray.w}`);
 
+    /* ---------------- a wall is two taps ---------------- *
+     * Every other work goes up where the sheet was opened. A curtain needs a second point,
+     * and the whole interface for it is: tap the card, tap the far end. If the second tap
+     * ever routes somewhere else — a sheet, a site, a standard — the wall cannot be built at
+     * all, and nothing else in the game would notice. */
+    suite(`${r} · a wall is two taps`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    await pg.waitForTimeout(150);
+    /* clear the masons and find a run the sim will actually accept, on screen */
+    const run = await pg.evaluate(() => {
+      const R = window.Render, W = window.World, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 99000;
+      for (const b of g.world.players[0].buildings) b.raise = 0;
+      R.setZoom(1); R.lookAt(c.x, c.y);
+      const sh = document.getElementById('sheet');
+      const lid = window.innerHeight - 20;
+      for (let a = 0; a < 6.283; a += 0.3) {
+        for (let rr = 130; rr <= 230; rr += 25) {
+          const mx = c.x + Math.cos(a) * rr, my = c.y + Math.sin(a) * rr;
+          const px = -Math.sin(a) * 80, py = Math.cos(a) * 80;
+          const A = { x: mx - px, y: my - py }, B = { x: mx + px, y: my + py };
+          if (W.wallError(g.world, 0, A.x, A.y, B.x, B.y)) continue;
+          const sa = R.project(A.x, A.y), sb = R.project(B.x, B.y);
+          const onScreen = (q) => q.x > 30 && q.x < window.innerWidth - 30 && q.y > 90 && q.y < lid;
+          if (!onScreen(sa) || !onScreen(sb)) continue;
+          if (R.hitSite(sa.x, sa.y, g.world, 0, false) >= 0) continue;
+          if (R.hitBuilding(sa.x, sa.y) >= 0) continue;
+          return { ax: sa.x, ay: sa.y, bx: sb.x, by: sb.y, wax: A.x, way: A.y, wbx: B.x, wby: B.y };
+        }
+      }
+      return null;
+    });
+    ok('a legal run can be found on screen', !!run);
+    if (run) {
+      await pg.mouse.click(run.ax, run.ay); await until(pg, () => window.UI.sheetOpen());
+      const hasCard = await pg.evaluate(() =>
+        !!document.querySelector('#sheet .card[data-bt="wall"]'));
+      ok('the build sheet offers a curtain wall', hasCard);
+      const armed = await pg.evaluate(() => {
+        const card = document.querySelector('#sheet .card[data-bt="wall"]');
+        if (!card || card.classList.contains('locked')) return null;
+        card.click();
+        return window.Game.game.span ? { x: window.Game.game.span.x, y: window.Game.game.span.y } : null;
+      });
+      ok('the card arms the run rather than raising a work', !!armed);
+      ok('...and the sheet gets out of the way', !(await sheetOpen()));
+      ok('the renderer is told where the run starts',
+         await pg.evaluate(() => !!(window.Render.span)));
+      const before = await pg.evaluate(() =>
+        window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall').length);
+      /* the second tap: the far end. Move first, so the preview has a real point to draw to. */
+      await pg.mouse.move(run.bx, run.by); await pg.waitForTimeout(60);
+      await pg.mouse.click(run.bx, run.by); await pg.waitForTimeout(250);
+      const after = await pg.evaluate(() => {
+        const w = window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall');
+        const b = w[w.length - 1];
+        return { n: w.length, x2: b && b.x2, x: b && b.x, y: b && b.y,
+                 span: !!window.Game.game.span, rspan: !!window.Render.span,
+                 sheet: window.UI.sheetOpen() };
+      });
+      ok('the second tap raises the wall', after.n === before + 1, `${before} -> ${after.n}`);
+      ok('...and it is stored as a line, not a point', after.x2 != null);
+      ok('the second tap opens no sheet of its own', !after.sheet);
+      ok('and the arming is spent', !after.span && !after.rspan);
+      const mid = await pg.evaluate(([r2]) => {
+        const w = window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall');
+        const b = w[w.length - 1];
+        return Math.hypot(b.x - (r2.wax + r2.wbx) / 2, b.y - (r2.way + r2.wby) / 2);
+      }, [run]);
+      ok('the run lands where the two fingers did', mid < 60, `midpoint off by ${Math.round(mid)}`);
+      /* it must also DRAW: a work the renderer has no case for is a black screen, not a
+       * silent omission — so give it frames and check the page stayed quiet */
+      await pg.evaluate(() => new Promise((res) => {
+        let n = 0;
+        const tick = () => (++n > 3 ? res() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+      }));
+      ok('drawing a wall raises nothing', errs.length === 0, errs.slice(0, 3).join(' | '));
+      /* and the back button must let go of a half-placed run */
+      await pg.evaluate(() => {
+        const c = window.Game.game.world.map.sites[window.Game.game.world.map.cities[0]];
+        window.Game.game.span = { x: c.x + 120, y: c.y, bt: 'wall' };
+        window.Render.span = { x: c.x + 120, y: c.y };
+      });
+      await pg.goBack(); await pg.waitForTimeout(250);
+      const dropped = await pg.evaluate(() => ({ span: !!window.Game.game.span,
+                                                 rspan: !!window.Render.span,
+                                                 mode: window.Game.game.mode }));
+      ok('back cancels a half-placed run before it leaves the match', !dropped.span && !dropped.rspan);
+      ok('...and stays in the match to do it', dropped.mode !== null, dropped.mode);
+    }
+
     /* ---------------- an open sheet keeps asking ---------------- *
      * A card refused for a reason that can CHANGE — the masons are busy, or no troops of yours
      * stand at the spring yet — has to go live in place. Closing and re-opening the menu to
