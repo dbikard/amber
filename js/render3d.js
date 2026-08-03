@@ -1180,6 +1180,25 @@
         g.beginPath(); g.arc(X, Y, st && st.holder >= 0 ? 2.6 : 1.6, 0, 7); g.fill();
       }
     }
+    /* CURTAINS ON THE MINIMAP. Works do not go on it — a barracks is a dot and dots do not
+     * help. A wall is different: it is a LINE, it is the shape of a defence, and on a phone
+     * the minimap is the only place you can see the shape of one at all. Own walls gold,
+     * everyone else's crimson, and only the ones the viewer can actually see. */
+    g.lineWidth = 2;
+    for (let pi = 0; pi < view.players.length; pi++) {
+      const pl2 = view.players[pi];
+      g.strokeStyle = pi === viewer ? '#ffd98a' : '#ff8a96';
+      const runs = pl2.buildings.concat(pl2.ghosts || []);
+      for (const b of runs) {
+        if (b.x2 == null) continue;
+        const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+        g.beginPath();
+        g.moveTo(mpx(dx(ax, viewer)), mpy(dy(ay, viewer)));
+        g.lineTo(mpx(dx(b.x2, viewer)), mpy(dy(b.y2, viewer)));
+        g.stroke();
+      }
+    }
+    g.lineWidth = 1;
     for (const f of fx) if (f.ping) {
       g.globalAlpha = f.ttl / f.max;
       g.strokeStyle = '#' + f.ping.toString(16).padStart(6, '0');

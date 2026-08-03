@@ -605,6 +605,19 @@ async function match(browser, base, renderer) {
         requestAnimationFrame(tick);
       }));
       ok('drawing a wall raises nothing', errs.length === 0, errs.slice(0, 3).join(' | '));
+      /* the minimap must carry the run: it is the only place on a phone where the SHAPE of
+       * a defence can be read at all */
+      const onMini = await pg.evaluate(() => {
+        const R = window.Render, g = window.Game.game;
+        const w = g.world.players[0].buildings.filter((b) => b.bt === 'wall');
+        const b = w[w.length - 1];
+        const m = R.miniBox(), C2 = window.CONST;
+        const mp = (x, y) => ({ x: m.mx + (x / C2.MAP.W) * m.mw, y: m.my + (y / C2.MAP.H) * m.mh });
+        const a2 = mp(b.x * 2 - b.x2, b.y * 2 - b.y2), b2 = mp(b.x2, b.y2);
+        return Math.hypot(b2.x - a2.x, b2.y - a2.y);
+      });
+      ok('the run is long enough on the minimap to read as a line', onMini > 3, `${onMini.toFixed(1)}px`);
+
       /* and the back button must let go of a half-placed run */
       await pg.evaluate(() => {
         const c = window.Game.game.world.map.sites[window.Game.game.world.map.cities[0]];
