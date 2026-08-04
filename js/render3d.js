@@ -157,10 +157,18 @@
     const gild = lv > 2 ? 0xe6c877 : 0xc9bfa0;   // the banding a raised work earns
     const p = [];
     if (bt === 'gate' || bt === 'sgate') {
-      p.push(part(cyl(5, 6.5, 34, 6), st, -16, 17, 0));
-      p.push(part(cyl(5, 6.5, 34, 6), st, 16, 17, 0));
-      p.push(part(box(44, 8, 9), stL, 0, 38, 0));
+      /* a deeper draw is a taller arch, hung with more of the Shadow it is pulling up */
+      const h = 34 + (lv - 1) * 7;
+      p.push(part(cyl(5, 6.5, h, 6), st, -16, h / 2, 0));
+      p.push(part(cyl(5, 6.5, h, 6), st, 16, h / 2, 0));
+      p.push(part(box(44, 8, 9), stL, 0, h + 4, 0));
       if (bt === 'sgate') { p.push(part(cyl(4, 5, 22, 5), stD, -30, 11, 10)); p.push(part(cyl(4, 5, 22, 5), stD, 30, 11, 10)); }
+      if (lv > 1) p.push(part(box(48, 4, 13), gild, 0, h + 10, 0));       // a lintel course
+      if (lv > 2) {
+        p.push(part(cyl(3, 3.6, 20, 5), st, -26, 10, 0));                 // outer piers
+        p.push(part(cyl(3, 3.6, 20, 5), st, 26, 10, 0));
+        p.push(part(sph(4.5), 0xc48eff, 0, h + 16, 0));                   // the drawn Shadow itself
+      }
     } else if (bt === 'barracks') {
       /* a hall that musters veterans is a bigger hall: it gains a drill yard wall at 2 and a
        * gatehouse and a second standard at 3 */
@@ -211,6 +219,11 @@
         p.push(part(cone(12, 16, 8), 0x5a4a68, 0, 62, 0));
       }
     } else if (bt === 'siege') {
+      if (lv > 1) p.push(part(box(50, 3, 36), gild, 0, 17, 0));           // a banded deck
+      if (lv > 2) {
+        p.push(part(box(8, 22, 8), 0x8a6c46, -20, 26, 8));                // a second gantry
+        p.push(part(box(26, 3.5, 3.5), gild, -8, 38, 8));
+      }
       /* a timber yard: a low shed, a stack of beams, and a half-built arm on trestles —
        * unmistakably a place where engines are made rather than another hall of men */
       p.push(part(box(44, 14, 30), woodR, 0, 7, 0));
@@ -221,8 +234,16 @@
       p.push(part(box(10, 10, 10), 0x6a6270, 16, 38, -8));
       for (let i = 0; i < 3; i++) p.push(part(cyl(2.4, 2.4, 26, 6), 0x7a5c3c, 16, 18 + i * 5, 12, Math.PI / 2));
     } else if (bt === 'spire') {
-      p.push(part(cyl(4, 9, 58, 7), 0x6a5a8a, 0, 29, 0));
-      p.push(part(sph(5), 0xc48eff, 0, 62, 0));
+      /* the shaft rises and the light at its head swells — a Spire is read by its silhouette
+       * against the sky more than any other work */
+      const h = 58 + (lv - 1) * 12;
+      p.push(part(cyl(4, 9, h, 7), 0x6a5a8a, 0, h / 2, 0));
+      p.push(part(sph(5 + (lv - 1) * 1.6), 0xc48eff, 0, h + 4, 0));
+      if (lv > 1) p.push(part(cyl(7, 7, 3, 7), gild, 0, h - 12, 0));      // a ring of workings
+      if (lv > 2) {
+        p.push(part(cyl(2.4, 3.4, 26, 6), 0x6a5a8a, 10, 13, 0));          // a lesser spire
+        p.push(part(sph(3), 0xc48eff, 10, 28, 0));
+      }
     } else if (bt === 'shrine') {
       p.push(part(cyl(24, 27, 6, 10), stD, 0, 3, 0));
       p.push(part(cyl(20, 22, 4, 10), st, 0, 8, 0));
@@ -243,7 +264,10 @@
     const len = Math.hypot(bx - ax, bz - az) || 1;
     const n = Math.max(2, Math.round(len / 22));
     const ang = -Math.atan2(bz - az, bx - ax);
-    const th = ((C.WALL && C.WALL.thick) || 13) * 1.6;
+    /* a reinforced curtain is LITERALLY thicker: its level buys hit points and nothing else,
+     * so the stone is the only place that can show */
+    const lv = Math.max(1, Math.min(3, b.level || 1));
+    const th = ((C.WALL && C.WALL.thick) || 13) * (1.6 + (lv - 1) * 0.34);
     const base = groundH(b.x, b.y);
     const st = 0x877c90, stD = 0x4a4258, stL = 0xc6bdd0;
     const seg = len / n + 2;
@@ -251,10 +275,11 @@
     for (let i = 0; i < n; i++) {
       const f = (i + 0.5) / n, px = ax + (bx - ax) * f, pz = az + (bz - az) * f;
       const h = groundH(px, pz) - base, ox = px - b.x, oz = pz - b.y;
-      p.push(part(box(seg, 26, th), st, ox, 13, oz, ang));
-      p.push(part(box(seg, 3.5, th + 4), stL, ox, 27, oz, ang));           // the walkway coping
+      const wh = 26 + (lv - 1) * 3;
+      p.push(part(box(seg, wh, th), st, ox, wh / 2, oz, ang));
+      p.push(part(box(seg, 3.5, th + 4), stL, ox, wh + 1, oz, ang));       // the walkway coping
       /* merlons, every other course, so the top reads as a parapet and not a kerb */
-      if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, 32, oz, ang));
+      if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, wh + 6, oz, ang));
     }
     /* the ends are turned into short towers — that is what makes a run look built rather
      * than extruded, and it marks where the next wall may join */
