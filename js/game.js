@@ -252,7 +252,7 @@
       else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
       /* the two refusals only a work with a LENGTH can earn */
       else if (r.err === 'short') UI.banner('Too short a run to be a wall', 'warn');
-      else if (r.err === 'span') UI.banner('Too long for one wall — build it in stretches', 'warn');
+      else if (r.err === 'crews') UI.banner('Too long for the crews you have — hold more Gates, or draw a shorter run', 'warn');
     }
     return r;
   }
@@ -716,9 +716,15 @@
         game.span = { x, y, bt };
         /* remember the pointer the card was tapped with: on a phone there is no hover, and a
          * preview drawn to a stale finger position reads as "too short" before you have
-         * pointed anywhere at all */
-        Render.span = { x, y, from: Render.pointer };
-        UI.banner('Now tap where the wall should END', 'alert');
+         * pointed anywhere at all.
+         * `reach` is how long a run the idle masons can actually cover — the only limit on a
+         * wall's length — so the preview can refuse a run for the real reason before the
+         * second tap does. A guest holds no world; the host validates, and its preview simply
+         * does not judge the length. */
+        const reach = game.world ? World.wallReach(game.world, game.viewer) : 0;
+        Render.span = { x, y, from: Render.pointer, reach };
+        UI.banner(reach ? 'Now tap where the wall should END — the masons reach ' + Math.round(reach)
+                        : 'Now tap where the wall should END', 'alert');
       },
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),

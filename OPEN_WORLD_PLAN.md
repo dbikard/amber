@@ -108,7 +108,15 @@ partial breaches at the price of a second netcode path, and that trade was not w
 until somebody misses them in play.
 
 - **Two taps.** Tap the card, tap the far end. The run is previewed on the ground between
-  them with its length and whether the masons will take it — `span` is 110–300.
+  them with its length, its price and how many crews it takes.
+- **There is no longest run.** A wall is bought by the foot: `WALL.unit` is the length one
+  mason crew covers, and crews, cost, hit points and upgrade price all scale together. So the
+  length a heir can raise IS his mason count, which grows with the Gates he holds — the same
+  economy that rations every other work. Draw past what the idle crews reach and the refusal
+  says so, and says what to do about it.
+- **The men on it are visible.** A unit on a parapet carries the wall's id, and the renderer
+  draws him standing on the walkway. The bargain below is the whole design; it has to be
+  something you can watch.
 - **It bars the ground to everyone but its owner.** Finished walls are rasterised into every
   other heir's nav mask (Chaos included), so a rival column routes around or breaks through.
   Marching is not collision-checked, so anyone standing in another heir's stone is put back

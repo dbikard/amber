@@ -181,7 +181,8 @@
      * buys — a wall has no other effect to scale, so reinforcing it has to mean thicker
      * stone or the upgrade would take essence and do nothing at all. */
     wall:     { name: 'Curtain Wall',  icon: '🧱', cost: 110, up: [90, 150], hp: 820, raise: 17,
-                hpAt: [820, 1290, 1880], span: [110, 300], vision: 200,
+                perCrew: true,   // cost/hp/upkeep of crews all multiply by the run's length
+                hpAt: [820, 1290, 1880], span: [110], vision: 200,
                 blurb: 'A run of stone. Nothing crosses it and nothing shoots through it — but men who come up to man it can be shot back.' },
     /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
      * hit points behind towers — so "win by force" meant grinding a rival's outworks forever
@@ -227,7 +228,13 @@
    * shoot over and be shot at; outside it the stone is between you and the field. `over` is how
    * far a man on the wall can reach past it, so a parapet is a short weapon whatever the unit
    * usually carries. `thick` is what the nav grid bars either side of the line. */
-  CONST.WALL = { man: 32, over: 105, thick: 13 };
+  /* THE CURTAIN'S OWN RULES. `man` is how close you stand to your own wall to be ON it;
+   * `over` is how far you throw from up there; `thick` is what the movement grid stamps.
+   * `unit` is the length ONE MASON CREW covers — there is no longest run, only how many
+   * crews you can put on one at once, so a heir's reach is his mason count and grows with
+   * the Gates he holds. It is also what a run costs and what it is worth in stone: one
+   * crew's length is one card price and one card's hit points. */
+  CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].

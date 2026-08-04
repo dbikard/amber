@@ -541,12 +541,15 @@ async function match(browser, base, renderer) {
       g.world.players[0].essence = 99000;
       for (const b of g.world.players[0].buildings) b.raise = 0;
       R.setZoom(1); R.lookAt(c.x, c.y);
-      const sh = document.getElementById('sheet');
       const lid = window.innerHeight - 20;
+      /* THE MASONS ARE THE LIMIT, so the run this test draws has to be one they can cover —
+       * a length past the crews is refused for the crews, which is correct and would look
+       * exactly like a broken tap path. */
+      const half = Math.min(80, W.wallReach(g.world, 0) / 2 - 4);
       for (let a = 0; a < 6.283; a += 0.3) {
         for (let rr = 130; rr <= 230; rr += 25) {
           const mx = c.x + Math.cos(a) * rr, my = c.y + Math.sin(a) * rr;
-          const px = -Math.sin(a) * 80, py = Math.cos(a) * 80;
+          const px = -Math.sin(a) * half, py = Math.cos(a) * half;
           const A = { x: mx - px, y: my - py }, B = { x: mx + px, y: my + py };
           if (W.wallError(g.world, 0, A.x, A.y, B.x, B.y)) continue;
           const sa = R.project(A.x, A.y), sb = R.project(B.x, B.y);
@@ -605,6 +608,56 @@ async function match(browser, base, renderer) {
         requestAnimationFrame(tick);
       }));
       ok('drawing a wall raises nothing', errs.length === 0, errs.slice(0, 3).join(' | '));
+      /* THE MEN MUST BE ON THE STONE. This is the whole point of the parapet and it was
+       * invisible: a soldier the sim had put on a wall was drawn in the grass beside it.
+       * Put one at the wall and prove the renderer lifts him onto the walkway. */
+      const climbed = await pg.evaluate(async () => {
+        const R = window.Render, C2 = window.CONST, g = window.Game.game;
+        const w = g.world.players[0].buildings.filter((b) => b.bt === 'wall');
+        const b = w[w.length - 1];
+        /* THE MASONS HAVE TO BE DONE FIRST. A wall still going up is scaffolding: it bars
+         * nothing, hides nothing, and nobody mans it — so let the last sliver of the raise
+         * tick away, which is also what puts it in the standing list. */
+        b.raise = C2.SIM_DT * 0.5;
+        window.World.update(g.world, C2.SIM_DT);
+        const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+        const nx = -(b.y2 - ay), ny = b.x2 - ax, nL = Math.hypot(nx, ny) || 1;
+        /* one man right against the wall, one well behind it */
+        const mk = (off) => {
+          const d = C2.UNITS.soldier;
+          const u = { id: g.world.nextId++, owner: 0, kind: 'soldier',
+                      x: b.x + (nx / nL) * off, y: b.y + (ny / nL) * off, ox: 0, oy: 0,
+                      hp: 100, maxHp: 100, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
+          g.world.units.push(u); return u;
+        };
+        const on = mk(C2.WALL.man * 0.4), off = mk(C2.WALL.man + 70);
+        window.World.update(g.world, C2.SIM_DT);
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        /* screen y RISES up the page, so a man standing on a wall projects HIGHER than the
+         * ground he would otherwise stand on */
+        /* the lift itself, read off the renderer's own instance matrices rather than
+         * re-derived — and read in the SAME step, because the man is under his banner's
+         * orders and walks off the wall a second later */
+        const im = R.debugUnitMeshes().soldier;
+        const m = new window.THREE.Matrix4(), v3 = new window.THREE.Vector3();
+        const heightNear = (u) => {
+          const gy = R.groundH(u.x, u.y);
+          let best = 0;
+          for (let i = 0; i < im.count; i++) {
+            im.getMatrixAt(i, m); v3.setFromMatrixPosition(m);
+            if (Math.hypot(v3.x - u.x, v3.z - u.y) < 45) best = Math.max(best, v3.y - gy);
+          }
+          return best;
+        };
+        return { man: on.man || 0, manOff: off.man || 0,
+                 lift: heightNear(on), flat: heightNear(off) };
+      });
+      ok('the sim puts the man at the wall ON the wall', climbed.man > 0, climbed.man);
+      ok('...and leaves the man behind it on the ground', climbed.manOff === 0, climbed.manOff);
+      ok('and the renderer draws him up on the walkway', climbed.lift > 15,
+         `on the wall ${climbed.lift.toFixed(1)} above ground, behind it ${climbed.flat.toFixed(1)}`);
+      ok('...while the man behind it stays on the grass', climbed.flat < 8, climbed.flat.toFixed(1));
+
       /* the minimap must carry the run: it is the only place on a phone where the SHAPE of
        * a defence can be read at all */
       const onMini = await pg.evaluate(() => {

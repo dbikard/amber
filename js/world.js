@@ -168,10 +168,20 @@
       if (b.bt === 'gate' && !b.raise) gates++;
     return Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
   }
+  /* HOW MANY CREWS A WORK HAS ON IT. Everything but a wall takes one. A CURTAIN IS PAID FOR
+   * BY THE FOOT: there is no longest run any more — there is only how many crews you can put
+   * on one at once, so the length a heir can raise IS his mason count, and it grows with the
+   * Gates he holds like everything else does. */
+  const wallCrews = (len) => Math.max(1, Math.ceil(len / C.WALL.unit));
+  const crewsOn = (b) => (b.crews || 1);
   function rising(world, pi) {
     let n = 0;
-    for (const b of world.players[pi].buildings) if (b.raise > 0) n++;
+    for (const b of world.players[pi].buildings) if (b.raise > 0) n += crewsOn(b);
     return n;
+  }
+  /* the longest run this heir could START right now, given the crews standing idle */
+  function wallReach(world, pi) {
+    return Math.max(0, masons(world, pi) - rising(world, pi)) * C.WALL.unit;
   }
   /* ---------------- the stone between you and the field ----------------
    * MANNING. A wall stops shots crossing it, so troops behind one are safe — and a wall alone
@@ -242,7 +252,6 @@
     const def = C.BUILDINGS.wall, pl = world.players[pi];
     const len = Math.sqrt(d2(ax, ay, bx, by));
     if (!isFinite(len) || len < def.span[0]) return 'short';
-    if (len > def.span[1]) return 'span';
     if (!inClaim(world, pi, ax, ay) || !inClaim(world, pi, bx, by)) return 'claim';
     /* the ground has to bear the whole run, not just its ends */
     const steps = Math.max(2, Math.ceil(len / 20));
@@ -265,7 +274,12 @@
         } else if (segD2(probe, o.x, o.y) < C.BUILD.foot * C.BUILD.foot) return 'crowded';
       }
     }
-    return rising(world, pi) >= masons(world, pi) ? 'busy' : null;
+    /* the crews are the only limit on a run's LENGTH. None free at all is 'busy' — the same
+     * answer any other work gets; free but too few for a run this long is 'crews', which is a
+     * different problem with a different fix (draw a shorter one, or hold more Gates). */
+    const free = masons(world, pi) - rising(world, pi);
+    if (free <= 0) return 'busy';
+    return wallCrews(len) > free ? 'crews' : null;
   }
 
   /* the single answer the sim, the UI and the AI all ask. Returns null if legal. */
@@ -437,29 +451,35 @@
       if (!def || !isFinite(x) || !isFinite(y)) return { ok: false, err: 'type' };
       /* a wall carries a second end, and is stored by its MIDPOINT so every other part of the
        * sim — vision, fog, the renderer, the minimap — can go on treating a work as a place */
-      let x2 = null, y2 = null;
+      let x2 = null, y2 = null, crews = 1;
       if (def.span) {
         x2 = +cmd.x2; y2 = +cmd.y2;
         if (!isFinite(x2) || !isFinite(y2)) return { ok: false, err: 'short' };
         const badw = wallError(world, pi, x, y, x2, y2);
         if (badw) return { ok: false, err: badw };
+        crews = wallCrews(Math.sqrt(d2(x, y, x2, y2)));
         x = (x + x2) / 2; y = (y + y2) / 2;
       }
       const bad = def.span ? null : placementError(world, pi, x, y, cmd.bt);
       if (bad) return { ok: false, err: bad };
-      if (pl.essence < def.cost) return { ok: false, err: 'essence' };
-      pl.essence -= def.cost;
+      /* A RUN IS PRICED BY THE FOOT. One crew's worth of wall costs what the card says; twice
+       * the wall is twice the crews, twice the price and twice the stone to break. Anything
+       * else and a long wall is simply cheaper per length than a short one, which is not a
+       * choice — it is an answer. */
+      const price = def.cost * crews;
+      if (pl.essence < price) return { ok: false, err: 'essence' };
+      pl.essence -= price;
       const site = def.claim ? nodeAt(world, x, y) : null;
       /* it goes up as a SHELL: paid for, standing, breakable — and good for nothing until
        * the masons are done with it */
       const b = { id: world.nextId++, bt: cmd.bt, level: 1, x, y,
                   cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
                   raise: def.raise || 0, raiseFor: def.raise || 0,
-                  hp: def.hp * C.RAISE.hpFrom, maxHp: def.hp, lastHurt: -99,
+                  hp: def.hp * crews * C.RAISE.hpFrom, maxHp: def.hp * crews, lastHurt: -99,
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
                   co: 0 };         // 0 = its muster marches under the royal War Banner
-      if (x2 != null) { b.x2 = x2; b.y2 = y2; }
-      if (!b.raise) b.hp = def.hp;
+      if (x2 != null) { b.x2 = x2; b.y2 = y2; b.crews = crews; }
+      if (!b.raise) b.hp = b.maxHp;
       if (def.spawns) b.co = joinCo(world, pi, cmd.co);
       pl.buildings.push(b);
       /* a finished wall bars the ground: the flow fields drawn against the old world are all
@@ -481,7 +501,7 @@
         br = cmd.br;
         if (!C.TOWER_BRANCHES[br]) return { ok: false, err: 'branch' };
       }
-      const cost = upgradeCost(s.bt, s.level, br);
+      const cost = upgradeCost(s.bt, s.level, br) * (s.crews || 1);
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;
       s.level++;
@@ -490,7 +510,7 @@
        * effect to buy — grows its hit points, keeping the damage already done to it */
       if (C.BUILDINGS[s.bt].hpAt) {
         const was = s.maxHp;
-        s.maxHp = C.BUILDINGS[s.bt].hpAt[s.level - 1];
+        s.maxHp = C.BUILDINGS[s.bt].hpAt[s.level - 1] * (s.crews || 1);
         s.hp = Math.min(s.maxHp, s.hp + (s.maxHp - was));
       }
       emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
@@ -955,6 +975,11 @@
        * only way a wall kills anything, and the price of it is that the men who make it kill
        * are the men who can be killed. */
       const par = manning(world, u);
+      /* WHICH WALL HE IS STANDING ON, for everyone downstream. The parapet was a rule with
+       * nothing to see: a man on the wall fought from the wall and was drawn in the grass
+       * beside it, so the one bargain the whole design rests on was invisible. The renderer
+       * lifts him onto the stone from this, and it rides the wire so a guest sees it too. */
+      u.man = par ? par.id : 0;
       const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0) + (home ? 140 : 0));
       if (foe) {
         const rng = par ? Math.max(def.range, C.WALL.over) : def.range;
@@ -1084,6 +1109,7 @@
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf,
-                   newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds };
+                   newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
+                   wallCrews, wallReach };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

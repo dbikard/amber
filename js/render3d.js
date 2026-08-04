@@ -742,6 +742,28 @@
     im._room = room;
     return im;
   }
+  /* THE MEN ON THE STONE. A soldier the sim has put on a parapet (`u.man` = the wall's id)
+   * is drawn ON it — squarely on the run, at the height of the walkway — and not in the grass
+   * beside it. Without this the one bargain the whole wall design rests on is a rule with
+   * nothing to see. The wall may belong to any heir whose works are in the view. */
+  const wallById = (view, id) => {
+    for (const pl of view.players) {
+      for (const b of pl.buildings) if (b.id === id && b.x2 != null) return b;
+      for (const g of (pl.ghosts || [])) if (g.id === id && g.x2 != null) return g;
+    }
+    return null;
+  };
+  function parapet(view, u) {
+    if (!u.man) return null;
+    const b = wallById(view, u.man);
+    if (!b) return null;
+    const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+    const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;
+    let t = ((u.x - ax) * vx + (u.y - ay) * vy) / L2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return { x: ax + vx * t, y: ay + vy * t, h: 27, ang: -Math.atan2(vy, vx) };
+  }
+
   function updateUnits(view, viewer, dt) {
     const byKind = {};
     for (const k of KINDS) byKind[k] = [];
@@ -773,8 +795,16 @@
         const sp = Math.sqrt(mvx * mvx + mvy * mvy) / Math.max(1e-4, dt);
         f.sp = f.sp == null ? sp : f.sp + (sp - f.sp) * Math.min(1, dt * 6);
         const bob = Math.min(1, f.sp / 20) * 1.6;
-        dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
-        dum.rotation.set(0, f.a, 0);
+        /* on the parapet: stand ON the run, at walkway height, facing out over it. Men do not
+         * bob up there — they are holding a wall, not marching. */
+        const par = u.man ? parapet(view, u) : null;
+        if (par) {
+          dum.position.set(par.x, groundH(par.x, par.y) + par.h, par.y);
+          dum.rotation.set(0, f.a, 0);
+        } else {
+          dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
+          dum.rotation.set(0, f.a, 0);
+        }
         const s2 = u.kind === 'champion' ? 1.25 : 1;
         dum.scale.set(s2, s2, s2);
         dum.updateMatrix();
@@ -1219,18 +1249,34 @@
       const moved = R.pointer && R.pointer !== R.span.from;
       const w2 = moved ? R.toWorld(R.pointer.x, R.pointer.y) : R.span;
       const len = Math.hypot(w2.x - R.span.x, w2.y - R.span.y);
-      const ok = !moved || (len >= def.span[0] && len <= def.span[1]);
+      /* THE PRICE IS THE LENGTH. A run is bought by the crew, and there is no longest run —
+       * only how far the idle masons reach — so the preview says what THIS run will cost and
+       * turns red on the one limit that actually exists. */
+      const crews = Math.max(1, Math.ceil(len / C.WALL.unit));
+      const reach = R.span.reach || 0;
+      const short = len < def.span[0], over = reach > 0 && len > reach;
+      const ok = !moved || (!short && !over);
       const b2 = R.project(w2.x, w2.y);
       g.strokeStyle = ok ? '#ffe9a8' : '#ff6a5a';
       g.lineWidth = 4; g.setLineDash([10, 7]);
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b2.x, b2.y); g.stroke();
       g.setLineDash([]); g.lineWidth = 2;
       g.beginPath(); g.arc(a.x, a.y, 7, 0, 7); g.stroke();
+      /* how far the crews reach, drawn as the point the run stops being buildable */
+      if (moved && reach > 0 && len > 4) {
+        const f = reach / len;
+        const cap = R.project(R.span.x + (w2.x - R.span.x) * f, R.span.y + (w2.y - R.span.y) * f);
+        g.strokeStyle = '#ffe9a8'; g.globalAlpha = 0.55;
+        g.beginPath(); g.arc(cap.x, cap.y, 5, 0, 7); g.stroke();
+        g.globalAlpha = 1;
+      }
       if (moved) {
         g.font = '600 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'bottom';
         g.fillStyle = ok ? '#ffe9a8' : '#ff6a5a';
-        g.fillText(Math.round(len) + (ok ? '' : len < def.span[0] ? ' — too short' : ' — too long'),
-                   (a.x + b2.x) / 2, (a.y + b2.y) / 2 - 8);
+        const say = short ? Math.round(len) + ' — too short'
+          : over ? Math.round(len) + ' — the masons reach ' + Math.round(reach)
+          : Math.round(len) + '  ◆ ' + def.cost * crews + '  ·  ' + crews + (crews > 1 ? ' crews' : ' crew');
+        g.fillText(say, (a.x + b2.x) / 2, (a.y + b2.y) / 2 - 8);
         g.textAlign = 'left'; g.textBaseline = 'alphabetic';
       }
     }

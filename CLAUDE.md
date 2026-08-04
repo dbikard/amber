@@ -122,13 +122,20 @@ human could see (see `AI.view()`).
   `render3d.js` `unitGeo` → sim. The renderer buckets by every key in `UNITS`, so a kind with
   no geometry silently draws as a soldier — add the case.
 - **Add an heir**: personality entry in `ai.js` HEIRS block + menu entry in `ui.js`.
-- **A work with a LENGTH** (only the Curtain Wall today): `span:[min,max]` in the table makes
-  it a two-tap placement. It is stored by its MIDPOINT with `x2`/`y2` as the far end, so every
+- **A work with a LENGTH** (only the Curtain Wall today): `span:[min]` in the table makes it a
+  two-tap placement. It is stored by its MIDPOINT with `x2`/`y2` as the far end, so every
   point-shaped consumer — fog, minimap, ghosts, the snapshot — keeps working; anything that
   needs the run uses `World.wallEnds` / the `segD2` family. `placementError` only judges the
   first tap; `World.wallError` judges the run. `world.walls` is the standing list, rebuilt by
   `noteWalls` whenever one rises or falls, and `world.anyWall` is what keeps a match without
   walls from paying for the crossing tests at all.
+  **There is no longest run** — only how many mason CREWS you can put on one. `WALL.unit` is
+  the length one crew covers, so a run's crews, cost, hit points and upgrade price all
+  multiply together (`b.crews`), `rising()` counts crews rather than works, and
+  `World.wallReach` is the longest run a heir could start right now. A run past it is
+  `'crews'`, which is a different refusal from `'busy'` and has a different fix.
+  A unit standing on its own finished wall carries `u.man` = that wall's id — the sim's
+  answer, on the wire, and what the renderer uses to draw him up on the walkway.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an
   abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,

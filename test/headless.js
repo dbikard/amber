@@ -839,7 +839,8 @@ suite('the curtain wall')
   const def = C.BUILDINGS.wall;
   ok('the rampart is gone from the build table', !C.BUILDINGS.rampart);
   ok('a wall is on the build sheet', C.BUILD_ORDER_UI.includes('wall'));
-  ok('...and it is a work with a length', Array.isArray(def.span) && def.span[0] < def.span[1]);
+  ok('...and it is a work with a length', Array.isArray(def.span) && def.span[0] > 0);
+  eq('...with a shortest run, and NO longest', def.span.length, 1);
   ok('no player carries a single wall bar any more',
      World.createWorld(7).players.every((p) => p.wallHp === undefined));
 
@@ -851,7 +852,14 @@ suite('the curtain wall')
   pl.essence = 100000;
   const build = (ax, ay, bx, by) => World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: ax, y: ay, x2: bx, y2: by });
   eq('a run of no length is refused', build(c.x + 90, c.y, c.x + 92, c.y).err, 'short');
-  eq('...and one longer than the span', build(c.x + 90, c.y, c.x + 90 + def.span[1] + 60, c.y).err, 'span');
+  /* THERE IS NO LONGEST RUN — there is only how many crews you can put on one. A run past
+   * what the idle masons cover is refused for THAT, which is a different problem with a
+   * different fix: draw a shorter one, or hold more Gates. */
+  eq('one mason covers one crew of wall', World.masons(w, 0), 1);
+  eq('...so the reach starts at one crew', World.wallReach(w, 0), C.WALL.unit);
+  eq('a run past the crews is refused for the crews, not for a span',
+     build(c.x + 90, c.y - C.WALL.unit, c.x + 90, c.y + C.WALL.unit).err, 'crews');
+  eq('the crews needed follow the length', World.wallCrews(C.WALL.unit * 2.5), 3);
   eq('a run reaching outside your writ is refused',
      build(c.x + C.CLAIM.seat + 40, c.y - 60, c.x + C.CLAIM.seat + 40, c.y + 60).err, 'claim');
   eq('the first tap alone is judged on what a point can be judged on',
@@ -959,6 +967,56 @@ suite('the curtain wall')
   const sgn2 = (nx / nL) * (mine.x - mid.x) + (ny / nL) * (mine.y - mid.y);
   ok('the heir who raised it walks through his own gate', sgn2 < 0, sgn2.toFixed(1));
 
+  /* A RUN IS PAID FOR BY THE FOOT. Twice the wall is twice the crews, twice the price and
+   * twice the stone to break — anything else and a long wall is cheaper per length than a
+   * short one, which is not a choice, it is an answer. */
+  {
+    const g2 = World.createWorld(1000, 2);
+    g2.chaosNext = 1e9;
+    const gc = World.cityOf(g2, 0), gp = g2.players[0];
+    /* hand this heir the Gates that hire the crews */
+    while (World.masons(g2, 0) < 3) {
+      gp.buildings.push({ id: g2.nextId++, bt: 'gate', level: 1, x: gc.x, y: gc.y, raise: 0,
+                          hp: 1, maxHp: 1, node: -1, co: 0, lastHurt: -99, cd: 0 });
+    }
+    eq('three Gates hire three crews', World.masons(g2, 0), 3);
+    let two = null;
+    for (let a2 = 0; a2 < 6.28 && !two; a2 += 0.25)
+      for (let r2 = 150; r2 <= 240 && !two; r2 += 30) {
+        const mx = gc.x + Math.cos(a2) * r2, my = gc.y + Math.sin(a2) * r2;
+        const L = C.WALL.unit * 0.75, px = -Math.sin(a2) * L, py = Math.cos(a2) * L;
+        if (!World.wallError(g2, 0, mx - px, my - py, mx + px, my + py)) two = [mx - px, my - py, mx + px, my + py];
+      }
+    ok('a two-crew run can be laid with three crews idle', !!two);
+    gp.essence = 100000;
+    const purse = gp.essence;
+    const rr = World.applyCommand(g2, 0, { c: 'build', bt: 'wall', x: two[0], y: two[1], x2: two[2], y2: two[3] });
+    ok('and it is accepted', rr.ok, rr.err);
+    const wb = gp.buildings.find((q) => q.bt === 'wall');
+    eq('it is booked as two crews', wb.crews, 2);
+    eq('...and costs two cards', Math.round(purse - gp.essence), def.cost * 2);
+    eq('...and is twice the stone', wb.maxHp, def.hp * 2);
+    eq('two crews of the three are now busy', World.rising(g2, 0), 2);
+    eq('...leaving one crew of reach', World.wallReach(g2, 0), C.WALL.unit);
+    /* and the masons are genuinely spoken for: with one crew left, a one-crew run is legal
+     * on ground where a two-crew run over the very same line is not */
+    let pair = null;
+    for (let a2 = 0; a2 < 6.28 && !pair; a2 += 0.2)
+      for (let r2 = 150; r2 <= 300 && !pair; r2 += 30) {
+        const mx = gc.x + Math.cos(a2) * r2, my = gc.y + Math.sin(a2) * r2;
+        const ux = -Math.sin(a2), uy = Math.cos(a2);
+        const sh = C.WALL.unit * 0.4, lo = C.WALL.unit * 0.9;
+        if (World.wallError(g2, 0, mx - ux * sh, my - uy * sh, mx + ux * sh, my + uy * sh)) continue;
+        pair = [mx, my, ux, uy, sh, lo];
+      }
+    ok('ground for the comparison exists', !!pair);
+    const [mx2, my2, ux2, uy2, sh2, lo2] = pair;
+    eq('one crew of wall still fits', World.wallError(g2, 0,
+       mx2 - ux2 * sh2, my2 - uy2 * sh2, mx2 + ux2 * sh2, my2 + uy2 * sh2), null);
+    eq('two crews of wall on the same line do not', World.wallError(g2, 0,
+       mx2 - ux2 * lo2, my2 - uy2 * lo2, mx2 + ux2 * lo2, my2 + uy2 * lo2), 'crews');
+  }
+
   /* a level buys STONE. A wall has no other effect to scale, so an upgrade that did not
    * thicken it would take essence and do nothing whatever. */
   b.hp = b.maxHp - 200;
@@ -966,6 +1024,28 @@ suite('the curtain wall')
   eq('a curtain can be reinforced', World.applyCommand(w, 0, { c: 'up', id: b.id }).ok, true);
   ok('...and the reinforcement is thicker stone', b.maxHp > wasMax, `${wasMax} -> ${b.maxHp}`);
   near('...added to what was standing, not a free repair', b.maxHp - b.hp, 200, 1);
+
+  /* THE PARAPET MUST BE VISIBLE. A man on the wall fought from the wall and was drawn in the
+   * grass beside it — the one bargain the whole design rests on, with nothing to see. He now
+   * carries the wall he is standing on, and it rides the wire so a guest sees it too. */
+  settle();
+  const upTop = pin(put(0, side(-C.WALL.man * 0.5)));
+  const below = pin(put(0, side(-C.WALL.man - 60)));
+  World.update(w, C.SIM_DT);
+  eq('a man at his own wall is marked as standing on it', upTop.man, b.id);
+  eq('...and a man well behind it is not', below.man || 0, 0);
+  {
+    const snap = Net.snapFor(w, 0);
+    const su = snap.units.find((q) => q.id === upTop.id);
+    ok('the parapet rides the wire', su && su.man === b.id, su && su.man);
+    const sb = snap.units.find((q) => q.id === below.id);
+    ok('...and only for the men actually on it', sb && sb.man === undefined);
+  }
+  /* step off the stone and he is off it — the mark is live, not sticky */
+  upTop.x = side(-C.WALL.man - 90).x; upTop.y = side(-C.WALL.man - 90).y;
+  w.players[0].banner = { x: upTop.x, y: upTop.y, site: -1 };
+  World.update(w, C.SIM_DT);
+  eq('walking off the wall takes him off it', upTop.man || 0, 0);
 
   /* AND A FALLEN HEIR'S STONE FALLS WITH HIM. In a duel the match ends on the same tick and
    * this was invisible; in a free-for-all his curtains would have gone on barring the ground

@@ -258,7 +258,7 @@
     unique: 'you have one already',
     /* a work with a length has two refusals of its own — both about the RUN, not the spot */
     short: 'too short a run to be a wall',
-    span: 'too long a run for one wall — build it in stretches'
+    crews: 'longer than your masons reach — hold more Gates, or draw a shorter run'
   };
   /* The standard chooser, used twice: once before raising a hall, once on the hall's own
    * sheet to move it later. Companies exist so that a dozen halls need not mean a dozen

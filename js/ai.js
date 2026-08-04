@@ -133,7 +133,12 @@
     const W = global.World, c = v.myCity;
     const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
     const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
-    const def = C.BUILDINGS[bt], half = (def.span[0] + def.span[1]) / 4;
+    const def = C.BUILDINGS[bt];
+    /* as long a run as the idle crews will cover, and no longer — the mason budget is the
+     * only ceiling there is now */
+    const reach = W.wallReach(v.world, v.me);
+    if (reach < def.span[0]) return null;
+    const half = Math.min(reach, C.WALL.unit * 2) / 2;
     for (let ring = 0; ring < 4; ring++) {
       const r = 120 + ring * 34;
       for (let k = 0; k < 9; k++) {
@@ -141,7 +146,7 @@
         const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
         /* perpendicular to the approach: the wall stands ACROSS the road, not along it */
         const px = -Math.sin(a), py = Math.cos(a);
-        for (const L of [half, half * 1.4, half * 0.7]) {
+        for (const L of [half, half * 0.7, half * 0.5]) {
           const ax = mx - px * L, ay = my - py * L, bx = mx + px * L, by = my + py * L;
           if (!W.wallError(v.world, v.me, ax, ay, bx, by)) return { x: ax, y: ay, x2: bx, y2: by };
         }

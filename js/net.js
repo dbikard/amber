@@ -246,6 +246,8 @@
       players, sites,
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
+                       /* which wall he is standing on, so a guest draws him on the stone too */
+                       ...(u.man ? { man: u.man } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),
       storms: world.storms.filter((s) => see(s.x, s.y))
         .map((s) => ({ owner: s.owner, x: s.x, y: s.y, delay: s.delay, tLeft: s.tLeft })),
