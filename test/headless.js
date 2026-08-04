@@ -1859,6 +1859,43 @@ suite('the masons follow the Gates')
      World.masons(w, 0) <= C.MASONS.max);
 }
 
+/* AND THE LAST CREW NEVER LEAVES. Crews come from Gates and a Gate takes a crew to raise, so
+ * an heir whose last Gate is thrown down had none of either and no way to get either: not
+ * beaten, just stopped, with a Seat still standing and a purse still filling and nothing on
+ * the board he was allowed to do about it. A floor of one is the way back — and because one
+ * Gate already buys one crew it changes nothing for anybody still holding ground. */
+suite('a razed realm can still build');
+{
+  eq('the floor is one crew', C.MASONS.floor, 1);
+  /* it must not lift the yard for anyone who still holds a Gate: same numbers as before */
+  const chk = World.createWorld(1000, 2), cp = chk.players[0];
+  for (let held = 1; held <= C.MASONS.max + 1; held++) {
+    while (cp.buildings.filter((b) => b.bt === 'gate' && !b.raise).length < held)
+      cp.buildings.push({ id: chk.nextId++, bt: 'gate', level: 1, x: -900 - held * 20, y: -900,
+                          cd: 0, raise: 0, raiseFor: 1, hp: 10, maxHp: 10, lastHurt: -99,
+                          node: -1, co: 0 });
+    eq(`${held} Gates still hire ${Math.min(C.MASONS.max, held)}`, World.masons(chk, 0),
+       Math.min(C.MASONS.max, C.MASONS.base + Math.floor(held / C.MASONS.per)));
+  }
+
+  for (const seed of SEEDS) {
+    const w2 = World.createWorld(seed, 2), pl2 = w2.players[0];
+    pl2.essence = 1e5;
+    w2.chaosNext = 1e9;
+    const gates = pl2.buildings.filter((b) => b.bt === 'gate');
+    ok(`seed ${seed}: the heir opens with a Gate to lose`, gates.length > 0);
+    const spring = { x: gates[0].x, y: gates[0].y };
+    for (const g of gates) pl2.buildings.splice(pl2.buildings.indexOf(g), 1);
+    for (let i = 0; i < 60; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+    eq(`seed ${seed}: every Gate is down`, pl2.buildings.filter((b) => b.bt === 'gate').length, 0);
+    eq(`seed ${seed}: one crew remains`, World.masons(w2, 0), 1);
+    /* and the crew can actually do the one thing that matters — put a Gate back on the home
+     * spring, which is inside the writ and so needs no troops standing on it */
+    const r = World.applyCommand(w2, 0, { c: 'build', bt: 'gate', x: spring.x, y: spring.y });
+    ok(`seed ${seed}: and it can raise a Gate again`, r.ok, r.err);
+  }
+}
+
 /* THE MUSTER HAS NO CEILING. It had one, at 110, and a chronicle from play showed the cost:
  * an army pinned there from minute six and twenty-two thousand essence banked with nowhere to
  * go. The economy is the brake now — and the ceiling was load-bearing for performance, so the

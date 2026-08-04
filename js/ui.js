@@ -227,7 +227,8 @@
        * has to mirror World.rising exactly or it is worse than not having one. */
       if (b.raise > 0 || b.work > 0) busy += (b.crews || 1);
     }
-    const total = Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
+    const total = Math.max(C.MASONS.floor,   // the last crew never leaves — mirrors World.masons
+                           Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per)));
     const free = Math.max(0, total - busy);
     masonFree = free;
     const key = free + '/' + total;

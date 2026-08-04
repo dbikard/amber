@@ -36,8 +36,13 @@
    * realm grows at something near the old rate. */
   /* ONE CREW PER GATE. The yard grows with the realm — and since every heir opens with a Gate
    * on his own spring, that first Gate is his first crew. `base` is zero on purpose: the crews
-   * come from the ground you hold, all of them. */
-  CONST.MASONS = { base: 0, per: 1, max: 4 };
+   * come from the ground you hold, all of them.
+   * BUT NEVER NONE. An heir whose last Gate is thrown down has no crews, and with no crews he
+   * cannot raise the Gate that would hire one — a dead end the board offers no way out of, so
+   * he sits and watches. `floor` is the way back: the last crew never leaves. It bites only at
+   * zero Gates, since one Gate already buys one crew, so the yard is unchanged for anyone
+   * still holding ground. */
+  CONST.MASONS = { base: 0, per: 1, max: 4, floor: 1 };
 
   /* Solo difficulty, MEASURED rather than guessed. `slow` and `noise` turned out to be decorative: an heir polled at
    * half the rate, or skipping 45% of its turns outright, still won its mirror 42-50% of the

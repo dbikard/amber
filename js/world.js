@@ -215,7 +215,11 @@
     let gates = 0;
     for (const b of world.players[pi].buildings)
       if (b.bt === 'gate' && !b.raise) gates++;
-    return Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
+    /* the last crew never leaves: with no Gates there are no crews, and with no crews there is
+     * no raising the Gate that hires one. See MASONS.floor — it bites at zero Gates and
+     * nowhere else. */
+    return Math.max(C.MASONS.floor,
+                    Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per)));
   }
   /* HOW MANY CREWS A WORK HAS ON IT. Everything but a wall takes one. A CURTAIN IS PAID FOR
    * BY THE FOOT: there is no longest run any more — there is only how many crews you can put
