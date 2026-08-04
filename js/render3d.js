@@ -653,6 +653,24 @@
     }
     return best;
   };
+  /* the COMPANY of the viewer's own man under the finger, or 0. Men are small and they move,
+   * so the reach is generous — but it only ever answers with your own, and only when the tap
+   * is closer to a man than to anything else the caller will try next. */
+  R.hitUnit = function (px, py, viewer) {
+    if (!curView) return 0;
+    const w2 = R.toWorld(px, py);
+    /* a tight reach on purpose: this competes with the tap that opens a BUILD SHEET on bare
+     * ground, and a generous radius means an army standing in your court quietly stops you
+     * building there. Point at a man and you get his standard; point beside him and you get
+     * the ground. */
+    let best = 0, bd = 24 * 24;
+    for (const u of curView.units) {
+      if (u.owner !== viewer || !u.co) continue;
+      const dd = (w2.x - u.x) * (w2.x - u.x) + (w2.y - u.y) * (w2.y - u.y);
+      if (dd < bd) { bd = dd; best = u.co; }
+    }
+    return best;
+  };
   R.hitSite = function (px, py, view, viewer, forFlag) {
     const w2 = R.toWorld(px, py);
     let best = -1, bd = Infinity;
@@ -1080,7 +1098,7 @@
             : buildingModel((b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + '@' + (b.level || 1)));
           if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
-            /* the hall flies its COMPANY's colour — gold if it answers to the War Banner */
+            /* the hall flies its COMPANY's colour, and every hall has one */
             const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
             const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
               new THREE.MeshBasicMaterial({ color: b.co ? PENNANT[(b.co - 1) % PENNANT.length] : 0xffd98a,

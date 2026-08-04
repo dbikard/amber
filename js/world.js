@@ -703,7 +703,8 @@
       return { ok: true };
     }
     if (cmd.c === 'assign') {
-      /* move a hall between companies — or out of all of them, back under the Banner */
+      /* move a hall between companies, or on to a new one of its own. There is nowhere to
+       * move it OUT to: a hall without a standard would be a hall you cannot give orders to. */
       const b = bldOf(world, pi, cmd.id);
       if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'id' };
       const was = b.co;
@@ -762,15 +763,18 @@
   /* ---------------- companies ---------------- */
   const coOf = (world, pi, id) => world.players[pi].companies.find((c) => c.id === id) || null;
   /* `want` is a company id, the string 'new', or 0/undefined for the royal War Banner */
+  /* EVERY HALL FLIES A STANDARD. There is no company 0 any more — no "under the gold banner",
+   * because there is no gold banner. A hall raised without a company named raises one of its
+   * own, which is what makes the first Barracks simply work: you get a flag, and it is that
+   * hall's flag. A new company starts with no rally, meaning it holds where the army holds,
+   * until you pick its flag up and point it somewhere. */
   function joinCo(world, pi, want) {
     const pl = world.players[pi];
-    if (want === 'new') {
-      const co = { id: pl.nextCo++, rally: null };
-      pl.companies.push(co);
-      return co.id;
-    }
     const n = +want || 0;
-    return coOf(world, pi, n) ? n : 0;
+    if (want !== 'new' && n && coOf(world, pi, n)) return n;
+    const co = { id: pl.nextCo++, rally: null };
+    pl.companies.push(co);
+    return co.id;
   }
   /* a company with no hall mustering into it and no men left under it is not a company */
   function pruneCos(world, pi) {

@@ -551,24 +551,29 @@ suite('companies')
     return pl.buildings[pl.buildings.length - 1];
   };
 
+  /* EVERY HALL FLIES A STANDARD. There is no company 0 and no gold banner for it to mean:
+   * the first hall raises a standard of its own without being asked, which is what makes the
+   * first Barracks simply work. */
   const h1 = hall(180, 0);
-  ok('a hall may muster under the War Banner', h1 && h1.co === 0);
-  eq('...which is not a company at all', pl.companies.length, 0);
-  const h2 = hall(235, 'new');
-  ok('a hall may raise a standard of its own', h2 && h2.co > 0);
+  ok('the first hall raises a standard of its own', h1 && h1.co > 0, `co ${h1 && h1.co}`);
   eq('...which is one company', pl.companies.length, 1);
   const co = pl.companies[0].id;
+  const h2 = hall(235, 'new');
+  ok('a second may raise another', h2 && h2.co > 0 && h2.co !== co);
+  eq('...which is two companies', pl.companies.length, 2);
   const h3 = hall(290, co);
-  ok('and a third may JOIN it rather than add another flag', h3 && h3.co === co);
-  eq('still one company for two halls', pl.companies.length, 1,
-     `${pl.buildings.filter((b) => b.co === co).length} halls under it`);
+  ok('or JOIN one rather than add another flag', h3 && h3.co === co);
+  eq('still two companies for three halls', pl.companies.length, 2,
+     `${pl.buildings.filter((b) => b.co === co).length} halls under the first`);
+  const other = pl.companies.find((q) => q.id !== co).id;
 
   /* the men follow the company, and moving its standard moves all of them at once */
   for (let i = 0; i < 30 * 120; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
   const underCo = w.units.filter((u) => u.owner === 0 && u.co === co).length;
-  const underBanner = w.units.filter((u) => u.owner === 0 && !u.co).length;
+  const underOther = w.units.filter((u) => u.owner === 0 && u.co === other).length;
   ok('both halls muster into the one company', underCo > 0, `${underCo} troops`);
-  ok('and the Banner hall musters separately', underBanner > 0, `${underBanner} troops`);
+  ok('and the other standard musters separately', underOther > 0, `${underOther} troops`);
+  eq('no man answers no standard at all', w.units.filter((u) => u.owner === 0 && !u.co).length, 0);
 
   const site = w.map.sites.find((s) => s.kind === 'node');
   ok('a company standard can be posted', World.applyCommand(w, 0, { c: 'rally', co, site: site.id }).ok);
@@ -577,21 +582,20 @@ suite('companies')
   const goals = new Set(w.units.filter((u) => u.owner === 0 && u.co === co).map((u) => u.goal && u.goal.site));
   ok('every one of its men answers the new standard, from both halls',
      goals.size === 1 && goals.has(site.id), [...goals].join(','));
-  const banGoals = new Set(w.units.filter((u) => u.owner === 0 && !u.co).map((u) => u.goal && u.goal.site));
-  ok('and the Banner men are untouched by it', !banGoals.has(site.id));
+  const otherGoals = new Set(w.units.filter((u) => u.owner === 0 && u.co === other).map((u) => u.goal && u.goal.site));
+  ok('and the other company is untouched by it', !otherGoals.has(site.id));
 
-  /* THE ROYAL WAR BANNER OUTRANKS EVERY COMPANY STANDARD. A company is a detachment from
-   * the army, not a rival army: raising the gold banner strikes every standing detachment
-   * order and the whole force answers as one. Before this it moved only the men under no
-   * standard at all — a shrinking minority once a few halls are up. */
+  /* THE RECALL. The gold flag is gone from the tray — every hall flies its own standard and
+   * nothing quietly overrules them — but the ORDER it carried survives as a button: one
+   * command that strikes every standing standard and turns the whole army for home. */
   const gold = w.map.sites.filter((s) => s.kind !== 'city' && s.id !== site.id)
     .sort((a, b) => Math.hypot(b.x - c.x, b.y - c.y) - Math.hypot(a.x - c.x, a.y - c.y))[0];
-  ok('the War Banner can be raised elsewhere', World.applyCommand(w, 0, { c: 'banner', site: gold.id }).ok);
+  ok('the Recall can be sounded', World.applyCommand(w, 0, { c: 'banner', site: gold.id }).ok);
   eq('and it strikes every company standard', pl.companies.filter((q) => q.rally).length, 0);
   World.update(w, C.SIM_DT);
   const host = w.units.filter((u) => u.owner === 0);
   ok('the company still has men', host.some((u) => u.co === co));
-  eq('and the WHOLE army answers the Banner, company men included',
+  eq('and the WHOLE army answers it, every company included',
      host.filter((u) => !u.goal || u.goal.site !== gold.id).length, 0, `${host.length} troops`);
   /* …and a detachment can peel back off, or the standards would be one-use */
   ok('a company can post its standard again', World.applyCommand(w, 0, { c: 'rally', co, site: site.id }).ok);
@@ -599,30 +603,37 @@ suite('companies')
   const peeled = w.units.filter((u) => u.owner === 0 && u.co === co);
   ok('and takes its own men back with it',
      peeled.length > 0 && peeled.every((u) => u.goal && u.goal.site === site.id), `${peeled.length} troops`);
-  ok('while the rest hold to the Banner',
-     w.units.filter((u) => u.owner === 0 && !u.co).every((u) => u.goal && u.goal.site === gold.id));
+  ok('while the other company holds where the Recall left it',
+     w.units.filter((u) => u.owner === 0 && u.co === other).every((u) => u.goal && u.goal.site === gold.id));
 
-  /* re-assignment: a hall can be moved, and its own men move with it */
+  /* re-assignment: a hall can be moved, and its own men move with it. There is nowhere to
+   * move it OUT to — a hall with no standard is a hall you cannot give orders to — so it
+   * moves to ANOTHER company, or raises one of its own. */
   const before = w.units.filter((u) => u.owner === 0 && u.from === h3.id).length;
   ok('the third hall has men of its own', before > 0, `${before}`);
-  ok('it can be sent back under the Banner', World.applyCommand(w, 0, { c: 'assign', id: h3.id, co: 0 }).ok);
-  eq('the hall now answers the Banner', h3.co, 0);
+  ok('it can be moved to the other standard', World.applyCommand(w, 0, { c: 'assign', id: h3.id, co: other }).ok);
+  eq('the hall now answers that one', h3.co, other);
   eq('and so do the men it raised',
-     w.units.filter((u) => u.owner === 0 && u.from === h3.id && u.co !== 0).length, 0);
+     w.units.filter((u) => u.owner === 0 && u.from === h3.id && u.co !== other).length, 0);
   ok('the company survives while its other hall stands', pl.companies.some((q) => q.id === co));
 
-  /* ...and is dropped once nothing answers to it any more */
-  ok('the last hall can leave too', World.applyCommand(w, 0, { c: 'assign', id: h2.id, co: 0 }).ok);
-  for (const u of w.units) if (u.owner === 0 && u.co === co) u.co = 0;
-  World.applyCommand(w, 0, { c: 'assign', id: h2.id, co: 0 });
-  ok('an empty company is not kept', !pl.companies.some((q) => q.id === co),
+  /* asking for no company at all raises a NEW one rather than leaving the hall mute */
+  const r5 = World.applyCommand(w, 0, { c: 'assign', id: h3.id, co: 0 });
+  ok('a hall asked for no standard raises one instead', r5.ok && h3.co > 0 && h3.co !== other,
+     `co ${h3.co}`);
+
+  /* ...and a company is dropped once nothing answers to it any more */
+  const doomed = h3.co;
+  World.applyCommand(w, 0, { c: 'assign', id: h3.id, co: other });
+  for (const u of w.units) if (u.owner === 0 && u.co === doomed) u.co = other;
+  World.applyCommand(w, 0, { c: 'assign', id: h3.id, co: other });
+  ok('an empty company is not kept', !pl.companies.some((q) => q.id === doomed),
      JSON.stringify(pl.companies));
 
-  /* THE GOLD FLAG. Every man who answers the Banner must move when it moves — this is the
-   * one that was reported as unreliable, and it holds up. */
+  /* THE RECALL AGAIN: every man of yours must move when it sounds, whatever standard he flies */
   const far = w.map.sites.filter((s) => s.kind !== 'city')
     .sort((a, b) => Math.hypot(b.x - c.x, b.y - c.y) - Math.hypot(a.x - c.x, a.y - c.y))[0];
-  ok('the Banner can be moved', World.applyCommand(w, 0, { c: 'banner', site: far.id }).ok);
+  ok('the Recall can be sounded again', World.applyCommand(w, 0, { c: 'banner', site: far.id }).ok);
   World.update(w, C.SIM_DT);
   const mine = w.units.filter((u) => u.owner === 0);
   ok('there is an army to direct', mine.length > 10, `${mine.length} troops`);
@@ -1850,7 +1861,7 @@ suite('the chronicle')
   Rec.command({ c: 'walk', on: true }, w2);
   Rec.end(null, null, Rec.fromWorld(w2));
   const t2 = Rec.text();
-  ok('five identical orders read as one line', /War Banner.*×5/.test(t2),
+  ok('five identical orders read as one line', /Recall.*×5/.test(t2),
      t2.split('— your orders —')[1].split('\n').slice(0, 3).join(' / '));
   ok('and a different order still gets its own', /BEGIN THE WALK/.test(t2));
 

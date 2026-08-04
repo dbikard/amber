@@ -81,6 +81,19 @@ body {
 #ess-rate { font-size: 12px; color: #b8a878; }
 #my-pattern { font-size: 12px; color: #9cc8ff; text-shadow: 0 1px 3px #000; }
 #powers { display: flex; gap: 10px; pointer-events: auto; flex: 0 0 auto; }
+/* THE BUILD BUTTON. Raising a work used to begin by tapping the ground, which meant the map
+   answered a different question depending on what happened to be under your finger — and once
+   a tap on your own men picked up their standard, bare ground was competing with the army for
+   the same gesture. Now the button says what you are doing before the map has to. */
+#btn-build {
+  pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: rgba(20,16,30,0.72); border: 1px solid rgba(200,164,79,0.5);
+  color: #ffd98a; border-radius: 9px; padding: 5px 11px 4px; font: inherit; font-size: 17px;
+  line-height: 1; cursor: pointer; margin-right: 10px;
+}
+#btn-build #build-lbl { font-size: 9px; letter-spacing: 1.5px; color: #cbbf9a; }
+#btn-build:active, #btn-build.armed { background: rgba(200,164,79,0.28); }
+#btn-build.armed { border-color: #ffd98a; }
 .pw {
   width: 54px; height: 54px; border-radius: 50%;
   border: 2px solid #c9a44f; background: radial-gradient(circle at 35% 30%, #3a2f1a, #1a1408);

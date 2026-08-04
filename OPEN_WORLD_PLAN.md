@@ -31,7 +31,9 @@ that makes turtling lose on its own, without a PvE timer forcing it.
 **The Pattern remains the absolute clock.** If neither player attacks, someone walks and wins.
 No match can draw. This was always pillar 3; it is now load-bearing rather than decorative.
 
-**Match length moves to 15–30 minutes.** Free placement, a claim race and piecewise walls are
+**Match length moves to 15–30 minutes.** *(Superseded: the band is 5–20 now — see
+DESIGN_PRINCIPLES.md. The opening starts with a Gate already drawing, so the early economy
+arrives sooner and the whole match telescopes with it.)* Free placement, a claim race and piecewise walls are
 an attention budget that a 6–12 minute match cannot spend. Everything below is tuned for the
 longer match: slower openings, more upgrade steps, a real mid-game.
 
@@ -235,7 +237,8 @@ AI simultaneously, leaving nothing trustworthy to measure against.
 5. **Walls and siege** — the Siege Works line shipped, then the Curtain Wall (§6) as one
    work with a length rather than drag-a-line segments. Towers joining curtains and the
    Chaos repurposing of §2 are still open.
-6. **Retune** — match length to 15–30 min, Chaos cadence, heir rebalance, ablation runs.
+6. **Retune** — match length to the band in DESIGN_PRINCIPLES (5–20 now), Chaos cadence,
+   heir rebalance, ablation runs.
 
 ## 11. Known risks
 

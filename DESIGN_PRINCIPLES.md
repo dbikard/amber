@@ -22,7 +22,7 @@ Turtling inside your starting ground loses on its own: the rival claims more ess
 bigger army, and comes for you. Map control is the pressure behind both win conditions.
 Chaos is *the price of the best ground* — the richest nodes sit on the corrupt road, so
 expanding is exposure — not a doomsday timer. Convergence is guaranteed by the Pattern walk,
-never by PvE. Target: 15–30 min.
+never by PvE. Target: 5–20 min.
 
 ### 5. Readable chaos
 Color language is law: **gold = you**, **crimson = rival**, **sickly green = Chaos**,
@@ -57,7 +57,10 @@ Every balance question is answered with data:
   mechanic is decoration: cut or redesign.
 - **Convergence** — passive-vs-passive must still end (someone completes the Pattern) inside
   the match-length ceiling. No two policies may draw forever.
-- **Match length** — median 15–30 min across the matchup table.
+- **Match length** — median 5–20 min across the matchup table. It was 15–30 while every heir
+  had to find and claim its first spring; the opening now starts with a Gate already drawing,
+  the early economy arrives sooner, and the whole match telescopes with it. The band follows
+  the game rather than the game chasing the band.
 - **Expansion pays** — a bot that claims map must beat an otherwise-identical bot that does
   not, decisively. If turtling is competitive, the anti-stall model is broken at the root.
 

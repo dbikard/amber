@@ -145,8 +145,9 @@ sustainable pipeline, richer than Perils' neon vectors. `render.js` stays isolat
 
 ## Match Targets
 
-**15–30 minutes.** Free placement, the claim race and piecewise walls are an attention budget
-a short match cannot spend. Convergence is guaranteed by the Pattern walk (an uncontested
+**5–20 minutes.** Free placement, the claim race and walls are an attention budget a very
+short match cannot spend — but an heir now opens with a Gate already drawing on his one
+spring, so the early economy no longer has to be found before it can be spent. Convergence is guaranteed by the Pattern walk (an uncontested
 player always wins eventually) and driven by the essence race, not by a PvE timer.
 
 ## Later (post-MVP)

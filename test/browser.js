@@ -217,10 +217,19 @@ async function match(browser, base, renderer) {
       for (let i = 0; i < 90 && s.y > lid; i++) { R.pan(0, -20); s = R.project(c.x + a, c.y + b); }
       /* the offset is a starting guess: works and springs accumulate as a match runs, so walk
        * outward until the renderer agrees there is nothing but ground under the finger */
-      const bare = (p) => R.hitBuilding(p.x, p.y) < 0 && R.hitSite(p.x, p.y, g.world, 0, false) < 0;
+      const bare = (p) => R.hitBuilding(p.x, p.y) < 0 && R.hitSite(p.x, p.y, g.world, 0, false) < 0
+        && R.hitUnit(p.x, p.y, 0) === 0;
       for (let k = 1; k <= 12 && !bare(s); k++) {
         const q = R.project(c.x + a * (1 + k * 0.22), c.y + b * (1 + k * 0.22));
         if (q.y < lid && q.y > 80 && q.x > 20 && q.x < window.innerWidth - 20) s = q;
+      }
+      /* AND CLEAR IT OF YOUR OWN MEN. A tap on a soldier picks up his standard now, so a
+       * point that was bare when it was chosen stops being bare the moment the army wanders
+       * over it — which it does, between one tap and the next. */
+      const w3 = R.toWorld(s.x, s.y, 0);
+      for (let i = g.world.units.length - 1; i >= 0; i--) {
+        const u = g.world.units[i];
+        if (u.owner === 0 && Math.hypot(u.x - w3.x, u.y - w3.y) < 70) g.world.units.splice(i, 1);
       }
       return { x: s.x, y: s.y, lid: Math.round(lid) };
     }, [ox, oy]);
@@ -480,9 +489,14 @@ async function match(browser, base, renderer) {
     });
     ok('a node can be brought somewhere tappable', !!node);
     await pg.mouse.click(node.x, node.y); await pg.waitForTimeout(300);
-    const banner = await pg.evaluate(() => window.Game.game.world.players[0].banner);
-    ok('an armed flag still plants through an open sheet', banner && banner.site === node.id,
-       `banner site ${node.before} -> ${banner && banner.site}`);
+    /* THE TRAY IS COMPANIES NOW — there is no gold chip — so an armed flag posts that
+     * company's STANDARD, not a royal banner. */
+    const rallied = await pg.evaluate(() => {
+      const cos = window.Game.game.world.players[0].companies;
+      return cos.length ? cos[0].rally : null;
+    });
+    ok('an armed flag still plants through an open sheet', rallied && rallied.site === node.id,
+       `rally ${JSON.stringify(rallied)}`);
 
     /* the standard must also take BARE GROUND — the sim has nothing to refuse, and the tap
      * path must not invent a refusal of its own */
@@ -500,6 +514,7 @@ async function match(browser, base, renderer) {
         R.setZoom(zm); R.lookAt(lx, ly);
         for (let py = 110; py < lid; py += 12) for (let px = 30; px < window.innerWidth - 30; px += 12) {
           if (R.hitSite(px, py, g.world, 0, true) >= 0) continue;
+          if (R.hitUnit(px, py, 0) > 0) continue;   // a man there means his standard, not ground
           const w2 = R.toWorld(px, py, 0);
           if (!w2 || w2.x < 30 || w2.y < 30 || w2.x > C.MAP.W - 30 || w2.y > C.MAP.H - 30) continue;
           return { x: px, y: py, wx: w2.x, wy: w2.y };
@@ -513,7 +528,7 @@ async function match(browser, base, renderer) {
       await pg.waitForTimeout(150);
       await pg.mouse.click(open.x, open.y); await pg.waitForTimeout(300);
       const bare = await pg.evaluate(() => ({
-        b: window.Game.game.world.players[0].banner,
+        b: (window.Game.game.world.players[0].companies[0] || {}).rally,
         warn: [...document.querySelectorAll('#banner-wrap .banner')].map((e) => e.textContent).join(' | ')
       }));
       ok('a standard plants on bare ground', !!bare.b && bare.b.site === -1,
@@ -738,6 +753,8 @@ async function match(browser, base, renderer) {
           if (!onScreen(sa) || !onScreen(sb)) continue;
           if (R.hitSite(sa.x, sa.y, g.world, 0, false) >= 0) continue;
           if (R.hitBuilding(sa.x, sa.y) >= 0) continue;
+          /* ...and clear of your own men: a tap on a soldier picks up his standard now */
+          if (R.hitUnit(sa.x, sa.y, 0) > 0 || R.hitUnit(sb.x, sb.y, 0) > 0) continue;
           return { ax: sa.x, ay: sa.y, bx: sb.x, by: sb.y, wax: A.x, way: A.y, wbx: B.x, wby: B.y };
         }
       }
@@ -745,18 +762,28 @@ async function match(browser, base, renderer) {
     });
     ok('a legal run can be found on screen', !!run);
     if (run) {
-      await pg.mouse.click(run.ax, run.ay); await until(pg, () => window.UI.sheetOpen());
+      /* CHOOSE FIRST, PLACE SECOND. The sheet belongs to the BUILD button now, not to a patch
+       * of ground — tapping the map no longer opens it, which is what stopped the army and
+       * the ground competing for the same gesture. */
+      await pg.click('#btn-build'); await until(pg, () => window.UI.sheetOpen());
       const hasCard = await pg.evaluate(() =>
         !!document.querySelector('#sheet .card[data-bt="wall"]'));
-      ok('the build sheet offers a curtain wall', hasCard);
-      const armed = await pg.evaluate(() => {
+      ok('the build menu offers a curtain wall', hasCard);
+      const picked = await pg.evaluate(() => {
         const card = document.querySelector('#sheet .card[data-bt="wall"]');
         if (!card || card.classList.contains('locked')) return null;
         card.click();
-        return window.Game.game.span ? { x: window.Game.game.span.x, y: window.Game.game.span.y } : null;
+        return window.Game.game.placing ? window.Game.game.placing.bt : null;
       });
-      ok('the card arms the run rather than raising a work', !!armed);
+      ok('the card arms the work rather than raising one', picked === 'wall', String(picked));
       ok('...and the sheet gets out of the way', !(await sheetOpen()));
+      ok('...and the button shows it is armed',
+         await pg.evaluate(() => document.getElementById('btn-build').classList.contains('armed')));
+      /* the first tap on the map is the run's START */
+      await pg.mouse.click(run.ax, run.ay); await pg.waitForTimeout(200);
+      const armed = await pg.evaluate(() =>
+        window.Game.game.span ? { x: window.Game.game.span.x, y: window.Game.game.span.y } : null);
+      ok('the first tap anchors the run', !!armed);
       ok('the renderer is told where the run starts',
          await pg.evaluate(() => !!(window.Render.span)));
       const before = await pg.evaluate(() =>
@@ -775,6 +802,8 @@ async function match(browser, base, renderer) {
       ok('...and it is stored as a line, not a point', after.x2 != null);
       ok('the second tap opens no sheet of its own', !after.sheet);
       ok('and the arming is spent', !after.span && !after.rspan);
+      ok('...including the button', !(await pg.evaluate(() =>
+        document.getElementById('btn-build').classList.contains('armed'))));
       const mid = await pg.evaluate(([r2]) => {
         const w = window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall');
         const b = w[w.length - 1];
@@ -1286,10 +1315,9 @@ async function match(browser, base, renderer) {
       W.applyCommand(g.world, 0, { c: 'rally', co: id, site: site.id });
       window.UI.flags({ players: g.world.players }, 0, null);
       await new Promise((res) => requestAnimationFrame(res));
-      const royal = document.querySelector('#flag-tray .fbtn');
       return { ok: true, halls: 2, companies: g.world.players[0].companies.length,
-               chips: before, coChips: document.querySelectorAll('#flag-tray .fbtn.co').length,
-               royalWarns: !!royal.querySelector('.fcount.away'),
+               chips: document.querySelectorAll('#flag-tray .fbtn').length,
+               coChips: document.querySelectorAll('#flag-tray .fbtn.co').length,
                sameCo: a1.co === a2.co };
     });
     ok('the scenario set up', co.ok, co.why || '');
@@ -1298,7 +1326,10 @@ async function match(browser, base, renderer) {
          `${co.companies} companies for ${co.halls} halls`);
       ok('and the tray shows one chip for it, not one per hall', co.coChips === 1,
          `${co.coChips} company chips, ${co.chips} chips in all`);
-      ok('the gold flag says when part of the army no longer answers it', co.royalWarns);
+      /* THE GOLD CHIP IS GONE. It moved everything and struck every standing standard the
+       * moment you touched it; the tray is the army now, one flag per company. */
+      ok('and there is no gold chip above them any more', co.chips === co.coChips,
+         `${co.chips} chips, ${co.coChips} of them companies`);
     }
 
     /* ---------------- the back button ---------------- *

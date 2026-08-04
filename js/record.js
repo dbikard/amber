@@ -117,7 +117,7 @@
       line = 'upgrade ' + (b ? b.bt + ' → L' + b.level : '?') + (cmd.br ? ' (' + cmd.br + ')' : '');
     } else if (cmd.c === 'walk') line = cmd.on ? 'BEGIN THE WALK' : 'halt the walk';
     else if (cmd.c === 'power') line = 'power: ' + (C.POWERS[cmd.k] ? C.POWERS[cmd.k].name : cmd.k);
-    else if (cmd.c === 'banner') line = 'War Banner';
+    else if (cmd.c === 'banner') line = 'the Recall — every standard struck';
     else if (cmd.c === 'rally') line = 'company ' + cmd.co + ' standard';
     else if (cmd.c === 'assign') line = 'hall → company ' + cmd.co;
     else if (cmd.c === 'muster') line = cmd.pause ? 'halt the muster' : 'resume the muster';

@@ -29,6 +29,7 @@
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
     $('btn-skirmish').addEventListener('click', () => $('skirmish-row').classList.toggle('hidden'));
     $('btn-lan').addEventListener('click', () => $('lan-panel').classList.toggle('hidden'));
+    $('btn-build').addEventListener('click', () => H.onBuildMenu());
     $('btn-pause').addEventListener('click', () => H.onPause());
     $('halt').addEventListener('click', () => H.onPause());
     $('pw-storm').addEventListener('click', () => H.onPower('storm'));
@@ -169,19 +170,10 @@
       tray.appendChild(b);
       return b;
     };
-    const royal = mk('royal', '⚑', '', '#ffd98a');
-    /* The War Banner is the general muster and outranks every company standard, so raising it
-     * calls the detachments in too. The count says how many standards that would strike —
-     * useful to know BEFORE you tap, since it undoes orders you gave on purpose. */
-    const afield = rows.filter((r) => r[1]).length;
-    royal.title = afield ? 'the War Banner calls in ' + afield + ' posted standard(s) as well'
-                         : 'the whole army answers the War Banner';
-    if (afield) {
-      const w2 = document.createElement('span');
-      w2.className = 'fcount away';
-      w2.textContent = afield;
-      royal.appendChild(w2);
-    }
+    /* NO GOLD FLAG. There was one chip that moved everything and a chip per company, and the
+     * gold one was both redundant and a trap — it struck every standing detachment order the
+     * moment you touched it. Every hall flies a standard of its own now, so the tray is the
+     * army: one flag per company, and nothing that quietly overrules them. */
     for (const [id, afield, n] of rows) {
       const col = UI.coColor(id);
       const b = mk(id, '⚐', 'co', col);
@@ -202,7 +194,7 @@
     if (typeof armed === 'number') {
       const rj = document.createElement('button');
       rj.id = 'flag-rejoin';
-      rj.textContent = '⟲ REJOIN';
+      rj.textContent = '⟲ HOLD';
       rj.addEventListener('click', () => H.onRejoin(armed));
       tray.appendChild(rj);
     }
@@ -220,7 +212,11 @@
     let gates = 0, busy = 0;
     for (const b of me.buildings) {
       if (b.bt === 'gate' && !b.raise) gates++;
-      if (b.raise > 0) busy += (b.crews || 1);
+      /* A CREW IN A WORK IS A CREW. This counted only works going UP, so while a level was
+       * being raised or a breach mended — both of which take a crew, and both of which the
+       * sim counts — the yard read as idle and the next order came back 'busy'. The readout
+       * has to mirror World.rising exactly or it is worse than not having one. */
+      if (b.raise > 0 || b.work > 0) busy += (b.crews || 1);
     }
     const total = Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
     const free = Math.max(0, total - busy);
@@ -312,7 +308,7 @@
     taken: 'that spring is already drawn upon',
     presence: 'no troops of yours stand there to claim it',
     contested: 'the enemy stands there',
-    busy: 'your masons are all at work — every three Shadow Gates you hold hire another crew',
+    busy: 'your masons are all at work — every Shadow Gate you hold hires another crew',
     unique: 'you have one already',
     /* a work with a length has two refusals of its own — both about the RUN, not the spot */
     short: 'too short a run to be a wall',
@@ -333,17 +329,16 @@
       b.addEventListener('click', () => pick(val));
       el.appendChild(b);
     };
-    row('The War Banner', 'Its muster marches with the army wherever the gold flag stands',
-        '#ffd98a', current === 0, 0);
     for (const co of cos) {
       const n = me.buildings.filter((q) => C.BUILDINGS[q.bt] && C.BUILDINGS[q.bt].spawns && q.co === co.id).length;
       row('Standard ' + co.id,
           (n ? n + (n === 1 ? ' hall musters' : ' halls muster') + ' under it' : 'no hall under it yet') +
-          (co.rally ? ' · posted afield' : ' · with the Banner'),
+          (co.rally ? ' · posted afield' : ' · holding at home'),
           UI.coColor(co.id), current === co.id, co.id);
     }
     row('A new standard', 'Raise a company of its own, with its own flag in the tray',
         '#b8a878', false, 'new');
+    if (!cos.length) return;   // nothing to choose between: the caller should not have asked
   }
 
   function cardBody(d, bt, bad) {
@@ -366,17 +361,19 @@
         if (card.classList.contains('locked')) return;
         /* a hall that musters troops asks which standard it answers to — everything else
          * simply goes up */
-        /* A WORK WITH A LENGTH needs a second point. The card arms it — the tap that
-         * follows names the far end — which is the same arm-then-act idiom as a standard,
-         * so there is nothing new to learn. */
-        if (d.span) { H.onSpan(at.x, at.y, bt); UI.closeSheet(); return; }
-        if (d.spawns && el._me) {
+        /* every card ARMS the work now; the map places it. A work with a LENGTH simply
+         * needs two taps instead of one, which the placement flow already knows. */
+        if (d.span) { H.onPick(bt, undefined); UI.closeSheet(); return; }
+        /* THE FIRST HALL DOES NOT ASK. There is nothing to choose between, and a menu with
+         * one option on it is a menu you resent — it simply raises its own standard. Every
+         * hall after that gets the choice: join one of yours, or raise another. */
+        if (d.spawns && el._me && (el._me.companies || []).length) {
           el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — under which standard?</div>`;
-          standardCards(el, el._me, 0, (co) => { H.onBuild(at.x, at.y, bt, co); UI.closeSheet(); });
+          standardCards(el, el._me, 0, (co) => { H.onPick(bt, co); UI.closeSheet(); });
           addCancel(el);
           return;
         }
-        H.onBuild(at.x, at.y, bt);
+        H.onPick(bt, undefined);
         UI.closeSheet();
       });
       el.appendChild(card);
@@ -387,15 +384,20 @@
     el._why = why || null;
   }
   const freshSheet = () => { const el = $('sheet'); el._why = null; el._raising = null; return el; };
+  /* CHOOSE FIRST, PLACE SECOND. The sheet no longer belongs to a spot on the map — it is what
+   * the BUILD button opens — so the cards cannot say why a particular patch of ground refuses
+   * them. They say what a work costs and whether you can afford it; the ground answers when
+   * you put it down, which is also when you can see where it is going. */
   UI.buildSheet = function (at, essence, why, me) {
     const el = freshSheet();
     el._me = me || null;
-    el.innerHTML = `<div class="sheet-title">Raise a work here ${trChip(essence)}</div>`;
+    el.innerHTML = `<div class="sheet-title">Raise a work ${trChip(essence)}</div>`;
     buildCards(el, at, essence, why);
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
   };
+  UI.armBuild = function (on) { $('btn-build').classList.toggle('armed', !!on); };
 
   /* a forked tower shows what it BECAME, not the generic name it was raised under */
   function towerFace(s) {
@@ -499,8 +501,8 @@
       info.className = 'sheet-blurb';
       info.innerHTML = co
         ? `<b style="color:${UI.coColor(co.id)}">⚐ Standard ${co.id}</b>` +
-          (co.rally ? ' — posted afield; its flag is in the tray' : ' — with the War Banner')
-        : '⚑ Its muster marches under the War Banner';
+          (co.rally ? ' — posted afield; its flag is in the tray' : ' — holding at home')
+        : '⚐ Its muster answers no standard yet';
       el.appendChild(info);
       const change = document.createElement('button');
       change.className = 'card';
@@ -565,7 +567,7 @@
         const rc = document.createElement('button');
         rc.className = 'card walkbtn';
         rc.innerHTML = '<span class="c-name">🛡 Sound the Recall</span>' +
-                       '<span class="c-blurb">The War Banner returns home and every company folds back — defend the city</span>';
+                       '<span class="c-blurb">Every standard is struck and the whole army turns for home — defend the city</span>';
         rc.addEventListener('click', () => { H.onRecall(); UI.closeSheet(); });
         el.appendChild(rc);
         /* the muster valve */

@@ -20,7 +20,8 @@
     mode: null, world: null, viewer: 0, bot: null,
     names: ['', ''], campaign: false,
     targeting: false, over: false, lastRiftBanner: -99, armedFlag: null,
-    span: null              // a wall half-placed: its anchor, waiting for the far end
+    span: null,             // a wall half-placed: its anchor, waiting for the far end
+    placing: null           // a work CHOSEN and waiting for the ground: { bt, co }
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
@@ -48,16 +49,16 @@
     /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
     game.world.players[1].eco = (opts && opts.eco) || 1;
     game.names = ['Corwin', AI.HEIRS[kind].title];
-    game.targeting = false; game.span = null; Render.span = null;
+    game.targeting = false; game.placing = null; game.span = null; Render.span = null;
     /* first-matches onboarding: teach the banner, the springs, the assault */
     const seenHints = +localStorage.getItem('amber_hints') || 0;
     if (seenHints < 3) {
       localStorage.setItem('amber_hints', String(seenHints + 1));
       game.hints = [
-        [6, '⚑ Arm the gold flag (bottom-left), then tap any site — the army marches there', 'alert'],
-        [24, 'Essence is out on the map: march troops to a spring, then TAP THE SPRING to raise a Gate', 'alert'],
-        [45, '⚔ To win by force, plant the gold flag on the rival city itself', 'alert'],
-        [70, '⚐ Every barracks adds a company flag to the tray — arm one to split your forces', 'alert']
+        [6, '⚐ Raise a Barracks — it raises a standard of its own, and its flag joins the tray', 'alert'],
+        [22, 'TAP YOUR OWN TROOPS to pick up their standard, then tap where they should stand', 'alert'],
+        [45, 'Essence is out on the map: march men to a spring, then TAP THE SPRING to raise a Gate', 'alert'],
+        [75, '⚔ To win by force, plant a standard on the rival city itself', 'alert']
       ];
     } else game.hints = [];
     Render.resize();
@@ -77,7 +78,7 @@
     game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
     Net.localIdx = game.viewer;
     game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
-    game.span = null; Render.span = null;
+    game.span = null; game.placing = null; Render.span = null;
     game.names = C.SEAT_NAMES.slice(0, n);
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     game.world = Net.isHost ? World.createWorld(seed, n) : null;
@@ -109,9 +110,10 @@
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
     const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
     if (halted) { issue({ c: 'pause', on: false }); armBack(); return; }
-    if (game.targeting || game.armedFlag != null || game.span) {
+    if (game.targeting || game.armedFlag != null || game.span || game.placing) {
       game.targeting = false; game.armedFlag = null;
       game.span = null; Render.span = null;
+      clearPlacing();
       UI.banner('Cancelled', 'warn');
       armBack(); return;
     }
@@ -233,6 +235,15 @@
   }
 
   /* ---------------- commands ---------------- */
+  /* A WORK IS CHOSEN, THEN PLACED. The map used to be asked "what is here?" on every tap and
+   * answered differently depending on what happened to be under the finger — and once a tap
+   * on your own men picked up their standard, bare ground was competing with the army for the
+   * same gesture. The BUILD button says what you are doing before the map has to. */
+  function clearPlacing() {
+    game.placing = null; game.span = null;
+    if (Render.span !== undefined) Render.span = null;
+    if (UI.armBuild) UI.armBuild(false);
+  }
   function issue(cmd) {
     if (game.mode === 'guest') {
       Net.send({ t: 'cmd', c: cmd });
@@ -346,7 +357,7 @@
          * neither is the order to come home */
         if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site)
           : ev.x != null ? '⚐ The company posts its standard in open country'
-          : '⚑ The company rejoins the War Banner', '');
+          : '⚐ The company holds at home', '');
       }
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
       /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
@@ -482,13 +493,32 @@
     const x = e.clientX, y = e.clientY;
     const view = game.mode === 'guest' ? (snapCur ? guestView() : null) : hostView();
     if (!view) return;
-    /* the second tap of a wall closes the run — before flags, before sheets, because it is
-     * the thing the player is plainly in the middle of doing */
+    /* PLACING A CHOSEN WORK comes before everything — it is the thing the player is plainly
+     * in the middle of doing, and nothing else on the map should steal the tap. */
     if (game.span) {
       const from = game.span;
-      game.span = null; Render.span = null;
       const w = Render.toWorld(x, y, game.viewer);
-      issue({ c: 'build', x: from.x, y: from.y, x2: w.x, y2: w.y, bt: from.bt });
+      const r = issue({ c: 'build', x: from.x, y: from.y, x2: w.x, y2: w.y, bt: from.bt, co: from.co });
+      /* a refused run keeps the anchor, so you can try the far end again without starting over */
+      if (!r || r.ok !== false) clearPlacing();
+      return;
+    }
+    if (game.placing) {
+      const w = Render.toWorld(x, y, game.viewer);
+      const def = C.BUILDINGS[game.placing.bt];
+      if (def.span) {   // a work with a LENGTH: this tap is the anchor, the next is the far end
+        game.span = { x: w.x, y: w.y, bt: game.placing.bt, co: game.placing.co };
+        /* `reach` is how long a run the idle masons can cover — the only limit on a wall's
+         * length — so the preview can refuse a run for the real reason before the second tap
+         * does. A guest holds no world; the host validates, and its preview does not judge. */
+        const reach = game.world ? World.wallReach(game.world, game.viewer) : 0;
+        Render.span = { x: w.x, y: w.y, from: Render.pointer, reach };
+        UI.banner(reach ? 'Now tap where the wall should END — the masons reach ' + Math.round(reach)
+                        : 'Now tap where the wall should END', 'alert');
+        return;
+      }
+      const r = issue({ c: 'build', x: w.x, y: w.y, bt: game.placing.bt, co: game.placing.co });
+      if (!r || r.ok !== false) clearPlacing();   // a refusal leaves it armed to try again
       return;
     }
     if (game.armedFlag != null) {
@@ -500,8 +530,7 @@
       const siteId = Render.hitSite(x, y, view, game.viewer, true);   // flags: whole court counts
       const w = Render.toWorld(x, y, game.viewer);
       const where = siteId >= 0 ? { site: siteId } : { x: w.x, y: w.y };
-      if (id === 'royal') issue({ c: 'banner', ...where });
-      else issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
+      issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
       return;
     }
     if (game.targeting) {
@@ -514,6 +543,16 @@
     /* A sheet is a modal: the first tap outside it just dismisses it. Armed flags and storm
      * targeting are handled above, so an explicit armed action still goes through. */
     if (UI.sheetOpen()) { UI.closeSheet(); return; }
+    /* A TROOP OF YOURS IS HIS COMPANY'S FLAG. Finding the right chip in the tray means
+     * remembering which colour you gave which hall; pointing at the men themselves does not.
+     * Tapping one arms his standard, and the next tap is where they go. */
+    const uco = Render.hitUnit ? Render.hitUnit(x, y, game.viewer) : 0;
+    if (uco > 0) {
+      game.armedFlag = game.armedFlag === uco ? null : uco;
+      UI.banner(game.armedFlag ? '⚐ Standard ' + uco + ' — tap where they should stand' : 'Cancelled',
+                game.armedFlag ? 'alert' : 'warn');
+      return;
+    }
     /* one of your own works first (they overlap everything), then sites, then bare ground */
     const bid = Render.hitBuilding(x, y);
     if (bid >= 0) {
@@ -531,11 +570,9 @@
                    foeCity ? null : { x: site.x, y: site.y }, whyAt(site.x, site.y));
       return;
     }
-    /* bare ground: free placement. The sim owns the rules — we just ask it, per card, so
-     * the sheet can say WHY a work will not stand here instead of failing silently. */
-    const w2 = Render.toWorld(x, y, game.viewer);
+    /* bare ground does nothing now: raising a work begins at the BUILD button, so the map is
+     * only ever asked about things that are ON it. */
     Render.selected = -1;
-    UI.buildSheet(w2, view.players[game.viewer].essence, whyAt(w2.x, w2.y), view.players[game.viewer]);
   }
 
   /* Why a work will not stand at a point, per type — asked of the sim itself so the sheet
@@ -731,20 +768,22 @@
       },
       onFix: (id) => issue({ c: 'fix', id }),
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
-      /* the first tap of a wall: hold the anchor, show the run, wait for the second */
-      onSpan: (x, y, bt) => {
-        game.span = { x, y, bt };
-        /* remember the pointer the card was tapped with: on a phone there is no hover, and a
-         * preview drawn to a stale finger position reads as "too short" before you have
-         * pointed anywhere at all.
-         * `reach` is how long a run the idle masons can actually cover — the only limit on a
-         * wall's length — so the preview can refuse a run for the real reason before the
-         * second tap does. A guest holds no world; the host validates, and its preview simply
-         * does not judge the length. */
-        const reach = game.world ? World.wallReach(game.world, game.viewer) : 0;
-        Render.span = { x, y, from: Render.pointer, reach };
-        UI.banner(reach ? 'Now tap where the wall should END — the masons reach ' + Math.round(reach)
-                        : 'Now tap where the wall should END', 'alert');
+      onBuildMenu: () => {
+        if (game.over) return;
+        if (game.placing) { clearPlacing(); UI.banner('Cancelled', 'warn'); return; }
+        const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
+        if (!view) return;
+        game.targeting = false; game.armedFlag = null;
+        UI.buildSheet(null, view.players[game.viewer].essence, null, view.players[game.viewer]);
+      },
+      /* a card was chosen: hold it, and let the next tap on the map say where */
+      onPick: (bt, co) => {
+        game.placing = { bt, co };
+        game.span = null; Render.span = null;
+        UI.armBuild(true);
+        const d = C.BUILDINGS[bt];
+        UI.banner(d.span ? '🔨 ' + d.name + ' — tap where the run should START'
+                         : '🔨 ' + d.name + ' — tap where it should stand', 'alert');
       },
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
@@ -753,14 +792,17 @@
         game.targeting = false;
         game.armedFlag = game.armedFlag === id ? null : id;
         if (game.armedFlag != null)
-          UI.banner(id === 'royal' ? '⚑ Tap where the army should march' : '⚐ Tap where this company should stand', 'alert');
+          UI.banner('⚐ Tap where this company should stand', 'alert');
       },
       onRejoin: (co) => { game.armedFlag = null; issue({ c: 'rally', co, site: -1 }); },
       onAssign: (id, co) => issue({ c: 'assign', id, co }),
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
-        /* one command: the War Banner already strikes every company standard */
+        /* THE RECALL is the one thing the gold flag was genuinely good for, so it survives as
+         * a button rather than a flag: one order that strikes every standing standard and
+         * turns the whole army for home. `banner` is still that command — it simply has no
+         * chip in the tray any more. */
         issue({ c: 'banner', site: view.map.cities[game.viewer] });
         UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },

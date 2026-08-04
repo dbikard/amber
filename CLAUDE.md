@@ -119,6 +119,25 @@ human could see (see `AI.view()`).
 - Colors: gold=player, crimson=rival, green=Chaos, blue-white=Pattern. Don't drift.
 - `render3d.js` stays isolated: game logic never draws; drawing never mutates the world.
 
+## Orders and building
+
+There is no gold banner. Every mustering hall flies a COMPANY standard — `joinCo` never
+returns 0, so a hall raised without one raises its own — and the tray is one chip per company.
+The `{c:'banner'}` command survives as **the Recall**: one order that strikes every standing
+standard and turns the army home. The AI still uses it as its general muster, which is why
+removing it outright would mean rewriting every heir's doctrine.
+Tapping your own troops arms their company (`Render.hitUnit`, tight 24 reach on purpose).
+
+Building is CHOOSE-THEN-PLACE: the 🔨 BUILD button opens the sheet, a card arms
+`game.placing`, and the next tap on the map places it (a wall takes two — anchor, then far
+end). Bare ground does nothing. A refusal leaves the work armed so another spot can be tried.
+The cards cannot say why a particular spot refuses them any more — the sheet no longer belongs
+to one — so they show cost and affordability only.
+
+The mason readout must mirror `World.rising` EXACTLY: a crew is busy when `raise > 0` **or**
+`work > 0` (an upgrade or a mend). It once counted only `raise` and cheerfully reported a free
+crew that every order then bounced off as 'busy'.
+
 ## The opening
 
 Every heir starts with **exactly one spring inside his writ** and **a finished Shadow Gate on
