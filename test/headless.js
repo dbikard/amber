@@ -1181,14 +1181,51 @@ suite('the curtain wall')
     ok('a tower may be raised into your own curtain', r3.ok, r3.err);
     const tw = pl2.buildings.filter((q) => q.bt === 'tower').pop();
     eq('...and it knows which run it stands on', tw.onWall, b.id);
+
+    /* A TAP NEAR THE RUN IS A TAP ON IT. The stone is drawn thirty high and the camera looks
+     * down it at an angle, so the ground under the parapet you tapped lies BEHIND the wall —
+     * which fell straight into the band where a tower was too far to join (WALL.thick+16) and
+     * too near to stand (BUILD.foot*2+gap). Reported from play as "towers don't join walls, I
+     * get error messages", and it was not the rule: it was that you could not point at it. */
+    {
+      const off = (d, along) => ({ x: b.x + (nx / nL) * d + (ends[2] - ends[0]) * along,
+                                   y: b.y + (ny / nL) * d + (ends[3] - ends[1]) * along });
+      const dead = C.BUILD.foot * 2 + C.BUILD.gap;
+      ok('the old dead band was real', C.WALL.thick + 16 < dead,
+         `join at ${C.WALL.thick + 16}, crowded out to ${dead}`);
+      ok('...and the snap reaches past it', C.WALL.join > dead * 0.7, `${C.WALL.join} vs ${dead}`);
+      /* the tower already standing in the run would crowd these out — a short run leaves
+       * little room along it — so lift it for the probes and put it back after */
+      const keep = pl2.buildings.indexOf(tw);
+      pl2.buildings.splice(keep, 1);
+      for (const d of [22, 40, 58]) {
+        const p5 = off(d, -0.3);
+        const r5 = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: p5.x, y: p5.y });
+        const t5 = pl2.buildings.filter((q) => q.bt === 'tower').pop();
+        ok(`a tap ${d} off the run still joins it`, r5.ok && t5.onWall === b.id,
+           r5.ok ? `onWall ${t5.onWall}` : r5.err);
+        if (r5.ok) pl2.buildings.splice(pl2.buildings.indexOf(t5), 1);
+      }
+      /* ...but a tower genuinely away from the wall is still its own work */
+      const far5 = off(C.WALL.join + 40, -0.3);
+      const r6 = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: far5.x, y: far5.y });
+      if (r6.ok) {
+        const t6 = pl2.buildings.filter((q) => q.bt === 'tower').pop();
+        ok('and one well clear of it is not snapped in', !t6.onWall, `onWall ${t6.onWall}`);
+        pl2.buildings.splice(pl2.buildings.indexOf(t6), 1);
+      } else ok('and one well clear of it is not snapped in', true, 'no ground for it');
+      pl2.buildings.splice(keep, 0, tw);
+    }
     tw.raise = 0; tw.cd = 0;
     /* A SECOND TOWER, BEHIND THE WALL. Searched for rather than computed: a spot far enough
      * inward to be sheltered lands on the Seat's own ground, and one far enough along the run
      * crowds the tower already in the wall — hand-picking a point here silently returned the
      * SAME tower twice and made the whole comparison meaningless. */
+    /* ...and it has to be beyond the SNAP, not merely beyond the old join radius: a tower
+     * dropped within WALL.join of your own run is pulled onto it, which is the whole point. */
     let back = null;
     for (let along = -0.55; along <= 0.55 && !back; along += 0.1) {
-      for (let inward = 45; inward <= 110 && !back; inward += 10) {
+      for (let inward = C.WALL.join + 20; inward <= 150 && !back; inward += 10) {
         const p4 = { x: b.x + (ends[2] - ends[0]) * along - (nx / nL) * inward,
                      y: b.y + (ends[3] - ends[1]) * along - (ny / nL) * inward };
         if (World.placementError(w, 0, p4.x, p4.y, 'tower')) continue;

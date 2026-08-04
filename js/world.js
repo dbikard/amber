@@ -592,6 +592,20 @@
         crews = wallCrews(Math.sqrt(d2(x, y, x2, y2)));
         x = (x + x2) / 2; y = (y + y2) / 2;
       }
+      /* A TOWER MEANT FOR THE WALL LANDS ON THE WALL. The stone is drawn thirty high and the
+       * camera looks down it at an angle, so the ground under the parapet you tapped is
+       * behind the run, not on it — and that gap fell straight into the band where a tower
+       * is too far to join and too near to stand. Snap it, so pointing at your own curtain
+       * means what it looks like it means. */
+      if (cmd.bt === 'tower' && world.anyWall) {
+        let near2 = null, nd = C.WALL.join * C.WALL.join;
+        for (const wl of world.walls) {
+          if (wl.owner !== pi) continue;
+          const dd = segD2(wl.b, x, y);
+          if (dd < nd) { nd = dd; near2 = wl.b; }
+        }
+        if (near2) { const q = segNear(near2, x, y); x = q.x; y = q.y; }
+      }
       const bad = def.span ? null : placementError(world, pi, x, y, cmd.bt);
       if (bad) return { ok: false, err: bad };
       /* A RUN IS PRICED BY THE FOOT. One crew's worth of wall costs what the card says; twice

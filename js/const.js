@@ -268,6 +268,12 @@
                   * the middle of the run, it is `gate` wide, and it is YOURS — a rival reaching
                   * it finds it shut, and must break the wall instead. */
                  gate: 30,
+                 /* HOW NEAR IS "ON IT". A tower dropped this close to your own run is snapped
+                  * onto it. Generous on purpose: a wall stands thirty tall and the camera is
+                  * pitched, so a tap on the stone you can SEE lands well behind it on the
+                  * ground — and between the join radius and the crowding radius there was a
+                  * dead band where a tower could neither join the wall nor stand beside it. */
+                 join: 62,
                  /* a breach is repaired, not rebuilt: a crew, a while, and half the stone.
                   * `rubble` is what a ruin keeps standing — it bars nothing and shelters
                   * nobody, but the ground it sits on is not free until somebody clears it,
