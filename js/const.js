@@ -52,19 +52,21 @@
    * an army on the player's ground at 5.3 minutes. Worse, cutting income alone brings the
    * assault SOONER, since a poorer heir builds less realm and marches earlier. So the ladder
    * now runs on income AND on `hold`, the hour before the heir will march on your Seat. */
-  /* EASED, ALL THREE OF THEM. The ladder's shape is unchanged — income and the hour it
-   * marches, both moving monotonically down the table — but every rung gives a little more
-   * room than it did. Note what this costs: PRINCE is no longer the unhandicapped heir. The
+  /* EASED, ALL THREE OF THEM — and then put back a notch, because eased read as too easy once
+   * the heirs started marching on Seats instead of escorting builders around their own half of
+   * the board. The table sits between where it began and where the easing left it: still more
+   * room than the original on every rung, and a good deal less than it had a version ago.
+   * The shape is unchanged — income and the hour it marches, both moving monotonically down. Note what this costs: PRINCE is no longer the unhandicapped heir. The
    * heirs still fight each other at full strength in `node sim.js`, and that is where the
    * balance targets are measured; the top of the solo ladder is now a hard opponent rather
    * than the reference one. */
   CONST.DIFFICULTY = {
-    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, eco: 0.46, hold: 840,
-               blurb: 'Poor, and will not march on your Seat for fourteen minutes.' },
-    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, eco: 0.62, hold: 480,
-               blurb: 'A real opponent, but not at your gate before you have a realm.' },
-    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 0.88, hold: 120,
-               blurb: 'Very nearly the heir the other heirs face, and barely a pause before he comes.' }
+    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, eco: 0.52, hold: 780,
+               blurb: 'Poor, and will not march on your Seat for thirteen minutes.' },
+    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, eco: 0.70, hold: 390,
+               blurb: 'A real opponent, and at your gate not long after you have a realm.' },
+    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 0.96, hold: 60,
+               blurb: 'Very nearly the heir the other heirs face, and he comes almost at once.' }
   };
   CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];
   CONST.DIFFICULTY_DEFAULT = 'heir';
