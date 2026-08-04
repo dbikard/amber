@@ -223,6 +223,9 @@
           hp: Math.round(b.hp), maxHp: b.maxHp, node: b.node,
           /* an unfinished work reads as a shell to BOTH sides — it is plainly scaffolding */
           raise: b.raise > 0 ? Math.round(b.raise * 10) / 10 : 0, raiseFor: b.raiseFor || 0,
+          /* the masons in the yard are as visible as the scaffolding on a new work: a hall
+           * that has gone quiet must LOOK like one to a guest too */
+          work: b.work > 0 ? Math.round(b.work * 10) / 10 : 0, workFor: b.workFor || 0,
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
           co: mine ? b.co : 0            // which company a hall musters into is yours to know
@@ -248,6 +251,8 @@
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
                        /* which wall he is standing on, so a guest draws him on the stone too */
                        ...(u.man ? { man: u.man } : {}),
+                       /* rank changes what he LOOKS like, so it is not a secret worth keeping */
+                       ...(u.tier > 1 ? { tier: u.tier } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),
       /* the halt is the table's, not a seat's — every guest must see it and who called it */
       paused: world.paused ? { by: world.paused.by } : null,

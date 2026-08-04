@@ -1083,6 +1083,72 @@ suite('the curtain wall')
   ok('...and the movement layer is told', w.navVersion > ver);
 }
 
+/* A LEVEL MAKES BETTER MEN, NOT MORE OF THEM. Halls used to buy THROUGHPUT — the same
+ * soldier arriving faster — so an upgraded realm fought with bigger crowds of identical men
+ * and there was nothing to see. The muster interval is flat now and the level rides on the
+ * recruit, who keeps it for life. The numbers are the old rate ratios exactly, on the price
+ * as well as the stats, so the essence buys the same total hit points and the same total
+ * damage per minute as before: what changed is the PACKAGING. */
+suite('veterans, not crowds')
+{
+  const b = C.BUILDINGS.barracks;
+  eq('a hall musters at one rate, whatever its level', new Set(b.period).size, 1);
+  eq('...and so does the Spire', new Set(C.BUILDINGS.spire.period).size, 1);
+  eq('...and the Works', new Set(C.BUILDINGS.siege.period).size, 1);
+  eq('there is a rank for every level', C.TIER.length, C.MAX_LEVEL);
+  eq('rank 1 is exactly the man we always had', C.TIER[0], 1);
+  ok('and every rank after is better', C.TIER[1] > C.TIER[0] && C.TIER[2] > C.TIER[1], C.TIER.join('/'));
+
+  /* THE ECONOMY IS UNCHANGED. Same drain, same hit points and same damage per minute at
+   * every level as the throughput upgrade bought — this is the assertion that says the swap
+   * was a repackaging and not a buff. */
+  const u = C.UNITS.soldier, OLD = [8, 6.4, 5.0];
+  for (let L = 1; L <= 3; L++) {
+    const m = C.TIER[L - 1], per = b.period[L - 1];
+    near(`level ${L} drains what it always did`, (u.cost * m) / per, u.cost / OLD[L - 1], 0.05);
+    near(`level ${L} delivers the hit points it always did`, (60 / per) * u.hp * m, (60 / OLD[L - 1]) * u.hp, 2);
+    near(`level ${L} delivers the damage it always did`, (60 / per) * u.dmg * m, (60 / OLD[L - 1]) * u.dmg, 0.4);
+  }
+
+  /* and in the sim: a level-2 hall musters a heavier man, not a faster one */
+  const w = World.createWorld(1000);
+  w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0), pl = w.players[0];
+  pl.essence = 100000;
+  World.applyCommand(w, 0, { c: 'build', bt: 'barracks', x: c.x + 130, y: c.y });
+  const run = (secs) => { for (let i = 0; i < 30 * secs; i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+  run(C.BUILDINGS.barracks.raise + 1);
+  const hall = pl.buildings.find((q) => q.bt === 'barracks');
+  run(30);
+  const recruits = w.units.filter((q) => q.owner === 0);
+  ok('a level-1 hall musters men', recruits.length > 0, recruits.length);
+  eq('...of the rank it is', recruits[0].tier, 1);
+  eq('...with the stats we have always had', recruits[0].maxHp, C.UNITS.soldier.hp);
+
+  /* THE MASONS TAKE TIME, AND THE HALL GOES QUIET. That is the real cost of a level. */
+  const before = w.units.filter((q) => q.owner === 0).length;
+  const up = World.applyCommand(w, 0, { c: 'up', id: hall.id });
+  ok('the hall can be raised a level', up.ok, up.err);
+  ok('...and it takes masonry, not a moment', hall.work > 0, hall.work);
+  eq('...which occupies a crew', World.rising(w, 0), 1);
+  eq('...so nothing else may be started', World.masons(w, 0) - World.rising(w, 0), 0);
+  run(Math.ceil(hall.work) - 1);
+  eq('the hall musters nobody while they are in it', w.units.filter((q) => q.owner === 0).length, before);
+  ok('...but it still stands, and can still be broken', hall.hp > 0 && hall.maxHp > 0);
+  run(3);
+  eq('the masons finish', hall.work, 0);
+  eq('...at the level that was paid for', hall.level, 2);
+
+  /* and now the men are different men */
+  run(30);
+  const vets = w.units.filter((q) => q.owner === 0 && q.tier === 2);
+  ok('the hall musters veterans', vets.length > 0, vets.length);
+  near('...who are tougher', vets[0].maxHp, C.UNITS.soldier.hp * C.TIER[1], 0.01);
+  near('...and hit harder', vets[0].dmg, C.UNITS.soldier.dmg * C.TIER[1], 0.01);
+  ok('a veteran keeps his rank after the hall falls',
+     (() => { World.hurtBuilding(w, 0, hall.id, 1e9, 1); return w.units.some((q) => q.tier === 2); })());
+}
+
 /* THE HALT. Anyone at the table may call one and anyone may lift it, and it stops the WORLD
  * rather than merely hiding it: no clock, no muster, no Chaos, and no orders. A pause you can
  * build through is a planning phase, and in a duel it is a way to buy thinking time the other

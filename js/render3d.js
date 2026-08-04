@@ -30,6 +30,27 @@
   R.groundH = (x, z) => groundH(x, z);
   /* test handle: the army's instanced meshes, so a suite can prove they are still drawn */
   R.debugUnitMeshes = () => unitIM;
+  /* test handle: the works as the renderer currently holds them, so a suite can prove a
+   * level (or a wall's run, or scaffolding) actually rebuilt the model rather than trusting
+   * that it must have */
+  R.debugWorks = (id) => {
+    const shape = (wid, w) => {
+      let verts = 0, opacity = 1;
+      w.grp.traverse((o) => {
+        if (o.geometry && o.geometry.attributes && o.geometry.attributes.position && o !== w.pad)
+          verts += o.geometry.attributes.position.count;
+        if (o.material && o !== w.pad && o.material.opacity < opacity) opacity = o.material.opacity;
+      });
+      return { id: wid, key: w.key, verts, opacity };
+    };
+    if (id != null) {
+      for (const g of cityObjs) { const w = g.works.get(id); if (w) return shape(id, w); }
+      return null;
+    }
+    const out = new Map();
+    for (const g of cityObjs) for (const [wid, w] of g.works) out.set(wid, shape(wid, w));
+    return out;
+  };
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
   /* have I found THIS seat? one flag per seat now; `foeSeen` is the old two-player spelling */
@@ -124,10 +145,16 @@
     p.push(part(box(14, 8, 0.8), gold ? 0xffe9a8 : 0xff9aa8, 8, 110, 0));
     return meshOf(p);
   }
-  /* key is 'bt' or, for a forked Watchtower, 'tower:bolt' / 'tower:cannon' */
+  /* key is 'bt', a forked Watchtower 'tower:bolt', and always a LEVEL after it: 'barracks@2'.
+   * A level you paid for and cannot see is a level you will forget you bought — so every
+   * work grows with its rank, in the silhouette rather than the paint. */
   function buildingModel(key) {
-    const cut = key.indexOf(':'), bt = cut < 0 ? key : key.slice(0, cut), br = cut < 0 ? '' : key.slice(cut + 1);
+    const at = key.indexOf('@');
+    const lv = at < 0 ? 1 : Math.max(1, Math.min(3, +key.slice(at + 1) || 1));
+    const head = at < 0 ? key : key.slice(0, at);
+    const cut = head.indexOf(':'), bt = cut < 0 ? head : head.slice(0, cut), br = cut < 0 ? '' : head.slice(cut + 1);
     const st = 0x8d8296, stD = 0x4a4258, stL = 0xcfc6d8, woodR = 0x6e4434;
+    const gild = lv > 2 ? 0xe6c877 : 0xc9bfa0;   // the banding a raised work earns
     const p = [];
     if (bt === 'gate' || bt === 'sgate') {
       p.push(part(cyl(5, 6.5, 34, 6), st, -16, 17, 0));
@@ -135,17 +162,37 @@
       p.push(part(box(44, 8, 9), stL, 0, 38, 0));
       if (bt === 'sgate') { p.push(part(cyl(4, 5, 22, 5), stD, -30, 11, 10)); p.push(part(cyl(4, 5, 22, 5), stD, 30, 11, 10)); }
     } else if (bt === 'barracks') {
-      p.push(part(box(48, 22, 34), st, 0, 11, 0));
-      p.push(part(cyl(0.1, 26, 18, 4), woodR, 0, 31, 0, Math.PI / 4));
+      /* a hall that musters veterans is a bigger hall: it gains a drill yard wall at 2 and a
+       * gatehouse and a second standard at 3 */
+      p.push(part(box(48, 22 + (lv - 1) * 5, 34), st, 0, 11 + (lv - 1) * 2.5, 0));
+      p.push(part(cyl(0.1, 26, 18, 4), woodR, 0, 31 + (lv - 1) * 5, 0, Math.PI / 4));
       p.push(part(box(10, 14, 2), stD, 0, 7, 17));
-      p.push(part(cyl(0.7, 0.7, 26, 5), stL, 20, 30, 12));
-      p.push(part(box(10, 6, 0.6), 0xffe9a8, 25, 38, 12));
+      p.push(part(cyl(0.7, 0.7, 26, 5), stL, 20, 30 + (lv - 1) * 5, 12));
+      p.push(part(box(10, 6, 0.6), 0xffe9a8, 25, 38 + (lv - 1) * 5, 12));
+      if (lv > 1) {
+        p.push(part(box(52, 4, 38), gild, 0, 24 + (lv - 1) * 5, 0));       // a banded eave
+        p.push(part(box(30, 9, 3), stD, 0, 4, 19));                        // the drill-yard wall
+      }
+      if (lv > 2) {
+        p.push(part(box(14, 20, 12), st, 0, 10, 22));                      // a gatehouse
+        p.push(part(cone(9, 10, 4), gild, 0, 25, 22));
+        p.push(part(cyl(0.7, 0.7, 26, 5), stL, -20, 35, 12));
+        p.push(part(box(10, 6, 0.6), 0xffe9a8, -25, 43, 12));              // a second standard
+      }
     } else if (bt === 'tower' || bt === 'watch') {
-      p.push(part(cyl(10, 13, 44, 8), st, 0, 22, 0));
-      p.push(part(cyl(13, 11, 6, 8), stL, 0, 47, 0));
+      /* a Watchtower GROWS with its level — the shaft lengthens and the crown widens, which
+       * is what makes a level-3 gun read as one across the board */
+      const sh = 44 + (lv - 1) * 9;
+      p.push(part(cyl(10, 13, sh, 8), st, 0, sh / 2, 0));
+      p.push(part(cyl(13, 11, 6, 8), stL, 0, sh + 3, 0));
       for (let i = 0; i < 6; i++) {
         const a = i / 6 * Math.PI * 2;
-        p.push(part(box(4, 5, 4), stD, Math.cos(a) * 11, 53, Math.sin(a) * 11));
+        p.push(part(box(4, 5, 4), stD, Math.cos(a) * 11, sh + 9, Math.sin(a) * 11));
+      }
+      if (lv > 1) p.push(part(cyl(14, 14, 3, 8), gild, 0, sh - 8, 0));     // a corbel course
+      if (lv > 2) {
+        p.push(part(cyl(6, 7, 14, 6), st, 13, 10, 0));                     // a stair turret
+        p.push(part(cone(7, 8, 6), gild, 13, 22, 0));
       }
       if (br === 'bolt') {
         /* the great crossbow: an open deck, twin arms, a bolt in the groove */
@@ -219,18 +266,40 @@
     return meshOf(p);
   }
 
-  function unitGeo(kind) {
+  /* A VETERAN LOOKS LIKE ONE. The hall's level rides on the man (u.tier), and it has to be
+   * legible at the zoom this game is actually played at — where a soldier is a few pixels —
+   * so rank is carried by SILHOUETTE and not by shading: a crest that breaks the head's
+   * outline, a heavier build, and a standard on the elite. Tier 1 is exactly what it always
+   * was, so nothing about the ordinary army moved. */
+  function unitGeo(kind, tier) {
     const p = [];
+    const t = Math.max(1, Math.min(3, tier || 1));
+    /* the metal brightens with rank, but the brightening alone would be invisible at a
+     * hundred paces — it is there to sell the silhouette, not to carry it */
+    const crest = t === 3 ? 0xffe08a : 0xd8e0ff;
     if (kind === 'soldier') {
-      p.push(part(cyl(3.2, 4.2, 12, 6), 0xbbbbbb, 0, 8, 0));
+      const w = 1 + (t - 1) * 0.14;                       // a veteran is a heavier man
+      p.push(part(cyl(3.2 * w, 4.2 * w, 12, 6), t > 1 ? 0xc9c9d2 : 0xbbbbbb, 0, 8, 0));
       p.push(part(sph(3.4), 0xdddddd, 0, 17, 0));
       p.push(part(cyl(0.7, 0.7, 20, 4), 0xeeeeee, 5, 12, 0));
-      p.push(part(cyl(3.4, 3.4, 1.4, 7), 0x999999, -5.4, 10, 0, 0));
+      p.push(part(cyl(3.4 * w, 3.4 * w, 1.4, 7), 0x999999, -5.4, 10, 0, 0));
+      /* the crest: a blade of colour across the helm, which is the one thing that still
+       * reads when the man is four pixels tall */
+      if (t > 1) p.push(part(box(1.6, 4.5, 7.5), crest, 0, 21, 0));
+      if (t > 2) {
+        p.push(part(cyl(0.5, 0.5, 16, 4), 0xd8c8a8, -5, 18, 0));    // a standard on his back
+        p.push(part(box(6, 4, 0.5), crest, -8, 25, 0));
+      }
     } else if (kind === 'sorcerer') {
-      p.push(part(cone(4.6, 15, 6), 0xaaaaaa, 0, 7.5, 0));
+      p.push(part(cone(4.6, 15, 6), t > 1 ? 0xb9b4c6 : 0xaaaaaa, 0, 7.5, 0));
       p.push(part(sph(2.9), 0xcccccc, 0, 16, 0));
       p.push(part(cyl(0.7, 0.7, 22, 4), 0xdddddd, 5, 12, 0));
-      p.push(part(sph(1.8), 0xffffff, 5, 23.5, 0));
+      p.push(part(sph(1.8 + (t - 1) * 0.7), 0xffffff, 5, 23.5, 0));  // a fuller light
+      if (t > 1) p.push(part(cone(1.6, 5, 5), crest, 0, 21, 0));     // a spike on the hood
+      if (t > 2) {
+        p.push(part(sph(1.3), crest, -4.5, 20, 0));
+        p.push(part(sph(1.1), crest, 3.5, 27, 0));                   // motes at his shoulder
+      }
     } else if (kind === 'champion') {
       p.push(part(cyl(4.4, 5.6, 16, 6), 0xcccccc, 0, 10, 0));
       p.push(part(sph(4.2), 0xeeeeee, 0, 21.5, 0));
@@ -245,7 +314,16 @@
       p.push(part(cyl(3.6, 3.6, 3, 8), 0x4a3a26, 4, 3, 0));
       p.push(part(box(2.2, 15, 2.2), 0x8a6c46, 0, 13, 0));
       p.push(part(box(13, 2, 2), 0xa08050, -2, 19, 0));
-      p.push(part(box(5, 5, 5), 0xa8a8b0, -7.5, 17, 0));
+      p.push(part(box(5 + (t - 1) * 1.4, 5 + (t - 1) * 1.4, 5), 0xa8a8b0, -7.5, 17, 0));
+      /* a heavier engine: a bigger stone, banded timbers, and a second pair of rollers */
+      if (t > 1) {
+        p.push(part(box(15, 1.6, 10.6), crest, 0, 7, 0));
+        p.push(part(cyl(3.2, 3.2, 2.6, 8), 0x4a3a26, 0, 3, 4.5));
+      }
+      if (t > 2) {
+        p.push(part(box(2.2, 11, 2.2), 0x8a6c46, 0, 13, 4.5));
+        p.push(part(box(4, 4, 0.5), crest, 6, 22, 0));
+      }
     } else {   // fiend
       p.push(part(sph(5.5), 0x8899aa, 0, 6, 0));
       p.push(part(sph(3.4), 0x99aabb, 4.5, 10, 0));
@@ -729,9 +807,17 @@
   };
 
   /* every kind in the unit table gets a bucket, so adding one to const.js needs nothing here */
-  const KINDS = Object.keys(C.UNITS);
-  function makeIM(kind, room) {
-    const im = new THREE.InstancedMesh(unitGeo(kind), MAT, room);
+  /* ONE BUCKET PER KIND AND RANK. The army is drawn as instanced meshes, one per geometry —
+   * so a veteran needs its own bucket or it would be drawn with the recruits' bodies. The
+   * keys are `kind#tier`, and a kind with no rank still lands on `#1`, which is exactly the
+   * bucket it always had. */
+  const KINDS = [];
+  for (const k of Object.keys(C.UNITS))
+    for (let t = 1; t <= C.TIER.length; t++) KINDS.push(k + '#' + t);
+  const rankOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
+  function makeIM(key, room) {
+    const cut = key.indexOf('#');
+    const im = new THREE.InstancedMesh(unitGeo(key.slice(0, cut), +key.slice(cut + 1)), MAT, room);
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     /* An InstancedMesh is culled against a bounding sphere derived from its instance
      * matrices — computed ONCE, on the first frustum test, and cached. The trees get away
@@ -767,7 +853,10 @@
   function updateUnits(view, viewer, dt) {
     const byKind = {};
     for (const k of KINDS) byKind[k] = [];
-    for (const u of view.units) if (byKind[u.kind]) byKind[u.kind].push(u);
+    for (const u of view.units) {
+      const key = u.kind + '#' + rankOf(u);
+      if (byKind[key]) byKind[key].push(u);
+    }
     for (const kind of KINDS) {
       const list = byKind[kind];
       let im = unitIM[kind];
@@ -775,6 +864,9 @@
        * on the muster that is a silent truncation — the men past 260 simply would not be
        * drawn — so it grows instead, in doublings, and never shrinks back. */
       if (im && list.length > im._room) { im.removeFromParent(); im.dispose(); im = null; }
+      /* fifteen buckets now, and most of a match uses three of them — a rank nobody has
+       * mustered yet should not cost a mesh */
+      if (!im && !list.length) continue;
       if (!im) {
         let room = Math.max(256, (unitIM[kind] ? unitIM[kind]._room : 0) * 2);
         while (room < list.length) room *= 2;
@@ -805,7 +897,7 @@
           dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
           dum.rotation.set(0, f.a, 0);
         }
-        const s2 = u.kind === 'champion' ? 1.25 : 1;
+        const s2 = (u.kind === 'champion' ? 1.25 : 1) * (1 + (rankOf(u) - 1) * 0.06);
         dum.scale.set(s2, s2, s2);
         dum.updateMatrix();
         im.setMatrixAt(i, dum.matrix);
@@ -860,9 +952,13 @@
         /* a work still going up gets its own key, so finishing it rebuilds the group at full
          * colour rather than leaving the scaffolding materials behind */
         /* a wall's key carries its ENDS: two runs of the same type are not the same model */
+        /* the key carries everything that changes the MODEL: the branch, a wall's ends, the
+         * LEVEL, and whether it is scaffolded — so raising a level rebuilds the group at the
+         * new shape instead of leaving last level's stones standing. */
         const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
-          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '');
+          + '@' + (b.level || 1)
+          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
@@ -876,7 +972,8 @@
             : new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
                 new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
           pad.position.y = -0.4;
-          grp.add(pad, isW ? wallModel(b) : buildingModel(b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt));
+          grp.add(pad, isW ? wallModel(b)
+            : buildingModel((b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + '@' + (b.level || 1)));
           if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
             /* the hall flies its COMPANY's colour — gold if it answers to the War Banner */
@@ -897,11 +994,15 @@
             if (!o.material) return;
             o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.34;
           });
-          /* scaffolding: pale and see-through, and it grows out of the ground as it rises */
-          else if (b.raise > 0) grp.traverse((o) => {
+          /* scaffolding: pale and see-through, and it grows out of the ground as it rises.
+           * A work having its LEVEL raised wears the same scaffolding — it is standing and
+           * whole, but the masons are in it and it is doing its job for nobody, and that has
+           * to be visible from across the board or the pause in the muster is a mystery. */
+          else if (b.raise > 0 || b.work > 0) grp.traverse((o) => {
             if (!o.material) return;
-            o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.55;
-            if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), 0.5);
+            o.material = o.material.clone(); o.material.transparent = true;
+            o.material.opacity = b.raise > 0 ? 0.55 : 0.72;
+            if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), b.raise > 0 ? 0.5 : 0.3);
           });
           worldG.add(grp);
           w = { grp, key, pad };

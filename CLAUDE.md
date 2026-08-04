@@ -119,6 +119,25 @@ human could see (see `AI.view()`).
 - Colors: gold=player, crimson=rival, green=Chaos, blue-white=Pattern. Don't drift.
 - `render3d.js` stays isolated: game logic never draws; drawing never mutates the world.
 
+## Veterancy and the masons
+
+A hall's LEVEL makes better men, not more of them. `period` is flat across levels; `CONST.TIER`
+(`[1, 1.25, 1.6]` — the old rate ratios exactly) multiplies the recruit's hp, damage, price and
+bounty, and the man carries `u.tier` for life. Because the multiplier is on the price too, the
+essence buys the same total hit points and damage per minute the throughput upgrade bought, at
+the same drain: what changed is the packaging, and the gain is that a veteran column is harder
+to storm and harder to splash.
+
+An upgrade is MASONRY. `{c:'up'}` sets `b.work`/`b.workFor` (`raise * CONST.UP_WORK`), takes a
+mason crew (`rising()` counts `work > 0` as well as `raise > 0`), and while it runs the work
+does its JOB for nobody — no muster, no tower shot, no Gate income — while still standing,
+blocking, seeing and holding its spring. Both `tier` and `work` ride the wire.
+
+Rank and level must be VISIBLE or the whole change is a number in a tooltip. The army's
+instanced meshes are bucketed `kind#tier` (a rank without a bucket silently draws as a
+recruit), `buildingModel` keys on `bt[:br]@level`, and a work with masons in it wears the same
+translucent scaffolding a rising one does.
+
 ## Common Tasks
 
 - **Add a building**: table entry in `const.js` (cost/up/effect) + `BUILD_ORDER_UI` → handle

@@ -249,6 +249,25 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
+- [x] **Veterans, not crowds.** A hall's level bought THROUGHPUT — the same soldier arriving
+      faster — so an upgraded realm fought with bigger crowds of identical men and there was
+      nothing to see. The muster interval is flat now and the level rides on the RECRUIT:
+      `CONST.TIER` multiplies his hit points, his blow, his price and his bounty, and he keeps
+      it for life.
+      The multipliers are the old rate ratios exactly (8/8, 8/6.4, 8/5) and they are on the
+      PRICE as well as the stats on purpose — the essence buys precisely the same total hit
+      points and damage per minute at the same drain, so this is a repackaging and not a buff.
+      The gain is that fewer, tougher men are harder to storm, harder to splash and arrive as
+      a column rather than a crowd.
+      **An upgrade is masonry**: it takes a crew and `raise × UP_WORK` seconds, and the work
+      does its job for nobody meanwhile — no muster, no tower shot, no Gate income — while
+      still standing, blocking, seeing and holding its spring. That makes WHEN to upgrade a
+      decision rather than a formality, and it is what the AI now weighs before shutting its
+      only hall down under threat.
+      **And all of it is visible**: the army's instanced meshes bucket `kind#tier` (a rank
+      without a bucket silently draws as a recruit), a veteran gets a crest and heavier build
+      and an elite a standard, `buildingModel` keys on the level so a raised hall is a bigger
+      hall, and a work with masons in it wears the scaffolding a rising one does.
 - [x] **The halt, in every mode.** `world.paused` is world state, not a session flag, so the
       host owns it and it rides the snapshot — which is what makes it work in LAN at all: a
       guest holds no world, so the only way it can learn the match has stopped is the wire.

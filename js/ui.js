@@ -262,11 +262,19 @@
   /* ---------------- build / upgrade sheets ---------------- */
   const trChip = (essence) => `<span class="tr-chip">◆ <b>${Math.floor(essence)}</b></span>`;
   /* what a building does to the essence flow, at a given level */
+  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
   function rateTag(bt, level) {
     const d = C.BUILDINGS[bt];
     if (!d) return '';
     if (d.income) return `<span class="c-rate up">+${d.income[level - 1]}◆/s · +${d.nodeIncome[level - 1]}◆/s on a spring</span>`;
-    if (d.spawns) { const u = C.UNITS[d.spawns]; return `<span class="c-rate dn">−${(u.cost / d.period[level - 1]).toFixed(1)}◆/s muster</span>`; }
+    /* A LEVEL BUYS BETTER MEN, NOT MORE OF THEM, so the card has to say what the men become
+     * — the rate is the same at every level and quoting it would read as "no change". */
+    if (d.spawns) {
+      const u = C.UNITS[d.spawns], m = C.TIER[level - 1];
+      const rank = C.TIER_NAME[level - 1];
+      return `<span class="c-rate dn">−${(u.cost * m / d.period[level - 1]).toFixed(1)}◆/s muster</span>` +
+             (level > 1 ? `<span class="c-rate up">${rank}${cap(d.spawns)}: ${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow</span>` : '');
+    }
     if (bt === 'shrine') return `<span class="c-rate dn">−${d.drain[level - 1]}◆/s while walking</span>`;
     return '';
   }
@@ -377,9 +385,12 @@
            (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
   }
 
-  const raiseLine = (s) =>
-    `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
-    'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.';
+  const raiseLine = (s) => (s.work > 0
+    ? `<b>🔨 The masons are raising it to level ${s.level} — ` +
+      `${Math.round((1 - s.work / (s.workFor || 1)) * 100)}%, about ${Math.ceil(s.work)}s more.</b><br>` +
+      'It stands and it can be broken, but it does its job for nobody until they are out of it.'
+    : `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
+      'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.');
   UI.upSheet = function (s, essence, walking, me) {
     const d = C.BUILDINGS[s.bt], face = towerFace(s);
     const el = freshSheet();
@@ -388,7 +399,7 @@
                    `<div class="sheet-blurb">${face.blurb}</div>`;
     /* still scaffolding: it earns nothing, musters nobody and holds no ground yet, and there
      * is nothing to offer but the wait */
-    if (s.raise > 0) {
+    if (s.raise > 0 || s.work > 0) {
       const w = document.createElement('div');
       w.className = 'sheet-blurb';
       w.id = 'raise-line';
@@ -427,8 +438,16 @@
       b.dataset.cost = cost;
       const forked = s.bt === 'tower' && !!s.br;
       const rt = forked ? towerStatLine(s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
+      /* AN UPGRADE IS MASONRY. It takes a crew and it takes time, and the work does its job
+       * for nobody meanwhile — a hall musters nothing, a tower does not shoot, a Gate draws
+       * nothing. Saying so on the card is the difference between a decision and a surprise. */
+      const secs = Math.round(Math.max(1, (d.raise || 10) * C.UP_WORK));
+      const quiet = d.spawns ? 'musters nobody' : s.bt === 'tower' ? 'does not shoot'
+        : s.bt === 'gate' ? 'draws nothing' : 'stands idle';
       b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>` +
-                    (rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '');
+                    (rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '') +
+                    `<span class="c-blurb">🔨 ${secs}s of masonry — it ${quiet} until they are done, ` +
+                    'and a crew of yours is on it.</span>';
       b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, s.br); UI.closeSheet(); });
       el.appendChild(b);
     }
@@ -555,10 +574,11 @@
     }
     /* a work going up counts down in place; when it finishes the sheet is stale, so say so */
     if (el._raising) {
+      const r = el._raising, busy = r.raise > 0 || r.work > 0;
       const line = el.querySelector('#raise-line');
-      if (line) line.innerHTML = el._raising.raise > 0 ? raiseLine(el._raising)
+      if (line) line.innerHTML = busy ? raiseLine(r)
         : '<b>✔ Finished.</b> Tap it again to see what it can do.';
-      if (el._raising.raise <= 0) el._raising = null;
+      if (!busy) el._raising = null;
     }
     const chip = el.querySelector('.tr-chip b');
     if (chip) chip.textContent = Math.floor(essence);

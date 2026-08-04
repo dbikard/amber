@@ -399,7 +399,9 @@ async function match(browser, base, renderer) {
         const im = window.Render.debugUnitMeshes();
         return Object.keys(im).map((k) => ({ k, count: im[k].count, culled: im[k].frustumCulled, vis: im[k].visible }));
       });
-      const sold = meshes.find((m) => m.k === 'soldier');
+      /* buckets are kind#rank now — a veteran needs its own geometry, so it needs its own
+       * mesh, and the recruits' bucket is the one that carries an early army */
+      const sold = meshes.find((m) => m.k === 'soldier#1');
       ok('the soldiers are instanced', !!sold && sold.count > 10, JSON.stringify(sold));
       ok('and not frustum-culled against a stale sphere at the origin',
          meshes.every((m) => m.culled === false), JSON.stringify(meshes.filter((m) => m.culled)));
@@ -525,6 +527,70 @@ async function match(browser, base, renderer) {
     ok('the power buttons stay on screen with a full flag tray',
        tray.right <= tray.w + 1 && tray.left >= 0,
        `${tray.n} chips, powers span ${tray.left}..${tray.right} of ${tray.w}`);
+
+    /* ---------------- a level you can see ---------------- *
+     * The point of moving the upgrade from throughput to rank is that rank is VISIBLE. If a
+     * veteran draws with the recruits' geometry, or a raised hall keeps last level's stones,
+     * the whole change is invisible and the player is paying for a number in a tooltip. */
+    suite(`${r} · a level you can see`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    await pg.waitForTimeout(120);
+    const rank = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, C2 = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 99000;
+      g.world.chaosNext = 1e9;
+      for (const b of g.world.players[0].buildings) { b.raise = 0; b.work = 0; }
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      /* a hall, finished */
+      W.applyCommand(g.world, 0, { c: 'build', bt: 'barracks', x: c.x + 150, y: c.y + 30 });
+      const hall = g.world.players[0].buildings.filter((b) => b.bt === 'barracks').pop();
+      hall.raise = 0; hall.hp = hall.maxHp;
+      await paint();
+      const keyAt1 = [...R.debugWorks().values()].find((wk) => wk.id === hall.id);
+      /* raise it, and catch it mid-masonry */
+      const up = W.applyCommand(g.world, 0, { c: 'up', id: hall.id });
+      await paint();
+      const mid = [...R.debugWorks().values()].find((wk) => wk.id === hall.id);
+      /* let the masons out and muster a veteran */
+      hall.work = 0;
+      await paint();
+      const keyAt2 = [...R.debugWorks().values()].find((wk) => wk.id === hall.id);
+      const d = C2.UNITS.soldier;
+      g.world.units.push({ id: g.world.nextId++, owner: 0, kind: 'soldier', tier: 2,
+                           x: c.x + 60, y: c.y, ox: 0, oy: 0, hp: 90, maxHp: 90,
+                           dmg: d.dmg * C2.TIER[1], cd: 0, goal: null, co: 0, from: -1 });
+      await paint();
+      /* and an elite, so all three ranks are proved distinct rather than just two */
+      g.world.units.push({ id: g.world.nextId++, owner: 0, kind: 'soldier', tier: 3,
+                           x: c.x + 30, y: c.y, ox: 0, oy: 0, hp: 112, maxHp: 112,
+                           dmg: d.dmg * C2.TIER[2], cd: 0, goal: null, co: 0, from: -1 });
+      await paint();
+      const im = R.debugUnitMeshes();
+      return { up: up.ok, level: hall.level,
+               k1: keyAt1 && keyAt1.key, kMid: mid && mid.key, k2: keyAt2 && keyAt2.key,
+               v1: keyAt1 && keyAt1.verts, v2: keyAt2 && keyAt2.verts,
+               midOpacity: mid && mid.opacity,
+               vetMesh: !!im['soldier#2'] && im['soldier#2'].count,
+               vetVerts: im['soldier#2'] && im['soldier#2'].geometry.attributes.position.count,
+               eliteVerts: im['soldier#3'] && im['soldier#3'].geometry.attributes.position.count,
+               recVerts: im['soldier#1'] && im['soldier#1'].geometry.attributes.position.count };
+    });
+    ok('a hall can be raised a level in the live game', rank.up && rank.level === 2, JSON.stringify(rank));
+    ok('the model is keyed by level', rank.k1 && rank.k2 && rank.k1 !== rank.k2, `${rank.k1} -> ${rank.k2}`);
+    ok('...and wears scaffolding while the masons are in it',
+       rank.kMid && rank.kMid !== rank.k2 && /#/.test(rank.kMid), rank.kMid);
+    ok('a veteran gets his own instanced mesh', rank.vetMesh === 1, String(rank.vetMesh));
+    ok('...with different geometry from a recruit', rank.vetVerts > rank.recVerts,
+       `veteran ${rank.vetVerts} verts vs recruit ${rank.recVerts}`);
+    ok('...and an elite is more again', rank.eliteVerts > rank.vetVerts,
+       `elite ${rank.eliteVerts} verts vs veteran ${rank.vetVerts}`);
+    ok('a raised hall is a BIGGER hall, not a repainted one', rank.v2 > rank.v1,
+       `${rank.v1} -> ${rank.v2} verts`);
+    /* the key alone could change without the paint changing — check the masons are actually
+     * showing through the stone */
+    ok('the scaffolding is see-through, so the pause in the muster is visible',
+       rank.midOpacity < 1, `opacity ${rank.midOpacity}`);
 
     /* ---------------- the halt ---------------- *
      * A pause has one job beyond stopping the clock: it must not BANK the time it stood
@@ -697,7 +763,7 @@ async function match(browser, base, renderer) {
         /* the lift itself, read off the renderer's own instance matrices rather than
          * re-derived — and read in the SAME step, because the man is under his banner's
          * orders and walks off the wall a second later */
-        const im = R.debugUnitMeshes().soldier;
+        const im = R.debugUnitMeshes()['soldier#1'];
         const m = new window.THREE.Matrix4(), v3 = new window.THREE.Vector3();
         const heightNear = (u) => {
           const gy = R.groundH(u.x, u.y);

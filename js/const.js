@@ -166,8 +166,8 @@
                 nodeIncome: [4.5, 7, 10.5], hp: 600, vision: 300, onNode: true,
                 blurb: 'Raised ON a spring of Shadow, and only there. It draws deep, and your writ runs where your Gates stand.' },
     barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 720, raise: 18,
-                spawns: 'soldier', period: [8, 6.4, 5.0],
-                blurb: 'Musters Soldiers who march the black road' },
+                spawns: 'soldier', period: [8, 8, 8],
+                blurb: 'Musters Soldiers who march the black road. Raise its level and it musters VETERANS — the same men, better armed.' },
     /* A WALL IS A FIGHTING POSITION, NOT A SHELL. It bars the ground and it stops shots
      * crossing it — so men behind one are safe — but a wall alone kills nobody. Come UP to
      * it and you are MANNING it: you shoot over the parapet, and everything below can shoot
@@ -190,10 +190,10 @@
      * holding ground; against a work or a Seat it is worth four of the men it costs. It has
      * to be escorted, which is the point: the Works turn a war chest into a threat. */
     siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 760, raise: 28,
-                spawns: 'engine', period: [24, 19, 15],
+                spawns: 'engine', period: [24, 24, 24],
                 blurb: 'Builds Engines: slow, and made for breaking works and Seats rather than men. They need an escort.' },
     spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 24,
-                spawns: 'sorcerer', period: [11, 8.8, 7.0],
+                spawns: 'sorcerer', period: [11, 11, 11],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 15,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
@@ -234,6 +234,26 @@
    * crews you can put on one at once, so a heir's reach is his mason count and grows with
    * the Gates he holds. It is also what a run costs and what it is worth in stone: one
    * crew's length is one card price and one card's hit points. */
+  /* ---------------- veterancy ----------------
+   * A HALL'S LEVEL MAKES BETTER MEN, NOT MORE OF THEM. It used to buy throughput — the same
+   * soldier, arriving faster — which meant an upgraded realm fought with bigger crowds of
+   * identical men, and nothing you could see. The muster interval is flat now and the LEVEL
+   * rides on the recruit: his hit points, his blow and his price all take this multiplier,
+   * and he keeps it for life.
+   *
+   * The numbers are the old rate ratios exactly (8/8, 8/6.4, 8/5), and they are on the PRICE
+   * as well as the stats on purpose: the essence buys precisely the same total hit points and
+   * the same total damage per minute as the old upgrade did, at the same drain. What changes
+   * is the PACKAGING — fewer, tougher men instead of more, weaker ones — and that is the
+   * whole gain: a veteran company is harder to storm, harder to splash, and arrives as a
+   * column rather than a crowd.
+   *
+   * UPKEEP is what an upgrade actually costs: `upWork` is how long the masons are on it, as a
+   * fraction of what the work took to raise. While they are, it does its job for nobody. */
+  CONST.TIER = [1, 1.25, 1.6];
+  CONST.TIER_NAME = ['', 'Veteran ', 'Elite '];
+  CONST.UP_WORK = 0.8;
+
   CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.

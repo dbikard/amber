@@ -177,7 +177,7 @@
   const crewsOn = (b) => (b.crews || 1);
   function rising(world, pi) {
     let n = 0;
-    for (const b of world.players[pi].buildings) if (b.raise > 0) n += crewsOn(b);
+    for (const b of world.players[pi].buildings) if (b.raise > 0 || b.work > 0) n += crewsOn(b);
     return n;
   }
   /* the longest run this heir could START right now, given the crews standing idle */
@@ -519,11 +519,19 @@
         br = cmd.br;
         if (!C.TOWER_BRANCHES[br]) return { ok: false, err: 'branch' };
       }
+      /* AN UPGRADE IS MASONRY, so it takes masons and it takes time. Instant levels made the
+       * decision a pure question of essence — you upgraded the moment you could afford it,
+       * because there was nothing else to weigh. Now a crew has to be free, the work stands
+       * idle while they are on it, and choosing WHEN costs you the men or the shot you would
+       * have had meanwhile. */
+      if (s.work > 0) return { ok: false, err: 'working' };
+      if (rising(world, pi) + (s.crews || 1) > masons(world, pi)) return { ok: false, err: 'busy' };
       const cost = upgradeCost(s.bt, s.level, br) * (s.crews || 1);
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;
       s.level++;
       if (br) s.br = br;
+      s.work = s.workFor = Math.max(1, (C.BUILDINGS[s.bt].raise || 10) * C.UP_WORK);
       /* a work whose level buys STONE rather than an effect — the Curtain Wall, which has no
        * effect to buy — grows its hit points, keeping the damage already done to it */
       if (C.BUILDINGS[s.bt].hpAt) {
@@ -646,14 +654,19 @@
   }
 
   /* ---------------- units ---------------- */
-  function spawnUnit(world, owner, kind, atX, atY, goal, co, from) {
+  function spawnUnit(world, owner, kind, atX, atY, goal, co, from, tier) {
     /* per-owner, so a full army can never starve the muster of Chaos or of the other side */
     let mine = 0;
     for (const u of world.units) if (u.owner === owner) mine++;
     const cap = owner === C.CHAOS_ID ? C.CAP.chaos : C.CAP.player;
     if (cap > 0 && mine >= cap) return 0;
     const def = C.UNITS[kind];
-    const scale = owner === C.CHAOS_ID ? C.CHAOS.hpScale(world.t) : 1;
+    /* THE HALL'S LEVEL RIDES ON THE MAN. He carries it for life — a veteran mustered before
+     * the hall fell is still a veteran — which is also what lets the renderer draw him as
+     * one without asking where he came from. */
+    const lv = Math.max(1, Math.min(C.TIER.length, tier || 1));
+    const vet = owner === C.CHAOS_ID ? 1 : C.TIER[lv - 1];
+    const scale = (owner === C.CHAOS_ID ? C.CHAOS.hpScale(world.t) : 1) * vet;
     const home = owner === C.CHAOS_ID ? null : cityOf(world, owner);
     const u = {
       id: world.nextId++, owner, kind,
@@ -661,7 +674,8 @@
       y: (atY != null ? atY : home.y + (owner === 0 ? -60 : 60)) + world.rng.range(-16, 16),
       ox: world.rng.range(-24, 24), oy: world.rng.range(-24, 24),   // personal formation offset
       hp: def.hp * scale, maxHp: def.hp * scale,
-      dmg: def.dmg * (owner === C.CHAOS_ID ? C.CHAOS.dmgScale(world.t) : 1),
+      dmg: def.dmg * (owner === C.CHAOS_ID ? C.CHAOS.dmgScale(world.t) : 1) * vet,
+      tier: lv,
       cd: 0,
       goal: goal != null ? goal : (owner === C.CHAOS_ID ? aimAt(world, { site: world.map.cities[world.chaosParity++ % world.players.length] }) : world.players[owner].banner),
       co: co != null ? co : 0,   // the COMPANY it musters into; 0 = under the royal War Banner
@@ -671,13 +685,16 @@
     return u.id;
   }
 
+  const tierOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
   function hurt(world, victim, dmg, byOwner) {
     victim.hp -= dmg;
     if (victim.hp <= 0 && !victim.dead) {
       victim.dead = true;
       /* the bounty goes to whoever struck the blow — ANY heir. `=== 0 || === 1` was a duel's
        * assumption, and it quietly paid seats 2 and 3 nothing for the whole war. */
-      if (byOwner >= 0 && world.players[byOwner]) world.players[byOwner].essence += C.UNITS[victim.kind].bounty;
+      /* a veteran cost more to raise and is worth more to fell */
+      if (byOwner >= 0 && world.players[byOwner])
+        world.players[byOwner].essence += C.UNITS[victim.kind].bounty * C.TIER[tierOf(victim) - 1];
       /* `by` is what lets the chronicle say who took your men. Without it a report from play
        * cannot tell a rival's assault from the black road, and neither can the player. */
       emit(world, { e: 'die', x: victim.x, y: victim.y, kind: victim.kind, owner: victim.owner, by: byOwner });
@@ -841,11 +858,24 @@
           continue;
         }
         if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
+        /* THE MASONS ARE IN THE YARD. A work being raised a level is still a work — it stands,
+         * it blocks, it sees, it holds its spring, and it can be broken — but it does not do
+         * its JOB while they are on it: no muster, no shot, no income. That is what makes the
+         * timing of an upgrade a decision rather than a formality. */
+        if (b.work > 0) {
+          b.work = Math.max(0, b.work - dt);
+          if (b.work <= 0) emit(world, { e: 'upped', pi, id: b.id, bt: b.bt, level: b.level, x: b.x, y: b.y });
+        }
+        const working = b.work > 0;
         /* a Gate on a spring of Shadow draws far more than one that merely stands about */
-        if (b.bt === 'gate') income += b.node >= 0 ? def.nodeIncome[b.level - 1] : 0;
+        if (b.bt === 'gate') income += !working && b.node >= 0 ? def.nodeIncome[b.level - 1] : 0;
         else if (def.spawns) {
           if (pl.musterPaused) { b.cd = Math.max(b.cd, 0.5); continue; }
-          const price = C.UNITS[def.spawns].cost;
+          /* A HALL BEING RAISED A LEVEL MUSTERS NOBODY. That is the price of the upgrade
+           * beyond its essence, and the reason to think about WHEN rather than only whether:
+           * the men you would have had while the masons were in the yard are the real cost. */
+          if (b.work > 0) { b.cd = Math.max(b.cd, 0.5); continue; }
+          const price = C.UNITS[def.spawns].cost * C.TIER[b.level - 1];
           const per = def.period[b.level - 1];
           b.paid = b.paid || 0;
           /* recruits are paid for CONTINUOUSLY: the treasury drains smoothly, and a poor
@@ -859,13 +889,14 @@
                * and the price was being taken anyway — an army standing at its ceiling paid
                * a measured 6 essence a second for soldiers who never appeared. Take the
                * money only when a man actually walks out of the hall. */
-              if (spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.co, b.id)) {
+              if (spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.co, b.id, b.level)) {
                 b.paid -= price;
                 b.cd += per;
               } else b.cd = 0.5;   // full up: try again shortly, and keep the war chest
             } else b.cd = 0;   // timer ready; the recruit marches the moment he's paid
           }
         } else if (b.bt === 'tower') {
+          if (working) continue;   // the gun deck is scaffolding while they are rebuilding it
           b.cd -= dt;
           if (b.cd <= 0) {
             const st = towerStats(b);

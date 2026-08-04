@@ -419,8 +419,16 @@
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.
        * Gates drawing on a node come first — that is where the essence actually is. */
       if (saving) return;
+      /* AN UPGRADE IS MASONRY NOW: it takes a crew and silences the work while they are on
+       * it. So an heir with no crew free must not try (the order is simply refused), and one
+       * with a single hall should not shut it down under threat — an upgrade in the middle of
+       * an assault is a hall that musters nobody for the length of the fight. */
+      if (v.free <= 0) return;
+      const pressed = v.threats.length >= 3;
       for (const bt of P.upPref) {
-        const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise)
+        if (pressed && C.BUILDINGS[bt].spawns &&
+            v.pl.buildings.filter((b) => b.bt === bt && !b.raise && !b.work).length < 2) continue;
+        const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise && !b.work)
                        .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
         for (const b of cands) {
           /* the Watchtower fork: an heir's doctrine picks the branch, and keeps it after */
