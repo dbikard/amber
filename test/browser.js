@@ -462,7 +462,13 @@ async function match(browser, base, renderer) {
     await pg.mouse.click(p.x, p.y); await until(pg, () => !window.UI.sheetOpen());
     ok('tapping the map closes it rather than opening another', !(await sheetOpen()));
     await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(200);
-    ok('...and bare ground opens nothing by itself', !(await sheetOpen()));
+    const opened = await pg.evaluate(() => {
+      const el = document.getElementById('sheet');
+      if (el.classList.contains('hidden')) return null;
+      const t = el.querySelector('.sheet-title');
+      return t ? t.textContent.trim() : '(untitled)';
+    });
+    ok('...and bare ground opens nothing by itself', !opened, `it opened: ${opened}`);
     await pg.click('#btn-build'); await until(pg, () => window.UI.sheetOpen());
     ok('the button opens it again', await sheetOpen());
 
