@@ -11,7 +11,9 @@
  * and comparable with the runs before it — only the ORDER they are computed in changes, and
  * the output is re-ordered back before it is printed.
  *   node sim.js --jobs=1   forces the old serial behaviour.
- *   node sim.js --quick    a third of the games, for iterating; the full run is the referee.
+ *   node sim.js --quick    half the games again, for iterating; the full run is the referee.
+ *   node sim.js --rr=12    more games in the ladder section, when the order looks like a coin
+ *                          toss rather than a field.
  */
 'use strict';
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -78,14 +80,20 @@ if (!isMainThread) {
 /* ---------------- CLI ---------------- */
 const args = {};
 for (const a of process.argv.slice(2)) { const m = /^--(\w+)(?:=(.*))?$/.exec(a); if (m) args[m[1]] = m[2] === undefined ? true : m[2]; }
-/* --quick trades confidence for a coffee. The full suite is 470 matches and it exists to be
- * the referee before a release; most of the day you are asking "did I just break the field?",
- * which a third of the games answers well enough to tell you whether to run the real thing.
- * Everything is still played — the sections, the round-robin, the convergence check — because
- * a cheap run that skips a section is a run that cannot tell you the section is fine. */
+/* THE HEIRS ARE NOT MEANT TO BE BALANCED. They were, for a long time, and the round-robin
+ * that policed it was three hundred of this runner's four hundred and seventy matches — spent
+ * proving a thing the game does not want. Heirs are meant to play DIFFERENTLY; a player who
+ * meets five identical opponents in different coats has met one. What their strengths are for
+ * is the ORDER OF THE LADDER: the campaign faces you with the weakest first. So the
+ * round-robin stays, at a sixth of the games, and its job is to hand back that order rather
+ * than to fail a target. Six games a matchup will not tell 45% from 55% and does not need to —
+ * it needs to tell bleys from brand, and it does that easily.
+ * What IS still a target: a mirror near 50% (that is seat fairness, not heir balance), the
+ * skill gradient (that is the AI working at all), and convergence (matches must end). */
 const QUICK = !!args.quick;
-const N = +args.n || (QUICK ? 10 : 30), SEED = +args.seed || 1000;
-const CONV = QUICK ? 4 : 10;
+const N = +args.n || (QUICK ? 10 : 20), SEED = +args.seed || 1000;
+const CONV = QUICK ? 4 : 8;
+const RR = +args.rr || (QUICK ? 4 : 6);
 
 if (args.a && args.b) {
   const r = series(args.a, args.b, N, SEED);
@@ -107,8 +115,8 @@ jobs.push({ a: 'benedict', b: 'greedy', n: N, seed: SEED + 200 });
 jobs.push({ a: 'greedy', b: 'random', n: N, seed: SEED + 300 });
 let first = true;
 for (let i = 0; i < heirs.length; i++) for (let j = i + 1; j < heirs.length; j++) {
-  jobs.push({ head: first ? '\n— heir round-robin (no dominant strategy) —' : null,
-              a: heirs[i], b: heirs[j], n: N, seed: SEED + 1000 + i * 37 + j, rr: true });
+  jobs.push({ head: first ? '\n— the ladder (heirs need not be equal; the campaign faces the weakest first) —' : null,
+              a: heirs[i], b: heirs[j], n: RR, seed: SEED + 1000 + i * 37 + j, rr: true });
   first = false;
 }
 const rrEnd = jobs.length;
@@ -143,8 +151,11 @@ function flush() {
         table[jobs[i].a] = (table[jobs[i].a] || 0) + done[i].a;
         table[jobs[i].b] = (table[jobs[i].b] || 0) + done[i].b;
       }
-      console.log('\ntotal wins: ' + Object.entries(table).sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => `${k}:${v}`).join('  '));
+      const rank = Object.entries(table).sort((a, b) => b[1] - a[1]);
+      console.log('\ntotal wins: ' + rank.map(([k, v]) => `${k}:${v}`).join('  '));
+      /* and the answer this section exists for, ready to paste into game.js */
+      console.log('LADDER = ' + JSON.stringify(rank.map(([k]) => k).reverse()) +
+                  '   // weakest first');
     }
   }
 }

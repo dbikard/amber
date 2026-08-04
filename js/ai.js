@@ -410,15 +410,30 @@
           if (at) { const r = issue({ c: 'build', x: at.x, y: at.y, bt: mission.bt }); if (r && r.ok) mission = null; }
         }
       }
-      if (!mission && !homeThreat) {
+      /* THE WAR OUTRANKS THE SHOPPING. Every heir's doctrine has a clause that says "now go
+       * and break his Seat" — benedict's is `v.enCity && v.army >= 6` — and not one of them
+       * had ever fired, because the banner was read as `mission ? mission.site : the call`
+       * and there is ALWAYS another spring to want. Measured over full matches: the banner
+       * stood on the enemy Seat 0% of the time, the army sat on its own quarter of the board
+       * for twenty-six minutes at three hundred men a side, and neither castle took a single
+       * point of damage in any game. Chaos hid it — a Seat the black road knocked down is
+       * recorded as a castle win for whoever was left — so the sim read healthy while the
+       * war had quietly stopped happening.
+       * An heir who has decided to attack marches, and does not pick up a new errand while
+       * he is doing it. Defending home still outranks both: a Seat under threat is not a
+       * choice. */
+      const call = P.banner(v);
+      const striking = !homeThreat && v.enCity && call === v.enCityId;
+      if (!mission && !homeThreat && !striking) {
         for (const w of P.missions(v)) {
           const site = w.pick(v);
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
         }
       }
+      if (striking) mission = null;   // the errand is dropped, not queued behind the war
 
-      /* the banner: defend home under threat > mission site > personality call */
-      let want = homeThreat ? v.myCity.id : (mission ? mission.site : P.banner(v));
+      /* the banner: defend home under threat > the assault > mission site > personality call */
+      let want = homeThreat ? v.myCity.id : (striking ? call : (mission ? mission.site : call));
       /* AN EASIER FOOTING IS ALSO A LATER ONE. Income alone could not do this job: measured
        * against the weakest baseline we ship, an heir at eco 0.8 still had an army on the
        * player's ground at 5.3 minutes, and cutting income further only made it come sooner,

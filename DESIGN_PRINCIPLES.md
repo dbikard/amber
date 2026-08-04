@@ -51,12 +51,25 @@ Every balance question is answered with data:
 - **Mirror symmetry** — identical bots must win ≈50/50. Skew = board/spawn bias bug.
 - **Skill gradient** — Random < Greedy < Skilled with clear separation (Skilled beats Random
   >85%, beats Greedy >65%). Proves decisions matter.
-- **No dominant strategy** — round-robin the personalities; every strategy that beats the
-  field must have a counter with >60% against it. Uncounterable = balance bug.
+- **The heirs are NOT balanced against each other, on purpose.** They were, and the
+  round-robin that policed it cost three hundred of this runner's four hundred and seventy
+  matches — spent proving something the game does not want. Five heirs tuned to 50% are five
+  identical opponents in different coats. What their strengths are FOR is the order of the
+  campaign ladder: you face the weakest first. So the round-robin stays, at a sixth of the
+  games, and its output is `LADDER = [...]` rather than a pass or a fail. Six games a matchup
+  cannot tell 45% from 55% and does not need to — it needs to tell bleys from brand.
+  What a strong heir must still be is a DIFFERENT heir: if two of them win the same way, one
+  of them is decoration, and that is the question to ask of the field, not the spread.
 - **Mechanic ablation** — ban one building/power for one bot; if win rates don't move, the
   mechanic is decoration: cut or redesign.
 - **Convergence** — passive-vs-passive must still end (someone completes the Pattern) inside
   the match-length ceiling. No two policies may draw forever.
+- **Nothing but an heir may end a match.** Chaos is the weather, not the opponent. When the
+  black road was uncapped it was taking Seats outright, and a "castle" win in this table was
+  as often Chaos finishing someone as a rival doing it — so the runner read healthy while the
+  game had quietly become about who survives the weather longest. Capping it exposed what was
+  underneath, which is the real question this section now asks: can an army beat a defended
+  Seat at all?
 - **Match length** — median 5–20 min across the matchup table. It was 15–30 while every heir
   had to find and claim its first spring; the opening now starts with a Gate already drawing,
   the early economy arrives sooner, and the whole match telescopes with it. The band follows
