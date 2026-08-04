@@ -156,13 +156,17 @@ async function match(browser, base, renderer) {
     });
     ok('the campaign runs on the same footing', camp.eco === camp.want && camp.campaign,
        `eco ${camp.eco}, wanted ${camp.want}`);
-    ok('and the first rung is the first heir', /julian/i.test(camp.rival), camp.rival);
+    /* the ladder is MEASURED and its order moves with the heirs — ask the game which rung is
+     * first rather than pinning a name the referee is allowed to change */
+    const rung0 = await pg.evaluate(() => window.Game.LADDER[0]);
+    ok('and the first rung is the first heir', new RegExp(rung0, 'i').test(camp.rival),
+       `${camp.rival}, first rung is ${rung0}`);
 
     /* A CLAIMED THRONE WALKS THE SUCCESSION AGAIN, FROM THE START. The index was clamped
      * rather than wrapped, so finishing dropped you straight back onto the hardest rung. */
     const again = await pg.evaluate(async () => {
-      const L = 4;
-      localStorage.setItem('amber_rung', String(L));   // the whole ladder claimed
+      const L = window.Game.LADDER.length;   // the whole ladder claimed, however long it is
+      localStorage.setItem('amber_rung', String(L));
       window.Game.toMenu();
       await new Promise((res) => setTimeout(res, 200));
       const label = document.getElementById('btn-campaign').textContent;
@@ -173,8 +177,9 @@ async function match(browser, base, renderer) {
                rung: localStorage.getItem('amber_rung') };
     });
     ok('a claimed throne offers the walk again', /AGAIN/i.test(again.label), again.label);
-    ok('and says where it starts', /julian/i.test(again.note), again.note);
-    ok('which is the FIRST heir, not the last', /julian/i.test(again.rival), again.rival);
+    ok('and says where it starts', new RegExp(rung0, 'i').test(again.note), again.note);
+    ok('which is the FIRST heir, not the last', new RegExp(rung0, 'i').test(again.rival),
+       `${again.rival}, first rung is ${rung0}`);
     ok('and the ladder is back at its first rung', again.rung === '0', again.rung);
 
     await pg.evaluate(() => {
@@ -1148,7 +1153,9 @@ async function match(browser, base, renderer) {
          * fraction along the wall lands on a spot that is legitimately crowded — which reads
          * as 'a tower cannot join a wall' when the rule is working exactly as intended. */
         let r2 = { ok: false, err: 'nospot' };
-        for (const f of [0.24, -0.24, 0.36, -0.36, 0.12, -0.12, 0, 0.46, -0.46]) {
+        const frac = [];
+        for (let k = 0; k <= 24; k++) frac.push((k % 2 ? -1 : 1) * (k / 48));
+        for (const f of frac) {
           const at = { x: wall.x + (ends[2] - ends[0]) * f, y: wall.y + (ends[3] - ends[1]) * f };
           r2 = W.applyCommand(g.world, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y });
           if (r2.ok) break;

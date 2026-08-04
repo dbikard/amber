@@ -364,11 +364,16 @@
     if (!cos.length) return;   // nothing to choose between: the caller should not have asked
   }
 
+  /* ONE LINE PER WORK. The tray carried each work's blurb and its rate, which is two more rows
+   * a card — seven works came to more than the sheet is tall, so choosing meant scrolling a
+   * menu you are holding in one hand mid-match. What a choice needs is what it costs and how
+   * long it takes; what a work DOES is on the work itself, where you tap it. The blurb span
+   * stays, empty, because the crew lock still writes a refusal into it on the sheets that
+   * have room for one — and an empty one collapses its row to nothing. */
   function cardBody(d, bt, bad) {
     return `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
-           `<span class="c-cost">◆ ${d.cost}</span>` +
-           `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}` +
-           `${bad || !d.raise ? '' : ' <b>· ' + d.raise + 's to raise</b>'}</span>${bad ? '' : rateTag(bt, 1)}`;
+           `<span class="c-cost">◆ ${d.cost}${d.raise ? ' · 🔨' + d.raise + 's' : ''}</span>` +
+           `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : ''}</span>`;
   }
   /* ONE caller now: the BUILD button's sheet. The `at`/`why` pair went with the site sheet —
    * a tray that belonged to a patch of ground could say why THAT ground refused a work, and
@@ -417,7 +422,8 @@
   UI.buildSheet = function (essence, me) {
     const el = freshSheet();
     el._me = me || null;
-    el.innerHTML = `<div class="sheet-title">Raise a work ${trChip(essence)}</div>`;
+    el.innerHTML = `<div class="sheet-title">Raise a work ${trChip(essence)}</div>` +
+                   `<div class="sheet-blurb hidden" id="no-crew"><i>${WHY.busy}</i></div>`;
     buildCards(el, essence);
     addCancel(el);
     el._openedAt = performance.now();
@@ -664,6 +670,10 @@
       const noCrew = crewLock(card);
       card.classList.toggle('locked', !!bad || noCrew || essence < +card.dataset.cost);
     }
+    /* the yard's refusal is a property of the YARD, not of each card — said once, above them
+     * all, so seven greyed works do not become seven copies of the same sentence */
+    const nc = el.querySelector('#no-crew');
+    if (nc) nc.classList.toggle('hidden', masonFree > 0);
     /* a work going up counts down in place; when it finishes the sheet is stale, so say so */
     if (el._raising) {
       const r = el._raising, busy = r.raise > 0 || r.work > 0;

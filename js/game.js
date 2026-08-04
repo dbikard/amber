@@ -13,7 +13,12 @@
    * as well — RUNG_OPTS — which meant the footing the menu offered governed a skirmish and
    * silently did nothing to the campaign. One knob: the LADDER says WHO, the footing says how
    * strong, and both are the player's to see. */
-  const LADDER = ['julian', 'bleys', 'brand', 'benedict'];
+  /* WEAKEST FIRST, and MEASURED — `node sim.js` prints this line ready to paste. The heirs are
+   * not balanced against each other on purpose (see DESIGN_PRINCIPLES); what their strengths
+   * are FOR is this order. It used to be a guess with four names in it, and it had bleys —
+   * who wins the field by a distance — on the second rung, while corwin was not on the ladder
+   * at all. */
+  const LADDER = ['benedict', 'julian', 'brand', 'corwin', 'bleys'];
   const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
 
   const game = {
@@ -853,5 +858,7 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
-  global.Game = { game, startSP, startMP, toMenu };
+  /* LADDER is exported so the suite can ask which rung is FIRST rather than be told a name:
+   * the order is measured, and it is expected to move when the heirs do. */
+  global.Game = { game, startSP, startMP, toMenu, LADDER };
 })(typeof window !== 'undefined' ? window : globalThis);

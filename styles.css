@@ -170,6 +170,8 @@ body {
 .c-name { font-size: 14px; color: #ffe9a8; }
 .c-cost { font-size: 13px; color: #ffe9a8; font-weight: bold; }
 .c-blurb { grid-column: 2 / 4; font-size: 11px; color: #b8a878; font-style: italic; }
+/* an empty blurb collapses its row: that is what makes a one-line card one line */
+.c-blurb:empty { display: none; }
 
 /* ---------------- menu ---------------- */
 #menu, #end {
