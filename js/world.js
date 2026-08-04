@@ -130,11 +130,51 @@
         node: g.site, co: 0
       });
     }
+    /* AND WITH A HALL. A Seat with no muster is an heir who spends his first half-minute
+     * raising the one work he was always going to raise first — the same opening every match,
+     * chosen by nobody. The board hands it over and the choosing starts at the second work.
+     * It flies its own standard, because `joinCo` never returns 0, so the flag tray has a chip
+     * in it from the first frame rather than after the first hall finishes. */
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const spot = openingHall(world, pi);
+      if (!spot) continue;
+      const def = C.BUILDINGS.barracks;
+      const b = { id: world.nextId++, bt: 'barracks', level: 1, x: spot.x, y: spot.y,
+                  cd: def.period[0] * 0.5, raise: 0, raiseFor: def.raise,
+                  hp: def.hp, maxHp: def.hp, lastHurt: -99, node: -1, co: 0 };
+      b.co = joinCo(world, pi, undefined);
+      world.players[pi].buildings.push(b);
+    }
     for (let pi = 0; pi < world.players.length; pi++) {
       world.players[pi].banner = aimAt(world, { site: world.map.cities[pi] });
       exploreAround(world, pi);   // you know your own surroundings from the start
     }
     return world;
+  }
+
+  /* WHERE THE OPENING HALL STANDS. Searched rather than given, because the only ground that
+   * will take it is whatever this seed left around the Seat — but searched in a FIXED order
+   * from a fixed ring outward, so every seat on every machine puts it in the same place. It
+   * asks the same questions the build command asks, minus the masons, who have not been hired
+   * yet when this runs. */
+  function openingHall(world, pi) {
+    const c = cityOf(world, pi);
+    const mid = { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    /* facing the middle of the board: the hall belongs between the Seat and the war, not
+     * tucked behind it where its muster has the length of the map to walk */
+    const base = Math.atan2(mid.y - c.y, mid.x - c.x);
+    for (let rad = C.CITY.seatR + C.BUILD.foot + 12; rad <= C.CLAIM.seat - C.BUILD.foot; rad += 22)
+      for (let k = 0; k < 36; k++) {
+        /* 0, +10°, -10°, +20°, -20° ... so the first spot that fits is the one nearest facing */
+        const th = base + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * (Math.PI / 18);
+        const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+        if (!groundBears(world, x, y)) continue;
+        if (!inClaim(world, pi, x, y)) continue;
+        if (!clearOfWorks(world, x, y, null)) continue;
+        if (nodeAt(world, x, y)) continue;      // a spring is a Gate's ground, not a hall's
+        return { x, y };
+      }
+    return null;
   }
 
   const cityOf = (world, pi) => world.map.sites[world.map.cities[pi]];
@@ -1446,7 +1486,13 @@
     pl.buildings.length = 0;
     if (hadWall) { world.navVersion++; noteWalls(world); }
     pl.walking = false;
-    for (let i = world.units.length - 1; i >= 0; i--) if (world.units[i].owner === pi) world.units.splice(i, 1);
+    /* HIS MEN FALL WITH HIM — but they are BURIED, not spliced out from under the loop that
+     * is running. topple() is reached from inside the per-unit pass, which walks a length it
+     * captured before the tick began; removing units here left that walk reading past the end
+     * of the array. Nothing caught it while a toppled heir had no men to remove, which was
+     * true right up until every heir started the match with a hall. Marking them dead hands
+     * them to the burial pass at the end of the tick, which is what it is for. */
+    for (const u of world.units) if (u.owner === pi) { u.hp = 0; u.dead = 1; }
     for (const q of world.players) for (const id of Object.keys(q.ghosts)) if (q.ghosts[id].owner === pi) delete q.ghosts[id];
     emit(world, { e: 'fall', pi, by: by === C.CHAOS_ID ? -1 : by });
     const left = world.players.map((q, k) => (q.out ? -1 : k)).filter((k) => k >= 0);

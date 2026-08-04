@@ -554,18 +554,22 @@ suite('companies')
   /* EVERY HALL FLIES A STANDARD. There is no company 0 and no gold banner for it to mean:
    * the first hall raises a standard of its own without being asked, which is what makes the
    * first Barracks simply work. */
+  /* the board hands every heir an opening hall, and it flies a standard of its own — so what
+   * this suite counts is the companies IT adds, not the companies on the board */
+  const was = pl.companies.length;
+  eq('the opening hall already flies one', was, 1);
   const h1 = hall(180, 0);
-  ok('the first hall raises a standard of its own', h1 && h1.co > 0, `co ${h1 && h1.co}`);
-  eq('...which is one company', pl.companies.length, 1);
-  const co = pl.companies[0].id;
+  ok('the first hall raised in play raises a standard of its own', h1 && h1.co > 0, `co ${h1 && h1.co}`);
+  eq('...which is one more company', pl.companies.length - was, 1);
+  const co = pl.companies[was].id;
   const h2 = hall(235, 'new');
   ok('a second may raise another', h2 && h2.co > 0 && h2.co !== co);
-  eq('...which is two companies', pl.companies.length, 2);
+  eq('...which is two more', pl.companies.length - was, 2);
   const h3 = hall(290, co);
   ok('or JOIN one rather than add another flag', h3 && h3.co === co);
-  eq('still two companies for three halls', pl.companies.length, 2,
+  eq('still two more for three halls', pl.companies.length - was, 2,
      `${pl.buildings.filter((b) => b.co === co).length} halls under the first`);
-  const other = pl.companies.find((q) => q.id !== co).id;
+  const other = pl.companies.filter((q) => q.id !== co && q.id !== pl.buildings[1].co)[0].id;
 
   /* the men follow the company, and moving its standard moves all of them at once */
   for (let i = 0; i < 30 * 120; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
@@ -1455,6 +1459,53 @@ suite('a tower and a curtain leave no dead band');
   }
 }
 
+/* AND WITH A HALL. A Seat with no muster is an heir who spends his first half-minute raising
+ * the one work he was always going to raise first — the same opening every match, chosen by
+ * nobody. The board hands it over and the choosing starts at the second work. */
+suite('every heir opens with a hall as well as a Gate');
+for (const n of [2, 3, 4]) {
+  for (const seed of [1, 1000, 31337]) {
+    const w = World.createWorld(seed, n);
+    for (let pi = 0; pi < n; pi++) {
+      const pl = w.players[pi], c = World.cityOf(w, pi);
+      const gates = pl.buildings.filter((b) => b.bt === 'gate');
+      const halls = pl.buildings.filter((b) => b.bt === 'barracks');
+      eq(`${n}p seed ${seed} seat ${pi}: one Gate`, gates.length, 1);
+      eq(`${n}p seed ${seed} seat ${pi}: and one hall`, halls.length, 1);
+      const h = halls[0];
+      ok(`${n}p seed ${seed} seat ${pi}: the hall is finished`, !h.raise && h.hp === h.maxHp);
+      ok(`${n}p seed ${seed} seat ${pi}: ...standing inside the writ`,
+         World.inClaim(w, pi, h.x, h.y), `${Math.round(Math.hypot(h.x - c.x, h.y - c.y))} from the Seat`);
+      ok(`${n}p seed ${seed} seat ${pi}: ...clear of the Seat's own ground`,
+         Math.hypot(h.x - c.x, h.y - c.y) > C.CITY.seatR, String(Math.round(Math.hypot(h.x - c.x, h.y - c.y))));
+      ok(`${n}p seed ${seed} seat ${pi}: ...and off the spring, which is the Gate's`,
+         !World.nodeAt(w, h.x, h.y));
+      /* it raises its OWN standard: the tray has a chip in it from the first frame */
+      ok(`${n}p seed ${seed} seat ${pi}: it flies a standard`, h.co > 0, String(h.co));
+      eq(`${n}p seed ${seed} seat ${pi}: ...and the company exists`,
+         pl.companies.filter((q) => q.id === h.co).length, 1);
+    }
+  }
+}
+{
+  /* the same board twice must place it the same way, or a guest and a host disagree about
+   * where the opening hall is before a single command has been given */
+  const a = World.createWorld(4242, 2), b = World.createWorld(4242, 2);
+  const at = (w, pi) => w.players[pi].buildings.filter((q) => q.bt === 'barracks')[0];
+  for (let pi = 0; pi < 2; pi++)
+    ok(`the same seed puts seat ${pi}'s hall in the same place`,
+       at(a, pi).x === at(b, pi).x && at(a, pi).y === at(b, pi).y,
+       `${at(a, pi).x},${at(a, pi).y} vs ${at(b, pi).x},${at(b, pi).y}`);
+  /* and it musters: an heir with a hall from the first second has men before he builds */
+  const w = World.createWorld(4242, 2);
+  w.chaosNext = 1e9;
+  w.players[0].essence = 1e5; w.players[1].essence = 1e5;
+  for (let i = 0; i < 30 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('an heir who has built nothing still has an army at half a minute',
+     w.units.filter((u) => u.owner === 0).length > 0,
+     `${w.units.filter((u) => u.owner === 0).length} men`);
+}
+
 /* A GATE STANDS ON THE SPRING. It may be raised anywhere within NODE.r of one and it used to
  * be left wherever the finger landed, so the work that draws Shadow out of the ground sat on
  * the bank of its own pool — up to ninety-six from the water — and the picture said the two
@@ -1701,6 +1752,7 @@ suite('veterans, not crowds')
 
   /* THE MASONS TAKE TIME, AND THE HALL GOES QUIET. That is the real cost of a level. */
   const before = w.units.filter((q) => q.owner === 0).length;
+  const fromHall = w.units.filter((q) => q.owner === 0 && q.from === hall.id).length;
   const up = World.applyCommand(w, 0, { c: 'up', id: hall.id });
   ok('the hall can be raised a level', up.ok, up.err);
   ok('...and it takes masonry, not a moment', hall.work > 0, hall.work);
@@ -1712,7 +1764,10 @@ suite('veterans, not crowds')
   eq('...and it takes a crew, because masonry is masonry', World.rising(w, 0), 1);
   eq('...so the yard is spoken for while they are in it', World.masons(w, 0) - World.rising(w, 0), 0);
   run(Math.ceil(hall.work) - 1);
-  eq('the hall musters nobody while they are in it', w.units.filter((q) => q.owner === 0).length, before);
+  /* THIS hall musters nobody. Counting the whole army would count the opening hall's muster
+   * too, which never stopped — the assertion is about the work the masons are in. */
+  eq('the hall musters nobody while they are in it',
+     w.units.filter((q) => q.owner === 0 && q.from === hall.id).length, fromHall);
   ok('...but it still stands, and can still be broken', hall.hp > 0 && hall.maxHp > 0);
   run(3);
   eq('the masons finish', hall.work, 0);
@@ -1743,13 +1798,16 @@ suite('the Trump has its own standard')
   w.chaosNext = 1e9;
   const pl = w.players[0];
   pl.essence = 100000;
-  eq('no standard flies before he is called', pl.companies.length, 0);
+  /* the opening hall's standard is already flying: no Trump's is */
+  const was = pl.companies.length;
+  eq('no TRUMP standard flies before he is called', pl.companies.filter((q) => q.trump).length, 0);
   ok('the Trump can be played', World.applyCommand(w, 0, { c: 'power', k: 'trump' }).ok);
   const ch = w.units.find((u) => u.kind === 'champion');
   ok('a Champion answers it', !!ch);
   ok('...under a standard of his own', ch.co > 0, `co ${ch.co}`);
-  eq('...which is one company', pl.companies.length, 1);
-  const tc = pl.companies[0];
+  eq('...which is one more company', pl.companies.length - was, 1);
+  const tc = pl.companies.filter((q) => q.trump)[0];
+  ok('...and it is the only one so marked', pl.companies.filter((q) => q.trump).length === 1);
   ok('...marked as the Trump\'s', !!tc.trump);
   eq('...and it is his', tc.id, ch.co);
 
@@ -2151,6 +2209,10 @@ suite('no ceiling on the muster')
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
   pl.essence = 9e9;
   w.chaosNext = 1e9;
+  /* FOUR halls is what this suite means, and the board now opens with one — take it down, or
+   * the timing budget below is measuring five and the number in the assertion is a lie */
+  for (let i = pl.buildings.length - 1; i >= 0; i--)
+    if (pl.buildings[i].bt === 'barracks') pl.buildings.splice(i, 1);
   let halls = 0;
   for (let a = 0; a < 60 && halls < 4; a++) {
     const th = a / 60 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;

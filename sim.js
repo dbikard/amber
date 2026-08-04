@@ -11,6 +11,7 @@
  * and comparable with the runs before it — only the ORDER they are computed in changes, and
  * the output is re-ordered back before it is printed.
  *   node sim.js --jobs=1   forces the old serial behaviour.
+ *   node sim.js --quick    a third of the games, for iterating; the full run is the referee.
  */
 'use strict';
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -77,7 +78,14 @@ if (!isMainThread) {
 /* ---------------- CLI ---------------- */
 const args = {};
 for (const a of process.argv.slice(2)) { const m = /^--(\w+)(?:=(.*))?$/.exec(a); if (m) args[m[1]] = m[2] === undefined ? true : m[2]; }
-const N = +args.n || 30, SEED = +args.seed || 1000;
+/* --quick trades confidence for a coffee. The full suite is 470 matches and it exists to be
+ * the referee before a release; most of the day you are asking "did I just break the field?",
+ * which a third of the games answers well enough to tell you whether to run the real thing.
+ * Everything is still played — the sections, the round-robin, the convergence check — because
+ * a cheap run that skips a section is a run that cannot tell you the section is fine. */
+const QUICK = !!args.quick;
+const N = +args.n || (QUICK ? 10 : 30), SEED = +args.seed || 1000;
+const CONV = QUICK ? 4 : 10;
 
 if (args.a && args.b) {
   const r = series(args.a, args.b, N, SEED);
@@ -105,8 +113,8 @@ for (let i = 0; i < heirs.length; i++) for (let j = i + 1; j < heirs.length; j++
 }
 const rrEnd = jobs.length;
 jobs.push({ head: '\n— convergence (passive-vs-passive must still end) —',
-            a: 'greedy', b: 'greedy', n: 10, seed: SEED + 5000 });
-jobs.push({ a: 'julian', b: 'julian', n: 10, seed: SEED + 6000 });
+            a: 'greedy', b: 'greedy', n: CONV, seed: SEED + 5000 });
+jobs.push({ a: 'julian', b: 'julian', n: CONV, seed: SEED + 6000 });
 
 /* The LONGEST jobs are handed out first. A pool is only as fast as its last worker, and the
  * julian mirror runs to the 45-minute cap where a bleys match is over in six — deal that one

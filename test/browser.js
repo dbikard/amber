@@ -1416,6 +1416,10 @@ async function match(browser, base, renderer) {
         g.world.events.length = 0;
         return g.world.players[0].buildings[g.world.players[0].buildings.length - 1];
       };
+      /* EVERY HEIR OPENS WITH A HALL, and it flies a standard of its own — so this suite is
+       * about the two halls IT raises, measured as a delta against whatever the board handed
+       * out. Counting companies outright made the opening hall look like a bug. */
+      const was = g.world.players[0].companies.length;
       const a1 = hall(190, 'new'), a2 = hall(245, null);
       if (!a1 || !a2) return { ok: false, why: 'no room for two halls' };
       const id = a1.co;
@@ -1430,7 +1434,7 @@ async function match(browser, base, renderer) {
       W.applyCommand(g.world, 0, { c: 'rally', co: id, site: site.id });
       window.UI.flags({ players: g.world.players }, 0, null);
       await new Promise((res) => requestAnimationFrame(res));
-      return { ok: true, halls: 2, companies: g.world.players[0].companies.length,
+      return { ok: true, halls: 2, was, companies: g.world.players[0].companies.length - was,
                chips: document.querySelectorAll('#flag-tray .fbtn').length,
                coChips: document.querySelectorAll('#flag-tray .fbtn.co').length,
                sameCo: a1.co === a2.co };
@@ -1438,9 +1442,9 @@ async function match(browser, base, renderer) {
     ok('the scenario set up', co.ok, co.why || '');
     if (co.ok) {
       ok('two halls can muster into ONE company', co.sameCo && co.companies === 1,
-         `${co.companies} companies for ${co.halls} halls`);
-      ok('and the tray shows one chip for it, not one per hall', co.coChips === 1,
-         `${co.coChips} company chips, ${co.chips} chips in all`);
+         `${co.companies} new companies for ${co.halls} halls (${co.was} already standing)`);
+      ok('and the tray shows one chip for it, not one per hall', co.coChips === co.was + 1,
+         `${co.coChips} company chips against ${co.was} + 1, ${co.chips} chips in all`);
       /* THE GOLD CHIP IS GONE. It moved everything and struck every standing standard the
        * moment you touched it; the tray is the army now, one flag per company. */
       ok('and there is no gold chip above them any more', co.chips === co.coChips,

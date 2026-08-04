@@ -102,6 +102,10 @@ human could see (see `AI.view()`).
   Skip with AMBER_NO_BUMP=1. sw.js precaches per-version; update flow lives in game.js setupPWA().
 - Balance changes: run `node sim.js` before and after; keep the targets in
   DESIGN_PRINCIPLES.md green. `node sim.js --a=brand --b=julian --n=40` for a matchup.
+  The full run is 470 matches (15 matchups x 30 games + 2 convergence series) across
+  `os.cpus().length` workers, and the julian mirror runs to the 45-minute cap — call it ten
+  minutes on four cores. `--quick` plays every section at a third of the games for iterating;
+  the full run is what decides whether to ship.
 - The suite prints its slowest suites when a run is slow — start there rather than bisecting
   by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
   the same problem. Wait on a condition (`until`) rather than a fixed sleep.
@@ -140,15 +144,25 @@ crew that every order then bounced off as 'busy'.
 
 ## The opening
 
-Every heir starts with **exactly one spring inside his writ** and **a finished Shadow Gate on
-it**. Worldgen enforces both (`traits` in `placeCities` requires one *usable* spring and one
-inside `CLAIM.seat`) and hands the Gate's spot out as `gen.homeGates`, so `createWorld` places
-it rather than re-deriving the search. Every further spring is beyond the writ and must be
-TAKEN — troops standing on it — which is the whole shape of expansion now.
+Every heir starts with **exactly one spring inside his writ**, **a finished Shadow Gate on
+it**, and **a finished mustering hall**. Worldgen enforces the spring (`traits` in
+`placeCities` requires one *usable* spring and one inside `CLAIM.seat`) and hands the Gate's
+spot out as `gen.homeGates`, so `createWorld` places it rather than re-deriving the search. A
+Gate always lands on the spring's exact centre, in `createWorld` and in the build command
+alike. Every further spring is beyond the writ and must be TAKEN — troops standing on it —
+which is the whole shape of expansion now.
 
-Crews are hired **one per Gate** (`MASONS.base` is 0), so the opening Gate is the opening
-mason and nobody starts unable to build. Tests that assume `players[pi].buildings[0]` is the
-work they just raised are wrong: it is the Gate.
+The hall's spot is `openingHall()`: a fixed-order search out from `CITY.seatR`, angles fanning
+out from the bearing toward the middle of the board, so it lands between the Seat and the war
+and lands in the SAME place on every machine. It flies its own standard (`joinCo` never
+returns 0), so the flag tray has a chip in it from the first frame. Without it every match
+opened with the same forced first build, chosen by nobody.
+
+Crews are hired **one per Gate** (`MASONS.base` is 0, floored at `MASONS.floor`), so the
+opening Gate is the opening mason and nobody starts unable to build — and the floor means an
+heir whose last Gate is thrown down can still raise another. Tests that assume
+`players[pi].buildings[0]` is the work they just raised are wrong: it is the Gate, and
+`buildings[1]` is the hall.
 
 ## Veterancy and the masons
 
