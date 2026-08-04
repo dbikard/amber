@@ -46,11 +46,19 @@
   }
   /* do segments AB and CD cross? Straight orientation test — no divisions, no edge cases
    * that matter at the scale a wall and a line of fire meet on. */
+  /* PROPER intersection: the two segments pass THROUGH each other. Touching does not count,
+   * and the difference is a whole fortification. Written as `(d1 > 0) !== (dd2 > 0)` a zero
+   * silently grouped with the negatives, so a run that merely began at the end of an existing
+   * one read as crossing it — for about half of the directions it could leave in, which is
+   * why it looked like bad luck rather than a rule. A curtain could not turn a corner: every
+   * second stretch came back 'too close to another work' and the only way to build an angle
+   * was two disconnected runs with a gap a man walks through. A shared endpoint is what a
+   * corner IS. */
   function crosses(ax, ay, bx, by, cx, cy, dx, dy) {
     const s = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
-    const d1 = s(cx, cy, dx, dy, ax, ay), dd2 = s(cx, cy, dx, dy, bx, by);
-    const d3 = s(ax, ay, bx, by, cx, cy), d4 = s(ax, ay, bx, by, dx, dy);
-    return ((d1 > 0) !== (dd2 > 0)) && ((d3 > 0) !== (d4 > 0));
+    const opp = (u, v) => (u > 0 && v < 0) || (u < 0 && v > 0);
+    return opp(s(cx, cy, dx, dy, ax, ay), s(cx, cy, dx, dy, bx, by)) &&
+           opp(s(ax, ay, bx, by, cx, cy), s(ax, ay, bx, by, dx, dy));
   }
 
   /* ---------------- the world ----------------
@@ -373,6 +381,22 @@
         world.walls.push({ b, owner: q, ax: e[0], ay: e[1], bx: e[2], by: e[3], gx: mx, gy: my });
       }
     world.anyWall = world.walls.length > 0;
+    /* WHICH RUN A TOWER STANDS ON IS DERIVED, not stamped. The answer changes without the
+     * tower being touched — the curtain under it is breached, mended, thrown down, or a new
+     * one is drawn through it — and stamped at build time it went stale in both directions: a
+     * tower whose wall was razed went on being drawn twenty-seven feet in the air on stone
+     * that was no longer there, and a bastion a later run was drawn through never learned it
+     * was on one. This is the only place the standing set changes, so it is the only place
+     * the answer can. */
+    const r2 = (C.WALL.thick + 16) * (C.WALL.thick + 16);
+    for (let q = 0; q < world.players.length; q++)
+      for (const b of world.players[q].buildings) {
+        if (b.bt !== 'tower') continue;
+        let on = 0;
+        for (const w of world.walls)
+          if (w.owner === q && segD2(w.b, b.x, b.y) < r2) { on = w.b.id; break; }
+        if (on) b.onWall = on; else delete b.onWall;
+      }
   }
   /* is this point in the gateway of that wall? The gate is the middle of the run and it is
    * the ONLY way through — for the heir who raised it, and for nobody else. */
@@ -405,6 +429,14 @@
           const e = wallEnds(o);
           if (crosses(ax, ay, bx, by, e[0], e[1], e[2], e[3])) return 'crowded';
           if (segD2(o, ax, ay) < 26 * 26 && segD2(o, bx, by) < 26 * 26) return 'crowded';
+        } else if (o.bt === 'tower' && q === pi) {
+          /* A TOWER OF YOURS IS A BASTION, not an obstacle. The game already lets you raise a
+           * tower INTO your curtain; the reverse has to hold or a corner tower is a full stop
+           * — the next stretch of wall cannot start at it, cannot end at it and cannot pass
+           * it, so a curtain that turns has to be drawn in disconnected pieces with gaps a
+           * man can walk through. Reported from play as 'too close to another work' on every
+           * run begun at the tower one had just built into the wall. */
+          continue;
         } else if (segD2(probe, o.x, o.y) < C.BUILD.foot * C.BUILD.foot) return 'crowded';
       }
     }

@@ -1441,6 +1441,77 @@ suite('a tower and a curtain leave no dead band');
   }
 }
 
+/* A CURTAIN THAT TURNS A CORNER. A tower of your own is a BASTION, not an obstacle: the game
+ * already lets you raise one into your wall, and if the next stretch cannot then start at it,
+ * end at it or pass it, a curtain that turns has to be drawn in disconnected pieces with gaps
+ * a man walks through. Reported from play as 'too close to another work' on every run begun at
+ * the tower one had just built into the wall. */
+suite('a curtain turns at its bastion');
+{
+  const w = World.createWorld(4321, 2), pl = w.players[0];
+  pl.essence = 1e6;
+  w.chaosNext = 1e9;
+  const c = w.map.sites[w.map.cities[0]], gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 4; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  /* a first run, and a second one leaving its far end that the GROUND will take — found
+   * before the tower goes up, so that what the tower does to the answer is the only thing
+   * this measures */
+  let first = null, turn = null;
+  for (let rad = 190; rad < 430 && !turn; rad += 20)
+    for (let a = 0; a < 48 && !turn; a++) {
+      const th = a / 48 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.wallError(w, 0, x, y, x + 160, y)) continue;
+      for (let b = 0; b < 48 && !turn; b++) {
+        const ph = b / 48 * Math.PI * 2;
+        if (Math.abs(Math.sin(ph)) < 0.5) continue;   // a real turn, not a continuation
+        const ex = x + 160 + Math.cos(ph) * 150, ey = y + Math.sin(ph) * 150;
+        if (World.wallError(w, 0, x + 160, y, ex, ey)) continue;
+        first = { x, y, x2: x + 160, y2: y }; turn = { ex, ey };
+      }
+    }
+  ok('a run and a turn off its end were both found on open ground', !!turn);
+  ok('the first run goes up', World.applyCommand(w, 0, { c: 'build', bt: 'wall', ...first }).ok);
+  const wallA = pl.buildings.filter((q) => q.bt === 'wall').pop();
+  for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const e = World.wallEnds(wallA);
+  eq('...and stands', wallA.raise, 0);
+
+  /* the bastion, on the corner */
+  const rt = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: e[2], y: e[3] });
+  ok('a bastion is raised on its end', rt.ok, rt.err);
+  const tw = pl.buildings.filter((q) => q.bt === 'tower').pop();
+  eq('...standing on the run', tw.onWall, wallA.id);
+  for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+
+  eq('and the curtain still turns at it', World.wallError(w, 0, e[2], e[3], turn.ex, turn.ey), null);
+  const rb = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: e[2], y: e[3], x2: turn.ex, y2: turn.ey });
+  ok('...so the next stretch can be drawn from it', rb.ok, rb.err);
+  /* but a run drawn back along stone that is already there is still refused — that is a wall
+   * on a wall, which is the refusal doing its job */
+  eq('a run drawn back over the old one is still refused',
+     World.wallError(w, 0, e[2], e[3], e[0], e[1]), 'crowded');
+
+  /* WHICH RUN A TOWER STANDS ON IS DERIVED. Stamped at build time it went stale both ways:
+   * throw the curtain down and the tower was still drawn twenty-seven feet up on stone that
+   * was gone; draw a new run through a tower and it never learned it was on one. */
+  const wallB = pl.buildings.filter((q) => q.bt === 'wall').pop();
+  for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('the second run stands too', !wallB.raise && wallB.id !== wallA.id);
+  ok('the bastion is on one of them', tw.onWall === wallA.id || tw.onWall === wallB.id, `${tw.onWall}`);
+  World.hurtBuilding(w, 0, wallA.id, 1e9, 1);
+  World.hurtBuilding(w, 0, wallB.id, 1e9, 1);
+  ok('both runs are broken', wallA.breach === 1 && wallB.breach === 1);
+  eq('and the bastion stands on rubble, which is to say on nothing', tw.onWall, undefined);
+  const fx = World.applyCommand(w, 0, { c: 'fix', id: wallA.id });
+  ok('the masons can put one back', fx.ok, fx.err);
+  for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('...and the bastion is on the curtain again', tw.onWall, wallA.id);
+}
+
 /* A LEVEL MAKES BETTER MEN, NOT MORE OF THEM. Halls used to buy THROUGHPUT — the same
  * soldier arriving faster — so an upgraded realm fought with bigger crowds of identical men
  * and there was nothing to see. The muster interval is flat now and the level rides on the
