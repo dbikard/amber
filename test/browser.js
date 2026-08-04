@@ -702,6 +702,74 @@ async function match(browser, base, renderer) {
        `${yard.working.free}${yard.working.of} with ${yard.rising} rising`);
     ok('...and dims, which is what explains a refusal before you hit one', yard.working.busy);
 
+    /* ---------------- the sheet knows the yard is empty ---------------- *
+     * The yard readout says how many crews are free; the SHEET is what you actually press,
+     * and it used to offer every work at full brightness with nothing to build them. You
+     * chose a card, armed it, aimed at the ground and were told 'your masons are all at work'
+     * — three steps to learn a thing the button could have said. The lock has to run both
+     * ways and it has to run LIVE: a sheet opened with the yard full clears itself the moment
+     * a crew walks out of a finished work, without being closed and opened again. */
+    suite(`${r} · the yard greys the sheet`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    await pg.waitForTimeout(120);
+    const grey = await pg.evaluate(async () => {
+      const { World: W, Game } = window;
+      const g = Game.game, pl = g.world.players[0];
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      pl.essence = 99000;
+      g.world.chaosNext = 1e9;
+      for (const b of pl.buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+      const had = pl.buildings.length;   // this suite tidies up after itself: see the truncate below
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      await paint();
+      const cards = () => [...document.querySelectorAll('#sheet .card[data-cost]')];
+      const read = () => ({
+        n: cards().length,
+        locked: cards().filter((k) => k.classList.contains('locked')).length,
+        says: cards().some((k) => /masons are all at work/.test(k.textContent)),
+        btn: document.getElementById('btn-build').classList.contains('nocrew'),
+        open: !document.getElementById('sheet').classList.contains('hidden')
+      });
+      /* crews free: the sheet opens bright */
+      document.getElementById('btn-build').click();
+      await paint();
+      const free = read();
+      /* now fill the yard WITHOUT touching the sheet, the way a match does */
+      const want = W.masons(g.world, 0);
+      let started = 0;
+      for (let rad = 150; rad < 420 && started < want; rad += 20)
+        for (let a = 0; a < 24 && started < want; a++) {
+          const th = a / 24 * Math.PI * 2;
+          const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+          if (W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'tower' }).ok) started++;
+        }
+      await paint();
+      const full = read();
+      /* and let them out again, still without closing it */
+      for (const b of pl.buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+      await paint();
+      const back = read();
+      /* the towers were scaffolding for this suite, not works — leaving a ring of them round
+       * the Seat is how a later suite finds no ground for the one IT needs */
+      pl.buildings.length = had;
+      await paint();
+      return { free, full, back, want, started };
+    });
+    ok('the sheet opens with every work offered while a crew is free',
+       grey.free.n > 0 && grey.free.locked === 0 && !grey.free.btn,
+       `${grey.free.locked}/${grey.free.n} locked, button ${grey.free.btn ? 'grey' : 'lit'}`);
+    ok('every crew could be put to work', grey.started === grey.want, `${grey.started}/${grey.want}`);
+    ok('...and the open sheet greys itself when the last crew is taken',
+       grey.full.open && grey.full.locked === grey.full.n && grey.full.n > 0,
+       `${grey.full.locked}/${grey.full.n} locked`);
+    ok('...saying it is the masons, not the money', grey.full.says);
+    ok('...and the BUILD button greys with it', grey.full.btn);
+    ok('a crew coming free clears the sheet without reopening it',
+       grey.back.open && grey.back.locked === 0 && !grey.back.btn,
+       `${grey.back.locked}/${grey.back.n} locked, button ${grey.back.btn ? 'grey' : 'lit'}`);
+    await pg.evaluate(() => window.UI.closeSheet());
+    await pg.waitForTimeout(120);
+
     /* ---------------- the halt ---------------- *
      * A pause has one job beyond stopping the clock: it must not BANK the time it stood
      * still for. An accumulator left filling would fast-forward the match the moment you

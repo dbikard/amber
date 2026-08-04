@@ -210,6 +210,12 @@
    * and opened the sheet. Read straight off the view, so it is the same truth on a host and
    * on a guest: a crew per finished Gate group, minus the crews already on something. */
   let masonHash = '';
+  /* THE OTHER PURSE, remembered. Essence is not the only thing a work costs — every one of
+   * them takes a mason CREW — so the sheet has to grey out for want of a crew exactly the way
+   * it greys out for want of coin, and clear again the moment one comes free even if the sheet
+   * has been open the whole time. Read once a frame here, off the same view the yard reads, so
+   * a guest with no world of its own is told the same truth. */
+  let masonFree = 0;
   function paintMasons(view, viewer) {
     const me = view.players[viewer];
     let gates = 0, busy = 0;
@@ -223,12 +229,17 @@
     }
     const total = Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
     const free = Math.max(0, total - busy);
+    masonFree = free;
     const key = free + '/' + total;
     if (key === masonHash) return;
     masonHash = key;
     $('m-free').textContent = free;
     $('m-of').textContent = '/' + total;
     $('masons').classList.toggle('busy', free === 0);
+    /* and the BUTTON goes with it. There is nothing behind it worth opening with no crew in
+     * the yard, and finding that out by choosing a work and being refused at the tap is the
+     * long way round. It still opens — the cards say WHY, which a dead button cannot. */
+    $('btn-build').classList.toggle('nocrew', free === 0);
   }
 
   UI.hud = function (view, viewer, incomeRate, targeting) {
@@ -359,6 +370,7 @@
       card.className = 'card' + (essence >= d.cost && !bad ? '' : ' locked');
       card.dataset.cost = d.cost;      // live affordability: UI.tick unlocks it as income catches up
       card.dataset.bt = bt;            // ...and re-asks the sim why, so a card can unlock in place
+      card.dataset.crew = '1';         // ...and every work takes a mason crew: see crewLock
       card.dataset.bad = bad || '';
       card.innerHTML = cardBody(d, bt, bad);
       card.addEventListener('click', () => {
@@ -400,6 +412,7 @@
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
+    UI.tick(essence);   // grey it on the frame it opens, not on the one after
   };
   UI.armBuild = function (on) { $('btn-build').classList.toggle('armed', !!on); };
 
@@ -449,6 +462,7 @@
       const b = document.createElement('button');
       b.className = 'card' + (essence >= price ? '' : ' locked');
       b.dataset.cost = price;
+      b.dataset.crew = '1';
       b.innerHTML = '<span class="c-ico">🧱</span><span class="c-name">Mend the breach</span>' +
                     `<span class="c-cost">◆ ${price}</span>` +
                     '<span class="c-blurb">A crew and half the stone. It shelters nobody until they are done.</span>';
@@ -457,6 +471,7 @@
       addCancel(el);
       el._openedAt = performance.now();
       el.classList.remove('hidden');
+      UI.tick(essence);
       return;
     }
     /* the Watchtower fork: the level-2 upgrade is a CHOICE, offered as two cards */
@@ -472,6 +487,7 @@
         const b = document.createElement('button');
         b.className = 'card' + (essence >= cost ? '' : ' locked');
         b.dataset.cost = cost;
+        b.dataset.crew = '1';
         b.innerHTML = `<span class="c-ico">${b2.icon}</span><span class="c-name">${b2.name}</span>` +
                       `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">${b2.blurb}</span>` +
                       towerStatLine(key, C.BUILDINGS.tower.fork);
@@ -484,6 +500,7 @@
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
       b.dataset.cost = cost;
+      b.dataset.crew = '1';
       const forked = s.bt === 'tower' && !!s.br;
       const rt = forked ? towerStatLine(s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
       /* AN UPGRADE IS MASONRY. It takes a crew and it takes time, and the work does its job
@@ -531,6 +548,7 @@
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
+    UI.tick(essence);
   };
 
   /* ---------------- map site sheet (v0.2) ---------------- */
@@ -595,6 +613,7 @@
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
+    UI.tick(essence);
   };
 
   function addCancel(el) {
@@ -602,6 +621,21 @@
     c.className = 'card cancel'; c.textContent = 'Close';
     c.addEventListener('click', UI.closeSheet);
     el.appendChild(c);
+  }
+  /* A card marked `data-crew` is masonry — raising, raising a level, mending — and none of it
+   * can start with the yard full. Grey it with the rest and say so where the blurb was, then
+   * put the blurb back when a crew comes free. Toggled from UI.tick, so a sheet opened with no
+   * crew in the yard clears itself the moment one walks out of a finished work. */
+  function crewLock(card) {
+    const want = !!card.dataset.crew && masonFree === 0;
+    if (!!card._nocrew === want) return want;
+    card._nocrew = want;
+    const bl = card.querySelector('.c-blurb');
+    if (bl) {
+      if (want) { card._blurb = bl.innerHTML; bl.innerHTML = '<i>' + WHY.busy + '</i>'; }
+      else if (card._blurb != null) bl.innerHTML = card._blurb;
+    }
+    return want;
   }
   /* live affordability: called every frame with the viewer's current essence —
    * a card locked when the sheet opened unlocks the moment the war chest reaches its cost */
@@ -616,9 +650,11 @@
         if (now !== bad) {   // only touch the DOM when the answer actually changed
           bad = card.dataset.bad = now;
           card.innerHTML = cardBody(C.BUILDINGS[bt], bt, now || null);
+          card._nocrew = false; card._blurb = null;   // a fresh body: the lock re-applies below
         }
       }
-      card.classList.toggle('locked', !!bad || essence < +card.dataset.cost);
+      const noCrew = crewLock(card);
+      card.classList.toggle('locked', !!bad || noCrew || essence < +card.dataset.cost);
     }
     /* a work going up counts down in place; when it finishes the sheet is stale, so say so */
     if (el._raising) {
