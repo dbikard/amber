@@ -226,6 +226,8 @@
           /* the masons in the yard are as visible as the scaffolding on a new work: a hall
            * that has gone quiet must LOOK like one to a guest too */
           work: b.work > 0 ? Math.round(b.work * 10) / 10 : 0, workFor: b.workFor || 0,
+          /* a long curtain occupies several crews — the yard readout has to know */
+          ...(b.crews > 1 ? { crews: b.crews } : {}),
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
           co: mine ? b.co : 0            // which company a hall musters into is yours to know

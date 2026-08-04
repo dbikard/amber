@@ -1,0 +1,784 @@
+
+  world generation
+    [32m✓[0m seed 1 generates
+    [32m✓[0m seed 1 generates quickly
+    [32m✓[0m seed 1: no site is stranded
+    [32m✓[0m seed 1: the Seats are far apart
+    [32m✓[0m seed 1: Seat 0 stands inland
+    [32m✓[0m seed 1: Seat 1 stands inland
+    [32m✓[0m seed 1: the land is varied
+    [32m✓[0m seed 1: no spring crowds Seat 0
+    [32m✓[0m seed 1: Seat 0 opens with a spring in its writ
+    [32m✓[0m seed 1: and a Gate can actually be raised on it
+    [32m✓[0m seed 1: no spring crowds Seat 1
+    [32m✓[0m seed 1: Seat 1 opens with a spring in its writ
+    [32m✓[0m seed 1: and a Gate can actually be raised on it
+    [32m✓[0m seed 1: every spring sits in level ground
+    [32m✓[0m seed 7 generates
+    [32m✓[0m seed 7 generates quickly
+    [32m✓[0m seed 7: no site is stranded
+    [32m✓[0m seed 7: the Seats are far apart
+    [32m✓[0m seed 7: Seat 0 stands inland
+    [32m✓[0m seed 7: Seat 1 stands inland
+    [32m✓[0m seed 7: the land is varied
+    [32m✓[0m seed 7: no spring crowds Seat 0
+    [32m✓[0m seed 7: Seat 0 opens with a spring in its writ
+    [32m✓[0m seed 7: and a Gate can actually be raised on it
+    [32m✓[0m seed 7: no spring crowds Seat 1
+    [32m✓[0m seed 7: Seat 1 opens with a spring in its writ
+    [32m✓[0m seed 7: and a Gate can actually be raised on it
+    [32m✓[0m seed 7: every spring sits in level ground
+    [32m✓[0m seed 42 generates
+    [32m✓[0m seed 42 generates quickly
+    [32m✓[0m seed 42: no site is stranded
+    [32m✓[0m seed 42: the Seats are far apart
+    [32m✓[0m seed 42: Seat 0 stands inland
+    [32m✓[0m seed 42: Seat 1 stands inland
+    [32m✓[0m seed 42: the land is varied
+    [32m✓[0m seed 42: no spring crowds Seat 0
+    [32m✓[0m seed 42: Seat 0 opens with a spring in its writ
+    [32m✓[0m seed 42: and a Gate can actually be raised on it
+    [32m✓[0m seed 42: no spring crowds Seat 1
+    [32m✓[0m seed 42: Seat 1 opens with a spring in its writ
+    [32m✓[0m seed 42: and a Gate can actually be raised on it
+    [32m✓[0m seed 42: every spring sits in level ground
+    [32m✓[0m seed 1000 generates
+    [32m✓[0m seed 1000 generates quickly
+    [32m✓[0m seed 1000: no site is stranded
+    [32m✓[0m seed 1000: the Seats are far apart
+    [32m✓[0m seed 1000: Seat 0 stands inland
+    [32m✓[0m seed 1000: Seat 1 stands inland
+    [32m✓[0m seed 1000: the land is varied
+    [32m✓[0m seed 1000: no spring crowds Seat 0
+    [32m✓[0m seed 1000: Seat 0 opens with a spring in its writ
+    [32m✓[0m seed 1000: and a Gate can actually be raised on it
+    [32m✓[0m seed 1000: no spring crowds Seat 1
+    [32m✓[0m seed 1000: Seat 1 opens with a spring in its writ
+    [32m✓[0m seed 1000: and a Gate can actually be raised on it
+    [32m✓[0m seed 1000: every spring sits in level ground
+    [32m✓[0m seed 31337 generates
+    [32m✓[0m seed 31337 generates quickly
+    [32m✓[0m seed 31337: no site is stranded
+    [32m✓[0m seed 31337: the Seats are far apart
+    [32m✓[0m seed 31337: Seat 0 stands inland
+    [32m✓[0m seed 31337: Seat 1 stands inland
+    [32m✓[0m seed 31337: the land is varied
+    [32m✓[0m seed 31337: no spring crowds Seat 0
+    [32m✓[0m seed 31337: Seat 0 opens with a spring in its writ
+    [32m✓[0m seed 31337: and a Gate can actually be raised on it
+    [32m✓[0m seed 31337: no spring crowds Seat 1
+    [32m✓[0m seed 31337: Seat 1 opens with a spring in its writ
+    [32m✓[0m seed 31337: and a Gate can actually be raised on it
+    [32m✓[0m seed 31337: every spring sits in level ground
+
+  movement
+    [32m✓[0m seed 1: a unit can walk Seat to Seat
+    [32m✓[0m seed 7: a unit can walk Seat to Seat
+    [32m✓[0m seed 42: a unit can walk Seat to Seat
+
+  placement rules
+    [32m✓[0m terrain 1 refuses a work
+    [32m✓[0m terrain 3 bears a work
+    [32m✓[0m terrain 4 bears a work
+    [32m✓[0m terrain 5 refuses a work
+    [32m✓[0m terrain 6 bears a work
+    [32m✓[0m terrain 7 refuses a work
+    [32m✓[0m a work may not stand on the Seat itself
+    [32m✓[0m found open ground outside the writ to test with
+    [32m✓[0m beyond the writ is refused
+    [32m✓[0m a Shrine can be raised
+    [32m✓[0m a second Shrine is refused as unique
+
+  command grammar
+    [32m✓[0m a work is raised with an id and a position
+    [32m✓[0m it cannot be upgraded while it is still going up
+    [32m✓[0m the tower fork demands a branch
+    [32m✓[0m an unknown branch is refused
+    [32m✓[0m the fork takes a branch
+    [32m✓[0m the branch is permanent
+    [32m✓[0m an unknown work id is refused
+
+  a Gate stands on a spring
+    [32m✓[0m bare ground inside the writ
+    [32m✓[0m ...bears a Barracks
+    [32m✓[0m ...but refuses a Gate
+    [32m✓[0m a spring in the writ takes a Gate
+    [32m✓[0m and raising it works
+    [32m✓[0m the Gate knows its spring
+    [32m✓[0m a second Gate on the same spring is refused as taken
+    [32m✓[0m a Gate has no off-spring income table at all
+    [32m✓[0m and it pays the spring rate
+
+  two, three or four heirs
+    [32m✓[0m Chaos owns no seat index a player could hold
+    [32m✓[0m four is the ceiling
+    [32m✓[0m every seat has a name
+    [32m✓[0m 2 heirs: that many players
+    [32m✓[0m 2 heirs: that many Seats
+    [32m✓[0m 2 heirs: each Seat named for its own
+    [32m✓[0m 2 heirs: nothing stranded
+    [32m✓[0m 2 heirs: no two Seats crowd each other
+    [32m✓[0m 2 heirs: seat 0 opens with a spring
+    [32m✓[0m 2 heirs: seat 1 opens with a spring
+    [32m✓[0m 2 heirs: still running after 90s
+    [32m✓[0m 2 heirs: Chaos is on the board and owned by nobody
+    [32m✓[0m 3 heirs: that many players
+    [32m✓[0m 3 heirs: that many Seats
+    [32m✓[0m 3 heirs: each Seat named for its own
+    [32m✓[0m 3 heirs: nothing stranded
+    [32m✓[0m 3 heirs: no two Seats crowd each other
+    [32m✓[0m 3 heirs: seat 0 opens with a spring
+    [32m✓[0m 3 heirs: seat 1 opens with a spring
+    [32m✓[0m 3 heirs: seat 2 opens with a spring
+    [32m✓[0m 3 heirs: still running after 90s
+    [32m✓[0m 3 heirs: Chaos is on the board and owned by nobody
+    [32m✓[0m 4 heirs: that many players
+    [32m✓[0m 4 heirs: that many Seats
+    [32m✓[0m 4 heirs: each Seat named for its own
+    [32m✓[0m 4 heirs: nothing stranded
+    [32m✓[0m 4 heirs: no two Seats crowd each other
+    [32m✓[0m 4 heirs: seat 0 opens with a spring
+    [32m✓[0m 4 heirs: seat 1 opens with a spring
+    [32m✓[0m 4 heirs: seat 2 opens with a spring
+    [32m✓[0m 4 heirs: seat 3 opens with a spring
+    [32m✓[0m 4 heirs: still running after 90s
+    [32m✓[0m 4 heirs: Chaos is on the board and owned by nobody
+
+  a Seat falls
+    [32m✓[0m a duel ends on the first fall
+    [32m✓[0m ...by the castle
+    [32m✓[0m a fourth heir can fall
+    [32m✓[0m ...without ending the match
+    [32m✓[0m their works are gone
+    [32m✓[0m and their men with them
+    [32m✓[0m a third can fall too
+    [32m✓[0m the last heir standing takes the throne
+    [32m✓[0m ...by the castle
+    [32m✓[0m the fallen stay fallen
+
+  a walk is a beacon
+    [32m✓[0m seat 1 raises a Shrine
+    [32m✓[0m nobody else can see it while it is quiet
+    [32m✓[0m and nobody is walking
+    [32m✓[0m the walk lights the Shrine for EVERY other heir
+    [32m✓[0m ...and the ground around it
+    [32m✓[0m ...but not the whole map
+    [32m✓[0m the walkers list names them
+    [32m✓[0m ...by seat
+    [32m✓[0m ...with the Shrine it burns at
+    [32m✓[0m ...and how far along
+    [32m✓[0m a rival sees the walk on the wire
+    [32m✓[0m and its progress
+    [32m✓[0m and the Shrine itself is sent, being visible now
+    [32m✓[0m stopping puts the light out
+    [32m✓[0m and clears the board
+    [32m✓[0m walking again
+    [32m✓[0m a fallen heir leaves the board
+    [32m✓[0m and their light goes out
+
+  four on the wire
+    [32m✓[0m all four heirs are building
+    [32m✓[0m seat 0: the snapshot carries every player
+    [32m✓[0m seat 0: no rival essence
+    [32m✓[0m seat 0: no rival banner
+    [32m✓[0m seat 0: no rival powers
+    [32m✓[0m seat 0: no rival company list
+    [32m✓[0m seat 0: own essence is present
+    [32m✓[0m seat 0: only sees seat 1's works it can see
+    [32m✓[0m seat 0: only sees seat 2's works it can see
+    [32m✓[0m seat 0: only sees seat 3's works it can see
+    [32m✓[0m seat 0: units are its own or seen
+    [32m✓[0m seat 0: still fits a 10 Hz channel
+    [32m✓[0m seat 1: the snapshot carries every player
+    [32m✓[0m seat 1: no rival essence
+    [32m✓[0m seat 1: no rival banner
+    [32m✓[0m seat 1: no rival powers
+    [32m✓[0m seat 1: no rival company list
+    [32m✓[0m seat 1: own essence is present
+    [32m✓[0m seat 1: only sees seat 0's works it can see
+    [32m✓[0m seat 1: only sees seat 2's works it can see
+    [32m✓[0m seat 1: only sees seat 3's works it can see
+    [32m✓[0m seat 1: units are its own or seen
+    [32m✓[0m seat 1: still fits a 10 Hz channel
+    [32m✓[0m seat 2: the snapshot carries every player
+    [32m✓[0m seat 2: no rival essence
+    [32m✓[0m seat 2: no rival banner
+    [32m✓[0m seat 2: no rival powers
+    [32m✓[0m seat 2: no rival company list
+    [32m✓[0m seat 2: own essence is present
+    [32m✓[0m seat 2: only sees seat 0's works it can see
+    [32m✓[0m seat 2: only sees seat 1's works it can see
+    [32m✓[0m seat 2: only sees seat 3's works it can see
+    [32m✓[0m seat 2: units are its own or seen
+    [32m✓[0m seat 2: still fits a 10 Hz channel
+    [32m✓[0m seat 3: the snapshot carries every player
+    [32m✓[0m seat 3: no rival essence
+    [32m✓[0m seat 3: no rival banner
+    [32m✓[0m seat 3: no rival powers
+    [32m✓[0m seat 3: no rival company list
+    [32m✓[0m seat 3: own essence is present
+    [32m✓[0m seat 3: only sees seat 0's works it can see
+    [32m✓[0m seat 3: only sees seat 1's works it can see
+    [32m✓[0m seat 3: only sees seat 2's works it can see
+    [32m✓[0m seat 3: units are its own or seen
+    [32m✓[0m seat 3: still fits a 10 Hz channel
+    [32m✓[0m the host can push all four at 10 Hz
+
+  the Pattern is not upgraded
+    [32m✓[0m the Shrine has no upgrade table at all
+    [32m✓[0m so it has one drain and one rate
+    [32m✓[0m a Shrine can be raised
+    [32m✓[0m it stands at level 1
+    [32m✓[0m and refuses to be upgraded
+    [32m✓[0m ...still at level 1
+    [32m✓[0m an upgrade has no price to quote
+    [32m✓[0m the walk begins
+    [32m✓[0m a second of walking costs the Shrine drain
+    [32m✓[0m the drain is reported to the HUD
+    [32m✓[0m a whole walk is a serious sum
+    [32m✓[0m an empty treasury slows the walk
+    [32m✓[0m ...but it does not stop it
+    [32m✓[0m so the slowest possible walk still finishes inside a match
+
+  the lines fade
+    [32m✓[0m a Shrine stands
+    [32m✓[0m a minute of walking gets you somewhere
+    [32m✓[0m a minute of standing still gives some of it back
+    [32m✓[0m but it does not evaporate — a pause is a cost, not a reset
+    [32m✓[0m the walk cannot go negative
+    [32m✓[0m the walk is under way again
+    [32m✓[0m the Shrine is thrown down
+    [32m✓[0m ...which tears the walker off the Pattern
+    [32m✓[0m ...and costs them what they had paid for
+    [32m✓[0m the loss is announced
+    [32m✓[0m a new Shrine can be raised
+    [32m✓[0m but the walk resumes from where it was left, not from where it stood
+
+  companies
+    [32m✓[0m a hall may muster under the War Banner
+    [32m✓[0m ...which is not a company at all
+    [32m✓[0m a hall may raise a standard of its own
+    [32m✓[0m ...which is one company
+    [32m✓[0m and a third may JOIN it rather than add another flag
+    [32m✓[0m still one company for two halls
+    [32m✓[0m both halls muster into the one company
+    [32m✓[0m and the Banner hall musters separately
+    [32m✓[0m a company standard can be posted
+    [32m✓[0m an unknown company is refused
+    [32m✓[0m every one of its men answers the new standard, from both halls
+    [32m✓[0m and the Banner men are untouched by it
+    [32m✓[0m the War Banner can be raised elsewhere
+    [32m✓[0m and it strikes every company standard
+    [32m✓[0m the company still has men
+    [32m✓[0m and the WHOLE army answers the Banner, company men included
+    [32m✓[0m a company can post its standard again
+    [32m✓[0m and takes its own men back with it
+    [32m✓[0m while the rest hold to the Banner
+    [32m✓[0m the third hall has men of its own
+    [32m✓[0m it can be sent back under the Banner
+    [32m✓[0m the hall now answers the Banner
+    [32m✓[0m and so do the men it raised
+    [32m✓[0m the company survives while its other hall stands
+    [32m✓[0m the last hall can leave too
+    [32m✓[0m an empty company is not kept
+    [32m✓[0m the Banner can be moved
+    [32m✓[0m there is an army to direct
+    [32m✓[0m every last one of them takes the new goal
+
+  the masons
+    [32m✓[0m there is no ceiling on works
+    [32m✓[0m open ground to build on
+    [32m✓[0m ground beyond the writ to test with
+    [32m✓[0m a work is ordered
+    [32m✓[0m it is paid for at once
+    [32m✓[0m and it starts as a shell
+    [32m✓[0m with a raise timer
+    [32m✓[0m a second work is refused while the masons work
+    [32m✓[0m the ground still speaks first
+    [32m✓[0m and so does the writ
+    [32m✓[0m a shell watches nothing
+    [32m✓[0m a shell musters nobody
+    [32m✓[0m it finishes
+    [32m✓[0m at full strength
+    [32m✓[0m and it watches again
+    [32m✓[0m the masons are free for the next
+    [32m✓[0m an heir may hold more works than the old cap of 14
+
+  the standard
+    [32m✓[0m a standard starts over its own Seat
+    [32m✓[0m a standard may be planted on a site
+    [32m✓[0m and it remembers which site
+    [32m✓[0m the map has impassable ground to test with
+    [32m✓[0m a standard on impassable ground is ACCEPTED
+    [32m✓[0m it is remembered as open country, not a site
+    [32m✓[0m and it stands where it was planted
+    [32m✓[0m a standard beyond the rim is clamped, not refused
+    [32m✓[0m clamped onto the map
+    [32m✓[0m a champion answers the Trump
+    [32m✓[0m a unit marches at unreachable ground rather than standing still
+
+  the muster ground
+    [32m✓[0m three barracks stand
+    [32m✓[0m they muster an army
+    [32m✓[0m an army ordered home forms up in the court, not on the tower
+    [32m✓[0m and it stays inside the court
+    [32m✓[0m and the ranks are not standing inside the tower
+    [32m✓[0m nobody in the ranks shivers
+
+  remembered ground
+    [32m✓[0m you know your own surroundings from the start
+    [32m✓[0m and nothing beyond them
+    [32m✓[0m there is unknown ground to march to
+    [32m✓[0m an unvisited place is unknown ground
+    [32m✓[0m marching reveals new ground
+    [32m✓[0m the place it marched to is now known
+    [32m✓[0m ground stays remembered after the troops leave
+    [32m✓[0m and the memory never shrinks
+    [32m✓[0m but it is still not the whole map
+
+  the curtain wall
+    [32m✓[0m the rampart is gone from the build table
+    [32m✓[0m a wall is on the build sheet
+    [32m✓[0m ...and it is a work with a length
+    [32m✓[0m ...with a shortest run, and NO longest
+    [32m✓[0m no player carries a single wall bar any more
+    [32m✓[0m a run of no length is refused
+    [32m✓[0m one mason covers one crew of wall
+    [32m✓[0m ...so the reach starts at one crew
+    [32m✓[0m a run past the crews is refused for the crews, not for a span
+    [32m✓[0m the crews needed follow the length
+    [32m✓[0m a run reaching outside your writ is refused
+    [32m✓[0m the first tap alone is judged on what a point can be judged on
+    [32m✓[0m a curtain can be laid beside the Seat
+    [32m✓[0m and the order is accepted
+    [32m✓[0m it costs what the card says
+    [32m✓[0m it is stored by its MIDPOINT, carrying the far end
+    [32m✓[0m the midpoint is the middle of the run
+    [32m✓[0m ...and the ends come back out of it
+    [32m✓[0m ...both of them
+    [32m✓[0m a second run crossing the first is refused
+    [32m✓[0m it goes up as a shell
+    [32m✓[0m an unfinished wall bars nothing
+    [32m✓[0m the masons finish it
+    [32m✓[0m and THEN it is stone
+    [32m✓[0m the standing list holds it
+    [32m✓[0m a man behind the curtain is not shot through it
+    [32m✓[0m ...and does not shoot out through it either
+    [32m✓[0m a man on the parapet reaches the field
+    [32m✓[0m ...and the field reaches back
+    [32m✓[0m the parapet throws further than the ground does
+    [32m✓[0m hugging a rival curtain does not put you on it
+    [32m✓[0m ...though the wall itself is a target
+    [32m✓[0m a rival column does not walk through stone
+    [32m✓[0m the heir who raised it walks through his own gate
+    [32m✓[0m three Gates hire three crews
+    [32m✓[0m a two-crew run can be laid with three crews idle
+    [32m✓[0m and it is accepted
+    [32m✓[0m it is booked as two crews
+    [32m✓[0m ...and costs two cards
+    [32m✓[0m ...and is twice the stone
+    [32m✓[0m two crews of the three are now busy
+    [32m✓[0m ...leaving one crew of reach
+    [32m✓[0m ground for the comparison exists
+    [32m✓[0m one crew of wall still fits
+    [32m✓[0m two crews of wall on the same line do not
+    [32m✓[0m a curtain can be reinforced
+    [32m✓[0m ...and the reinforcement is thicker stone
+    [32m✓[0m ...added to what was standing, not a free repair
+    [32m✓[0m a man at his own wall is marked as standing on it
+    [32m✓[0m ...and a man well behind it is not
+    [32m✓[0m the parapet rides the wire
+    [32m✓[0m ...and only for the men actually on it
+    [32m✓[0m walking off the wall takes him off it
+    [32m✓[0m a third heir has a curtain standing
+    [32m✓[0m the heir is toppled
+    [32m✓[0m ...and his stone is gone with him
+    [32m✓[0m ...and the movement layer knows the ground is open
+    [32m✓[0m a broken curtain leaves the standing list
+    [32m✓[0m ...and the movement layer is told
+
+  veterans, not crowds
+    [32m✓[0m a hall musters at one rate, whatever its level
+    [32m✓[0m ...and so does the Spire
+    [32m✓[0m ...and the Works
+    [32m✓[0m there is a rank for every level
+    [32m✓[0m rank 1 is exactly the man we always had
+    [32m✓[0m and every rank after is better
+    [32m✓[0m level 1 drains what it always did
+    [32m✓[0m level 1 delivers the hit points it always did
+    [32m✓[0m level 1 delivers the damage it always did
+    [32m✓[0m level 2 drains what it always did
+    [32m✓[0m level 2 delivers the hit points it always did
+    [32m✓[0m level 2 delivers the damage it always did
+    [32m✓[0m level 3 drains what it always did
+    [32m✓[0m level 3 delivers the hit points it always did
+    [32m✓[0m level 3 delivers the damage it always did
+    [32m✓[0m a level-1 hall musters men
+    [32m✓[0m ...of the rank it is
+    [32m✓[0m ...with the stats we have always had
+    [32m✓[0m the hall can be raised a level
+    [32m✓[0m ...and it takes masonry, not a moment
+    [32m✓[0m ...but not a mason crew — the crews ration building
+    [32m✓[0m ...so the yard is still free to raise something
+    [32m✓[0m the hall musters nobody while they are in it
+    [32m✓[0m ...but it still stands, and can still be broken
+    [32m✓[0m the masons finish
+    [32m✓[0m ...at the level that was paid for
+    [32m✓[0m the hall musters veterans
+    [32m✓[0m ...who are tougher
+    [32m✓[0m ...and hit harder
+    [32m✓[0m a veteran keeps his rank after the hall falls
+
+  the halt
+    [32m✓[0m a world runs before anyone calls one
+    [32m✓[0m any seat may call a halt
+    [32m✓[0m ...and the world records who did
+    [32m✓[0m the clock does not move
+    [32m✓[0m ...nor the tick
+    [32m✓[0m ...nor the treasury
+    [32m✓[0m no work may be raised into a halt
+    [32m✓[0m no banner may be planted
+    [32m✓[0m no power may be spent
+    [32m✓[0m and no walk may be begun
+    [32m✓[0m another seat may lift it
+    [32m✓[0m ...and it is gone
+    [32m✓[0m the world runs again
+    [32m✓[0m an order lands again
+    [32m✓[0m a second call changes nothing
+    [32m✓[0m ...and the first caller keeps the credit
+    [32m✓[0m lifting an unheld halt is harmless
+    [32m✓[0m the halt is on the snapshot
+    [32m✓[0m ...and survives JSON
+    [32m✓[0m a running world sends none
+
+  the solo ladder
+    [32m✓[0m the hardest footing is a full-strength heir
+    [32m✓[0m ...that comes for you when it likes
+    [32m✓[0m the default is not the hardest
+    [32m✓[0m HEIR draws more from the ground than SQUIRE
+    [32m✓[0m ...and comes for you sooner
+    [32m✓[0m PRINCE draws more from the ground than HEIR
+    [32m✓[0m ...and comes for you sooner
+    [32m✓[0m every footing is a real handicap
+    [32m✓[0m a Squire never points its banner at your Seat inside its hour
+    [32m✓[0m ...and spends the time building a realm of its own
+    [32m✓[0m ...an heir, not a victim: it is still standing when its hour comes
+
+  Chaos presses, it does not escalate
+    [32m✓[0m a fiend outmatches a lone soldier
+    [32m✓[0m and never more than two, even at minute 10
+    [32m✓[0m and never more than two, even at minute 15
+    [32m✓[0m and never more than two, even at minute 30
+    [32m✓[0m and never more than two, even at minute 45
+    [32m✓[0m the hit points stop climbing
+    [32m✓[0m and so does the damage
+    [32m✓[0m but the rifts still swell
+
+  the black road is not the war
+    [32m✓[0m a storm no longer kills a whole man outright
+    [32m✓[0m ...but it very nearly does
+    [32m✓[0m a sorcerer still dies to one
+    [32m✓[0m an Engine shrugs it off
+    [32m✓[0m one cast on the thickest part of an army does not erase it
+    [32m✓[0m ...and it hurt everyone it touched
+    [32m✓[0m a big host musters over more ground than a small one
+    [32m✓[0m the rift schedule is far lighter at ten minutes
+    [32m✓[0m and at twenty
+    [32m✓[0m but Chaos still swells
+    [32m✓[0m a work stands
+    [32m✓[0m a work gnawed by fiends names Chaos
+    [32m✓[0m and one broken by an heir names the heir
+    [32m✓[0m a death names its killer
+
+  the masons follow the Gates
+    [32m✓[0m a bare Seat keeps one crew
+    [32m✓[0m and a crew is hired for every three Gates
+    [32m✓[0m several Gates stand
+    [32m✓[0m the crews follow them
+    [32m✓[0m which is more than one
+    [32m✓[0m exactly as many works rise at once as there are crews
+    [32m✓[0m and the next is refused for want of a mason, not for want of ground
+    [32m✓[0m the sim agrees on how many are rising
+    [32m✓[0m the crews are capped, so a runaway realm cannot build instantly
+
+  no ceiling on the muster
+    [32m✓[0m an heir musters as many as it can pay for
+    [32m✓[0m Chaos still has one — a director is not a player
+    [32m✓[0m four halls stand
+    [32m✓[0m an army grows past the old ceiling
+    [32m✓[0m and the sim keeps up with a big one
+    [32m✓[0m the ceiling holds when there is one
+    [32m✓[0m and a full army is charged nothing for the men it cannot raise
+
+  the Siege Works
+    [32m✓[0m the Works are on the build sheet
+    [32m✓[0m and they muster Engines
+    [32m✓[0m an Engine beats soldiery against stone, essence for essence
+    [32m✓[0m ...and loses to it badly against men
+    [32m✓[0m it cannot outrange a tower, so it needs an escort
+    [32m✓[0m and it cannot run
+    [32m✓[0m five Engines break more Seat than the soldiers they cost
+    [32m✓[0m and it is a real bite, not a scratch
+    [32m✓[0m one soldier needs real time to break a Shadow Gate
+    [32m✓[0m one soldier needs real time to break a Curtain Wall
+    [32m✓[0m one soldier needs real time to break a Barracks
+    [32m✓[0m one soldier needs real time to break a Watchtower
+    [32m✓[0m one soldier needs real time to break a Sorcery Spire
+    [32m✓[0m one soldier needs real time to break a Siege Works
+    [32m✓[0m one soldier needs real time to break a Pattern Shrine
+    [32m✓[0m and an Engine is far better at it than the men it cost
+
+  the chronicle
+    [32m✓[0m nothing recorded is not a crash
+    [32m✓[0m the match is written down
+    [32m✓[0m ...and stays pasteable
+    [32m✓[0m the seed is in it, so the board can be rebuilt
+    [32m✓[0m and the footing it was played on
+    [32m✓[0m it names who you were
+    [32m✓[0m it says how it ended
+    [32m✓[0m the table is sampled over the whole match
+    [32m✓[0m your orders are listed
+    [32m✓[0m and the moments worth naming
+    [32m✓[0m every row starts its first column in the same place
+    [32m✓[0m recording changes nothing about the world it read
+    [32m✓[0m and the sim ran normally under it
+    [32m✓[0m five identical orders read as one line
+    [32m✓[0m and a different order still gets its own
+    [32m✓[0m a guest record admits it is partial
+    [32m✓[0m and still carries four seats
+
+  multiplayer snapshots
+    [32m✓[0m both sides have works after five minutes
+    [32m✓[0m a snapshot is produced
+    [32m✓[0m the snapshot survives JSON
+    [32m✓[0m the snapshot fits a 10 Hz DataChannel
+    [32m✓[0m the rival essence is withheld
+    [32m✓[0m the rival banner is withheld
+    [32m✓[0m the rival powers are withheld
+    [32m✓[0m the rival muster state is withheld
+    [32m✓[0m rival works carry no branch
+    [32m✓[0m a rival hall never reveals which company it musters into
+    [32m✓[0m every rival work sent is visible
+    [32m✓[0m no ghost is of something currently visible
+    [32m✓[0m units sent are own or seen
+    [32m✓[0m players carry a buildings array
+    [32m✓[0m the rival carries a ghosts array
+    [32m✓[0m sites carry a holder
+    [32m✓[0m unexplored sites are absent
+    [32m✓[0m rival Seat was found during the run (fog test skipped)
+
+  slowest: no ceiling on the muster 37.1s · the solo ladder 5.4s · the chronicle 2.7s · multiplayer snapshots 1.3s   (52.2s in suites)
+
+headless: 514/514 passing
+
+  menu
+    [32m✓[0m the skirmish row opens
+    [32m✓[0m tapping away closes the skirmish row
+    [32m✓[0m the LAN panel opens
+    [32m✓[0m tapping away closes the LAN panel
+    [32m✓[0m every footing is offered
+    [32m✓[0m and offered outside either fold-out, since it governs both
+    [32m✓[0m one is marked, and it is the remembered choice
+    [32m✓[0m which defaults to something short of full strength
+    [32m✓[0m the chosen handicap reaches the heir
+    [32m✓[0m and never touches your own side
+    [32m✓[0m the campaign runs on the same footing
+    [32m✓[0m and the first rung is the first heir
+    [32m✓[0m a claimed throne offers the walk again
+    [32m✓[0m and says where it starts
+    [32m✓[0m which is the FIRST heir, not the last
+    [32m✓[0m and the ladder is back at its first rung
+
+  3d · camera
+    [32m✓[0m a Seat in the corner can be brought to the middle
+    [32m✓[0m and so can the opposite corner
+    [32m✓[0m zooming in magnifies the ground
+    [32m✓[0m zooming out shrinks it
+    [32m✓[0m lookAt centres its target at zoom 0.8
+    [32m✓[0m the viewfinder contains what is on screen at zoom 0.8
+    [32m✓[0m lookAt centres its target at zoom 1
+    [32m✓[0m the viewfinder contains what is on screen at zoom 1
+    [32m✓[0m lookAt centres its target at zoom 2.2
+    [32m✓[0m the viewfinder contains what is on screen at zoom 2.2
+    [32m✓[0m the viewfinder narrows as you zoom in
+    [32m✓[0m a pinch drives the zoom end to end
+
+  3d · the writ
+    [32m✓[0m an outline is produced
+    [32m✓[0m the drawn edge matches the sim's rule
+    [32m✓[0m raising a Gate on the nearest spring extends the writ
+
+  3d · the army is drawn
+    [32m✓[0m a garrison musters
+    [32m✓[0m the renderer is given the ground you have walked
+    [32m✓[0m and it is not simply the whole map
+    [32m✓[0m the army stands in the court, not on the tower
+    [32m✓[0m the soldiers are instanced
+    [32m✓[0m and not frustum-culled against a stale sphere at the origin
+
+  3d · HUD layering
+    [32m✓[0m the HUD stacks above the fog overlay
+    [32m✓[0m the sheet stacks above the HUD
+    [32m✓[0m a power button is the topmost thing at its own centre
+
+  3d · input
+    [32m✓[0m a build sheet opens on bare ground
+    [32m✓[0m tapping outside closes it rather than opening another
+    [32m✓[0m a second tap then opens the sheet normally
+    [32m✓[0m a node can be brought somewhere tappable
+    [32m✓[0m an armed flag still plants through an open sheet
+    [32m✓[0m found open ground on screen to plant on
+    [32m✓[0m a standard plants on bare ground
+    [32m✓[0m it lands where the finger did
+    [32m✓[0m and no refusal is shown
+    [32m✓[0m the power buttons stay on screen with a full flag tray
+
+  3d · a level you can see
+    [32m✓[0m a hall can be raised a level in the live game
+    [32m✓[0m the model is keyed by level
+    [32m✓[0m ...and wears scaffolding while the masons are in it
+    [32m✓[0m a veteran gets his own instanced mesh
+    [32m✓[0m ...with different geometry from a recruit
+    [32m✓[0m ...and an elite is more again
+    [32m✓[0m a raised hall is a BIGGER hall, not a repainted one
+    [32m✓[0m the scaffolding is see-through, so the pause in the muster is visible
+
+  3d · the yard
+    [32m✓[0m the yard reports every crew idle before anything is started
+    [32m✓[0m ...and is not dimmed while crews are free
+    [32m✓[0m every crew could be put to work
+    [32m✓[0m the yard falls to none as they take it up
+    [32m✓[0m ...and dims, which is what explains a refusal before you hit one
+
+  3d · the halt
+    [32m✓[0m the button calls a halt
+    [32m✓[0m ...credited to the seat that tapped it
+    [32m✓[0m the panel says so
+    [32m✓[0m and the button offers to go on
+    [32m✓[0m the clock does not move while halted
+    [32m✓[0m no work may be raised into a halt
+    [32m✓[0m tapping the panel goes on again
+    [32m✓[0m ...and the panel gets out of the way
+    [32m✓[0m ...and the button offers a halt again
+    [32m✓[0m the halt banked no time
+    [32m✓[0m and the world runs again
+    [32m✓[0m back lifts the halt
+    [32m✓[0m ...rather than leaving the match
+
+  3d · a wall is two taps
+    [32m✓[0m a legal run can be found on screen
+    [32m✓[0m the build sheet offers a curtain wall
+    [32m✓[0m the card arms the run rather than raising a work
+    [32m✓[0m ...and the sheet gets out of the way
+    [32m✓[0m the renderer is told where the run starts
+    [32m✓[0m the second tap raises the wall
+    [32m✓[0m ...and it is stored as a line, not a point
+    [32m✓[0m the second tap opens no sheet of its own
+    [32m✓[0m and the arming is spent
+    [32m✓[0m the run lands where the two fingers did
+    [32m✓[0m drawing a wall raises nothing
+    [32m✓[0m the sim puts the man at the wall ON the wall
+    [32m✓[0m ...and leaves the man behind it on the ground
+    [32m✓[0m and the renderer draws him up on the walkway
+    [32m✓[0m ...while the man behind it stays on the grass
+    [32m✓[0m a run with real fall along it was found to test
+    [32m✓[0m no part of the wall is buried by the ground it crosses
+    [32m✓[0m ...and no part of it floats above the ground
+    [32m✓[0m the run is long enough on the minimap to read as a line
+    [32m✓[0m back cancels a half-placed run before it leaves the match
+    [32m✓[0m ...and stays in the match to do it
+
+  3d · the sheet stays live
+    [32m✓[0m the scenario set up
+    [32m✓[0m a card is locked while the masons are busy
+    [32m✓[0m and says so
+    [32m✓[0m the sheet is still the one you opened
+    [32m✓[0m the card goes live when the masons finish, without reopening
+    [32m✓[0m a spring beyond the writ was found
+    [32m✓[0m its Gate is locked while no troops of yours stand there
+    [32m✓[0m and says why
+    [32m✓[0m it goes live the moment a soldier arrives, without reopening
+
+  3d · the Shrine
+    [32m✓[0m a Shrine stands
+    [32m✓[0m its sheet offers no upgrade — there is none
+    [32m✓[0m and still offers the walk
+
+  3d · the race
+    [32m✓[0m two rivals are walking
+    [32m✓[0m seat 0 can see BOTH burning Shrines
+    [32m✓[0m the board lists every walker
+    [32m✓[0m each in a colour of their own
+    [32m✓[0m and each shows a percentage
+    [32m✓[0m the minimap makes room for it rather than overlapping
+
+  3d · companies
+    [32m✓[0m the scenario set up
+    [32m✓[0m two halls can muster into ONE company
+    [32m✓[0m and the tray shows one chip for it, not one per hall
+    [32m✓[0m the gold flag says when part of the army no longer answers it
+
+  3d · back button
+    [32m✓[0m a build sheet is open
+    [32m✓[0m back closes the sheet
+    [32m✓[0m back did not leave the match
+    [32m✓[0m a flag is armed
+    [32m✓[0m back disarms the flag
+    [32m✓[0m still in the match
+    [32m✓[0m the storm is arming
+    [32m✓[0m back cancels the storm aim
+    [32m✓[0m back with nothing open returns to the menu
+    [32m✓[0m and the game itself is still open
+
+  3d · LAN guest
+    [32m✓[0m the guest enters the match from a start message
+    [32m✓[0m the guest HUD shows the essence off the wire
+    [32m✓[0m the guest renders a host world with works on it
+    [32m✓[0m a guest can open a build sheet
+    [32m✓[0m the guest raised no errors rendering snapshots
+    [32m✓[0m a guest sees a halt the host called
+    [32m✓[0m ...and is told whose it is, not that it is its own
+    [32m✓[0m ...and its button offers to go on
+    [32m✓[0m a guest lifts a halt over the wire, not locally
+    [32m✓[0m the host obeys a guest lifting it
+    [32m✓[0m ...and the guest panel clears on the next snapshot
+    [32m✓[0m a guest can hold a seat that is not seat 1
+    [32m✓[0m it knows all four names
+    [32m✓[0m and reads its OWN essence off the wire, not seat 1s
+    [32m✓[0m four-player guest rendering raised no errors
+
+  3d · a rematch on the same link
+    [32m✓[0m a guest that loses is left on the end screen
+    [32m✓[0m and told the host holds the next match
+    [32m✓[0m with no button it can press
+    [32m✓[0m and its link still up
+    [32m✓[0m a start message alone puts the guest back in a match
+    [32m✓[0m the host is offered a rematch
+    [32m✓[0m tapping it re-sends the lobby start message
+    [32m✓[0m with a new seed and the same seats
+    [32m✓[0m the host is back in a match on a fresh world
+    [32m✓[0m and nobody re-paired
+    [32m✓[0m but a host whose guest left is offered nothing
+    [32m✓[0m the rematch path raised no errors
+
+  3d · the chronicle comes off the phone
+    [32m✓[0m a match records itself from the moment it starts
+    [32m✓[0m the end screen offers the chronicle
+    [32m✓[0m tapping COPY puts the whole match on the clipboard
+    [32m✓[0m ...with the seed in it, so the board can be rebuilt
+    [32m✓[0m ...and the table of hours
+    [32m✓[0m the button says it worked
+    [32m✓[0m a browser that refuses the clipboard gets a box to copy from by hand
+    [32m✓[0m ...which closes again
+    [32m✓[0m and the menu still offers the last match
+    [32m✓[0m the chronicle raised no errors
+
+  3d · console
+    [32m✓[0m the page raised no errors
+
+  slowest: 3d · the halt 9.2s · 3d · back button 7.2s · 3d · a rematch on the same link 5.9s · 3d · input 5.2s · 3d · LAN guest 5.2s · 3d · the chronicle comes off the phone 4.8s   (53.2s in suites)
+
+browser: 167/167 passing
+
+[32mall suites green[0m
+

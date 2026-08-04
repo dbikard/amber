@@ -592,6 +592,48 @@ async function match(browser, base, renderer) {
     ok('the scaffolding is see-through, so the pause in the muster is visible',
        rank.midOpacity < 1, `opacity ${rank.midOpacity}`);
 
+    /* ---------------- the yard ---------------- *
+     * What this game rations is the MASONS, and until now the only way to discover you had
+     * none free was to choose a spot, open the sheet and be refused. The readout has to be
+     * live and it has to be right on a guest too, where there is no world to ask. */
+    suite(`${r} · the yard`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    await pg.waitForTimeout(120);
+    const yard = await pg.evaluate(async () => {
+      const { World: W, CONST: C2, Game } = window;
+      const g = Game.game, pl = g.world.players[0];
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      pl.essence = 99000;
+      for (const b of pl.buildings) { b.raise = 0; b.work = 0; }
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      await paint();
+      const read = () => ({ free: document.getElementById('m-free').textContent,
+                            of: document.getElementById('m-of').textContent,
+                            busy: document.getElementById('masons').classList.contains('busy') });
+      const idle = read();
+      const want = W.masons(g.world, 0);
+      /* put every crew to work and watch it fall to none */
+      let started = 0;
+      for (let rad = 150; rad < 380 && started < want; rad += 20)
+        for (let a = 0; a < 24 && started < want; a++) {
+          const th = a / 24 * Math.PI * 2;
+          const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+          if (W.placementError(g.world, 0, x, y, 'tower')) continue;
+          if (W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'tower' }).ok) started++;
+        }
+      await paint();
+      const working = read();
+      return { idle, working, want, started, rising: W.rising(g.world, 0) };
+    });
+    ok('the yard reports every crew idle before anything is started',
+       yard.idle.free === String(yard.want) && yard.idle.of === '/' + yard.want,
+       `${yard.idle.free}${yard.idle.of}, expected ${yard.want}/${yard.want}`);
+    ok('...and is not dimmed while crews are free', !yard.idle.busy);
+    ok('every crew could be put to work', yard.started === yard.want, `${yard.started}/${yard.want}`);
+    ok('the yard falls to none as they take it up', yard.working.free === '0',
+       `${yard.working.free}${yard.working.of} with ${yard.rising} rising`);
+    ok('...and dims, which is what explains a refusal before you hit one', yard.working.busy);
+
     /* ---------------- the halt ---------------- *
      * A pause has one job beyond stopping the clock: it must not BANK the time it stood
      * still for. An accumulator left filling would fast-forward the match the moment you

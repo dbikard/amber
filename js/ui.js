@@ -108,7 +108,7 @@
     $('record-box').classList.add('hidden');
   };
   UI.startMatch = function (rivalName) {
-    haltShown = null;
+    haltShown = null; masonHash = '';
     $('halt').classList.add('hidden');
     $('menu').classList.add('hidden');
     $('end').classList.add('hidden');
@@ -210,8 +210,31 @@
 
   /* ---------------- HUD ---------------- */
   const mmss = (t) => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+  /* THE YARD, on screen. What this game rations is the MASONS, and the only way to find out
+   * you had none free was to be told so by a refusal — after you had already chosen a spot
+   * and opened the sheet. Read straight off the view, so it is the same truth on a host and
+   * on a guest: a crew per finished Gate group, minus the crews already on something. */
+  let masonHash = '';
+  function paintMasons(view, viewer) {
+    const me = view.players[viewer];
+    let gates = 0, busy = 0;
+    for (const b of me.buildings) {
+      if (b.bt === 'gate' && !b.raise) gates++;
+      if (b.raise > 0) busy += (b.crews || 1);
+    }
+    const total = Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per));
+    const free = Math.max(0, total - busy);
+    const key = free + '/' + total;
+    if (key === masonHash) return;
+    masonHash = key;
+    $('m-free').textContent = free;
+    $('m-of').textContent = '/' + total;
+    $('masons').classList.toggle('busy', free === 0);
+  }
+
   UI.hud = function (view, viewer, incomeRate, targeting) {
     const me = view.players[viewer];
+    paintMasons(view, viewer);
     /* with four heirs there is no single "the rival": the top line reports whoever is
      * furthest along the Pattern among those who have revealed themselves */
     const rivals = view.players.filter((q, pi) => pi !== viewer && !q.out);

@@ -395,8 +395,13 @@ suite('four on the wire')
     const canSee = (x, y) => World.canSee(w, viewer, x, y);
     for (let pi = 0; pi < 4; pi++) {
       if (pi === viewer) continue;
+      /* A CURTAIN IS LONGER THAN ITS MIDDLE, and the snapshot sends one the moment any part
+       * of it is seen — so judging a work by its midpoint alone calls a legitimately visible
+       * wall a fog leak. It only ever failed when a run happened to fall with a visible end
+       * and a hidden centre, which is exactly the kind of test that passes until it matters. */
       ok(`seat ${viewer}: only sees seat ${pi}'s works it can see`,
-         wire.players[pi].buildings.every((b) => canSee(b.x, b.y)));
+         wire.players[pi].buildings.every((b) => canSee(b.x, b.y)
+           || (b.x2 != null && (canSee(b.x2, b.y2) || canSee(b.x * 2 - b.x2, b.y * 2 - b.y2)))));
     }
     ok(`seat ${viewer}: units are its own or seen`,
        wire.units.every((u) => u.owner === viewer || canSee(u.x, u.y)));
@@ -1130,8 +1135,11 @@ suite('veterans, not crowds')
   const up = World.applyCommand(w, 0, { c: 'up', id: hall.id });
   ok('the hall can be raised a level', up.ok, up.err);
   ok('...and it takes masonry, not a moment', hall.work > 0, hall.work);
-  eq('...which occupies a crew', World.rising(w, 0), 1);
-  eq('...so nothing else may be started', World.masons(w, 0) - World.rising(w, 0), 0);
+  /* AND IT DOES NOT COST A MASON CREW. That was tried: charging upgrades against the same
+   * purse that rations BUILDING quietly taxes whoever is expanding hardest, and the referee
+   * caught it. A level is paid for in essence and in silence, and in nothing else. */
+  eq('...but not a mason crew — the crews ration building', World.rising(w, 0), 0);
+  eq('...so the yard is still free to raise something', World.masons(w, 0) - World.rising(w, 0), 1);
   run(Math.ceil(hall.work) - 1);
   eq('the hall musters nobody while they are in it', w.units.filter((q) => q.owner === 0).length, before);
   ok('...but it still stands, and can still be broken', hall.hp > 0 && hall.maxHp > 0);
@@ -1376,6 +1384,7 @@ suite('the masons follow the Gates')
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
   pl.essence = 9e9; w.chaosNext = 1e9;
   eq('a bare Seat keeps one crew', World.masons(w, 0), C.MASONS.base);
+  eq('and a crew is hired for every three Gates', C.MASONS.per, 3);
   /* give it Gates and count again — springs are where the crews come from */
   const springs = w.map.sites.filter((s) => s.kind === 'node')
     .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
@@ -1652,10 +1661,13 @@ suite('multiplayer snapshots');
   ok('rival works carry no branch', foe.buildings.every((b) => b.br === null));
   ok('a rival hall never reveals which company it musters into', foe.buildings.every((b) => b.co === 0));
 
-  /* fog: a rival work in the snapshot must be one the viewer can actually see */
+  /* fog: a rival work in the snapshot must be one the viewer can actually see — and a
+   * CURTAIN is seen if any part of it is, which its midpoint alone cannot answer for */
   const canSee = (x, y) => World.canSee(w, 1, x, y);
-  ok('every rival work sent is visible', foe.buildings.every((b) => canSee(b.x, b.y)),
-     `${foe.buildings.filter((b) => !canSee(b.x, b.y)).length} leaked`);
+  const workSeen = (b) => canSee(b.x, b.y)
+    || (b.x2 != null && (canSee(b.x2, b.y2) || canSee(b.x * 2 - b.x2, b.y * 2 - b.y2)));
+  ok('every rival work sent is visible', foe.buildings.every(workSeen),
+     `${foe.buildings.filter((b) => !workSeen(b)).length} leaked`);
   ok('no ghost is of something currently visible', (foe.ghosts || []).every((g) => !canSee(g.x, g.y)));
   ok('units sent are own or seen', wire.units.every((u) => u.owner === 1 || canSee(u.x, u.y)));
 

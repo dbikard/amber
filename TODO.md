@@ -249,6 +249,24 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
+- [x] **The yard, on screen.** What this game rations is the MASONS, and the only way to
+      discover you had none free was to choose a spot, open the sheet and be refused. Top-left
+      now, opposite the walkers: idle crews of total, dimmed when they are all at work. Read
+      off the VIEW rather than the world, so it is the same truth on a LAN guest.
+      **And a note on levers, because three of them missed.** Veterancy costs Brand ~20 wins
+      and pays Benedict and Julian, because quality genuinely beats quantity. Tried and
+      measured, all full runs, comparable row for row:
+      Brand's doctrine — spires first (29 wins) and barracks first (27) were both WORSE than
+      his own tower-first order (34), which is the signature of a change that punishes
+      upgrading at all for an expander rather than one that punishes upgrading the wrong
+      thing. Dropping the mason cost on upgrades: 34 → 32, no recovery. A crew per TWO Gates
+      instead of three: field spread 79 → 86, Julian collapsed 50 → 33, Corwin exploded
+      45 → 72, Brand unmoved at 29, and TWO 100% matchups appeared (bleys 30-0 over both
+      brand and benedict) — which DESIGN_PRINCIPLES calls a balance bug by name. Reverted.
+      The cause is not the masons and not Brand's doctrine: it is that `TIER` was sized with
+      LINEAR accounting (equal hit points and damage per minute) for a system whose combat is
+      roughly a square law, so the same essence packed into fewer, tougher men is a real gain.
+      The untried lever is the stat multiplier itself.
 - [x] **Veterans, not crowds.** A hall's level bought THROUGHPUT — the same soldier arriving
       faster — so an upgraded realm fought with bigger crowds of identical men and there was
       nothing to see. The muster interval is flat now and the level rides on the RECRUIT:

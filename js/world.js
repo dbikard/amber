@@ -177,7 +177,7 @@
   const crewsOn = (b) => (b.crews || 1);
   function rising(world, pi) {
     let n = 0;
-    for (const b of world.players[pi].buildings) if (b.raise > 0 || b.work > 0) n += crewsOn(b);
+    for (const b of world.players[pi].buildings) if (b.raise > 0) n += crewsOn(b);
     return n;
   }
   /* the longest run this heir could START right now, given the crews standing idle */
@@ -519,13 +519,16 @@
         br = cmd.br;
         if (!C.TOWER_BRANCHES[br]) return { ok: false, err: 'branch' };
       }
-      /* AN UPGRADE IS MASONRY, so it takes masons and it takes time. Instant levels made the
-       * decision a pure question of essence — you upgraded the moment you could afford it,
-       * because there was nothing else to weigh. Now a crew has to be free, the work stands
-       * idle while they are on it, and choosing WHEN costs you the men or the shot you would
-       * have had meanwhile. */
+      /* AN UPGRADE TAKES TIME, AND THE WORK GOES QUIET WHILE IT DOES. That is the whole cost:
+       * the men or the shots you go without while the masons are in it, which is what makes
+       * WHEN to upgrade a decision instead of a formality.
+       * IT DOES NOT TAKE A MASON CREW. That was tried and measured and it was wrong. The
+       * crews are what ration BUILDING, and charging upgrades against the same purse quietly
+       * taxed whoever was expanding hardest — Brand, who runs four Gates and a pair of
+       * expansion missions, fell from 48 wins to 34 on it. Two doctrines were rewritten
+       * trying to fix him from his side (spires first: 29; barracks first: 27) before the
+       * cause turned out to be here. A level is paid for in essence and in silence. */
       if (s.work > 0) return { ok: false, err: 'working' };
-      if (rising(world, pi) + (s.crews || 1) > masons(world, pi)) return { ok: false, err: 'busy' };
       const cost = upgradeCost(s.bt, s.level, br) * (s.crews || 1);
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;

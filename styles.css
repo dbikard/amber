@@ -46,6 +46,18 @@ body {
 .halt-title { font-size: 26px; font-weight: bold; letter-spacing: 4px; }
 .halt-who { font-size: 14px; color: #cbbf9a; letter-spacing: 1px; }
 .halt-hint { font-size: 12px; color: #8d8478; letter-spacing: 1px; margin-top: 10px; }
+/* the yard, opposite the walkers: idle crews of total. Dimmed when they are all at work,
+   because that is the state that explains a refusal you have not hit yet. */
+#masons {
+  position: absolute; left: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
+  display: flex; align-items: center; gap: 3px;
+  font-size: 13px; letter-spacing: 1px; color: #d8cba8; text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+#masons .m-ico { font-size: 12px; opacity: 0.85; }
+#masons #m-of { color: #8d8478; }
+#masons.busy { color: #8d8478; }
+#masons.busy .m-ico { opacity: 0.45; }
 #walkers {
   position: absolute; right: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
   display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
