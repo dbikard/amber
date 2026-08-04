@@ -596,7 +596,17 @@ async function match(browser, base, renderer) {
       const c = g.world.map.sites[g.world.map.cities[0]];
       g.world.players[0].essence = 99000;
       g.world.chaosNext = 1e9;
-      for (const b of g.world.players[0].buildings) { b.raise = 0; b.work = 0; }
+      for (const b of g.world.players[0].buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+      /* CREWS ARE ONE PER GATE and an upgrade takes one, so this suite must not depend on how
+       * many Gates happen to be standing after everything before it — least of all after the
+       * suite that deliberately fills the yard. Hand it its own. */
+      const pl0 = g.world.players[0];
+      while (window.World.masons(g.world, 0) < 3) {
+        const d = window.CONST.BUILDINGS.gate;
+        pl0.buildings.push({ id: g.world.nextId++, bt: 'gate', level: 1, x: c.x - 400, y: c.y - 400,
+                             cd: 0, raise: 0, raiseFor: d.raise, hp: d.hp, maxHp: d.hp,
+                             lastHurt: -99, node: -1, co: 0 });
+      }
       const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       /* a hall, finished */
       W.applyCommand(g.world, 0, { c: 'build', bt: 'barracks', x: c.x + 150, y: c.y + 30 });
@@ -623,7 +633,8 @@ async function match(browser, base, renderer) {
                            dmg: d.dmg * C2.TIER[2], cd: 0, goal: null, co: 0, from: -1 });
       await paint();
       const im = R.debugUnitMeshes();
-      return { up: up.ok, level: hall.level,
+      return { up: up.ok, upErr: up.err, masons: window.World.masons(g.world, 0),
+               rising: window.World.rising(g.world, 0), level: hall.level,
                k1: keyAt1 && keyAt1.key, kMid: mid && mid.key, k2: keyAt2 && keyAt2.key,
                v1: keyAt1 && keyAt1.verts, v2: keyAt2 && keyAt2.verts,
                midOpacity: mid && mid.opacity,
@@ -632,7 +643,8 @@ async function match(browser, base, renderer) {
                eliteVerts: im['soldier#3'] && im['soldier#3'].geometry.attributes.position.count,
                recVerts: im['soldier#1'] && im['soldier#1'].geometry.attributes.position.count };
     });
-    ok('a hall can be raised a level in the live game', rank.up && rank.level === 2, JSON.stringify(rank));
+    ok('a hall can be raised a level in the live game', rank.up && rank.level === 2,
+       rank.upErr ? `refused: ${rank.upErr} (${rank.rising}/${rank.masons} crews busy)` : JSON.stringify(rank));
     ok('the model is keyed by level', rank.k1 && rank.k2 && rank.k1 !== rank.k2, `${rank.k1} -> ${rank.k2}`);
     ok('...and wears scaffolding while the masons are in it',
        rank.kMid && rank.kMid !== rank.k2 && /#/.test(rank.kMid), rank.kMid);
