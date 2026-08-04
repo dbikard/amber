@@ -29,6 +29,8 @@
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
     $('btn-skirmish').addEventListener('click', () => $('skirmish-row').classList.toggle('hidden'));
     $('btn-lan').addEventListener('click', () => $('lan-panel').classList.toggle('hidden'));
+    $('btn-pause').addEventListener('click', () => H.onPause());
+    $('halt').addEventListener('click', () => H.onPause());
     $('pw-storm').addEventListener('click', () => H.onPower('storm'));
     $('pw-trump').addEventListener('click', () => H.onPower('trump'));
     $('end-next').addEventListener('click', () => H.onEndNext());
@@ -88,6 +90,8 @@
 
   /* ---------------- menu / match lifecycle ---------------- */
   UI.showMenu = function (campaignLabel, campaignNote) {
+    haltShown = null;
+    $('halt').classList.add('hidden');
     $('menu').classList.remove('hidden');
     $('hud').classList.add('hidden');
     $('end').classList.add('hidden');
@@ -104,11 +108,32 @@
     $('record-box').classList.add('hidden');
   };
   UI.startMatch = function (rivalName) {
+    haltShown = null;
+    $('halt').classList.add('hidden');
     $('menu').classList.add('hidden');
     $('end').classList.add('hidden');
     $('hud').classList.remove('hidden');
     $('rival-name').textContent = rivalName;
     $('walkers').innerHTML = '';
+  };
+
+  /* ---------------- the halt ----------------
+   * One panel, and the whole of it is the button — on a phone the thing you want most is the
+   * biggest target on the screen. It says WHO called it, because in a four-way that is the
+   * first question, and it does not pretend the halt is yours alone: anyone may lift it. */
+  let haltShown = null;
+  UI.paused = function (paused, viewer, names) {
+    const el = $('halt'), on = !!paused;
+    const key = on ? String(paused.by) : '';
+    $('btn-pause').textContent = on ? '▶' : '⏸';
+    $('btn-pause').title = on ? 'Go on' : 'Call a halt';
+    if (key === haltShown) return;
+    haltShown = key;
+    el.classList.toggle('hidden', !on);
+    if (!on) return;
+    const who = paused.by === viewer ? 'you called it'
+      : 'called by ' + ((names && names[paused.by]) || ('seat ' + (paused.by + 1)));
+    el.querySelector('.halt-who').textContent = who;
   };
 
   /* ---------------- flag tray: the army's orders, always at thumb's reach ---------------- */
@@ -562,6 +587,8 @@
    * needs to be told that is what is happening, not handed a button that does nothing. An
    * empty label means there is no next match to offer at all, so the button goes away. */
   UI.end = function (won, sub, nextLabel, ready) {
+    /* a halt cannot survive the end of the match — it sits above the end screen */
+    haltShown = null; $('halt').classList.add('hidden');
     $('hud').classList.add('hidden');
     UI.closeSheet();
     $('end').classList.remove('hidden');

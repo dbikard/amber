@@ -107,6 +107,8 @@
     backArmed = false;
     if (!game.mode) return;                       // at the menu: let the browser have it
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
+    const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
+    if (halted) { issue({ c: 'pause', on: false }); armBack(); return; }
     if (game.targeting || game.armedFlag != null || game.span) {
       game.targeting = false; game.armedFlag = null;
       game.span = null; Render.span = null;
@@ -253,6 +255,7 @@
       /* the two refusals only a work with a LENGTH can earn */
       else if (r.err === 'short') UI.banner('Too short a run to be a wall', 'warn');
       else if (r.err === 'crews') UI.banner('Too long for the crews you have — hold more Gates, or draw a shorter run', 'warn');
+      else if (r.err === 'paused') UI.banner('The world is halted — lift it to give orders', 'warn');
     }
     return r;
   }
@@ -370,7 +373,10 @@
     Render.targeting = game.targeting;
 
     if (game.mode === 'sp' || game.mode === 'host') {
-      acc += dtReal;
+      /* A HALT BANKS NO TIME. Letting the accumulator fill while the world is stopped would
+       * make lifting the pause fast-forward the match by however long you stood there —
+       * which is the one thing a pause must never do. */
+      if (game.world.paused) acc = 0; else acc += dtReal;
       let steps = 0;
       while (acc >= C.SIM_DT && steps++ < 6) {
         acc -= C.SIM_DT;
@@ -405,6 +411,7 @@
         }
       }
       Render.frame(view, game.viewer, dtReal);
+      UI.paused(game.world.paused, game.viewer, game.names);
       UI.hud(view, game.viewer, (game.world.players[game.viewer].incomeRate || 0) - (game.world.players[game.viewer].drainRate || 0), game.targeting);
       UI.tick(game.world.players[game.viewer].essence);
       UI.flags(view, game.viewer, game.armedFlag);
@@ -413,6 +420,7 @@
       /* a guest may hold ANY seat but seat 0 — read its own, never seat 1's */
       const gv = game.viewer, gp = snapCur.players[gv] || {};
       Render.frame(view, gv, dtReal);
+      UI.paused(snapCur.paused, gv, game.names);
       UI.hud(view, gv, (gp.incomeRate || 0) - (gp.drainRate || 0), game.targeting);
       UI.tick(gp.essence || 0);
       UI.flags(view, gv, game.armedFlag);
@@ -710,6 +718,15 @@
         startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
       },
       onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
+      /* the halt: anyone at the table may call one and anyone may lift it, so the button
+       * simply asks for the opposite of what is showing. A guest sends it like any other
+       * order and learns the answer from the next snapshot. */
+      onPause: () => {
+        if (game.over) return;
+        const on = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
+        if (!on) { game.targeting = false; game.armedFlag = null; game.span = null; Render.span = null; UI.closeSheet(); }
+        issue({ c: 'pause', on: !on });
+      },
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
       /* the first tap of a wall: hold the anchor, show the run, wait for the second */
       onSpan: (x, y, bt) => {

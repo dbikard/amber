@@ -249,6 +249,8 @@
                        /* which wall he is standing on, so a guest draws him on the stone too */
                        ...(u.man ? { man: u.man } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),
+      /* the halt is the table's, not a seat's — every guest must see it and who called it */
+      paused: world.paused ? { by: world.paused.by } : null,
       storms: world.storms.filter((s) => see(s.x, s.y))
         .map((s) => ({ owner: s.owner, x: s.x, y: s.y, delay: s.delay, tLeft: s.tLeft })),
       /* events: own always; global always; positional only where seen; rival city news never */

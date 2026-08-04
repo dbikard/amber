@@ -98,6 +98,7 @@
         ghosts: {}              // buildingId -> last-seen {bt, level, x, y, owner} (fog memory)
       })),
       units: [], storms: [], events: [],
+      paused: null,               // a halt anyone at the table may call: { by: seat, at: t }
       nav: null, navVersion: 0,   // movement grid; the version counts changes to what blocks
       walls: [], anyWall: false,  // the standing curtains, rebuilt whenever one rises or falls
       nextId: 1,
@@ -445,6 +446,23 @@
     const pl = world.players[pi];
     if (!pl) return { ok: false, err: 'player' };
 
+    /* ---------------- the halt ----------------
+     * ANYONE AT THE TABLE MAY CALL ONE, AND ANYONE MAY LIFT IT. A halt is host-authoritative
+     * like everything else — it is world state, so it rides the snapshot and every seat sees
+     * the same thing — and it stops the world rather than merely hiding it: no clock, no
+     * muster, no Chaos, and NO ORDERS. A pause you can build through is not a pause, it is a
+     * planning phase, and in a duel it would be a way to buy thinking time the other heir
+     * does not get. Lifting it is left open to everyone on purpose: whoever called the halt
+     * may be the one who walked away from the phone. */
+    if (cmd.c === 'pause') {
+      const on = !!cmd.on;
+      if (on === !!world.paused) return { ok: true };
+      world.paused = on ? { by: pi, at: world.t } : null;
+      emit(world, { e: 'pause', on, pi });
+      return { ok: true };
+    }
+    if (world.paused) return { ok: false, err: 'paused' };
+
     if (cmd.c === 'build') {
       const def = C.BUILDINGS[cmd.bt];
       let x = +cmd.x, y = +cmd.y;
@@ -785,7 +803,7 @@
 
   /* ---------------- update ---------------- */
   function update(world, dt) {
-    if (world.winner !== null) return;
+    if (world.winner !== null || world.paused) return;
     world.t += dt; world.tick++;
     const t = world.t;
     if (world.tick % 6 === 0 || !world.vis) refreshVision(world);   // 5 Hz vision refresh

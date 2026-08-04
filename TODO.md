@@ -249,6 +249,16 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
+- [x] **The halt, in every mode.** `world.paused` is world state, not a session flag, so the
+      host owns it and it rides the snapshot — which is what makes it work in LAN at all: a
+      guest holds no world, so the only way it can learn the match has stopped is the wire.
+      Anyone at the table may call one and anyone may lift it (whoever called it may be the
+      one who walked away from the phone), and the panel names who did.
+      Two clauses matter more than the feature: **no orders through a halt** — otherwise it is
+      a planning phase, and in a duel it is thinking time the other heir does not get — and
+      **a halt banks no time**, since an accumulator left filling would fast-forward the match
+      the moment you lifted it. The command asks for a state rather than toggling, so two
+      guests tapping at once cannot cancel each other out.
 - [x] **The Curtain Wall.** Walls are back, and they are ONE WORK WITH A LENGTH — a building
       record carrying a second end (`x2`/`y2`), not a chain of segments. That was the plan's
       shape (drag-a-line pieces, id-keyed netcode deltas) and it bought nothing the shipped

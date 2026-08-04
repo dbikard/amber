@@ -21,6 +21,31 @@ body {
   padding: 6px 12px; font-size: 14px;
   color: #e08a96; text-shadow: 0 1px 3px #000;
 }
+/* the halt button sits with the clock, out of the thumbs' way — the thumbs are where the
+   army's orders live and a pause must never be next to them */
+#btn-pause {
+  /* #hud is pointer-events:none so the map can be dragged through it — every control in it
+     has to hand its own events back */
+  pointer-events: auto;
+  background: rgba(20,16,30,0.6); border: 1px solid rgba(200,164,79,0.45);
+  color: #ffd98a; border-radius: 7px; padding: 1px 9px 3px; font-size: 15px;
+  line-height: 1.2; cursor: pointer; margin-left: 10px;
+}
+#btn-pause:active { background: rgba(200,164,79,0.25); }
+/* THE WHOLE PANEL IS THE BUTTON. A halt is lifted more often than anything else in the game
+   is tapped, and on a phone that means it should be impossible to miss. */
+#halt {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: rgba(8,6,14,0.72); backdrop-filter: blur(2px);
+  border: 0; cursor: pointer; font: inherit; color: #ffd98a;
+  text-shadow: 0 2px 10px #000;
+}
+#halt.hidden { display: none; }
+.halt-ico { font-size: 44px; opacity: 0.9; }
+.halt-title { font-size: 26px; font-weight: bold; letter-spacing: 4px; }
+.halt-who { font-size: 14px; color: #cbbf9a; letter-spacing: 1px; }
+.halt-hint { font-size: 12px; color: #8d8478; letter-spacing: 1px; margin-top: 10px; }
 #walkers {
   position: absolute; right: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
   display: flex; flex-direction: column; align-items: flex-end; gap: 3px;

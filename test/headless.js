@@ -1083,6 +1083,58 @@ suite('the curtain wall')
   ok('...and the movement layer is told', w.navVersion > ver);
 }
 
+/* THE HALT. Anyone at the table may call one and anyone may lift it, and it stops the WORLD
+ * rather than merely hiding it: no clock, no muster, no Chaos, and no orders. A pause you can
+ * build through is a planning phase, and in a duel it is a way to buy thinking time the other
+ * heir does not get. */
+suite('the halt')
+{
+  const w = World.createWorld(4242, 3);
+  for (let i = 0; i < 30 * 20; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const t0 = w.t, tick0 = w.tick, ess0 = w.players[0].essence;
+  ok('a world runs before anyone calls one', t0 > 19 && !w.paused);
+
+  eq('any seat may call a halt', World.applyCommand(w, 2, { c: 'pause', on: true }).ok, true);
+  eq('...and the world records who did', w.paused.by, 2);
+  for (let i = 0; i < 30 * 20; i++) World.update(w, C.SIM_DT);
+  eq('the clock does not move', w.t, t0);
+  eq('...nor the tick', w.tick, tick0);
+  eq('...nor the treasury', w.players[0].essence, ess0);
+
+  /* NO ORDERS. This is the clause that makes it a pause rather than a planning phase. */
+  const c0 = World.cityOf(w, 0);
+  w.players[0].essence = 100000;
+  eq('no work may be raised into a halt',
+     World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: c0.x + 120, y: c0.y }).err, 'paused');
+  eq('no banner may be planted', World.applyCommand(w, 0, { c: 'banner', x: c0.x, y: c0.y }).err, 'paused');
+  eq('no power may be spent', World.applyCommand(w, 0, { c: 'power', k: 'trump' }).err, 'paused');
+  eq('and no walk may be begun', World.applyCommand(w, 0, { c: 'walk', on: true }).err, 'paused');
+  w.players[0].essence = ess0;
+
+  /* the halt is the TABLE's: whoever is at the phone may lift it, not only who called it */
+  eq('another seat may lift it', World.applyCommand(w, 0, { c: 'pause', on: false }).ok, true);
+  eq('...and it is gone', w.paused, null);
+  for (let i = 0; i < 30 * 5; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('the world runs again', w.t > t0 + 4.9, w.t - t0);
+  eq('an order lands again', World.applyCommand(w, 0, { c: 'banner', x: c0.x, y: c0.y }).ok, true);
+
+  /* calling one twice is not an error, it is already true — the button asks for a state,
+   * not a toggle, so two guests tapping at once cannot cancel each other out */
+  World.applyCommand(w, 1, { c: 'pause', on: true });
+  eq('a second call changes nothing', World.applyCommand(w, 2, { c: 'pause', on: true }).ok, true);
+  eq('...and the first caller keeps the credit', w.paused.by, 1);
+  World.applyCommand(w, 0, { c: 'pause', on: false });
+  eq('lifting an unheld halt is harmless', World.applyCommand(w, 0, { c: 'pause', on: false }).ok, true);
+
+  /* and it rides the wire, or a guest would go on playing a world that has stopped */
+  World.applyCommand(w, 1, { c: 'pause', on: true });
+  const snap = Net.snapFor(w, 1);
+  ok('the halt is on the snapshot', snap.paused && snap.paused.by === 1, JSON.stringify(snap.paused));
+  ok('...and survives JSON', JSON.parse(JSON.stringify(snap)).paused.by === 1);
+  World.applyCommand(w, 1, { c: 'pause', on: false });
+  eq('a running world sends none', Net.snapFor(w, 1).paused, null);
+}
+
 /* The solo ladder has to be a LADDER. It was not: `slow` and `noise` are decorative — an heir
  * polled at half the rate still won its mirror — so the shipped HEIR at eco 0.80 was a 50%
  * mirror, i.e. no handicap at all. Income and the hour it marches are the two knobs that bite,

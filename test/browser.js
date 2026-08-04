@@ -526,6 +526,65 @@ async function match(browser, base, renderer) {
        tray.right <= tray.w + 1 && tray.left >= 0,
        `${tray.n} chips, powers span ${tray.left}..${tray.right} of ${tray.w}`);
 
+    /* ---------------- the halt ---------------- *
+     * A pause has one job beyond stopping the clock: it must not BANK the time it stood
+     * still for. An accumulator left filling would fast-forward the match the moment you
+     * lifted it, which is the one thing a pause must never do. */
+    suite(`${r} · the halt`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    await pg.waitForTimeout(120);
+    const before = await pg.evaluate(() => window.Game.game.world.t);
+    await pg.click('#btn-pause');
+    await pg.waitForTimeout(120);
+    const held = await pg.evaluate(() => ({
+      paused: !!window.Game.game.world.paused,
+      by: window.Game.game.world.paused && window.Game.game.world.paused.by,
+      panel: !document.getElementById('halt').classList.contains('hidden'),
+      btn: document.getElementById('btn-pause').textContent,
+      t: window.Game.game.world.t
+    }));
+    ok('the button calls a halt', held.paused);
+    ok('...credited to the seat that tapped it', held.by === 0, held.by);
+    ok('the panel says so', held.panel);
+    ok('and the button offers to go on', held.btn === '▶', held.btn);
+    /* stand still a while: the world must not move, and must not bank the standing still */
+    await pg.waitForTimeout(900);
+    const stood = await pg.evaluate(() => window.Game.game.world.t);
+    ok('the clock does not move while halted', Math.abs(stood - held.t) < 1e-6, `${held.t} -> ${stood}`);
+    /* an order given into a halt is refused rather than queued */
+    const refused = await pg.evaluate(() => {
+      const g = window.Game.game, c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 9000;
+      return window.World.applyCommand(g.world, 0, { c: 'build', bt: 'tower', x: c.x + 130, y: c.y }).err;
+    });
+    ok('no work may be raised into a halt', refused === 'paused', refused);
+    /* the whole panel is the button — tapping the middle of the screen goes on */
+    const mid = await pg.evaluate(() => ({ x: Math.round(innerWidth / 2), y: Math.round(innerHeight / 2) }));
+    await pg.mouse.click(mid.x, mid.y);
+    await pg.waitForTimeout(200);
+    const lifted = await pg.evaluate(() => ({
+      paused: !!window.Game.game.world.paused,
+      panel: !document.getElementById('halt').classList.contains('hidden'),
+      btn: document.getElementById('btn-pause').textContent,
+      t: window.Game.game.world.t
+    }));
+    ok('tapping the panel goes on again', !lifted.paused);
+    ok('...and the panel gets out of the way', !lifted.panel);
+    ok('...and the button offers a halt again', lifted.btn === '⏸', lifted.btn);
+    ok('the halt banked no time', lifted.t - stood < 0.5, `jumped ${(lifted.t - stood).toFixed(2)}s on resume`);
+    await pg.waitForTimeout(300);
+    const ran = await pg.evaluate(() => window.Game.game.world.t);
+    ok('and the world runs again', ran > lifted.t, `${lifted.t.toFixed(2)} -> ${ran.toFixed(2)}`);
+    /* back must lift a halt before it leaves the match */
+    await pg.click('#btn-pause'); await pg.waitForTimeout(150);
+    await pg.goBack(); await pg.waitForTimeout(250);
+    const backOut = await pg.evaluate(() => ({
+      paused: !!(window.Game.game.world && window.Game.game.world.paused),
+      mode: window.Game.game.mode
+    }));
+    ok('back lifts the halt', !backOut.paused);
+    ok('...rather than leaving the match', backOut.mode !== null, backOut.mode);
+
     /* ---------------- a wall is two taps ---------------- *
      * Every other work goes up where the sheet was opened. A curtain needs a second point,
      * and the whole interface for it is: tap the card, tap the far end. If the second tap
@@ -998,6 +1057,43 @@ async function match(browser, base, renderer) {
     ok('the guest renders a host world with works on it', lan.works > 0, `${lan.works} rival works`);
     ok('a guest can open a build sheet', lan.sheet);
     ok('the guest raised no errors rendering snapshots', errs.length === 0, errs.slice(0, 3).join(' | '));
+
+    /* A HALT IS THE TABLE'S. A guest holds no world, so the only way it can learn the world
+     * has stopped is the snapshot — and the only way it can call one is the wire. Neither
+     * has anything in common with the solo path, so neither is covered by it. */
+    const lanHalt = await pg.evaluate(async () => {
+      const { Game, Net, World, CONST: C } = window;
+      const hw = World.createWorld(4242);
+      for (let i = 0; i < 30 * 30; i++) { World.update(hw, C.SIM_DT); hw.events.length = 0; }
+      const sent = [];
+      Net.send = (o) => sent.push(o);
+      const push = () => Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      /* the HOST calls the halt: the guest must find out and say who */
+      World.applyCommand(hw, 0, { c: 'pause', on: true });
+      push(); await paint();
+      const seen = { panel: !document.getElementById('halt').classList.contains('hidden'),
+                     who: document.querySelector('#halt .halt-who').textContent,
+                     btn: document.getElementById('btn-pause').textContent };
+      /* and the GUEST lifts it — over the wire, since it has no world to change */
+      sent.length = 0;
+      document.getElementById('halt').click();
+      const cmds = sent.filter((o) => o.t === 'cmd').map((o) => o.c);
+      /* the host obeys, and the next snapshot carries the answer back */
+      for (const c of cmds) World.applyCommand(hw, 1, c);
+      push(); await paint();
+      return { ...seen, cmds, stillPaused: !!hw.paused,
+               gone: document.getElementById('halt').classList.contains('hidden') };
+    });
+    ok('a guest sees a halt the host called', lanHalt.panel);
+    ok('...and is told whose it is, not that it is its own',
+       /corwin|seat 1/i.test(lanHalt.who), lanHalt.who);
+    ok('...and its button offers to go on', lanHalt.btn === '▶', lanHalt.btn);
+    ok('a guest lifts a halt over the wire, not locally',
+       lanHalt.cmds.length === 1 && lanHalt.cmds[0].c === 'pause' && lanHalt.cmds[0].on === false,
+       JSON.stringify(lanHalt.cmds));
+    ok('the host obeys a guest lifting it', !lanHalt.stillPaused);
+    ok('...and the guest panel clears on the next snapshot', lanHalt.gone);
 
     /* ...and the same path at a seat that is neither host nor "the other one" */
     const lan4 = await pg.evaluate(async () => {

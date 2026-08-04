@@ -54,6 +54,13 @@ globals (`RNG`, `CONST`, `World`, `AI`) so `sim.js` can `require()` them in orde
   the sim never reads it. Consumers drain it each frame.
 - Commands: `{c:'build',slot,bt}`, `{c:'up',slot}`, `{c:'walk',on}`,
   `{c:'power',k,p}` — all validated in `applyCommand(world, playerIdx, cmd)`.
+- **The halt** is world state (`world.paused = {by, at}`), not a session flag, so it is
+  host-authoritative and rides the snapshot to every seat. `update()` returns early and
+  `applyCommand` refuses everything but `{c:'pause',on}` — a pause you can build through is a
+  planning phase, and in a duel it buys thinking time the other heir does not get. Anyone at
+  the table may call one and anyone may lift it. The command asks for a STATE, not a toggle,
+  so two people tapping at once cannot cancel each other out. game.js zeroes the accumulator
+  while halted: banked time would fast-forward the match on resume.
 
 ## Players
 
