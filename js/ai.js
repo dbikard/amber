@@ -155,8 +155,21 @@
     return null;
   }
   function spotFor(v, bt) {
-    const c = v.myCity;
+    const W2 = global.World, c = v.myCity;
     if (C.BUILDINGS[bt].span) return spanFor(v, bt);
+    /* A TOWER WANTS TO BE IN THE WALL. Stone stops a tower's shot like anything else now, so
+     * one raised behind a curtain covers the ground behind the curtain — which is not where
+     * the fighting is. An heir with a run standing tries the run first, and only falls back
+     * to open ground when there is no room on it. */
+    if (bt === 'tower' && v.world.anyWall) {
+      for (const wl of v.world.walls) {
+        if (wl.owner !== v.me) continue;
+        for (const t of [0.22, 0.78, 0.35, 0.65]) {
+          const x = wl.ax + (wl.bx - wl.ax) * t, y = wl.ay + (wl.by - wl.ay) * t;
+          if (!W2.placementError(v.world, v.me, x, y, 'tower')) return { x, y };
+        }
+      }
+    }
     /* the front is wherever trouble is expected: the found Seat, else the nearest unknown
      * ground, else the middle of the world */
     const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };

@@ -265,8 +265,11 @@
                   * the middle of the run, it is `gate` wide, and it is YOURS — a rival reaching
                   * it finds it shut, and must break the wall instead. */
                  gate: 30,
-                 /* a breach is repaired, not rebuilt: a crew, a while, and half the stone */
-                 repair: 0.5, fixWork: 0.7 };
+                 /* a breach is repaired, not rebuilt: a crew, a while, and half the stone.
+                  * `rubble` is what a ruin keeps standing — it bars nothing and shelters
+                  * nobody, but the ground it sits on is not free until somebody clears it,
+                  * and a single stray blow must not sweep the record away. */
+                 repair: 0.5, fixWork: 0.7, rubble: 0.3 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].

@@ -1119,6 +1119,72 @@ suite('the curtain wall')
     ok('...and the movement layer knows the ground is open', !f.anyWall);
   }
 
+  /* ---- A TOWER IN THE WALL ----
+   * The old rule was that a gun stands higher than a curtain and shoots over it. That made a
+   * wall no answer to a tower, and — worse — made the safest place for a tower the ground
+   * BEHIND a wall, where it was untouchable and unobstructed. A tower is blocked by stone
+   * like anything else now, and the way to buy it a field of fire is to build it INTO the
+   * run. Behind the wall it covers the ground behind the wall, which is a real choice. */
+  settle();
+  {
+    const pl2 = w.players[0];
+    pl2.essence = 100000;
+    /* on the run itself */
+    const at = { x: b.x + (ends[2] - ends[0]) * 0.22, y: b.y + (ends[3] - ends[1]) * 0.22 };
+    const r3 = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y });
+    ok('a tower may be raised into your own curtain', r3.ok, r3.err);
+    const tw = pl2.buildings.filter((q) => q.bt === 'tower').pop();
+    eq('...and it knows which run it stands on', tw.onWall, b.id);
+    tw.raise = 0; tw.cd = 0;
+    /* A SECOND TOWER, BEHIND THE WALL. Searched for rather than computed: a spot far enough
+     * inward to be sheltered lands on the Seat's own ground, and one far enough along the run
+     * crowds the tower already in the wall — hand-picking a point here silently returned the
+     * SAME tower twice and made the whole comparison meaningless. */
+    let back = null;
+    for (let along = -0.55; along <= 0.55 && !back; along += 0.1) {
+      for (let inward = 45; inward <= 110 && !back; inward += 10) {
+        const p4 = { x: b.x + (ends[2] - ends[0]) * along - (nx / nL) * inward,
+                     y: b.y + (ends[3] - ends[1]) * along - (ny / nL) * inward };
+        if (World.placementError(w, 0, p4.x, p4.y, 'tower')) continue;
+        if ((p4.x - tw.x) ** 2 + (p4.y - tw.y) ** 2 < 90 * 90) continue;   // clear of the wall tower
+        back = p4;
+      }
+    }
+    ok('there is ground behind the wall for a second tower', !!back);
+    const r4 = back ? World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: back.x, y: back.y })
+                    : { ok: false, err: 'nospot' };
+    ok('and one behind it is just a tower', r4.ok, r4.err);
+    const tb = pl2.buildings.filter((q) => q.bt === 'tower').pop();
+    ok('...which is a different work from the one in the wall', tb.id !== tw.id);
+    ok('...standing on no wall at all', !tb.onWall);
+    tb.raise = 0; tb.cd = 0;
+
+    /* a foe in the field, in reach of both */
+    const foe = put(1, side(70));
+    foe.hp = foe.maxHp = 4000;
+    w.players[1].banner = { x: foe.x, y: foe.y, site: -1 };
+    const hp0 = foe.hp;
+    run(8);
+    ok('the tower ON the wall shoots over it', foe.hp < hp0, `${Math.round(hp0 - foe.hp)} damage taken`);
+
+    /* now prove the one BEHIND cannot: take the wall tower away and the shooting stops */
+    World.hurtBuilding(w, 0, tw.id, 1e9, 1);
+    const hp1 = foe.hp;
+    run(8);
+    eq('the tower BEHIND the wall cannot shoot past it', foe.hp, hp1);
+    /* ...and it is not simply broken: breach the wall and it opens fire */
+    World.hurtBuilding(w, 0, b.id, 1e9, 1);
+    run(8);
+    ok('through a breach, it can', foe.hp < hp1, `${Math.round(hp1 - foe.hp)} damage taken`);
+    /* put the stone back for what follows — through the real mend, since poking the fields
+     * by hand leaves the standing list stale and the next suite reading a wall that is not
+     * there */
+    const fx = World.applyCommand(w, 0, { c: 'fix', id: b.id });
+    ok('the breach can be mended again afterwards', fx.ok, fx.err);
+    run(Math.ceil(b.work) + 1);
+    ok('...and the run is standing once more', w.walls.length === 1 && !b.breach);
+  }
+
   /* ---- the gate, and only the gate ---- */
   settle();
   {
@@ -1150,7 +1216,51 @@ suite('the curtain wall')
   ok('...and the movement layer is told', w.navVersion > ver);
   ok('...but it is still THERE, as a ruin', w.players[0].buildings.some((q) => q.id === b.id));
   eq('...breached', b.breach, 1);
-  eq('...with nothing left standing', b.hp, 0);
+  near('...with only rubble left of it', b.hp, b.maxHp * C.WALL.rubble, 1);
+  /* AND THE RUBBLE CAN BE CLEARED — that is how you get the ground back for something of
+   * your own. It is not swept away by one stray blow, and it is never worth a soldier's
+   * attention while anything alive is in reach: a wall is a last-resort target, breached or
+   * whole. */
+  {
+    const g3 = World.createWorld(1000, 2);
+    g3.chaosNext = 1e9;
+    const p3 = g3.players[0], c3 = World.cityOf(g3, 0);
+    p3.essence = 100000;
+    let ln = null;
+    for (let a2 = 0; a2 < 6.28 && !ln; a2 += 0.35)
+      for (let r2 = 110; r2 <= 200 && !ln; r2 += 22) {
+        const mx = c3.x + Math.cos(a2) * r2, my = c3.y + Math.sin(a2) * r2;
+        const px = -Math.sin(a2) * 60, py = Math.cos(a2) * 60;
+        if (!World.wallError(g3, 0, mx - px, my - py, mx + px, my + py)) ln = [mx - px, my - py, mx + px, my + py];
+      }
+    World.applyCommand(g3, 0, { c: 'build', bt: 'wall', x: ln[0], y: ln[1], x2: ln[2], y2: ln[3] });
+    for (let i = 0; i < 30 * (def.raise + 1); i++) { World.update(g3, C.SIM_DT); g3.events.length = 0; }
+    const wb = p3.buildings.find((q) => q.bt === 'wall');
+    World.hurtBuilding(g3, 0, wb.id, 1e9, 1);
+    ok('a ruin is left standing on the ground', wb.hp > 0 && wb.breach);
+    /* a soldier with a live foe beside him goes for the FOE, not the rubble */
+    const foeU = { id: g3.nextId++, owner: 0, kind: 'soldier', x: wb.x + 20, y: wb.y + 20, ox: 0, oy: 0,
+                   hp: 500, maxHp: 500, dmg: 9, cd: 0, goal: null, co: 0, from: -1 };
+    const hitter = { id: g3.nextId++, owner: 1, kind: 'soldier', x: wb.x + 24, y: wb.y + 24, ox: 0, oy: 0,
+                     hp: 1e9, maxHp: 1e9, dmg: 9, cd: 0, goal: null, co: 0, from: -1 };
+    g3.units.push(foeU, hitter);
+    g3.players[1].banner = { x: hitter.x, y: hitter.y, site: -1 };
+    const rub0 = wb.hp;
+    for (let i = 0; i < 30 * 6; i++) { World.update(g3, C.SIM_DT); g3.events.length = 0; }
+    ok('a soldier strikes the living man, not the ruin', foeU.hp < 500, `foe at ${Math.round(foeU.hp)}`);
+    eq('...and leaves the rubble alone while he does', Math.round(wb.hp), Math.round(rub0));
+    /* AND THE GROUND CAN BE TAKEN BACK. Knocking the rubble down removes it for good — which
+     * is the whole reason for letting anyone hit a ruin — and the ground it stood on is free
+     * for something of your own. (A soldier standing here would go for the SEAT first, which
+     * is in reach and outranks rubble; the point being tested is the mechanic, not his
+     * priorities, and his priorities are asserted just above.) */
+    const where = { x: wb.x, y: wb.y };
+    eq('a work cannot stand on a ruin', World.placementError(g3, 0, where.x, where.y, 'tower'), 'crowded');
+    World.hurtBuilding(g3, 0, wb.id, wb.hp + 1, 1);
+    ok('knocking the rubble down clears it away', !p3.buildings.some((q) => q.id === wb.id));
+    eq('...and the ground it stood on is free again',
+       World.placementError(g3, 0, where.x, where.y, 'tower'), null);
+  }
 
   w.players[0].essence = 100000;
   const purse2 = w.players[0].essence;

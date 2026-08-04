@@ -149,11 +149,29 @@
     /* plain, meadow and hill will bear a building; wood, marsh, water and crag will not */
     return !!WG.BUILDABLE[nav.terra[c]];
   }
-  function clearOfWorks(world, x, y) {
+  /* A TOWER MAY BE BUILT INTO YOUR OWN CURTAIN. Which wall, if any, a work at this point
+   * would stand on — a tower raised astride a run is part of it, and that is what lets it
+   * shoot over the stone instead of at the back of it. */
+  function wallUnder(world, pi, x, y) {
+    if (!world.anyWall) return null;
+    const r2 = (C.WALL.thick + 16) * (C.WALL.thick + 16);
+    for (const w of world.walls)
+      if (w.owner === pi && segD2(w.b, x, y) < r2) return w.b;
+    return null;
+  }
+  function clearOfWorks(world, x, y, pi) {
     const need = C.BUILD.foot * 2 + C.BUILD.gap;
-    for (let pi = 0; pi < world.players.length; pi++)
-      for (const b of world.players[pi].buildings)
+    const on = pi != null ? wallUnder(world, pi, x, y) : null;
+    for (let q = 0; q < world.players.length; q++)
+      for (const b of world.players[q].buildings) {
+        /* the wall you are building INTO does not crowd you out of it, and neither does a
+         * tower already standing on some other stretch of the same run */
+        if (on && (b === on || b.onWall === on.id)) {
+          if (b !== on && d2(x, y, b.x, b.y) < need * need) return false;
+          continue;
+        }
         if (d2(x, y, b.x, b.y) < need * need) return false;
+      }
     for (let pi = 0; pi < world.players.length; pi++) {   // and never inside the Seat itself
       const c = cityOf(world, pi);
       if (d2(x, y, c.x, c.y) < C.CITY.seatR * C.CITY.seatR) return false;
@@ -377,7 +395,8 @@
       if (!inClaim(world, pi, x, y)) return 'claim';
       return rising(world, pi) >= masons(world, pi) ? 'busy' : null;
     }
-    if (!clearOfWorks(world, x, y)) return 'crowded';
+    /* only a tower joins a curtain — a barracks astride a wall is a hole in it */
+    if (!clearOfWorks(world, x, y, bt === 'tower' ? pi : null)) return 'crowded';
     /* The masons are the last word, not the first: what is wrong with the GROUND is worth
      * knowing while you wait, and a card that can never be built here should say so rather
      * than blame the masons. */
@@ -578,6 +597,12 @@
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
                   co: 0 };         // 0 = its muster marches under the royal War Banner
       if (x2 != null) { b.x2 = x2; b.y2 = y2; b.crews = crews; }
+      /* a tower raised astride your own curtain is PART of it: it shoots over that stone the
+       * way a man on the parapet does, and the wall stops being something it fires into */
+      if (cmd.bt === 'tower') {
+        const on = wallUnder(world, pi, x, y);
+        if (on) b.onWall = on.id;
+      }
       if (!b.raise) b.hp = b.maxHp;
       if (def.spawns) b.co = joinCo(world, pi, cmd.co);
       pl.buildings.push(b);
@@ -899,7 +924,11 @@
      * the masons can raise it again for half the stone. Otherwise winning a stretch of wall
      * once wins it forever, and a long run is a single hit-point bar you cannot mend. */
     if (b.hp <= 0 && isWall(b) && !b.breach) {
-      b.hp = 0; b.breach = 1; b.work = 0;
+      /* THE RUBBLE HAS HIT POINTS OF ITS OWN. A ruin left at zero would be swept off the
+       * board by the very next blow that touched it — the record gone and the mend with it.
+       * It keeps a share of its stone: enough that clearing the ground is WORK, and it can
+       * be cleared, which is the point of being allowed to hit it at all. */
+      b.hp = Math.max(1, b.maxHp * C.WALL.rubble); b.breach = 1; b.work = 0; b.fixing = 0;
       world.navVersion++; noteWalls(world);
       emit(world, { e: 'breach', pi, id: b.id, x: b.x, y: b.y, by: by == null ? null : by });
       return;
@@ -970,7 +999,12 @@
           }
           continue;
         }
-        if (b.hp < b.maxHp && t - b.lastHurt > 10) b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
+        /* A RUIN DOES NOT HEAL ITSELF. Works mend over time when nobody is hitting them, and
+         * a breached wall inherited that — so rubble quietly climbed back toward a full wall's
+         * hit points while staying breached: harder and harder to clear, and never any use to
+         * anyone. A breach is closed by masons and by nothing else. */
+        if (b.hp < b.maxHp && t - b.lastHurt > 10 && !b.breach)
+          b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
         /* THE MASONS ARE IN THE YARD. A work being raised a level is still a work — it stands,
          * it blocks, it sees, it holds its spring, and it can be broken — but it does not do
          * its JOB while they are on it: no muster, no shot, no income. That is what makes the
@@ -1022,13 +1056,20 @@
           if (b.cd <= 0) {
             const st = towerStats(b);
             let best = null, bd = st.range * st.range;
-            /* A TOWER SHOOTS OVER STONE. Curtain walls stop arrows thrown by men on the
-             * ground; they do not stop a gun standing higher than they are. So a tower is
-             * worth having behind a wall, and a wall is no answer to a tower. */
+            /* A TOWER DOES NOT SHOOT THROUGH STONE — not even its own. It used to: the rule
+             * was that a gun stands higher than a curtain, which made a wall no answer to a
+             * tower and, worse, made the safest place for one the ground BEHIND a wall, where
+             * it was untouchable and unobstructed. Now a tower is blocked like anything else,
+             * and the way to give one a field of fire over a curtain is to build it INTO the
+             * curtain — which is what `onWall` is. A tower behind the wall covers the ground
+             * behind the wall, and that is a real choice rather than a free one. */
+            const mine = b.onWall ? world.walls.find((q) => q.b.id === b.onWall) : null;
             forNear(world, sp.x, sp.y, st.range, (u) => {
               if (u.owner === pi) return;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
-              if (dd < bd) { bd = dd; best = u; }
+              if (dd >= bd) return;
+              if (world.anyWall && walled(world, sp.x, sp.y, u.x, u.y, pi, u.owner, mine && mine.b)) return;
+              bd = dd; best = u;
             });
             if (best) {
               hurt(world, best, st.dmg, pi);

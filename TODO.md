@@ -249,6 +249,20 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
+- [x] **Towers join curtains** — the last open item from OPEN_WORLD_PLAN §6.
+      A tower raised on your own run becomes part of it (`onWall`) and shoots over that stone
+      the way a man on the parapet does. **And a tower no longer shoots through stone at all**,
+      which reverses the rule shipped with walls: "a gun stands higher than a curtain" made a
+      wall no answer to a tower and — worse — made the safest place for one the ground BEHIND
+      a wall, untouchable and unobstructed. Free cover. Now behind the wall covers the ground
+      behind the wall, and a field of fire has to be bought by building into the run.
+      **Ruins are attackable, and that is the point** (per play): knocking rubble down frees
+      the ground for something of your own. Two bugs fell out of getting there — rubble was
+      REGENERATING back toward a full wall's hit points while staying breached, and it sat at
+      zero so the next stray blow swept the record and the mend away with it. It keeps
+      `WALL.rubble` of its stone now and mends only by masons. Priority needed no change: a
+      wall is a last-resort target breached or whole, so a soldier strikes the living man
+      first — now asserted rather than assumed.
 - [x] **The parapet holds what it holds, and a wall has a gate.**
       - **A roster, not a distance.** Manning was "anyone within `man` of his own curtain", so
         a hundred men crowding one stretch were all on the parapet at once — every one

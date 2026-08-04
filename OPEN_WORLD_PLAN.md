@@ -135,8 +135,11 @@ until somebody misses them in play.
 - **A tower shoots over stone.** Towers are taller than curtains: a wall is worth having
   behind a tower, and is no answer to one.
 - Legal only inside your writ, and never across a Seat's own ground or another work.
-- Not yet done, and deliberately: towers do not structurally join a curtain, and a breach is
-  the whole run rather than a hole in it.
+- **Towers join curtains.** A tower raised on your own run is part of it and shoots over that
+  stone; a tower behind a wall is blocked by it like anything else, and covers the ground
+  behind it. The plan asked for this and it is done — the only change is that it had to come
+  with the reverse rule as well, or a tower behind a wall was free cover.
+- Not yet done, and deliberately: a breach is the whole run rather than a hole in it.
 
 ## 7. Defence and siege trees
 

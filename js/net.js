@@ -228,6 +228,8 @@
           work: b.work > 0 ? Math.round(b.work * 10) / 10 : 0, workFor: b.workFor || 0,
           /* a breach is public: it is a hole in the world that everyone can walk up to */
           ...(b.breach ? { breach: 1 } : {}), ...(b.crews > 1 ? { crews: b.crews } : {}),
+          /* a tower in the wall stands ON the wall — a guest must draw it up there too */
+          ...(b.onWall ? { onWall: b.onWall } : {}),
           /* a long curtain occupies several crews — the yard readout has to know */
           ...(b.crews > 1 ? { crews: b.crews } : {}),
           /* the tower branch is yours to know and the rival's to guess */

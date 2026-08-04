@@ -170,7 +170,12 @@ translucent scaffolding a rising one does.
   punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
   **A breach is a ruin**: `b.breach` keeps the record on the board, out of `world.walls`, and
   `{c:'fix'}` puts it back for a crew and half the stone. A mend takes a crew (`b.fixing`); a
-  LEVEL does not — see the note on the `up` command.
+  LEVEL does not — see the note on the `up` command. Rubble keeps `WALL.rubble` of its stone so
+  a stray blow cannot sweep the record away, does NOT regenerate (masons only), and can be
+  knocked down for good to free the ground.
+  **A tower does not shoot through stone, not even its own** — build it INTO the run (`onWall`)
+  and it shoots over that wall like a man on the parapet; behind the wall it covers the ground
+  behind the wall. `clearOfWorks` takes the owner so a tower may stand on its own curtain.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an
   abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,

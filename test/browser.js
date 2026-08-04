@@ -975,6 +975,45 @@ async function match(browser, base, renderer) {
       ok('...with the parapet gone off it', shapes.ruinV < shapes.wholeV,
          `${shapes.wholeV} -> ${shapes.ruinV} verts`);
 
+      /* A TOWER IN THE WALL stands ON it — drawn on the parapet, not in the grass beside it,
+       * and keyed apart from an ordinary tower so raising one rebuilds the model. */
+      const inWall = await pg.evaluate(async () => {
+        const R = window.Render, W = window.World, g = window.Game.game;
+        const pl = g.world.players[0];
+        pl.essence = 99000;
+        const wall = pl.buildings.filter((b) => b.bt === 'wall').pop();
+        /* the block above BREACHED this run. Clearing the flag by hand leaves the standing
+         * list stale — and a tower cannot be built into a wall the sim does not think is
+         * there — so mend it properly and let the masons finish. */
+        for (const b of pl.buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+        if (wall.breach) {
+          const f = W.applyCommand(g.world, 0, { c: 'fix', id: wall.id });
+          if (!f.ok) return { err: 'fix:' + f.err };
+          for (let i = 0; i < 30 * 60 && wall.work > 0; i++) window.World.update(g.world, window.CONST.SIM_DT);
+        }
+        if (wall.breach) return { err: 'still breached' };
+        const ends = W.wallEnds(wall);
+        const at = { x: wall.x + (ends[2] - ends[0]) * 0.24, y: wall.y + (ends[3] - ends[1]) * 0.24 };
+        const r2 = W.applyCommand(g.world, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y });
+        if (!r2.ok) return { err: r2.err };
+        const tw = pl.buildings.filter((b) => b.bt === 'tower').pop();
+        tw.raise = 0;
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        const wk = R.debugWorks(tw.id);
+        const grp = R.debugWorkGroup(tw.id);
+        let lo = 1e9;
+        const pos = grp.mesh.geometry.attributes.position, m = grp.matrix;
+        const v = new window.THREE.Vector3();
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(m);
+          lo = Math.min(lo, v.y);
+        }
+        return { onWall: tw.onWall === wall.id, key: wk && wk.key, foot: lo - R.groundH(tw.x, tw.y) };
+      });
+      ok('a tower can be raised into the wall', inWall.onWall, inWall.err || JSON.stringify(inWall));
+      ok('...and is drawn standing on it', inWall.foot > 15, `its foot is ${(inWall.foot || 0).toFixed(1)} above the ground`);
+      ok('...with a model of its own', /=/.test(inWall.key || ''), inWall.key);
+
       /* the minimap must carry the run: it is the only place on a phone where the SHAPE of
        * a defence can be read at all */
       const onMini = await pg.evaluate(() => {

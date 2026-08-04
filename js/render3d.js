@@ -1058,13 +1058,16 @@
          * new shape instead of leaving last level's stones standing. */
         const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
-          + '@' + (b.level || 1) + (b.breach ? '!' : '')
+          + '@' + (b.level || 1) + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
           + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
           const grp = new THREE.Group();
           const isW = b.x2 != null;
+          /* a tower BUILT INTO a curtain stands on the parapet, not on the grass beside it —
+           * it is the one work whose height is not the ground's */
+          const onWall = b.onWall ? 27 : 0;
           if (!isW) grp.rotation.y = curViewerRotOwn();   // a wall's facing is its own line
           const pad = isW
             ? new THREE.Mesh(new THREE.PlaneGeometry(Math.hypot(b.x2 - b.x, b.y2 - b.y) * 2 + 26, 34)
@@ -1106,10 +1109,10 @@
             if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), b.raise > 0 ? 0.5 : 0.3);
           });
           worldG.add(grp);
-          w = { grp, key, pad };
+          w = { grp, key, pad, onWall };
           g.works.set(id, w);
         }
-        w.grp.position.set(b.x, groundH(b.x, b.y) + 1.5, b.y);
+        w.grp.position.set(b.x, groundH(b.x, b.y) + 1.5 + (w.onWall || 0), b.y);
         w.grp.scale.y = b.raise > 0 ? 0.3 + 0.7 * (1 - b.raise / (b.raiseFor || 1)) : 1;
         w.seen = true;
         if (g.own) w.pad.material.color.setHex(R.selected === id ? 0x8a6c3c : 0x46382a);
