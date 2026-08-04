@@ -256,6 +256,8 @@
       else if (r.err === 'short') UI.banner('Too short a run to be a wall', 'warn');
       else if (r.err === 'crews') UI.banner('Too long for the crews you have — hold more Gates, or draw a shorter run', 'warn');
       else if (r.err === 'paused') UI.banner('The world is halted — lift it to give orders', 'warn');
+      else if (r.err === 'whole') UI.banner('There is nothing broken to mend', 'warn');
+      else if (r.err === 'working') UI.banner('The masons are already in it', 'warn');
     }
     return r;
   }
@@ -727,6 +729,7 @@
         if (!on) { game.targeting = false; game.armedFlag = null; game.span = null; Render.span = null; UI.closeSheet(); }
         issue({ c: 'pause', on: !on });
       },
+      onFix: (id) => issue({ c: 'fix', id }),
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
       /* the first tap of a wall: hold the anchor, show the run, wait for the second */
       onSpan: (x, y, bt) => {

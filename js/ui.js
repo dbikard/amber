@@ -304,6 +304,8 @@
   /* why the ground refuses a work — said plainly, because free placement fails silently otherwise */
   const WHY = {
     ground: 'the ground will not bear it — wood, rock or water',
+    whole: 'there is nothing broken to mend',
+    working: 'the masons are already in it',
     crowded: 'too close to another work',
     claim: 'beyond your writ — hold a Gate nearer, or take a spring',
     nospring: 'a Gate draws Shadow out of the ground — it stands on a spring, and only there',
@@ -429,6 +431,23 @@
       el._raising = s;   // counted down live by UI.tick, rather than frozen at the moment it opened
       w.innerHTML = raiseLine(s);
       el.appendChild(w);
+      addCancel(el);
+      el._openedAt = performance.now();
+      el.classList.remove('hidden');
+      return;
+    }
+    /* A BREACHED CURTAIN offers one thing and it is not an upgrade: put the stone back. */
+    if (s.breach) {
+      const crews = s.crews || 1;
+      const price = Math.round(C.BUILDINGS.wall.cost * crews * C.WALL.repair);
+      const b = document.createElement('button');
+      b.className = 'card' + (essence >= price ? '' : ' locked');
+      b.dataset.cost = price;
+      b.innerHTML = '<span class="c-ico">🧱</span><span class="c-name">Mend the breach</span>' +
+                    `<span class="c-cost">◆ ${price}</span>` +
+                    '<span class="c-blurb">A crew and half the stone. It shelters nobody until they are done.</span>';
+      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onFix(s.id); UI.closeSheet(); });
+      el.appendChild(b);
       addCancel(el);
       el._openedAt = performance.now();
       el.classList.remove('hidden');

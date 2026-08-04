@@ -254,7 +254,19 @@
   CONST.TIER_NAME = ['', 'Veteran ', 'Elite '];
   CONST.UP_WORK = 0.8;
 
-  CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150 };
+  CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150,
+                 /* A PARAPET HOLDS WHAT IT HOLDS. One berth per `berth` of length, and the men
+                  * who cannot get up stay at the FOOT of it — sheltered, useless, and waiting
+                  * for a place. Without this a hundred men crowd twenty feet of stone and the
+                  * whole run is defended by a scrum standing on each other. */
+                 berth: 15, foot: 20, rows: 3,
+                 /* AND A WALL HAS A GATE. A curtain you can walk around the end of is a
+                  * decoration; one nobody can pass is a wall around your own army. The gate is
+                  * the middle of the run, it is `gate` wide, and it is YOURS — a rival reaching
+                  * it finds it shut, and must break the wall instead. */
+                 gate: 30,
+                 /* a breach is repaired, not rebuilt: a crew, a while, and half the stone */
+                 repair: 0.5, fixWork: 0.7 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
    * Per-branch arrays are indexed by (level - 2): [L2, L3].

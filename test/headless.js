@@ -928,8 +928,10 @@ suite('the curtain wall')
 
   /* a soldier well behind the wall cannot be shot by one well in front of it */
   settle();
-  const inner = pin(put(0, side(-C.WALL.man - 30)));   // sheltered, on the Seat's side
-  const outer = pin(put(1, side(C.WALL.man + 30)));    // in the field, in front of the stone
+  /* WELL behind and WELL in front: an order given at the wall now posts a man to a berth on
+   * it, so these two have to be plainly out of that reach or the test is about manning */
+  const inner = pin(put(0, side(-C.WALL.man - 70)));   // sheltered, on the Seat's side
+  const outer = pin(put(1, side(C.WALL.man + 70)));    // in the field, in front of the stone
   run(6);
   eq('a man behind the curtain is not shot through it', inner.hp, 1e9);
   eq('...and does not shoot out through it either', outer.hp, 1e9);
@@ -947,7 +949,7 @@ suite('the curtain wall')
   /* standing against SOMEBODY ELSE'S wall is not manning it */
   settle();
   b.hp = b.maxHp;
-  const hidden = pin(put(0, side(-C.WALL.man - 40)));
+  const hidden = pin(put(0, side(-C.WALL.man - 70)));
   pin(put(1, side(C.WALL.man * 0.5)));
   run(6);
   eq('hugging a rival curtain does not put you on it', hidden.hp, 1e9);
@@ -1030,12 +1032,49 @@ suite('the curtain wall')
   ok('...and the reinforcement is thicker stone', b.maxHp > wasMax, `${wasMax} -> ${b.maxHp}`);
   near('...added to what was standing, not a free repair', b.maxHp - b.hp, 200, 1);
 
+  /* AND THEY SPREAD ALONG IT. An order at a wall is one point, so every man sent to hold a
+   * curtain used to walk to the same stride of it — a hundred feet of stone defended by a
+   * scrum, with the rest of the run empty. Each takes his own berth now. */
+  settle();
+  {
+    const men = [];
+    for (let i = 0; i < 14; i++) men.push(put(0, side(-C.WALL.man * 0.6)));
+    /* the order is given AT the wall's middle: one point, fourteen men */
+    w.players[0].banner = { x: mid.x, y: mid.y, site: -1 };
+    run(14);
+    /* A PARAPET HOLDS WHAT IT HOLDS — one berth per stride of stone, and no more. The rest
+     * of the company is not turned away: it stands at the FOOT, in cover behind the wall. */
+    const on = men.filter((m) => m.man === b.id);
+    const runLen = Math.sqrt((ends[2] - ends[0]) ** 2 + (ends[3] - ends[1]) ** 2);
+    const berths = Math.max(2, Math.round(runLen / C.WALL.berth));
+    ok('the run holds only as many men as it has berths', on.length === Math.min(berths, men.length),
+       `${on.length} on a run of ${Math.round(runLen)} (${berths} berths), ${men.length} sent`);
+    ok('...and the rest are not on it', men.length - on.length === Math.max(0, men.length - berths));
+    /* how far apart they are ALONG the run, which is the thing that was broken */
+    const along = on.map((m) => (m.x - ends[0]) * (ends[2] - ends[0]) + (m.y - ends[1]) * (ends[3] - ends[1]));
+    const L2 = (ends[2] - ends[0]) ** 2 + (ends[3] - ends[1]) ** 2;
+    const ts = along.map((v) => v / L2).sort((p, q) => p - q);
+    ok('they are spread along the run, not stacked on one stride',
+       ts[ts.length - 1] - ts[0] > 0.6, `they cover ${((ts[ts.length - 1] - ts[0]) * 100).toFixed(0)}% of it`);
+    /* and evenly: no two men in the same berth while stretches stand empty */
+    let worst = 0;
+    for (let i = 1; i < ts.length; i++) worst = Math.max(worst, ts[i] - ts[i - 1]);
+    ok('with no long empty stretch between them', worst < 0.25,
+       `the widest gap is ${(worst * 100).toFixed(0)}% of the run`);
+    ok('every one of them is on his OWN wall', on.every((m) => m.man === b.id));
+  }
+
   /* THE PARAPET MUST BE VISIBLE. A man on the wall fought from the wall and was drawn in the
    * grass beside it — the one bargain the whole design rests on, with nothing to see. He now
    * carries the wall he is standing on, and it rides the wire so a guest sees it too. */
   settle();
+  /* ONE BANNER PER HEIR, so two men of the same seat cannot be given two different orders by
+   * pinning twice — the second pin simply moved the first man's order. The reserve gets its
+   * own COMPANY and its own rally, which is how a player would do it too. */
   const upTop = pin(put(0, side(-C.WALL.man * 0.5)));
-  const below = pin(put(0, side(-C.WALL.man - 60)));
+  const below = put(0, side(-C.WALL.man - 60));
+  w.players[0].companies.push({ id: 41, rally: { x: below.x, y: below.y, site: -1 } });
+  below.co = 41;
   World.update(w, C.SIM_DT);
   eq('a man at his own wall is marked as standing on it', upTop.man, b.id);
   eq('...and a man well behind it is not', below.man || 0, 0);
@@ -1080,12 +1119,53 @@ suite('the curtain wall')
     ok('...and the movement layer knows the ground is open', !f.anyWall);
   }
 
-  /* a breach is a hole: throw it down and the ground opens again */
+  /* ---- the gate, and only the gate ---- */
+  settle();
+  {
+    const wl = w.walls[0];
+    ok('the run has a gateway at its middle', wl.gx === b.x && wl.gy === b.y);
+    /* the owner crosses AT the gate... */
+    const far = side(-260);
+    const thru = put(0, { x: wl.gx + (b.x - far.x) * 0.0 + 0, y: wl.gy }, 'soldier');
+    thru.x = side(70).x; thru.y = side(70).y;
+    /* aim him squarely at the gateway from the field side */
+    w.players[0].banner = { x: far.x, y: far.y, site: -1 };
+    run(30);
+    const sIn = (nx / nL) * (thru.x - mid.x) + (ny / nL) * (thru.y - mid.y);
+    ok('the heir passes through his own gate', sIn < 0, sIn.toFixed(1));
+    /* ...and a rival at the very same gateway does not */
+    settle();
+    const foe = put(1, side(70), 'soldier');
+    w.players[1].banner = { x: far.x, y: far.y, site: -1 };
+    run(30);
+    const sOut = (nx / nL) * (foe.x - mid.x) + (ny / nL) * (foe.y - mid.y);
+    ok('a rival finds the gate shut and cannot cross', sOut > 0, sOut.toFixed(1));
+  }
+
+  /* ---- a breach is a ruin, and a ruin can be mended ---- */
   settle();
   const ver = w.navVersion;
   World.hurtBuilding(w, 0, b.id, 1e9, 1);
-  ok('a broken curtain leaves the standing list', w.walls.length === 0 && !w.anyWall);
+  ok('a broken curtain stops barring the ground', w.walls.length === 0 && !w.anyWall);
   ok('...and the movement layer is told', w.navVersion > ver);
+  ok('...but it is still THERE, as a ruin', w.players[0].buildings.some((q) => q.id === b.id));
+  eq('...breached', b.breach, 1);
+  eq('...with nothing left standing', b.hp, 0);
+
+  w.players[0].essence = 100000;
+  const purse2 = w.players[0].essence;
+  eq('a whole wall cannot be mended', World.applyCommand(w, 0, { c: 'fix', id: b.id }).err || 'ok',
+     'ok');   // it IS breached here, so this must succeed
+  ok('mending takes masonry', b.work > 0, b.work);
+  eq('...and a crew, unlike a level', World.rising(w, 0), b.crews || 1);
+  eq('...and half the stone', Math.round(purse2 - w.players[0].essence),
+     Math.round(C.BUILDINGS.wall.cost * (b.crews || 1) * C.WALL.repair));
+  ok('a wall being mended still bars nothing', !w.anyWall);
+  run(Math.ceil(b.work) + 1);
+  eq('the masons close the breach', b.breach, 0);
+  eq('...and the stone is whole again', Math.round(b.hp), Math.round(b.maxHp));
+  ok('...and it bars the ground once more', w.anyWall && w.walls.length === 1);
+  eq('a whole wall has nothing to mend', World.applyCommand(w, 0, { c: 'fix', id: b.id }).err, 'whole');
 }
 
 /* A LEVEL MAKES BETTER MEN, NOT MORE OF THEM. Halls used to buy THROUGHPUT — the same

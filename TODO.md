@@ -249,6 +249,26 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
+- [x] **The parapet holds what it holds, and a wall has a gate.**
+      - **A roster, not a distance.** Manning was "anyone within `man` of his own curtain", so
+        a hundred men crowding one stretch were all on the parapet at once — every one
+        shooting over it, every one exposed, standing in each other. A run holds one man per
+        `WALL.berth` of length and no more; the rest stand at the FOOT in rows behind the
+        stone, sheltered and waiting for a place. Ranked by id so the line does not reshuffle
+        itself every frame.
+      - **A gate, and it is yours.** The middle of the run, `WALL.gate` wide. This meant
+        stamping a wall into its OWNER's nav layer too and punching a hole at the gateway —
+        his layer used to be clear, which made a curtain a one-way wall his own army ignored
+        and the shove then ground him against it. A rival is stopped everywhere, gateway
+        included: the only way through a wall he does not own is to break it.
+      - **A breach is a ruin, not a deletion.** A wall at zero stays on the board, broken. It
+        bars nothing — that is what breaking it was for — and the masons raise it again for
+        half the stone. Otherwise winning a stretch of wall once won it forever. Mending takes
+        a crew and time and shelters nobody until it is done.
+      Both browser failures on the way were tests written against the old rule, not defects:
+      one created units and never ordered them anywhere (you man a wall by being ORDERED to
+      it now), the other asked `anyWall` — which answers for the whole board — when it meant
+      one particular wall.
 - [x] **The yard, on screen.** What this game rations is the MASONS, and the only way to
       discover you had none free was to choose a spot, open the sheet and be refused. Top-left
       now, opposite the walkers: idle crews of total, dimmed when they are all at work. Read

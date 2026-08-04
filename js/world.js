@@ -177,7 +177,9 @@
   const crewsOn = (b) => (b.crews || 1);
   function rising(world, pi) {
     let n = 0;
-    for (const b of world.players[pi].buildings) if (b.raise > 0) n += crewsOn(b);
+    /* a work RISING takes crews, and so does a breach being MENDED — that is masonry putting
+     * stone back. A level does not: see the note on the `up` command. */
+    for (const b of world.players[pi].buildings) if (b.raise > 0 || b.fixing) n += crewsOn(b);
     return n;
   }
   /* the longest run this heir could START right now, given the crews standing idle */
@@ -189,12 +191,80 @@
    * kills nobody. Come within `man` of your OWN finished wall and you are on the parapet:
    * you shoot over it, and everything below can shoot back. That is the bargain, and it is
    * what keeps a wall from being a way to win by sitting. */
+  /* WHO IS ON THE WALL IS A ROSTER, NOT A DISTANCE. It used to be "anyone within `man` of his
+   * own curtain", which meant a hundred men crowding one stretch were all on the parapet at
+   * once — every one of them shooting over it, every one of them exposed, standing in each
+   * other. A run holds one man per `berth` of length and no more; `u.man` is the wall he
+   * holds a place on, set by postWalls, and everyone else is at the FOOT of it. */
   function manning(world, u) {
-    if (!world.anyWall || u.owner === C.CHAOS_ID) return null;
-    const r2 = C.WALL.man * C.WALL.man;
-    for (const w of world.walls)
-      if (w.owner === u.owner && segD2(w.b, u.x, u.y) < r2) return w.b;
+    if (!u.man || u.owner === C.CHAOS_ID) return null;
+    for (const w of world.walls) if (w.b.id === u.man) return w.b;
     return null;
+  }
+  /* THE ROSTER, once a tick. Every man ordered to a curtain is ranked by id — a stable order,
+   * so the line does not reshuffle itself every frame — and the first `berths` of them take
+   * the parapet. The rest are not turned away: they stand at the foot, in rows behind the
+   * stone, sheltered and waiting for a place. */
+  function postWalls(world) {
+    for (const u of world.units) if (u.man) u.man = 0;
+    if (!world.anyWall) return;
+    const rosters = new Map();
+    const reach = C.WALL.man * 1.5;
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.owner === C.CHAOS_ID) continue;
+      /* the order he is UNDER, worked out here rather than read off u.goal — the goal is
+       * assigned in the march loop, which runs after this, so reading it would post the whole
+       * army one tick late and leave a man mustered this tick with no station at all */
+      const pl3 = world.players[u.owner];
+      const co3 = u.co ? coOf(world, u.owner, u.co) : null;
+      const gs = co3 && co3.rally ? co3.rally : pl3.banner;
+      if (!gs) continue;
+      let post = null, pd = reach;
+      for (const w of world.walls) {
+        if (w.owner !== u.owner) continue;
+        const dd = Math.sqrt(segD2(w.b, gs.x, gs.y));
+        if (dd < pd) { pd = dd; post = w; }
+      }
+      if (!post) { u.post = 0; continue; }
+      u.post = post.b.id;
+      let list = rosters.get(post.b.id);
+      if (!list) { list = []; rosters.set(post.b.id, list); }
+      list.push(u);
+    }
+    for (const [id, list] of rosters) {
+      const w = world.walls.find((q) => q.b.id === id);
+      if (!w) continue;
+      list.sort((p, q) => p.id - q.id);          // a stable line, not a nightly reshuffle
+      const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+      const berths = Math.max(2, Math.round(L / C.WALL.berth));
+      for (let i = 0; i < list.length; i++) {
+        list[i].berth = i;
+        if (i < berths) list[i].man = id;        // he has a place on the stone
+      }
+      w.berths = berths;
+    }
+  }
+  /* where a man posted to this wall should stand — on the parapet if he has a berth, at the
+   * foot in rows behind it if he does not */
+  function station(world, u, w) {
+    const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+    const berths = w.berths || Math.max(2, Math.round(L / C.WALL.berth));
+    const ux = (w.bx - w.ax) / L, uy = (w.by - w.ay) / L;
+    const cs = cityOf(world, u.owner);
+    let nx = -uy, ny = ux;
+    if (nx * (cs.x - w.b.x) + ny * (cs.y - w.b.y) < 0) { nx = -nx; ny = -ny; }
+    const i = u.berth || 0;
+    if (i < berths) {
+      const t = ((i % berths) + 0.5) / berths, off = C.WALL.man * 0.45;
+      return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
+    }
+    /* THE FOOT OF THE WALL. Rows behind it, filling outward — the reserve, in cover, where a
+     * man who cannot get up is at least not standing in the field being shot. */
+    const over = i - berths;
+    const row = Math.floor(over / berths) % C.WALL.rows;
+    const t = ((over % berths) + 0.5) / berths;
+    const off = C.WALL.man * 0.45 + C.WALL.foot * (row + 1);
+    return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
   }
   /* IS THERE STONE BETWEEN THEM? Every finished wall the line crosses blocks it — with one
    * exception, and the whole design rests on it: a wall does not hide a man who is manning
@@ -222,8 +292,12 @@
   function shove(world, u) {
     const pad = C.WALL.thick + 6, p2 = pad * pad;
     for (const w of world.walls) {
-      if (w.owner === u.owner) continue;
       if (segD2(w.b, u.x, u.y) >= p2) continue;
+      /* THE OWNER PASSES AT HIS GATE, AND ONLY THERE. He used to pass anywhere along his own
+       * run, which made a curtain a one-way wall — perfect cover that his own army ignored.
+       * A rival is stopped everywhere, gateway included: the gate is shut to him, and the
+       * only way through a wall he does not own is to break it. */
+      if (w.owner === u.owner && inGate(w, u.x, u.y)) continue;
       const n = segNear(w.b, u.x, u.y);
       let dx = u.x - n.x, dy = u.y - n.y, L = Math.sqrt(dx * dx + dy * dy);
       if (L < 1e-3) { dx = -(w.by - w.ay); dy = w.bx - w.ax; L = Math.sqrt(dx * dx + dy * dy) || 1; }
@@ -238,12 +312,19 @@
     world.walls = [];
     for (let q = 0; q < world.players.length; q++)
       for (const b of world.players[q].buildings) {
-        if (!isWall(b) || b.raise) continue;
+        /* A BREACHED WALL IS A RUIN, NOT A GAP IN THE RECORD. It stops nothing — that is what
+         * breaking it was for — but it stays on the board, and the masons can raise it again
+         * for half the stone. Removing it outright made every fight for a curtain final. */
+        if (!isWall(b) || b.raise || b.breach) continue;
         const e = wallEnds(b);
-        world.walls.push({ b, owner: q, ax: e[0], ay: e[1], bx: e[2], by: e[3] });
+        const mx = (e[0] + e[2]) / 2, my = (e[1] + e[3]) / 2;
+        world.walls.push({ b, owner: q, ax: e[0], ay: e[1], bx: e[2], by: e[3], gx: mx, gy: my });
       }
     world.anyWall = world.walls.length > 0;
   }
+  /* is this point in the gateway of that wall? The gate is the middle of the run and it is
+   * the ONLY way through — for the heir who raised it, and for nobody else. */
+  const inGate = (w, x, y) => d2(x, y, w.gx, w.gy) < C.WALL.gate * C.WALL.gate;
 
   /* A WALL IS TWO TAPS. The first says where it starts and can only be checked for what one
    * point can be checked for; the second is the real placement. `span` says the run is the
@@ -545,6 +626,25 @@
       emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
       return { ok: true };
     }
+    /* ---------------- mend a breach ----------------
+     * A crew, a while, and half what the run cost to raise. It is not standing again until
+     * they are finished — a wall you are repairing shelters nobody, which is what makes
+     * mending one under fire a real decision rather than a button. */
+    if (cmd.c === 'fix') {
+      const s2 = bldOf(world, pi, cmd.id);
+      if (!s2) return { ok: false, err: 'id' };
+      if (!s2.breach) return { ok: false, err: 'whole' };
+      if (s2.work > 0) return { ok: false, err: 'working' };
+      const crews = s2.crews || 1;
+      if (rising(world, pi) + crews > masons(world, pi)) return { ok: false, err: 'busy' };
+      const price = Math.round(C.BUILDINGS.wall.cost * crews * C.WALL.repair);
+      if (pl.essence < price) return { ok: false, err: 'essence' };
+      pl.essence -= price;
+      s2.work = s2.workFor = Math.max(1, C.BUILDINGS.wall.raise * crews * C.WALL.fixWork);
+      s2.fixing = 1;
+      emit(world, { e: 'mending', pi, id: s2.id, x: s2.x, y: s2.y });
+      return { ok: true };
+    }
     if (cmd.c === 'walk') {
       if (!pl.buildings.some((b) => b.bt === 'shrine')) return { ok: false, err: 'shrine' };
       pl.walking = !!cmd.on;
@@ -794,6 +894,16 @@
     if (i < 0) return;
     const b = pl.buildings[i];
     b.hp -= dmg; b.lastHurt = world.t;
+    /* A BREACHED CURTAIN IS A RUIN. Every other work is rubble and gone; a wall stays, broken
+     * — it bars nothing and hides nobody, which is the whole point of having broken it, but
+     * the masons can raise it again for half the stone. Otherwise winning a stretch of wall
+     * once wins it forever, and a long run is a single hit-point bar you cannot mend. */
+    if (b.hp <= 0 && isWall(b) && !b.breach) {
+      b.hp = 0; b.breach = 1; b.work = 0;
+      world.navVersion++; noteWalls(world);
+      emit(world, { e: 'breach', pi, id: b.id, x: b.x, y: b.y, by: by == null ? null : by });
+      return;
+    }
     if (b.hp <= 0) {
       emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
       pl.buildings.splice(i, 1);
@@ -867,7 +977,15 @@
          * timing of an upgrade a decision rather than a formality. */
         if (b.work > 0) {
           b.work = Math.max(0, b.work - dt);
-          if (b.work <= 0) emit(world, { e: 'upped', pi, id: b.id, bt: b.bt, level: b.level, x: b.x, y: b.y });
+          if (b.work <= 0) {
+            if (b.fixing) {
+              /* the stone is back: it bars the ground again, and every flow field drawn while
+               * the gap was open is now wrong */
+              b.fixing = 0; b.breach = 0; b.hp = b.maxHp;
+              world.navVersion++; noteWalls(world);
+              emit(world, { e: 'mended', pi, id: b.id, x: b.x, y: b.y });
+            } else emit(world, { e: 'upped', pi, id: b.id, bt: b.bt, level: b.level, x: b.x, y: b.y });
+          }
         }
         const working = b.work > 0;
         /* a Gate on a spring of Shadow draws far more than one that merely stands about */
@@ -1006,6 +1124,9 @@
       if (s.tLeft <= 0) world.storms.splice(i, 1);
     }
 
+    /* the parapet roster, before anyone moves or shoots: who is ON the wall this tick decides
+     * both where he walks and whether he can shoot over it */
+    if (world.anyWall || world.hadWall) { postWalls(world); world.hadWall = world.anyWall; }
     /* units: fight what's near, else march the paths toward the banner/goal */
     const n = world.units.length, fwd = world.tick % 2 === 0;   // alternate order: no first-strike seat bias
     for (let ii = 0; ii < n; ii++) {
@@ -1026,12 +1147,11 @@
        * throws over the stone, `over` far, and is seen and shot at in return. That is the
        * only way a wall kills anything, and the price of it is that the men who make it kill
        * are the men who can be killed. */
-      const par = manning(world, u);
+      const par = u.man ? manning(world, u) : null;
       /* WHICH WALL HE IS STANDING ON, for everyone downstream. The parapet was a rule with
        * nothing to see: a man on the wall fought from the wall and was drawn in the grass
        * beside it, so the one bargain the whole design rests on was invisible. The renderer
        * lifts him onto the stone from this, and it rides the wire so a guest sees it too. */
-      u.man = par ? par.id : 0;
       const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0) + (home ? 140 : 0));
       if (foe) {
         const rng = par ? Math.max(def.range, C.WALL.over) : def.range;
@@ -1071,6 +1191,29 @@
          * castle — which is what happened when the walls went and took the garrison's ring
          * with them. A stable per-soldier angle keeps the ring even instead of jostling. */
         let muster = 0;   // >0 once the goal is a place in the ring: how far the ground reaches
+        /* A PARAPET IS A LINE, AND MEN ON IT SHOULD STAND ALONG IT. An order given at a wall
+         * is one point, so every man sent to hold a curtain walked to the same stride of it
+         * and the rest of the run stood empty — a hundred feet of stone defended by a scrum.
+         * Each soldier takes his own STATION instead, exactly as he takes his own place in
+         * the muster ring: a stable berth from his id, so the line is even and does not
+         * jostle, and the whole run is manned rather than one yard of it. */
+        if (u.post) {
+          const post = world.walls.find((q) => q.b.id === u.post);
+          if (post) {
+            const st2 = station(world, u, post);
+            gx = st2.x; gy = st2.y;
+            const dg = Math.sqrt(d2(u.x, u.y, gx, gy));
+            /* the whole run is his ground once he is on it, or he would be dragged back to
+             * the order's point every tick — the same handover the muster ring needs */
+            if (dg < C.NAV.arrive) { if (dg > 3) { u.x += (gx - u.x) / dg * def.speed * dt; u.y += (gy - u.y) / dg * def.speed * dt; } continue; }
+            const s4 = NAV.steer(world.nav, world, u.owner, gx, gy, u.x, u.y);
+            const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
+            const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
+            u.x += vx2 * def.speed * dt; u.y += vy2 * def.speed * dt;
+            shove(world, u);
+            continue;
+          }
+        }
         if (u.owner !== C.CHAOS_ID) {
           const cs = cityOf(world, u.owner);
           if (d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR) {

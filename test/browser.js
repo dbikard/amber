@@ -789,6 +789,11 @@ async function match(browser, base, renderer) {
         window.World.update(g.world, C2.SIM_DT);
         const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
         const nx = -(b.y2 - ay), ny = b.x2 - ax, nL = Math.hypot(nx, ny) || 1;
+        /* AN EMPTY FIELD FIRST. A live match already has an army, and with the banner on the
+         * wall every one of them joins the roster — ranked by id, so a man created last is
+         * last in the queue and waits at the foot. That is the cap doing its job; it just
+         * makes for a test about the wrong thing. */
+        g.world.units.length = 0;
         /* one man right against the wall, one well behind it */
         const mk = (off) => {
           const d = C2.UNITS.soldier;
@@ -798,6 +803,13 @@ async function match(browser, base, renderer) {
           g.world.units.push(u); return u;
         };
         const on = mk(C2.WALL.man * 0.4), off = mk(C2.WALL.man + 70);
+        /* YOU MAN A WALL BY BEING ORDERED TO IT — manning is a roster now, not a matter of
+         * standing close enough — so the man on the parapet needs the War Banner planted on
+         * the run, and the reserve behind it needs a standard of its own to be held back by.
+         * One banner per heir, so two men of one seat cannot be given two orders any other way. */
+        g.world.players[0].banner = { x: b.x, y: b.y, site: -1 };
+        g.world.players[0].companies.push({ id: 77, rally: { x: off.x, y: off.y, site: -1 } });
+        off.co = 77;
         window.World.update(g.world, C2.SIM_DT);
         await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
         /* screen y RISES up the page, so a man standing on a wall projects HIGHER than the
@@ -816,10 +828,31 @@ async function match(browser, base, renderer) {
           }
           return best;
         };
+        /* the heading the renderer gave him, against the wall's own outward normal */
+        const ux = (b.x2 - ax) / (Math.hypot(b.x2 - ax, b.y2 - ay) || 1);
+        const uy = (b.y2 - ay) / (Math.hypot(b.x2 - ax, b.y2 - ay) || 1);
+        const c2 = g.world.map.sites[g.world.map.cities[0]];
+        let ox = -uy, oy = ux;
+        if (ox * (c2.x - b.x) + oy * (c2.y - b.y) > 0) { ox = -ox; oy = -oy; }
+        const want = Math.atan2(ox, oy);
+        let got = null;
+        for (let i = 0; i < im.count; i++) {
+          im.getMatrixAt(i, m); v3.setFromMatrixPosition(m);
+          if (Math.hypot(v3.x - on.x, v3.z - on.y) < 45 && v3.y > R.groundH(on.x, on.y) + 10) {
+            const e = new window.THREE.Euler().setFromRotationMatrix(m);
+            got = Math.atan2(Math.sin(e.y - want), Math.cos(e.y - want));   // signed error
+          }
+        }
         return { man: on.man || 0, manOff: off.man || 0,
-                 lift: heightNear(on), flat: heightNear(off) };
+                 lift: heightNear(on), flat: heightNear(off), facing: got };
       });
       ok('the sim puts the man at the wall ON the wall', climbed.man > 0, climbed.man);
+      /* `facing` is the SIGNED error between the heading the renderer gave him and the
+       * wall's own outward normal — so this fails both when he is turned the wrong way and
+       * when he is merely pointing along his last march. */
+      ok('...and he faces out over it, not along his last march',
+         climbed.facing != null && Math.abs(climbed.facing) < 0.2,
+         climbed.facing == null ? 'no instance found' : `off by ${climbed.facing.toFixed(2)} rad`);
       ok('...and leaves the man behind it on the ground', climbed.manOff === 0, climbed.manOff);
       ok('and the renderer draws him up on the walkway', climbed.lift > 15,
          `on the wall ${climbed.lift.toFixed(1)} above ground, behind it ${climbed.flat.toFixed(1)}`);
@@ -898,6 +931,49 @@ async function match(browser, base, renderer) {
         ok('...and no part of it floats above the ground', sit.worstFloat < 1,
            `stone hangs ${sit.worstFloat.toFixed(1)} above the ground at worst`);
       }
+
+      /* THE GATEWAY AND THE RUIN, on screen. A gate you cannot see is a wall your columns
+       * appear to walk through at one arbitrary spot; a ruin drawn as a wall is a lie about
+       * where you are safe. Both are read off the model's own geometry. */
+      const shapes = await pg.evaluate(async () => {
+        const R = window.Render, W = window.World, g = window.Game.game;
+        const wall = g.world.players[0].buildings.filter((b) => b.bt === 'wall').pop();
+        wall.raise = 0; wall.breach = 0; wall.hp = wall.maxHp;
+        const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        await paint();
+        const whole = R.debugWorkGroup(wall.id);
+        const wholeV = whole && whole.mesh.geometry.attributes.position.count;
+        const wholeKey = R.debugWorks(wall.id).key;
+        /* the parapet must be LOWER over the gateway than beside it */
+        const pos = whole.mesh.geometry.attributes.position, m = whole.matrix;
+        const v = new window.THREE.Vector3();
+        let atGate = -1e9, away = -1e9;
+        const ends = W.wallEnds(wall);
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(m);
+          const d = Math.hypot(v.x - wall.x, v.z - wall.y);
+          if (d < 12) atGate = Math.max(atGate, v.y);
+          else if (d > 45) away = Math.max(away, v.y);
+        }
+        /* now break it */
+        W.hurtBuilding(g.world, 0, wall.id, 1e9, 1);
+        await paint();
+        const ruin = R.debugWorkGroup(wall.id);
+        return { wholeKey, ruinKey: R.debugWorks(wall.id) && R.debugWorks(wall.id).key,
+                 wholeV, ruinV: ruin && ruin.mesh.geometry.attributes.position.count,
+                 atGate, away, breach: !!wall.breach,
+                 /* THIS wall's own standing, not the board's — a live match may have other
+                  * curtains up, and anyWall would answer for them instead */
+                 standing: g.world.walls.some((q) => q.b.id === wall.id) };
+      });
+      ok('the parapet breaks open over the gateway', shapes.atGate < shapes.away - 8,
+         `gate top ${shapes.atGate.toFixed(1)} vs wall top ${shapes.away.toFixed(1)}`);
+      ok('a breached wall is still on the board', shapes.breach && shapes.ruinKey != null);
+      ok('...but bars nothing', shapes.standing === false, 'still in the standing list');
+      ok('...and is drawn as a ruin, not a wall', shapes.ruinKey !== shapes.wholeKey,
+         `${shapes.wholeKey} -> ${shapes.ruinKey}`);
+      ok('...with the parapet gone off it', shapes.ruinV < shapes.wholeV,
+         `${shapes.wholeV} -> ${shapes.ruinV} verts`);
 
       /* the minimap must carry the run: it is the only place on a phone where the SHAPE of
        * a defence can be read at all */

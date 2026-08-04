@@ -160,8 +160,17 @@ translucent scaffolding a rising one does.
   multiply together (`b.crews`), `rising()` counts crews rather than works, and
   `World.wallReach` is the longest run a heir could start right now. A run past it is
   `'crews'`, which is a different refusal from `'busy'` and has a different fix.
-  A unit standing on its own finished wall carries `u.man` = that wall's id — the sim's
-  answer, on the wire, and what the renderer uses to draw him up on the walkway.
+  **Manning is a ROSTER, not a distance.** `postWalls` runs once a tick, before anything moves:
+  every man whose ORDER (company rally, else banner) is within `WALL.man*1.5` of one of his own
+  runs is posted to it, ranked by id, and the first `len/WALL.berth` take the parapet — `u.man`
+  is the wall he holds a place on and the rest wait at the FOOT in rows. Only berthed men shoot
+  over and are exposed. It reads the order rather than `u.goal` because goals are assigned in
+  the march loop, which runs after it.
+  **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
+  punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
+  **A breach is a ruin**: `b.breach` keeps the record on the board, out of `world.walls`, and
+  `{c:'fix'}` puts it back for a crew and half the stone. A mend takes a crew (`b.fixing`); a
+  LEVEL does not — see the note on the `up` command.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an
   abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,

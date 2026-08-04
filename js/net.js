@@ -226,6 +226,8 @@
           /* the masons in the yard are as visible as the scaffolding on a new work: a hall
            * that has gone quiet must LOOK like one to a guest too */
           work: b.work > 0 ? Math.round(b.work * 10) / 10 : 0, workFor: b.workFor || 0,
+          /* a breach is public: it is a hole in the world that everyone can walk up to */
+          ...(b.breach ? { breach: 1 } : {}), ...(b.crews > 1 ? { crews: b.crews } : {}),
           /* a long curtain occupies several crews — the yard readout has to know */
           ...(b.crews > 1 ? { crews: b.crews } : {}),
           /* the tower branch is yours to know and the rival's to guess */

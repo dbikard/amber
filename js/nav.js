@@ -55,18 +55,38 @@
      * commit kept empty for exactly this. */
     const W = nav.W, H = nav.H, cw = nav.cw;
     const t = (C.WALL && C.WALL.thick) || 13, rc = Math.ceil(t / cw);
+    /* A WALL BARS ITS OWNER TOO, EXCEPT AT HIS GATE. Leaving the owner's layer clear meant
+     * his columns walked through their own curtain as though it were paint — and then the
+     * shove pushed them back, so they ground against it forever. The run is stamped into
+     * EVERY layer; the owner's alone gets a hole punched at the gateway, and his flow fields
+     * find it on their own. */
+    const gateR = (C.WALL && C.WALL.gate) || 30;
     for (const w of world.walls || []) {
       const len = Math.hypot(w.bx - w.ax, w.by - w.ay);
       const steps = Math.max(2, Math.ceil(len / (cw * 0.5)));
       for (let s = 0; s <= steps; s++) {
         const f = s / steps, px = w.ax + (w.bx - w.ax) * f, py = w.ay + (w.by - w.ay) * f;
+        const atGate = (px - w.gx) * (px - w.gx) + (py - w.gy) * (py - w.gy) < gateR * gateR;
         const gx = Math.floor(px / cw), gy = Math.floor(py / cw);
         for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
           const cx = gx + dx, cy = gy + dy;
           if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
           const i = cy * W + cx;
-          for (let q = 0; q <= world.players.length; q++) if (q !== w.owner) nav.masks[q][i] = 1;
+          for (let q = 0; q <= world.players.length; q++) {
+            if (q === w.owner && atGate) continue;   // his own gateway stays open to him
+            nav.masks[q][i] = 1;
+          }
         }
+      }
+    }
+    /* ...and the gateway is cleared last, so a neighbouring course cannot stamp it shut */
+    for (const w of world.walls || []) {
+      const gx0 = Math.floor((w.gx - gateR) / cw), gx1 = Math.floor((w.gx + gateR) / cw);
+      const gy0 = Math.floor((w.gy - gateR) / cw), gy1 = Math.floor((w.gy + gateR) / cw);
+      for (let cy = gy0; cy <= gy1; cy++) for (let cx = gx0; cx <= gx1; cx++) {
+        if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
+        const px = (cx + 0.5) * cw - w.gx, py = (cy + 0.5) * cw - w.gy;
+        if (px * px + py * py < gateR * gateR) nav.masks[w.owner][cy * W + cx] = 0;
       }
     }
     return nav.masks;

@@ -309,19 +309,41 @@
       }
       return { lo, hi };
     }
+    /* THE GATEWAY, at the middle of the run: the one way through, and the only reason an army
+     * inside a curtain is not an army in a box. It is drawn as a break in the parapet with
+     * piers either side, so you can see where your own columns will go.
+     * A BREACHED wall is drawn as what it is — a broken line of stumps with the middle of it
+     * gone — because a ruin that still looks like a wall is a lie about where you are safe. */
+    const gate = (C.WALL && C.WALL.gate) || 30;
+    const broken = !!b.breach;
     const p = [];
     for (let i = 0; i < n; i++) {
       const f0 = i / n, f1 = (i + 1) / n, fc = (i + 0.5) / n;
       const px = ax + (bx - ax) * fc, pz = az + (bz - az) * fc;
       const ox = px - b.x, oz = pz - b.y;
+      const atGate = Math.hypot(px - b.x, pz - b.y) < gate;
       const g = ground(f0, f1);
       /* footed below the lowest ground it spans, crowned a full wall above the highest */
-      const foot = g.lo - base - 6, top = g.hi - base + wh;
-      const hgt = top - foot, mid = (top + foot) / 2;
-      p.push(part(box(seg, hgt, th), st, ox, mid, oz, ang));
+      const foot = g.lo - base - 6;
+      let top = g.hi - base + wh;
+      if (atGate) top = g.hi - base + 5;                 // the gateway: a threshold, not a wall
+      /* a ruin keeps its footing and loses its height, worst at the middle of the run */
+      if (broken) top = g.hi - base + 4 + 6 * Math.abs(fc - 0.5) * 2;
+      const hgt = Math.max(2, top - foot), mid2 = (top + foot) / 2;
+      p.push(part(box(seg, hgt, th), broken ? stD : st, ox, mid2, oz, ang));
+      if (atGate || broken) continue;                    // no parapet over a gate or a ruin
       p.push(part(box(seg, 3.5, th + 4), stL, ox, top + 1, oz, ang));       // the walkway coping
       /* merlons, every other course, so the top reads as a parapet and not a kerb */
       if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, top + 6, oz, ang));
+    }
+    /* the gate piers — two posts that say "through here", and a lintel when it is whole */
+    if (!broken) {
+      const ux2 = (bx - ax) / len, uz2 = (bz - az) / len;
+      for (const sgn of [-1, 1]) {
+        const px = b.x + ux2 * gate * sgn, pz = b.y + uz2 * gate * sgn;
+        const h = groundH(px, pz) - base;
+        p.push(part(cyl(th * 0.5, th * 0.6, wh + 16, 6), stL, px - b.x, h + (wh + 16) / 2, pz - b.y));
+      }
     }
     /* the ends are turned into short towers — that is what makes a run look built rather
      * than extruded, and it marks where the next wall may join. They are footed the same way:
@@ -917,7 +939,15 @@
     const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;
     let t = ((u.x - ax) * vx + (u.y - ay) * vy) / L2;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
-    return { x: ax + vx * t, y: ay + vy * t, h: 27, ang: -Math.atan2(vy, vx) };
+    /* AND HE FACES OUT. A man on a parapet turned whichever way he happened to be walking
+     * when he got there, so a manned wall read as a queue rather than a line holding one.
+     * The heading is the wall's outward normal — away from the Seat it shelters. */
+    let nx = -vy, ny = vx;
+    const cid = view.map.cities[u.owner];
+    const c = cid != null ? view.map.sites[cid] : null;
+    if (c && nx * (c.x - b.x) + ny * (c.y - b.y) > 0) { nx = -nx; ny = -ny; }
+    const nL = Math.hypot(nx, ny) || 1;
+    return { x: ax + vx * t, y: ay + vy * t, h: 27, ang: Math.atan2(nx / nL, ny / nL) };
   }
 
   function updateUnits(view, viewer, dt) {
@@ -962,7 +992,8 @@
         const par = u.man ? parapet(view, u) : null;
         if (par) {
           dum.position.set(par.x, groundH(par.x, par.y) + par.h, par.y);
-          dum.rotation.set(0, f.a, 0);
+          dum.rotation.set(0, par.ang, 0);
+          f.a = par.ang;                        // and he keeps that facing when he steps down
         } else {
           dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
           dum.rotation.set(0, f.a, 0);
@@ -1027,7 +1058,7 @@
          * new shape instead of leaving last level's stones standing. */
         const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
-          + '@' + (b.level || 1)
+          + '@' + (b.level || 1) + (b.breach ? '!' : '')
           + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
