@@ -17,6 +17,13 @@
     }, true);
     /* the menu's fold-out panels close when you tap away from them, like the sheets do */
     document.addEventListener('pointerdown', (e) => {
+      /* A MODAL ABOVE THE MENU IS NOT "AWAY". The QR scanner is a full-screen overlay and it
+       * lives OUTSIDE the fold-out, so steadying the phone against the glass — or tapping its
+       * own ✕ — read as a tap elsewhere on the menu and quietly shut the LAN panel underneath.
+       * The host came back from scanning the reply to a bare title screen, with the status
+       * line, the diagnostics and the BEGIN button all hidden behind a panel it had no reason
+       * to think had closed. Reported from play as "LAN is broken". */
+      if (e.target && e.target.closest && e.target.closest('#scanner, #record-box, #sheet')) return;
       const closeIfAway = (panelId, btnId) => {
         const panel = $(panelId), btn = $(btnId);
         if (!panel || panel.classList.contains('hidden')) return;

@@ -1474,6 +1474,38 @@ async function match(browser, base, renderer) {
     ok('and the game itself is still open',
        await pg.evaluate(() => !document.getElementById('menu').classList.contains('hidden')));
 
+    /* ---------------- the scanner is not "away" ---------------- *
+     * Pairing is the one place the player is blind: the camera covers the screen, and every
+     * word about how it went — the status line, the diagnostics, the BEGIN button — lives
+     * inside the LAN fold-out. The fold-out closes when you tap away from it, and the scanner
+     * is a full-screen overlay OUTSIDE it, so steadying the phone against the glass shut the
+     * panel underneath. The host came back from scanning the reply to a bare title screen and
+     * called LAN broken, which from where they were sitting it was. */
+    suite(`${r} · the scanner is not a tap away from the table`);
+    const pair = await pg.evaluate(async () => {
+      const $ = (id) => document.getElementById(id);
+      $('menu').classList.remove('hidden');
+      $('lan-panel').classList.remove('hidden');       // as HOST THE TABLE leaves it
+      const open = () => !$('lan-panel').classList.contains('hidden');
+      const opened = open();
+      $('scanner').classList.remove('hidden');         // the camera comes up over everything
+      const tap = (el) => el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5 }));
+      tap($('scan-video'));
+      const afterVideo = open();
+      tap($('scan-cancel'));
+      const afterCancel = open();
+      $('scanner').classList.add('hidden');
+      tap($('menu'));                                  // ...but the menu itself still closes it
+      const afterMenu = open();
+      $('menu').classList.add('hidden');
+      $('lan-panel').classList.add('hidden');
+      return { opened, afterVideo, afterCancel, afterMenu };
+    });
+    ok('the LAN fold-out is open to start with', pair.opened);
+    ok('steadying the phone on the scanner does not shut the table behind it', pair.afterVideo);
+    ok("...nor does tapping the scanner's own close button", pair.afterCancel);
+    ok('but a tap on the menu itself still puts it away', !pair.afterMenu);
+
     /* ---------------- LAN: the guest's half ---------------- *
      * A guest never touches the sim — it renders whatever arrives on the wire. Rather than
      * stand up WebRTC, drive the exact seam a real guest goes through (Net.onSnap) with real

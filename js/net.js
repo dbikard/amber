@@ -160,8 +160,13 @@
   };
   Net.acceptAnswer = async function (answerCode) {
     const pc = Net.isHost ? (Net._pending && Net._pending.pc) : Net.pc;
-    if (!pc) return;
+    /* SILENCE WAS THE WORST ANSWER. Returning here meant the host had scanned a reply, done
+     * nothing with it, and said nothing about it — while the guest went on flashing its QR at
+     * a link that was never going to open. If there is no half-open connection to give this
+     * answer to, that is a thing the player needs told. */
+    if (!pc) { diag('no offer is waiting for an answer'); throw new Error('no offer is waiting — tap HOST THE TABLE first'); }
     await pc.setRemoteDescription(JSON.parse(await decompress(answerCode)));
+    diag('answer accepted — waiting for the link to open');
   };
 
   /* `to` names a seat; without it this goes to everyone the sender is linked to */

@@ -52,13 +52,19 @@
    * an army on the player's ground at 5.3 minutes. Worse, cutting income alone brings the
    * assault SOONER, since a poorer heir builds less realm and marches earlier. So the ladder
    * now runs on income AND on `hold`, the hour before the heir will march on your Seat. */
+  /* EASED, ALL THREE OF THEM. The ladder's shape is unchanged — income and the hour it
+   * marches, both moving monotonically down the table — but every rung gives a little more
+   * room than it did. Note what this costs: PRINCE is no longer the unhandicapped heir. The
+   * heirs still fight each other at full strength in `node sim.js`, and that is where the
+   * balance targets are measured; the top of the solo ladder is now a hard opponent rather
+   * than the reference one. */
   CONST.DIFFICULTY = {
-    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, eco: 0.55, hold: 720,
-               blurb: 'Poor, and will not march on your Seat for twelve minutes.' },
-    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, eco: 0.72, hold: 360,
+    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, eco: 0.46, hold: 840,
+               blurb: 'Poor, and will not march on your Seat for fourteen minutes.' },
+    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, eco: 0.62, hold: 480,
                blurb: 'A real opponent, but not at your gate before you have a realm.' },
-    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 1.00, hold: 0,
-               blurb: 'The heir at full strength, as the heirs fight each other.' }
+    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 0.88, hold: 120,
+               blurb: 'Very nearly the heir the other heirs face, and barely a pause before he comes.' }
   };
   CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];
   CONST.DIFFICULTY_DEFAULT = 'heir';
@@ -370,9 +376,16 @@
      * game it was 100%. That is not the price of the best ground, it is the opponent. The
      * schedule is cut to roughly a third: Chaos still swells, and forward country still costs
      * something to hold, but the war is between the heirs again. */
+    /* AND IT PLATEAUS. Every dial had a ceiling except the one that mattered: the fiends PER
+     * RIFT climbed forever, so at half an hour the black road was sending eleven at a time
+     * every twenty seconds — thirty-three a minute — and a match that ran long stopped being
+     * decidable by the heirs at all. Reported from play. A director presses; it does not
+     * escalate without limit. Everything below reaches its ceiling inside ten minutes, and
+     * from there Chaos is a constant tax on forward country rather than a rising tide:
+     * 5 fiends every 26s, at twice the hit points and a third again the damage. */
     firstAt: 100,                      // s before the first rift
-    interval: (t) => Math.max(20, 50 - t * 0.030),  // s between rifts
-    count: (t) => 2 + Math.floor(t / 190),          // fiends per rift
+    interval: (t) => Math.max(26, 50 - t * 0.030),  // s between rifts, floored at 800s
+    count: (t) => Math.min(5, 2 + Math.floor(t / 190)),   // fiends per rift, capped at 570s
     hpScale: (t) => Math.min(2.0, 1 + t / 480),
     dmgScale: (t) => Math.min(1.35, 1 + t / 1200)
   };

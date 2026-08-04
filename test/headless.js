@@ -1455,6 +1455,38 @@ suite('a tower and a curtain leave no dead band');
   }
 }
 
+/* A GATE STANDS ON THE SPRING. It may be raised anywhere within NODE.r of one and it used to
+ * be left wherever the finger landed, so the work that draws Shadow out of the ground sat on
+ * the bank of its own pool — up to ninety-six from the water — and the picture said the two
+ * had nothing to do with each other. Reported from play with a screenshot of the Weeping Well.
+ * There is one right place for a Gate and the sim knows exactly where it is. */
+suite('a Gate stands on its spring, not beside it');
+for (const seed of SEEDS) {
+  const w = World.createWorld(seed, 2), pl = w.players[0];
+  pl.essence = 1e6;
+  w.chaosNext = 1e9;
+  const home = pl.buildings.find((b) => b.bt === 'gate');
+  const hs = w.map.sites[home.node];
+  ok(`seed ${seed}: the opening Gate has a spring under it`, !!hs && hs.kind === 'node');
+  near(`seed ${seed}: ...and stands on its middle`, Math.hypot(home.x - hs.x, home.y - hs.y), 0, 0.01);
+
+  /* and one raised in play, aimed deliberately off to the side of the pool */
+  const free = w.map.sites.find((q) => q.kind === 'node' && World.nodeHolder(w, q) === -1);
+  ok(`seed ${seed}: there is a spring left to take`, !!free);
+  const d = C.UNITS.soldier;
+  w.units.push({ id: w.nextId++, owner: 0, kind: 'soldier', tier: 1, x: free.x, y: free.y,
+                 ox: 0, oy: 0, hp: 90, maxHp: 90, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 });
+  const off = C.NODE.r * 0.7;
+  const r = World.applyCommand(w, 0, { c: 'build', bt: 'gate', x: free.x + off, y: free.y });
+  ok(`seed ${seed}: a Gate aimed at the bank is accepted`, r.ok, r.err);
+  if (r.ok) {
+    const b = pl.buildings.filter((q) => q.bt === 'gate').pop();
+    near(`seed ${seed}: ...and lands on the spring's middle, not where it was aimed`,
+         Math.hypot(b.x - free.x, b.y - free.y), 0, 0.01);
+    eq(`seed ${seed}: ...and draws on that spring`, b.node, free.id);
+  }
+}
+
 /* PRICED BY THE FOOT, AND SHORT RUNS ARE ALLOWED — with one thing given up for it. Rounding a
  * run's length up to a whole crew meant a short stretch across a gap was billed as the long
  * wall it was not, so there was never a reason to draw one; and a minimum length on top of
@@ -1803,9 +1835,21 @@ suite('the halt')
 suite('the solo ladder')
 {
   const D = C.DIFFICULTY, order = C.DIFFICULTY_UI;
-  eq('the hardest footing is a full-strength heir', D.prince.eco, 1);
-  eq('...that comes for you when it likes', D.prince.hold, 0);
+  /* The top rung used to BE the unhandicapped heir — eco 1, hold 0 — and it is not any more:
+   * every footing was eased. What must still hold is that the top is nearly that heir and
+   * gives you almost no grace, or the ladder has no top. The unhandicapped reference lives in
+   * `node sim.js`, where the heirs fight each other, not here. */
+  ok('the hardest footing is very nearly a full-strength heir', D.prince.eco >= 0.85 && D.prince.eco <= 1,
+     String(D.prince.eco));
+  ok('...that comes for you almost at once', D.prince.hold <= 150, `${D.prince.hold}s`);
   ok('the default is not the hardest', C.DIFFICULTY_DEFAULT !== 'prince', C.DIFFICULTY_DEFAULT);
+  /* and every rung is easier than it was — the whole point of the change */
+  ok('every footing leaves more room than the old table did',
+     D.squire.eco < 0.55 && D.heir.eco < 0.72 && D.prince.eco < 1.0,
+     order.map((k) => D[k].eco).join(' '));
+  ok('...and every one of them holds off longer',
+     D.squire.hold > 720 && D.heir.hold > 360 && D.prince.hold > 0,
+     order.map((k) => D[k].hold).join(' '));
   for (let i = 1; i < order.length; i++) {
     const lo = D[order[i - 1]], hi = D[order[i]];
     ok(`${hi.name} draws more from the ground than ${lo.name}`, hi.eco > lo.eco, `${lo.eco} → ${hi.eco}`);
@@ -1868,8 +1912,23 @@ suite('Chaos presses, it does not escalate')
      `x${C.CHAOS.hpScale(2700)}`);
   ok('and so does the damage', C.CHAOS.dmgScale(2700) === C.CHAOS.dmgScale(5400),
      `x${C.CHAOS.dmgScale(2700)}`);
-  ok('but the rifts still swell', C.CHAOS.count(1800) > C.CHAOS.count(300),
-     `${C.CHAOS.count(300)} then ${C.CHAOS.count(1800)} per rift`);
+  ok('the rifts swell early', C.CHAOS.count(600) > C.CHAOS.count(300),
+     `${C.CHAOS.count(300)} then ${C.CHAOS.count(600)} per rift`);
+  /* ...AND THEN THEY STOP. This was the one dial with no ceiling on it, and it was the one
+   * that mattered: fiends per rift climbed forever, so at half an hour the black road sent
+   * eleven at a time every twenty seconds and a long match stopped being decidable by the
+   * heirs at all. Reported from play. A director presses; it does not escalate without end. */
+  const rate = (t) => C.CHAOS.count(t) * 60 / C.CHAOS.interval(t);
+  eq('but they stop swelling', C.CHAOS.count(1800), C.CHAOS.count(5400));
+  eq('...and so does the rate they arrive at', C.CHAOS.interval(1800), C.CHAOS.interval(5400));
+  ok('so the black road plateaus inside ten minutes',
+     Math.abs(rate(600) - rate(5400)) < rate(5400) * 0.3,
+     `${rate(600).toFixed(1)}/min at 10m, ${rate(5400).toFixed(1)}/min forever after`);
+  ok('...and the plateau is a tax, not an opponent', rate(5400) < 14,
+     `${rate(5400).toFixed(1)} fiends a minute`);
+  /* the shape of the whole schedule: it rises, and every part of it has a top */
+  for (const f of ['count', 'interval', 'hpScale', 'dmgScale'])
+    eq(`${f} has a ceiling`, C.CHAOS[f](3600), C.CHAOS[f](36000));
 }
 
 /* Reported from play, and all of a piece: the storm deleted whole armies at a tap, Chaos took

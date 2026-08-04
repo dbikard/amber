@@ -679,23 +679,30 @@
         say(`1) ${C.SEAT_NAMES[Net.peers.length]} scans this  2) tap SCAN REPLY`);
       } catch (e) { say('failed: ' + (e.message || e)); }
     });
+    /* PAIRING IS WHERE THE PLAYER IS BLIND. The camera covers the screen, and whatever the
+     * answer turns out to be — linked, refused, unreadable — the only place it is ever said is
+     * a status line inside a fold-out panel. Make sure that panel is open when the scanner
+     * lets go of the screen, and say a failure out loud where it cannot be missed. */
+    const backToLan = () => $('lan-panel').classList.remove('hidden');
     qrScanReply.addEventListener('click', async () => {
       try {
         if (pairStop) { pairStop(); pairStop = null; }
         const answer = await scanQR();
+        backToLan();
         say('the Trumps touch…');
         await Net.acceptAnswer(answer);
-      } catch (e) { say(e.message); }
+      } catch (e) { backToLan(); say(e.message); UI.banner('Pairing failed — ' + e.message, 'warn'); }
     });
     qrJoin.addEventListener('click', async () => {
       Net.diagReset();
       try {
         const offer = await scanQR();
+        backToLan();
         say('drawing your reply…');
         const answer = await Net.join(offer);
         if (!startPairStream(answer)) { say('could not draw the reply QR'); return; }
         say('show this reply to Corwin — linking…');
-      } catch (e) { say(e.message); }
+      } catch (e) { backToLan(); say(e.message); UI.banner('Pairing failed — ' + e.message, 'warn'); }
     });
 
     Net.onOpen = () => {

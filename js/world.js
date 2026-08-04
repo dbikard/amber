@@ -122,8 +122,10 @@
       const g = hg[pi];
       if (!g) continue;
       const def = C.BUILDINGS.gate;
+      /* on the spring, not on its bank — the same rule the build command follows */
+      const gs = world.map.sites[g.site];
       world.players[pi].buildings.push({
-        id: world.nextId++, bt: 'gate', level: 1, x: g.x, y: g.y,
+        id: world.nextId++, bt: 'gate', level: 1, x: gs ? gs.x : g.x, y: gs ? gs.y : g.y,
         cd: 0, raise: 0, raiseFor: def.raise, hp: def.hp, maxHp: def.hp, lastHurt: -99,
         node: g.site, co: 0
       });
@@ -662,6 +664,15 @@
       if (cmd.bt === 'tower') {
         const near2 = wallUnder(world, pi, x, y);
         if (near2) { const q = segNear(near2, x, y); x = q.x; y = q.y; }
+      }
+      /* A GATE STANDS ON THE SPRING, not beside it. It may be raised anywhere within NODE.r of
+       * one, and it was left wherever the finger landed — so the work that draws Shadow out of
+       * the ground sat off on the bank of its own pool, up to ninety-six from the water, and
+       * the picture said the two had nothing to do with each other. There is one right place
+       * for it and the sim knows exactly where it is. */
+      if (def.claim) {
+        const s0 = nodeAt(world, x, y);
+        if (s0) { x = s0.x; y = s0.y; }
       }
       const bad = def.span ? null : placementError(world, pi, x, y, cmd.bt);
       if (bad) return { ok: false, err: bad };
