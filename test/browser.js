@@ -783,6 +783,80 @@ async function match(browser, base, renderer) {
          `on the wall ${climbed.lift.toFixed(1)} above ground, behind it ${climbed.flat.toFixed(1)}`);
       ok('...while the man behind it stays on the grass', climbed.flat < 8, climbed.flat.toFixed(1));
 
+      /* A WALL FOLLOWS THE GROUND, AND IS NOT BURIED BY IT. Every course used to be placed
+       * at the height of the run's MIDPOINT — the per-course ground height was computed and
+       * then never used — so on any slope half the wall was underground and half hung in the
+       * air, and the comment above it claimed otherwise. This walks the finished mesh against
+       * the terrain the renderer itself reports, which is the only way to catch it. */
+      const sit = await pg.evaluate(async () => {
+        const R = window.Render, W = window.World, g = window.Game.game;
+        const pl = g.world.players[0];
+        pl.essence = 99000;
+        for (const b of pl.buildings) { b.raise = 0; b.work = 0; }
+        const c = g.world.map.sites[g.world.map.cities[0]];
+        /* pick the LEGAL run with the most fall along it — a flat wall proves nothing */
+        let best = null, drop = -1;
+        for (let a2 = 0; a2 < 6.283; a2 += 0.2) {
+          for (let rr = 130; rr <= 260; rr += 25) {
+            const half = Math.min(70, W.wallReach(g.world, 0) / 2 - 4);
+            const mx = c.x + Math.cos(a2) * rr, my = c.y + Math.sin(a2) * rr;
+            const px = -Math.sin(a2) * half, py = Math.cos(a2) * half;
+            const A = { x: mx - px, y: my - py }, B = { x: mx + px, y: my + py };
+            if (W.wallError(g.world, 0, A.x, A.y, B.x, B.y)) continue;
+            let lo = Infinity, hi = -Infinity;
+            for (let k = 0; k <= 8; k++) {
+              const h = R.groundH(A.x + (B.x - A.x) * k / 8, A.y + (B.y - A.y) * k / 8);
+              lo = Math.min(lo, h); hi = Math.max(hi, h);
+            }
+            if (hi - lo > drop) { drop = hi - lo; best = [A, B]; }
+          }
+        }
+        if (!best) return null;
+        const r2 = W.applyCommand(g.world, 0, { c: 'build', bt: 'wall',
+          x: best[0].x, y: best[0].y, x2: best[1].x, y2: best[1].y });
+        if (!r2.ok) return { err: r2.err };
+        const wall = pl.buildings.filter((b) => b.bt === 'wall').pop();
+        wall.raise = 0;
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        /* walk the MESH: for each point along the run, find the stone above and below it */
+        const grp = R.debugWorkGroup && R.debugWorkGroup(wall.id);
+        if (!grp) return { err: 'no group' };
+        const pos = grp.mesh.geometry.attributes.position;
+        const m = grp.matrix;
+        const v = new window.THREE.Vector3();
+        const pts = [];
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(m);
+          pts.push([v.x, v.y, v.z]);
+        }
+        const ends = W.wallEnds(wall);
+        let worstBury = -1e9, worstFloat = -1e9, n = 0;
+        for (let k = 1; k < 12; k++) {
+          const f = k / 12;
+          const sx = ends[0] + (ends[2] - ends[0]) * f, sz = ends[1] + (ends[3] - ends[1]) * f;
+          const gy = R.groundH(sx, sz);
+          let top = -1e9, bot = 1e9;
+          for (const [x, y, z] of pts) {
+            if (Math.hypot(x - sx, z - sz) > 12) continue;
+            if (y > top) top = y;
+            if (y < bot) bot = y;
+          }
+          if (top === -1e9) continue;
+          n++;
+          worstBury = Math.max(worstBury, gy - top);    // ground above the stone = buried
+          worstFloat = Math.max(worstFloat, bot - gy);  // stone above the ground = floating
+        }
+        return { drop, n, worstBury, worstFloat };
+      });
+      ok('a run with real fall along it was found to test', sit && sit.n > 6 && sit.drop > 3,
+         JSON.stringify(sit));
+      if (sit && sit.n) {
+        ok('no part of the wall is buried by the ground it crosses', sit.worstBury < -14,
+           `the ground comes within ${(-sit.worstBury).toFixed(1)} of the parapet at worst`);
+        ok('...and no part of it floats above the ground', sit.worstFloat < 1,
+           `stone hangs ${sit.worstFloat.toFixed(1)} above the ground at worst`);
+      }
+
       /* the minimap must carry the run: it is the only place on a phone where the SHAPE of
        * a defence can be read at all */
       const onMini = await pg.evaluate(() => {

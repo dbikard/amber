@@ -51,6 +51,20 @@
     for (const g of cityObjs) for (const [wid, w] of g.works) out.set(wid, shape(wid, w));
     return out;
   };
+  /* the work's own mesh and world matrix, so a suite can walk the STONE against the terrain
+   * rather than trust that a model which claims to follow the ground does */
+  R.debugWorkGroup = (id) => {
+    for (const g of cityObjs) {
+      const w = g.works.get(id);
+      if (!w) continue;
+      let mesh = null;
+      w.grp.traverse((o) => { if (!mesh && o.geometry && o !== w.pad && o.isMesh) mesh = o; });
+      if (!mesh) return null;
+      w.grp.updateWorldMatrix(true, true);
+      return { mesh, matrix: mesh.matrixWorld };
+    }
+    return null;
+  };
   let unitIM = {}, shadowIM = null, unitFace = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
   /* have I found THIS seat? one flag per seat now; `foeSeen` is the old two-player spelling */
@@ -262,7 +276,9 @@
   function wallModel(b) {
     const ax = b.x * 2 - b.x2, az = b.y * 2 - b.y2, bx = b.x2, bz = b.y2;
     const len = Math.hypot(bx - ax, bz - az) || 1;
-    const n = Math.max(2, Math.round(len / 22));
+    /* SHORT COURSES, so the run can bend with the hill under it. A course that spans more
+     * ground than the ground is flat over cannot sit on it at both ends. */
+    const n = Math.max(3, Math.round(len / 15));
     const ang = -Math.atan2(bz - az, bx - ax);
     /* a reinforced curtain is LITERALLY thicker: its level buys hit points and nothing else,
      * so the stone is the only place that can show */
@@ -271,22 +287,51 @@
     const base = groundH(b.x, b.y);
     const st = 0x877c90, stD = 0x4a4258, stL = 0xc6bdd0;
     const seg = len / n + 2;
+    const wh = 26 + (lv - 1) * 3;
+    /* the ground each course actually STANDS ON — not the point under its middle. A course is
+     * a rigid box: put its foot at the height of its centre and the uphill half of it is
+     * underground and the downhill half is in the air. So every course is measured across its
+     * own footprint, in both directions, and then it is FOOTED at the lowest ground it covers
+     * and CROWNED above the highest. That is also what a real curtain does on a slope: the
+     * masonry steps, and the footing is buried, not the wall. */
+    const ux = (bx - ax) / len, uz = (bz - az) / len;      // along the run
+    const nx = -uz, nz = ux;                               // across it
+    function ground(f0, f1) {
+      let lo = Infinity, hi = -Infinity;
+      for (let k = 0; k <= 4; k++) {
+        const f = f0 + (f1 - f0) * (k / 4);
+        const sx = ax + (bx - ax) * f, sz = az + (bz - az) * f;
+        for (const o of [-th / 2, 0, th / 2]) {
+          const g = groundH(sx + nx * o, sz + nz * o);
+          if (g < lo) lo = g;
+          if (g > hi) hi = g;
+        }
+      }
+      return { lo, hi };
+    }
     const p = [];
     for (let i = 0; i < n; i++) {
-      const f = (i + 0.5) / n, px = ax + (bx - ax) * f, pz = az + (bz - az) * f;
-      const h = groundH(px, pz) - base, ox = px - b.x, oz = pz - b.y;
-      const wh = 26 + (lv - 1) * 3;
-      p.push(part(box(seg, wh, th), st, ox, wh / 2, oz, ang));
-      p.push(part(box(seg, 3.5, th + 4), stL, ox, wh + 1, oz, ang));       // the walkway coping
+      const f0 = i / n, f1 = (i + 1) / n, fc = (i + 0.5) / n;
+      const px = ax + (bx - ax) * fc, pz = az + (bz - az) * fc;
+      const ox = px - b.x, oz = pz - b.y;
+      const g = ground(f0, f1);
+      /* footed below the lowest ground it spans, crowned a full wall above the highest */
+      const foot = g.lo - base - 6, top = g.hi - base + wh;
+      const hgt = top - foot, mid = (top + foot) / 2;
+      p.push(part(box(seg, hgt, th), st, ox, mid, oz, ang));
+      p.push(part(box(seg, 3.5, th + 4), stL, ox, top + 1, oz, ang));       // the walkway coping
       /* merlons, every other course, so the top reads as a parapet and not a kerb */
-      if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, wh + 6, oz, ang));
+      if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, top + 6, oz, ang));
     }
     /* the ends are turned into short towers — that is what makes a run look built rather
-     * than extruded, and it marks where the next wall may join */
-    for (const [ex, ez] of [[ax, az], [bx, bz]]) {
-      const h = groundH(ex, ez) - base;
-      p.push(part(cyl(th * 0.62, th * 0.75, 34, 7), st, ex - b.x, 17 + h, ez - b.y));
-      p.push(part(cyl(th * 0.75, th * 0.62, 5, 7), stL, ex - b.x, 36 + h, ez - b.y));
+     * than extruded, and it marks where the next wall may join. They are footed the same way:
+     * a tower on a slope that is dropped at its centre height is half a tower. */
+    for (const [ex, ez, f0, f1] of [[ax, az, 0, 1 / n], [bx, bz, 1 - 1 / n, 1]]) {
+      const g = ground(f0, f1);
+      const foot = Math.min(g.lo, groundH(ex, ez)) - base - 6;
+      const top = Math.max(g.hi, groundH(ex, ez)) - base + 34;
+      p.push(part(cyl(th * 0.62, th * 0.75, top - foot, 7), st, ex - b.x, (top + foot) / 2, ez - b.y));
+      p.push(part(cyl(th * 0.75, th * 0.62, 5, 7), stL, ex - b.x, top + 2, ez - b.y));
     }
     return meshOf(p);
   }
