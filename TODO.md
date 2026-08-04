@@ -249,6 +249,25 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       on open ground, kept only so the banner text can name a place). Off-map is clamped, and
       when the flow field admits no route the column heads straight at the goal and gets as
       close as the land allows.
+- [x] **The opening rewritten: one spring, already gated, one crew per Gate.**
+      Worldgen now requires exactly one spring in the starting writ — not "at least one". A
+      Seat that opened with two began with twice the economy AND, under the new rule, twice
+      the masons, and the fairness score could only narrow that gap, never close it. The Gate
+      ships already standing on it, from a spot worldgen hands out rather than the sim
+      re-deriving, and it is the heir's first crew.
+      Crews are one per Gate (`base: 0`), upgrades take a crew again — reinstated against a
+      much bigger purse than the one that made it harmful at one-per-three — and every masonry
+      time is up by half, with an upgrade now as long as the original build.
+      **Expansion changed shape**: with the one spring in your writ already yours, every
+      further Gate is ground you march to and hold.
+      Eleven test fixtures needed correcting. None were defects in the new rules, but several
+      had been passing for reasons that were never guaranteed: `buildings[0]` used as "the
+      work I just built" (three places), a terrain suite that took the first sampled cell's
+      verdict as final, a `raise` helper that waited a flat 40s regardless of what it raised,
+      and two search-based probes that could silently find nothing and report success.
+      One real behaviour surfaced through a test: **at a wall built close to the Seat, the
+      court's muster ring and the wall's berth roster compete for the same men** — a curtain
+      drawn tight around the castle will not hold a line the way one drawn further out will.
 - [x] **Towers join curtains** — the last open item from OPEN_WORLD_PLAN §6.
       A tower raised on your own run becomes part of it (`onWall`) and shoots over that stone
       the way a man on the parapet does. **And a tower no longer shoots through stone at all**,

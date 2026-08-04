@@ -106,6 +106,20 @@
       vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
     };
     world.nav = NAV.build(world.map.gen);
+    /* EVERY HEIR OPENS WITH A GATE ON HIS OWN SPRING — finished, drawing, and standing where
+     * worldgen proved a Gate could stand. It is the first mason too: crews are hired one per
+     * Gate now, so an heir who began with none would begin unable to build at all. */
+    const hg = (world.map.gen && world.map.gen.homeGates) || [];
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const g = hg[pi];
+      if (!g) continue;
+      const def = C.BUILDINGS.gate;
+      world.players[pi].buildings.push({
+        id: world.nextId++, bt: 'gate', level: 1, x: g.x, y: g.y,
+        cd: 0, raise: 0, raiseFor: def.raise, hp: def.hp, maxHp: def.hp, lastHurt: -99,
+        node: g.site, co: 0
+      });
+    }
     for (let pi = 0; pi < world.players.length; pi++) {
       world.players[pi].banner = aimAt(world, { site: world.map.cities[pi] });
       exploreAround(world, pi);   // you know your own surroundings from the start
@@ -197,7 +211,7 @@
     let n = 0;
     /* a work RISING takes crews, and so does a breach being MENDED — that is masonry putting
      * stone back. A level does not: see the note on the `up` command. */
-    for (const b of world.players[pi].buildings) if (b.raise > 0 || b.fixing) n += crewsOn(b);
+    for (const b of world.players[pi].buildings) if (b.raise > 0 || b.work > 0) n += crewsOn(b);
     return n;
   }
   /* the longest run this heir could START right now, given the crews standing idle */
@@ -625,16 +639,13 @@
         br = cmd.br;
         if (!C.TOWER_BRANCHES[br]) return { ok: false, err: 'branch' };
       }
-      /* AN UPGRADE TAKES TIME, AND THE WORK GOES QUIET WHILE IT DOES. That is the whole cost:
-       * the men or the shots you go without while the masons are in it, which is what makes
-       * WHEN to upgrade a decision instead of a formality.
-       * IT DOES NOT TAKE A MASON CREW. That was tried and measured and it was wrong. The
-       * crews are what ration BUILDING, and charging upgrades against the same purse quietly
-       * taxed whoever was expanding hardest — Brand, who runs four Gates and a pair of
-       * expansion missions, fell from 48 wins to 34 on it. Two doctrines were rewritten
-       * trying to fix him from his side (spires first: 29; barracks first: 27) before the
-       * cause turned out to be here. A level is paid for in essence and in silence. */
+      /* AN UPGRADE TAKES A CREW, TIME, AND SILENCE. The crew was taken OFF this once, because
+       * against one mason per three Gates it taxed whoever expanded hardest out of the game.
+       * The purse is a different size now — a crew per Gate, and a Gate standing from the
+       * first second — so masonry can be masonry again, and the ration is what keeps a rich
+       * heir from raising his whole realm a level at once. */
       if (s.work > 0) return { ok: false, err: 'working' };
+      if (rising(world, pi) + (s.crews || 1) > masons(world, pi)) return { ok: false, err: 'busy' };
       const cost = upgradeCost(s.bt, s.level, br) * (s.crews || 1);
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;

@@ -335,19 +335,33 @@ async function match(browser, base, renderer) {
       const seat = g.world.map.sites[g.world.map.cities[0]];
       /* a Gate stands on a SPRING and nowhere else, so aim at the one in the starting writ
        * rather than sweeping a circle and trusting that a spring happens to lie on it */
-      const spring = g.world.map.sites.filter((q) => q.kind === 'node')
+      /* THE ONE SPRING IN THE WRIT IS ALREADY GATED — every heir opens drawing on it — so the
+       * writ only grows when you go and TAKE another, which means troops on the ground. Walk
+       * outward until a spring accepts a Gate once a man of yours is standing on it. */
+      const springs = g.world.map.sites.filter((q) => q.kind === 'node')
         .map((q) => ({ q, d: Math.hypot(q.x - seat.x, q.y - seat.y) }))
-        .sort((m, n) => m.d - n.d)[0];
-      let placed = false;
-      for (let rr = 18; rr < window.CONST.NODE.r && !placed; rr += 12)
-        for (let a = 0; a < 24 && !placed; a++) {
-          const th = a / 24 * Math.PI * 2;
-          const x = spring.q.x + Math.cos(th) * rr, y = spring.q.y + Math.sin(th) * rr;
-          if (!W.placementError(g.world, 0, x, y, 'gate')) { W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'gate' }); placed = true; }
-        }
-      return { placed, before, after: outline(), at: Math.round(spring.d) };
+        .sort((m, n) => m.d - n.d);
+      let placed = false, at = 0;
+      for (const s of springs) {
+        if (placed) break;
+        if (W.nodeHolder(g.world, s.q) !== -1) continue;        // already drawn upon
+        const d = window.CONST.UNITS.soldier;
+        g.world.units.push({ id: g.world.nextId++, owner: 0, kind: 'soldier', x: s.q.x, y: s.q.y,
+                             ox: 0, oy: 0, hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0,
+                             goal: null, co: 0, from: -1 });
+        for (let rr = 18; rr < window.CONST.NODE.r && !placed; rr += 12)
+          for (let a = 0; a < 24 && !placed; a++) {
+            const th = a / 24 * Math.PI * 2;
+            const x = s.q.x + Math.cos(th) * rr, y = s.q.y + Math.sin(th) * rr;
+            if (!W.placementError(g.world, 0, x, y, 'gate')) {
+              W.applyCommand(g.world, 0, { c: 'build', x, y, bt: 'gate' });
+              placed = true; at = Math.round(s.d);
+            }
+          }
+      }
+      return { placed, before, after: outline(), at };
     });
-    ok('raising a Gate on the nearest spring extends the writ', grew.placed && grew.after > grew.before,
+    ok('raising a Gate on a spring you go and take extends the writ', grew.placed && grew.after > grew.before,
        `spring at ${grew.at}: ${grew.before} -> ${grew.after} segments`);
 
     /* ---------------- the army is on screen ---------------- *
@@ -1061,7 +1075,22 @@ async function match(browser, base, renderer) {
           if (W.placementError(g.world, 0, x, y, 'tower') === null) at = { x, y };
         }
       if (!at) return { ok: false, why: 'nowhere to build' };
-      W.applyCommand(g.world, 0, { c: 'build', ...at, bt: 'tower' });
+      /* FILL THE YARD, not just one bench. Crews are hired one per Gate now, so a realm with
+       * four Gates shrugs off a single work and nothing ever reads 'busy'. Keep starting
+       * works until no crew is idle — that is the state this suite is about. */
+      let guard = 0;
+      while (W.masons(g.world, 0) - W.rising(g.world, 0) > 0 && guard++ < 12) {
+        let spot = null;
+        for (let rad = 170; rad < 430 && !spot; rad += 18)
+          for (let a = 0; a < 40 && !spot; a++) {
+            const th = a / 40 * Math.PI * 2 + guard * 0.11;
+            const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+            if (W.placementError(g.world, 0, x, y, 'tower') === null) spot = { x, y };
+          }
+        if (!spot) break;
+        W.applyCommand(g.world, 0, { c: 'build', ...spot, bt: 'tower' });
+      }
+      if (W.masons(g.world, 0) - W.rising(g.world, 0) > 0) return { ok: false, why: 'yard never filled' };
       const shell = g.world.players[0].buildings.find((q) => q.raise > 0);
 
       /* open the build sheet on some OTHER open ground while they are busy */

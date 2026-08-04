@@ -34,7 +34,10 @@
    * takes about 40% longer to raise. Four crews at the slower pace still absorb 43 essence a
    * second against the single crew's 15 — the ceiling the chronicles kept hitting — while a
    * realm grows at something near the old rate. */
-  CONST.MASONS = { base: 1, per: 3, max: 4 };
+  /* ONE CREW PER GATE. The yard grows with the realm — and since every heir opens with a Gate
+   * on his own spring, that first Gate is his first crew. `base` is zero on purpose: the crews
+   * come from the ground you hold, all of them. */
+  CONST.MASONS = { base: 0, per: 1, max: 4 };
 
   /* Solo difficulty, MEASURED rather than guessed. `slow` and `noise` turned out to be decorative: an heir polled at
    * half the rate, or skipping 45% of its turns outright, still won its mirror 42-50% of the
@@ -162,10 +165,10 @@
     /* A Gate stands ON a spring and nowhere else. It is the only thing that draws Shadow out
      * of the ground, so the essence is out on the map and your writ can only follow it there.
      * That is the whole anti-stall model, and it holds because there is no home substitute. */
-    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 14,
+    gate:     { name: 'Shadow Gate',   icon: '🌀', cost: 120, up: [110, 190], claim: true, raise: 21,
                 nodeIncome: [4.5, 7, 10.5], hp: 600, vision: 300, onNode: true,
                 blurb: 'Raised ON a spring of Shadow, and only there. It draws deep, and your writ runs where your Gates stand.' },
-    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 720, raise: 18,
+    barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 720, raise: 27,
                 spawns: 'soldier', period: [8, 8, 8],
                 blurb: 'Musters Soldiers who march the black road. Raise its level and it musters VETERANS — the same men, better armed.' },
     /* A WALL IS A FIGHTING POSITION, NOT A SHELL. It bars the ground and it stops shots
@@ -180,7 +183,7 @@
     /* THE ONE WORK WITH A LENGTH. `span` is how long a run may be; `hpAt` is what the level
      * buys — a wall has no other effect to scale, so reinforcing it has to mean thicker
      * stone or the upgrade would take essence and do nothing at all. */
-    wall:     { name: 'Curtain Wall',  icon: '🧱', cost: 110, up: [90, 150], hp: 820, raise: 17,
+    wall:     { name: 'Curtain Wall',  icon: '🧱', cost: 110, up: [90, 150], hp: 820, raise: 26,
                 perCrew: true,   // cost/hp/upkeep of crews all multiply by the run's length
                 hpAt: [820, 1290, 1880], span: [110], vision: 200,
                 blurb: 'A run of stone. Nothing crosses it and nothing shoots through it — but men who come up to man it can be shot back.' },
@@ -189,13 +192,13 @@
      * while neither Seat took a scratch. An Engine is slow, fragile in a fight and useless at
      * holding ground; against a work or a Seat it is worth four of the men it costs. It has
      * to be escorted, which is the point: the Works turn a war chest into a threat. */
-    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 760, raise: 28,
+    siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 760, raise: 42,
                 spawns: 'engine', period: [24, 24, 24],
                 blurb: 'Builds Engines: slow, and made for breaking works and Seats rather than men. They need an escort.' },
-    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 24,
+    spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 36,
                 spawns: 'sorcerer', period: [11, 11, 11],
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
-    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 15,
+    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 22,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
     /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk
@@ -219,7 +222,7 @@
      * carries you at no less than this share of full speed. It is still ruinous — every
      * penny you own goes into the lines and none into an army — it simply cannot stop.
      * drain = essence/sec while walking, rate = %/sec: ~9.5 minutes and ~18k essence. */
-    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 900, raise: 36,
+    shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 900, raise: 54,
                 drain: [32], rate: [0.175], minRate: 0.5, decay: 0.05, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
@@ -252,7 +255,7 @@
    * fraction of what the work took to raise. While they are, it does its job for nobody. */
   CONST.TIER = [1, 1.25, 1.6];
   CONST.TIER_NAME = ['', 'Veteran ', 'Elite '];
-  CONST.UP_WORK = 0.8;
+  CONST.UP_WORK = 1.0;
 
   CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150,
                  /* A PARAPET HOLDS WHAT IT HOLDS. One berth per `berth` of length, and the men

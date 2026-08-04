@@ -119,6 +119,18 @@ human could see (see `AI.view()`).
 - Colors: gold=player, crimson=rival, green=Chaos, blue-white=Pattern. Don't drift.
 - `render3d.js` stays isolated: game logic never draws; drawing never mutates the world.
 
+## The opening
+
+Every heir starts with **exactly one spring inside his writ** and **a finished Shadow Gate on
+it**. Worldgen enforces both (`traits` in `placeCities` requires one *usable* spring and one
+inside `CLAIM.seat`) and hands the Gate's spot out as `gen.homeGates`, so `createWorld` places
+it rather than re-deriving the search. Every further spring is beyond the writ and must be
+TAKEN — troops standing on it — which is the whole shape of expansion now.
+
+Crews are hired **one per Gate** (`MASONS.base` is 0), so the opening Gate is the opening
+mason and nobody starts unable to build. Tests that assume `players[pi].buildings[0]` is the
+work they just raised are wrong: it is the Gate.
+
 ## Veterancy and the masons
 
 A hall's LEVEL makes better men, not more of them. `period` is flat across levels; `CONST.TIER`

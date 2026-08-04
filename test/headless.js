@@ -45,21 +45,21 @@ for (const seed of SEEDS) {
       .map((s) => ({ s, d: Math.hypot(s.x - cs.x, s.y - cs.y) })).sort((a, b) => a.d - b.d);
     ok(`seed ${seed}: no spring crowds Seat ${pi}`, !springs.length || springs[0].d >= C.WORLD.springNear,
        `nearest ${Math.round(springs[0] ? springs[0].d : -1)}`);
+    /* EXACTLY ONE, AND IT IS ALREADY DRAWN UPON. A Seat that opened with two usable springs
+     * began with twice the economy and — since crews are hired one per Gate — twice the
+     * masons, and the fairness score could only ever narrow that gap. One each, gated from
+     * the first second, and the second spring is something you go and take. */
     const inReach = springs.filter((q) => q.d <= C.CLAIM.seat);
-    ok(`seed ${seed}: Seat ${pi} opens with a spring in its writ`, inReach.length > 0,
-       `nearest ${Math.round(springs[0] ? springs[0].d : -1)}`);
-    let raisable = null;
-    for (const q of inReach) {
-      for (let rr = 18; rr < C.NODE.r && !raisable; rr += 12)
-        for (let a2 = 0; a2 < 24 && !raisable; a2++) {
-          const th = a2 / 24 * Math.PI * 2;
-          const x = q.s.x + Math.cos(th) * rr, y = q.s.y + Math.sin(th) * rr;
-          if (World.placementError(w, pi, x, y, 'gate') === null) raisable = q;
-        }
-      if (raisable) break;
-    }
-    ok(`seed ${seed}: and a Gate can actually be raised on it`, !!raisable,
-       raisable ? `${raisable.s.name} at ${Math.round(raisable.d)}` : 'none claimable');
+    eq(`seed ${seed}: Seat ${pi} opens with exactly one spring in its writ`, inReach.length, 1);
+    const gate = w.players[pi].buildings.find((b) => b.bt === 'gate');
+    ok(`seed ${seed}: and a Gate already stands on it`,
+       !!gate && !gate.raise && gate.node === inReach[0].s.id,
+       gate ? `node ${gate.node}, want ${inReach[0].s.id}` : 'no Gate at all');
+    ok(`seed ${seed}: which is drawing, not scaffolding`, !!gate && gate.hp === C.BUILDINGS.gate.hp);
+    /* and the ground it stands on is the ground worldgen promised was buildable */
+    ok(`seed ${seed}: it stands clear of the castle`,
+       !!gate && Math.hypot(gate.x - cs.x, gate.y - cs.y) > C.CITY.seatR,
+       gate ? String(Math.round(Math.hypot(gate.x - cs.x, gate.y - cs.y))) : '');
   }
 
   /* A spring lies in a level hollow. The pool and its ownership ring are drawn as FLAT discs
@@ -122,7 +122,10 @@ for (const seed of SEEDS.slice(0, 3)) {
 function raise(w, pi, x, y, bt) {
   const r = World.applyCommand(w, pi, { c: 'build', x, y, bt });
   if (!r.ok) return r;
-  for (let i = 0; i < 30 * 40 && w.players[pi].buildings.some((b) => b.raise > 0); i++) World.update(w, C.SIM_DT);
+  /* long enough for the SLOWEST work — masonry times went up by half and a Shrine is 54
+   * seconds now, so a flat 40 left it forever scaffolded and every assertion after it wrong */
+  const wait = 30 * ((C.BUILDINGS[bt] && C.BUILDINGS[bt].raise ? C.BUILDINGS[bt].raise : 30) + 20);
+  for (let i = 0; i < wait && w.players[pi].buildings.some((b) => b.raise > 0); i++) World.update(w, C.SIM_DT);
   w.events.length = 0;
   return r;
 }
@@ -137,8 +140,11 @@ suite('placement rules');
     const t = w.nav.terra[gy * w.nav.W + gx];
     const x = (gx + 0.5) * w.nav.cw, y = (gy + 0.5) * w.nav.cw;
     if (Math.hypot(x - c.x, y - c.y) > C.CLAIM.seat - 30) continue;
-    if (byTerrain[t]) continue;
-    byTerrain[t] = World.placementError(w, 0, x, y, 'barracks') || 'LEGAL';
+    /* keep looking past a CROWDED sample: the first cell of a terrain may happen to fall
+     * beside the Gate every heir now opens with, and that says nothing about the ground */
+    if (byTerrain[t] === 'LEGAL') continue;
+    const verdict = World.placementError(w, 0, x, y, 'barracks') || 'LEGAL';
+    if (!byTerrain[t] || verdict === 'LEGAL') byTerrain[t] = verdict;
   }
   for (const t of Object.keys(byTerrain)) {
     const buildable = !!WG.BUILDABLE[t];
@@ -182,7 +188,8 @@ suite('command grammar');
   let built = null;
   for (let a = 0; a < 40 && !built; a++) {
     const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 190, y = c.y + Math.sin(th) * 190;
-    if (!World.placementError(w, 0, x, y, 'tower')) { World.applyCommand(w, 0, { c: 'build', x, y, bt: 'tower' }); built = pl.buildings[0]; }
+    /* the LAST work raised, not the first — buildings[0] is the Gate every heir opens with */
+    if (!World.placementError(w, 0, x, y, 'tower')) { World.applyCommand(w, 0, { c: 'build', x, y, bt: 'tower' }); built = pl.buildings[pl.buildings.length - 1]; }
   }
   ok('a work is raised with an id and a position', built && built.id > 0 && isFinite(built.x));
   eq('it cannot be upgraded while it is still going up', World.applyCommand(w, 0, { c: 'up', id: built.id }).err, 'raising');
@@ -211,22 +218,18 @@ suite('a Gate stands on a spring')
   eq('...bears a Barracks', World.placementError(w, 0, bare.x, bare.y, 'barracks'), null);
   eq('...but refuses a Gate', World.placementError(w, 0, bare.x, bare.y, 'gate'), 'nospring');
 
-  /* the spring in your writ takes one */
+  /* THE STARTING POSITION HAS EXACTLY ONE SPRING, AND IT IS ALREADY GATED. An heir opens
+   * drawing, and that first Gate is also his first mason — crews are hired one per Gate, so
+   * one who began with none would begin unable to build at all. */
   const spring = w.map.sites.filter((s) => s.kind === 'node')
     .map((s) => ({ s, d: Math.hypot(s.x - c.x, s.y - c.y) })).sort((a, b) => a.d - b.d)[0];
-  let on = null;
-  for (let rr = 18; rr < C.NODE.r && !on; rr += 12)
-    for (let a = 0; a < 24 && !on; a++) {
-      const th = a / 24 * Math.PI * 2;
-      const x = spring.s.x + Math.cos(th) * rr, y = spring.s.y + Math.sin(th) * rr;
-      if (World.placementError(w, 0, x, y, 'gate') === null) on = { x, y };
-    }
-  ok('a spring in the writ takes a Gate', !!on, spring.s.name);
-  ok('and raising it works', !!on && World.applyCommand(w, 0, { c: 'build', ...on, bt: 'gate' }).ok);
-  for (let i = 0; i < 30 * 40 && pl.buildings.some((b) => b.raise > 0); i++) World.update(w, C.SIM_DT);
-  w.events.length = 0;
   const g = pl.buildings.find((b) => b.bt === 'gate');
-  ok('the Gate knows its spring', g && g.node === spring.s.id);
+  ok('an heir opens with a Gate standing', !!g && !g.raise);
+  ok('...on the one spring in his writ', g && g.node === spring.s.id, `${g && g.node} vs ${spring.s.id}`);
+  eq('...which is his first mason', World.masons(w, 0), 1);
+  /* and it really is ONE spring: no second usable one inside the writ he starts with */
+  const inWrit = w.map.sites.filter((s) => s.kind === 'node' && World.inClaim(w, 0, s.x, s.y));
+  eq('exactly one spring lies in the starting writ', inWrit.length, 1);
   /* the far side of the same spring: clear of the Gate that stands there, so the reason we
    * get back is that the spring is spoken for, not that the ground is crowded */
   let other = null;
@@ -240,8 +243,8 @@ suite('a Gate stands on a spring')
 
   /* every Gate now draws deep — there is no trickling waystone left to draw shallow */
   ok('a Gate has no off-spring income table at all', C.BUILDINGS.gate.income === undefined);
-  const base = w.players[1].incomeRate;
   World.update(w, C.SIM_DT);
+  const base = w.players[1].incomeRate;
   ok('and it pays the spring rate', pl.incomeRate >= C.BASE_INCOME + C.BUILDINGS.gate.nodeIncome[0] - 0.01,
      `${pl.incomeRate.toFixed(1)} vs base ${base.toFixed(1)}`);
 }
@@ -439,7 +442,10 @@ suite('the Pattern is not upgraded')
   const before = pl.essence;
   ok('the walk begins', World.applyCommand(w, 0, { c: 'walk', on: true }).ok);
   for (let i = 0; i < 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
-  const spent = before - pl.essence;
+  /* NET of income: an heir opens with a Gate drawing on his own spring, so the treasury is
+   * filling while the walk empties it. The drain is what the Shrine takes, not what the purse
+   * loses. */
+  const spent = before - pl.essence + (pl.incomeRate || 0);
   near('a second of walking costs the Shrine drain', spent, C.BUILDINGS.shrine.drain[0], 3.5,
        `${spent.toFixed(1)} spent, drain ${C.BUILDINGS.shrine.drain[0]}/s`);
   ok('the drain is reported to the HUD', pl.drainRate >= C.BUILDINGS.shrine.drain[0] - 0.5,
@@ -651,7 +657,8 @@ suite('the masons')
   ok('ground beyond the writ to test with', !!far2);
   const spent = pl.essence;
   ok('a work is ordered', World.applyCommand(w, 0, { c: 'build', ...at, bt: 'barracks' }).ok);
-  const b = pl.buildings[0];
+  /* the work just raised, not buildings[0] — that is the Gate every heir opens with */
+  const b = pl.buildings[pl.buildings.length - 1];
   eq('it is paid for at once', pl.essence, spent - C.BUILDINGS.barracks.cost);
   near('and it starts as a shell', b.hp, C.BUILDINGS.barracks.hp * C.RAISE.hpFrom, 1);
   ok('with a raise timer', b.raise > 0 && b.raiseFor === C.BUILDINGS.barracks.raise);
@@ -873,7 +880,12 @@ suite('the curtain wall')
   /* a legal run, laid across the ground beside the Seat */
   let laid = null;
   for (let a = 0; a < 6.28 && !laid; a += 0.35) {
-    for (let r = 110; r <= 200 && !laid; r += 22) {
+    /* WELL CLEAR OF THE COURT. A run at r=110 leaves no ground to stand "behind" it on: the
+     * band between not-manning it (WALL.man*1.5) and not-standing-in-the-Seat (CITY.seatR)
+     * is empty at that radius, so a man posted behind the wall is on the Seat's own ground
+     * and the muster ring walks him out of the wall's shadow. Everything this suite asserts
+     * about being sheltered needs a run with room behind it. */
+    for (let r = 210; r <= 320 && !laid; r += 22) {
       const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
       const px = -Math.sin(a) * 70, py = Math.cos(a) * 70;
       if (!World.wallError(w, 0, mx - px, my - py, mx + px, my + py)) laid = [mx - px, my - py, mx + px, my + py];
@@ -890,10 +902,28 @@ suite('the curtain wall')
   const ends = World.wallEnds(b);
   near('...and the ends come back out of it', ends[0], laid[0], 0.01);
   near('...both of them', ends[3], laid[3], 0.01);
-  eq('a second run crossing the first is refused',
-     build((laid[0] + laid[2]) / 2 - (laid[3] - laid[1]) * 0.4, (laid[1] + laid[3]) / 2 + (laid[2] - laid[0]) * 0.4,
-           (laid[0] + laid[2]) / 2 + (laid[3] - laid[1]) * 0.4, (laid[1] + laid[3]) / 2 - (laid[2] - laid[0]) * 0.4).err,
-     'crowded');
+  /* A RUN ACROSS THE FIRST IS REFUSED FOR CROSSING IT — but the ground is judged before the
+   * crossing is, so a probe laid over a lake comes back 'ground' and proves nothing about
+   * walls. Try crossings until one stands on ground that would otherwise bear a wall. */
+  let crossErr = null, tried = 0;
+  {
+    /* THE SAME RUN, TURNED. A probe struck out perpendicular from the wall walks onto ground
+     * nobody promised was buildable — twenty of them drowned. Rotating the first run about
+     * its own midpoint keeps the probe over ground the first wall already proved will bear a
+     * wall, and two chords through one midpoint cross by construction. */
+    const cx = (laid[0] + laid[2]) / 2, cy = (laid[1] + laid[3]) / 2;
+    const hx = (laid[2] - laid[0]) / 2, hy = (laid[3] - laid[1]) / 2;
+    for (const deg of [30, 45, 60, 90, 120, 150, 20, 75]) {
+      const th = deg * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
+      const rx = hx * cs - hy * sn, ry = hx * sn + hy * cs;
+      const e = build(cx - rx, cy - ry, cx + rx, cy + ry).err;
+      tried++;
+      if (e === 'ground' || e === 'short') continue;
+      crossErr = e; break;
+    }
+  }
+  ok('ground was found to lay a crossing run on', !!crossErr, `${tried} probes, all drowned or short`);
+  eq('a second run crossing the first is refused', crossErr, 'crowded');
 
   /* it is scaffolding until the masons are done, and does nothing at all */
   ok('it goes up as a shell', b.raise > 0);
@@ -1031,6 +1061,11 @@ suite('the curtain wall')
   eq('a curtain can be reinforced', World.applyCommand(w, 0, { c: 'up', id: b.id }).ok, true);
   ok('...and the reinforcement is thicker stone', b.maxHp > wasMax, `${wasMax} -> ${b.maxHp}`);
   near('...added to what was standing, not a free repair', b.maxHp - b.hp, 200, 1);
+  /* A LEVEL IS MASONRY AND TAKES A CREW — so nothing else can be raised until they are out
+   * of it. Everything below needs the yard free, and with one crew that means waiting. */
+  ok('...and it takes the crew while they are at it', World.rising(w, 0) > 0);
+  run(Math.ceil(b.work) + 1);
+  eq('the masons come out of it', b.work, 0);
 
   /* AND THEY SPREAD ALONG IT. An order at a wall is one point, so every man sent to hold a
    * curtain used to walk to the same stride of it — a hundred feet of stone defended by a
@@ -1325,11 +1360,13 @@ suite('veterans, not crowds')
   const up = World.applyCommand(w, 0, { c: 'up', id: hall.id });
   ok('the hall can be raised a level', up.ok, up.err);
   ok('...and it takes masonry, not a moment', hall.work > 0, hall.work);
-  /* AND IT DOES NOT COST A MASON CREW. That was tried: charging upgrades against the same
-   * purse that rations BUILDING quietly taxes whoever is expanding hardest, and the referee
-   * caught it. A level is paid for in essence and in silence, and in nothing else. */
-  eq('...but not a mason crew — the crews ration building', World.rising(w, 0), 0);
-  eq('...so the yard is still free to raise something', World.masons(w, 0) - World.rising(w, 0), 1);
+  /* AND IT TAKES A CREW. The crew was taken off this once, because against one mason per
+   * three Gates it taxed whoever expanded hardest out of the game — measured, and reverted.
+   * The purse is a different size now: a crew per Gate, and a Gate standing from the first
+   * second, so masonry can be masonry again and the ration is what stops a rich heir raising
+   * his whole realm a level at once. */
+  eq('...and it takes a crew, because masonry is masonry', World.rising(w, 0), 1);
+  eq('...so the yard is spoken for while they are in it', World.masons(w, 0) - World.rising(w, 0), 0);
   run(Math.ceil(hall.work) - 1);
   eq('the hall musters nobody while they are in it', w.units.filter((q) => q.owner === 0).length, before);
   ok('...but it still stands, and can still be broken', hall.hp > 0 && hall.maxHp > 0);
@@ -1573,14 +1610,27 @@ suite('the masons follow the Gates')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
   pl.essence = 9e9; w.chaosNext = 1e9;
-  eq('a bare Seat keeps one crew', World.masons(w, 0), C.MASONS.base);
-  eq('and a crew is hired for every three Gates', C.MASONS.per, 3);
+  /* ONE CREW PER GATE, and none from the Seat itself — the yard grows with the ground you
+   * hold. Every heir opens with a Gate on his own spring, so that first Gate is his first
+   * crew and nobody starts unable to build. */
+  eq('the crews come from the ground, not the Seat', C.MASONS.base, 0);
+  eq('and a crew is hired for every Gate', C.MASONS.per, 1);
+  eq('an heir opens with exactly one crew', World.masons(w, 0), 1);
+  eq('...which is the Gate he opens with', pl.buildings.filter((b) => b.bt === 'gate').length, 1);
   /* give it Gates and count again — springs are where the crews come from */
   const springs = w.map.sites.filter((s) => s.kind === 'node')
     .sort((a, b) => Math.hypot(a.x - c.x, a.y - c.y) - Math.hypot(b.x - c.x, b.y - c.y));
+  /* A SPRING BEYOND THE WRIT NEEDS TROOPS ON IT — and with exactly one spring inside the
+   * writ, already gated from the first second, every further Gate is a spring you go and
+   * take. That is the whole shape of expansion now, so the test has to expand too. */
   let gates = 0;
   for (const s of springs) {
-    if (gates >= C.MASONS.per * 2) break;
+    if (gates >= 3) break;
+    if (!w.units.some((u) => u.owner === 0 && Math.hypot(u.x - s.x, u.y - s.y) < 80)) {
+      const d = C.UNITS.soldier;
+      w.units.push({ id: w.nextId++, owner: 0, kind: 'soldier', x: s.x, y: s.y, ox: 0, oy: 0,
+                     hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 });
+    }
     for (let rr = 0; rr <= 60 && true; rr += 20) {
       let placed = false;
       for (let a = 0; a < 20 && !placed; a++) {
@@ -1596,10 +1646,11 @@ suite('the masons follow the Gates')
       if (placed) break;
     }
   }
-  ok('several Gates stand', gates >= C.MASONS.per, `${gates} Gates`);
+  ok('several Gates stand', gates >= 2, `${gates} raised on top of the one he opened with`);
+  const held = pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length;
   eq('the crews follow them', World.masons(w, 0),
-     Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per)));
-  ok('which is more than one', World.masons(w, 0) > C.MASONS.base, `${World.masons(w, 0)} crews`);
+     Math.min(C.MASONS.max, C.MASONS.base + Math.floor(held / C.MASONS.per)));
+  ok('which is more than he opened with', World.masons(w, 0) > 1, `${World.masons(w, 0)} crews`);
 
   /* and the rule is that many at once, not one */
   const spot = (bt) => {

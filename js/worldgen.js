@@ -240,9 +240,37 @@
     const apart = C.WORLD.seatApart * (want > 2 ? C.WORLD.seatApartMulti : 1);
     const apart2 = apart * apart;
     /* the three things a Seat is judged on, and the one that disqualifies it outright */
+    /* EXACTLY ONE SPRING IN THE STARTING POSITION. Not "at least one": a Seat that opened
+     * with two usable springs began the match with twice the economy and twice the masons of
+     * one that opened with a single spring, and the fairness score could only ever narrow
+     * that, never close it. One each, and the second spring is something you go and take. */
     const traits = (i, p) => {
       const u = usable(i, p);
-      return u < 1 ? null : [u, near(p, 900), roomAt(land, i, 460)];
+      /* ONE SPRING IN THE WRIT, not merely one you could gate. A second spring sitting inside
+       * your claim that you cannot raise on is not "one spring in the starting position" — it
+       * is a spring, in your position, that the writ already covers and a rival cannot take
+       * from you. Both counts have to be one. */
+      if (u !== 1 || near(p, C.CLAIM.seat) !== 1) return null;
+      return [u, near(p, 900), roomAt(land, i, 460)];
+    };
+    /* the spring that spring IS, and the spot on its ring a Gate can stand on — the same
+     * search `usable` runs to count it, kept this time instead of thrown away */
+    placeCities.homeGate = (p) => {
+      for (let qi = 0; qi < nodes.length; qi++) {
+        const q = nodes[qi];
+        const dq = Math.hypot(p.x - q.x, p.y - q.y);
+        if (dq < C.WORLD.springNear || dq > C.WORLD.springFar) continue;
+        for (let rr = 18; rr <= C.NODE.r - 8; rr += 22)
+          for (let a = 0; a < 16; a++) {
+            const th = a / 16 * Math.PI * 2;
+            const gx = q.x + Math.cos(th) * rr, gy = q.y + Math.sin(th) * rr;
+            const ds = Math.hypot(gx - p.x, gy - p.y);
+            if (ds <= C.CITY.seatR + C.BUILD.foot || ds >= C.CLAIM.seat) continue;
+            const ci = cellAt(gx, gy);
+            if (ci >= 0 && G.BUILDABLE[terra[ci]]) return { x: gx, y: gy, node: qi };
+          }
+      }
+      return null;
     };
     const spread = (xs) => Math.max(...xs) - Math.min(...xs);
     let best = null;
@@ -296,9 +324,16 @@
         sites.push({ id: sites.length, x, y, kind, name: null, lastHurt: -99 });
         return sites.length - 1;
       };
+      const nodeSite = [];
       for (const p of seats.pts) add(p.x, p.y, 'city');
-      for (const p of nodes) add(p.x, p.y, 'node');
+      for (const p of nodes) nodeSite.push(add(p.x, p.y, 'node'));
       for (const p of vants) add(p.x, p.y, 'vantage');
+      /* EVERY HEIR OPENS WITH A GATE ON HIS OWN SPRING. Worked out here, where the search
+       * that proved the spring usable already lives, rather than re-derived in the sim. */
+      const homeGates = seats.pts.map((p) => {
+        const g = placeCities.homeGate(p);
+        return g ? { x: g.x, y: g.y, site: nodeSite[g.node] } : null;
+      });
 
       /* the Seats stand on level, open ground whatever the noise said */
       const flatten = (p, radius) => {
@@ -360,6 +395,7 @@
         /* the grid the sim walks on, flat on the object nav.js is handed */
         W: land.W, H: land.H, cw: land.cw, elev: land.elev, terra: land.terra,
         nodes: kept.filter((x) => x.kind === 'node').map((x) => x.id),
+        homeGates,
         seed: s, skew: seats.skew, apart: Math.round(seats.far), attempt
       };
     }
