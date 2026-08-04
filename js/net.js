@@ -229,11 +229,15 @@
            * that has gone quiet must LOOK like one to a guest too */
           work: b.work > 0 ? Math.round(b.work * 10) / 10 : 0, workFor: b.workFor || 0,
           /* a breach is public: it is a hole in the world that everyone can walk up to */
-          ...(b.breach ? { breach: 1 } : {}), ...(b.crews > 1 ? { crews: b.crews } : {}),
+          ...(b.breach ? { breach: 1 } : {}),
           /* a tower in the wall stands ON the wall — a guest must draw it up there too */
           ...(b.onWall ? { onWall: b.onWall } : {}),
-          /* a long curtain occupies several crews — the yard readout has to know */
+          /* a long curtain occupies several crews — the yard readout has to know — and it is
+           * `units` of stone, which is what its mend costs. A short run has NO gateway, so the
+           * guest must not draw one or walk its columns at one that is not there. */
           ...(b.crews > 1 ? { crews: b.crews } : {}),
+          ...(b.units != null ? { units: Math.round(b.units * 1000) / 1000 } : {}),
+          ...(b.gated ? { gated: 1 } : {}),
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
           co: mine ? b.co : 0            // which company a hall musters into is yours to know

@@ -233,8 +233,16 @@
    * BY THE FOOT: there is no longest run any more — there is only how many crews you can put
    * on one at once, so the length a heir can raise IS his mason count, and it grows with the
    * Gates he holds like everything else does. */
-  const wallCrews = (len) => Math.max(1, Math.ceil(len / C.WALL.unit));
+  /* TWO DIFFERENT QUESTIONS, and they used to share one answer. HOW MUCH WALL is continuous —
+   * the price, the stone and the upgrade all go by the run's length, so a short stretch across
+   * a gap costs what a short stretch is worth. HOW MANY CREWS is an integer, because you
+   * cannot put two thirds of a crew on anything, and it is the integer that is rationed.
+   * Rounding the first up to the second billed every run under WALL.unit as a full one. */
+  const wallUnits = (len) => Math.max(0, len) / C.WALL.unit;
+  const wallCrews = (len) => Math.max(1, Math.ceil(wallUnits(len)));
   const crewsOn = (b) => (b.crews || 1);
+  /* how much STONE a work is, in run-lengths: 1 for everything that is not a wall */
+  const sizeOf = (b) => (b.units != null ? b.units : (b.crews || 1));
   function rising(world, pi) {
     let n = 0;
     /* a work RISING takes crews, and so does a breach being MENDED — that is masonry putting
@@ -378,7 +386,8 @@
         if (!isWall(b) || b.raise || b.breach) continue;
         const e = wallEnds(b);
         const mx = (e[0] + e[2]) / 2, my = (e[1] + e[3]) / 2;
-        world.walls.push({ b, owner: q, ax: e[0], ay: e[1], bx: e[2], by: e[3], gx: mx, gy: my });
+        world.walls.push({ b, owner: q, ax: e[0], ay: e[1], bx: e[2], by: e[3], gx: mx, gy: my,
+                           gate: !!b.gated });
       }
     world.anyWall = world.walls.length > 0;
     /* WHICH RUN A TOWER STANDS ON IS DERIVED, not stamped. The answer changes without the
@@ -400,7 +409,7 @@
   }
   /* is this point in the gateway of that wall? The gate is the middle of the run and it is
    * the ONLY way through — for the heir who raised it, and for nobody else. */
-  const inGate = (w, x, y) => d2(x, y, w.gx, w.gy) < C.WALL.gate * C.WALL.gate;
+  const inGate = (w, x, y) => !!w.gate && d2(x, y, w.gx, w.gy) < C.WALL.gate * C.WALL.gate;
 
   /* A WALL IS TWO TAPS. The first says where it starts and can only be checked for what one
    * point can be checked for; the second is the real placement. `span` says the run is the
@@ -635,13 +644,14 @@
       if (!def || !isFinite(x) || !isFinite(y)) return { ok: false, err: 'type' };
       /* a wall carries a second end, and is stored by its MIDPOINT so every other part of the
        * sim — vision, fog, the renderer, the minimap — can go on treating a work as a place */
-      let x2 = null, y2 = null, crews = 1;
+      let x2 = null, y2 = null, crews = 1, units = 1;
       if (def.span) {
         x2 = +cmd.x2; y2 = +cmd.y2;
         if (!isFinite(x2) || !isFinite(y2)) return { ok: false, err: 'short' };
         const badw = wallError(world, pi, x, y, x2, y2);
         if (badw) return { ok: false, err: badw };
-        crews = wallCrews(Math.sqrt(d2(x, y, x2, y2)));
+        const len = Math.sqrt(d2(x, y, x2, y2));
+        crews = wallCrews(len); units = wallUnits(len);
         x = (x + x2) / 2; y = (y + y2) / 2;
       }
       /* A TOWER MEANT FOR THE WALL LANDS ON THE WALL. The stone is drawn thirty high and the
@@ -659,7 +669,7 @@
        * the wall is twice the crews, twice the price and twice the stone to break. Anything
        * else and a long wall is simply cheaper per length than a short one, which is not a
        * choice — it is an answer. */
-      const price = def.cost * crews;
+      const price = Math.max(1, Math.round(def.cost * units));
       if (pl.essence < price) return { ok: false, err: 'essence' };
       pl.essence -= price;
       const site = def.claim ? nodeAt(world, x, y) : null;
@@ -668,10 +678,15 @@
       const b = { id: world.nextId++, bt: cmd.bt, level: 1, x, y,
                   cd: def.period ? def.period[0] * 0.5 : (def.atk || 0),
                   raise: def.raise || 0, raiseFor: def.raise || 0,
-                  hp: def.hp * crews * C.RAISE.hpFrom, maxHp: def.hp * crews, lastHurt: -99,
+                  hp: def.hp * units * C.RAISE.hpFrom, maxHp: def.hp * units, lastHurt: -99,
                   node: site && nodeHolder(world, site) === -1 ? site.id : -1,
                   co: 0 };         // 0 = its muster marches under the royal War Banner
-      if (x2 != null) { b.x2 = x2; b.y2 = y2; b.crews = crews; }
+      /* `units` is how much wall it is and `crews` is how many masons it takes — and `gated`
+       * is settled here, once, because it is a fact about the run's length and never changes */
+      if (x2 != null) {
+        b.x2 = x2; b.y2 = y2; b.crews = crews; b.units = units;
+        if (units * C.WALL.unit >= C.WALL.gateMin) b.gated = 1;
+      }
       /* a tower raised astride your own curtain is PART of it: it shoots over that stone the
        * way a man on the parapet does, and the wall stops being something it fires into */
       if (cmd.bt === 'tower') {
@@ -707,7 +722,7 @@
        * heir from raising his whole realm a level at once. */
       if (s.work > 0) return { ok: false, err: 'working' };
       if (rising(world, pi) + (s.crews || 1) > masons(world, pi)) return { ok: false, err: 'busy' };
-      const cost = upgradeCost(s.bt, s.level, br) * (s.crews || 1);
+      const cost = Math.max(1, Math.round(upgradeCost(s.bt, s.level, br) * sizeOf(s)));
       if (pl.essence < cost) return { ok: false, err: 'essence' };
       pl.essence -= cost;
       s.level++;
@@ -717,7 +732,7 @@
        * effect to buy — grows its hit points, keeping the damage already done to it */
       if (C.BUILDINGS[s.bt].hpAt) {
         const was = s.maxHp;
-        s.maxHp = C.BUILDINGS[s.bt].hpAt[s.level - 1] * (s.crews || 1);
+        s.maxHp = C.BUILDINGS[s.bt].hpAt[s.level - 1] * sizeOf(s);
         s.hp = Math.min(s.maxHp, s.hp + (s.maxHp - was));
       }
       emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
@@ -734,10 +749,10 @@
       if (s2.work > 0) return { ok: false, err: 'working' };
       const crews = s2.crews || 1;
       if (rising(world, pi) + crews > masons(world, pi)) return { ok: false, err: 'busy' };
-      const price = Math.round(C.BUILDINGS.wall.cost * crews * C.WALL.repair);
+      const price = Math.max(1, Math.round(C.BUILDINGS.wall.cost * sizeOf(s2) * C.WALL.repair));
       if (pl.essence < price) return { ok: false, err: 'essence' };
       pl.essence -= price;
-      s2.work = s2.workFor = Math.max(1, C.BUILDINGS.wall.raise * crews * C.WALL.fixWork);
+      s2.work = s2.workFor = Math.max(1, C.BUILDINGS.wall.raise * sizeOf(s2) * C.WALL.fixWork);
       s2.fixing = 1;
       emit(world, { e: 'mending', pi, id: s2.id, x: s2.x, y: s2.y });
       return { ok: true };

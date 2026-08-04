@@ -470,6 +470,12 @@
       return;
     }
     if (!pDown) return;
+    /* DRAWING A RUN, THE CAMERA HOLDS STILL. The far end of a wall is aimed with the same
+     * finger that pans the map, so any run longer than the twelve-pixel drag threshold moved
+     * the board out from under itself — and worse, the drag set `dragging`, which meant the
+     * lift was no longer a tap and the second end was never placed at all. While an anchor is
+     * down the gesture belongs to the wall: the line follows the finger and nothing else does. */
+    if (game.span) return;
     if (miniScrub) { Render.minimapJump(e.clientX, e.clientY); return; }
     /* the map is wider than the screen now — drag pans on BOTH axes */
     const dx2 = e.clientX - pDown.x, dy2 = e.clientY - pDown.y;

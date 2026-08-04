@@ -906,7 +906,13 @@ suite('the curtain wall')
   const before = pl.essence;
   const r1 = build(laid[0], laid[1], laid[2], laid[3]);
   ok('and the order is accepted', r1.ok, r1.err);
-  eq('it costs what the card says', Math.round(before - pl.essence), def.cost);
+  /* A RUN IS PRICED BY THE FOOT. The card's cost buys WALL.unit of wall; this run is
+   * whatever length the ground would take, and it is billed for exactly that. */
+  {
+    const laidLen = Math.hypot(laid[2] - laid[0], laid[3] - laid[1]);
+    eq('it costs what the card says, by the foot', Math.round(before - pl.essence),
+       Math.max(1, Math.round(def.cost * laidLen / C.WALL.unit)));
+  }
   const b = pl.buildings.find((q) => q.bt === 'wall');
   ok('it is stored by its MIDPOINT, carrying the far end', b && b.x2 != null);
   near('the midpoint is the middle of the run', b.x, (laid[0] + laid[2]) / 2, 0.01);
@@ -1042,8 +1048,16 @@ suite('the curtain wall')
     ok('and it is accepted', rr.ok, rr.err);
     const wb = gp.buildings.find((q) => q.bt === 'wall');
     eq('it is booked as two crews', wb.crews, 2);
-    eq('...and costs two cards', Math.round(purse - gp.essence), def.cost * 2);
-    eq('...and is twice the stone', wb.maxHp, def.hp * 2);
+    /* two CREWS, but a length of one and a half — and it is the LENGTH that is billed. Priced
+     * by the crew, this run cost the same as one twice as long, which is why nobody drew a
+     * short one. */
+    const twoLen = Math.hypot(two[2] - two[0], two[3] - two[1]);
+    near('...and is booked as one and a half runs of stone', wb.units, twoLen / C.WALL.unit, 1e-6);
+    eq('...and costs by the foot, not by the crew', Math.round(purse - gp.essence),
+       Math.max(1, Math.round(def.cost * twoLen / C.WALL.unit)));
+    near('...and its stone goes with its length', wb.maxHp, def.hp * twoLen / C.WALL.unit, 1e-6);
+    ok('...which is less than the two crews would have charged', purse - gp.essence < def.cost * 2,
+       `${Math.round(purse - gp.essence)} vs ${def.cost * 2}`);
     eq('two crews of the three are now busy', World.rising(g2, 0), 2);
     eq('...leaving one crew of reach', World.wallReach(g2, 0), C.WALL.unit);
     /* and the masons are genuinely spoken for: with one crew left, a one-crew run is legal
@@ -1351,8 +1365,8 @@ suite('the curtain wall')
      'ok');   // it IS breached here, so this must succeed
   ok('mending takes masonry', b.work > 0, b.work);
   eq('...and a crew, unlike a level', World.rising(w, 0), b.crews || 1);
-  eq('...and half the stone', Math.round(purse2 - w.players[0].essence),
-     Math.round(C.BUILDINGS.wall.cost * (b.crews || 1) * C.WALL.repair));
+  eq('...and half the stone, by the foot', Math.round(purse2 - w.players[0].essence),
+     Math.max(1, Math.round(C.BUILDINGS.wall.cost * b.units * C.WALL.repair)));
   ok('a wall being mended still bars nothing', !w.anyWall);
   run(Math.ceil(b.work) + 1);
   eq('the masons close the breach', b.breach, 0);
@@ -1438,6 +1452,105 @@ suite('a tower and a curtain leave no dead band');
        World.placementError(w, 0, wall.x2, wall.y2 + C.WALL.join + 30, 'barracks') !== 'crowded',
        `end+20 ${World.placementError(w, 0, wall.x2, wall.y2 + 20, 'barracks')}`);
     eq('and nothing was left standing by the sweep', t.length, 0);
+  }
+}
+
+/* PRICED BY THE FOOT, AND SHORT RUNS ARE ALLOWED — with one thing given up for it. Rounding a
+ * run's length up to a whole crew meant a short stretch across a gap was billed as the long
+ * wall it was not, so there was never a reason to draw one; and a minimum length on top of
+ * that meant the gap simply could not be closed. Both are gone. What a short run does NOT get
+ * is a gateway: the gate is cut out of the middle of the run, so on a stretch barely wider
+ * than the hole there is no wall left either side of it. Under WALL.gateMin the stone is
+ * solid, and it stops the heir who raised it as surely as anyone else. */
+suite('a run is bought by the foot');
+{
+  const def = C.BUILDINGS.wall;
+  ok('there is no longest run — only how many crews you can put on one', !def.span[1]);
+  ok('...and the shortest is a token, not a wall-length', def.span[0] < C.WALL.unit / 4,
+     `${def.span[0]} against a run of ${C.WALL.unit}`);
+  ok('a gateway needs more stone than the gate is wide', C.WALL.gateMin > C.WALL.gate * 2,
+     `${C.WALL.gateMin} vs a ${C.WALL.gate * 2}-wide hole`);
+
+  const w = World.createWorld(777, 2), pl = w.players[0];
+  pl.essence = 1e6;
+  w.chaosNext = 1e9;
+  const c = w.map.sites[w.map.cities[0]], gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 4; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  /* one direction, four lengths on it: the price has to be a straight line through them */
+  let base = null;
+  for (let rad = 190; rad < 430 && !base; rad += 20)
+    for (let a = 0; a < 48 && !base; a++) {
+      const th = a / 48 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      const ux = -Math.sin(th), uy = Math.cos(th);
+      if (World.wallError(w, 0, x, y, x + ux * 300, y + uy * 300)) continue;
+      if (World.wallError(w, 0, x, y, x + ux * 40, y + uy * 40)) continue;
+      base = { x, y, ux, uy };
+    }
+  ok('a line the ground will take at any length was found', !!base);
+
+  const priced = [];
+  for (const len of [40, 90, 150, 300]) {
+    const before = pl.essence;
+    const r = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: base.x, y: base.y,
+                                         x2: base.x + base.ux * len, y2: base.y + base.uy * len });
+    ok(`a run of ${len} is raised`, r.ok, r.err);
+    if (!r.ok) continue;
+    const b = pl.buildings.filter((q) => q.bt === 'wall').pop();
+    priced.push({ len, paid: before - pl.essence, hp: b.maxHp, crews: b.crews, gated: !!b.gated });
+    pl.buildings.splice(pl.buildings.indexOf(b), 1);
+  }
+  eq('every length went up, the short ones included', priced.length, 4);
+  for (const q of priced) {
+    near(`a run of ${q.len} costs its length`, q.paid, def.cost * q.len / C.WALL.unit, 1);
+    near(`...and is worth its length in stone`, q.hp, def.hp * q.len / C.WALL.unit, 1e-6);
+  }
+  /* the whole point, stated as the ratio: twice the wall is twice the price, and a run of a
+   * third of a crew is a third of the price rather than the whole card */
+  near('twice the wall is twice the price', priced[3].paid, priced[2].paid * 2, 1);
+  near('...and a quarter of it a quarter', priced[0].paid, priced[2].paid * (40 / 150), 1);
+  ok('...which is a fraction of what a crew-rounded run charged', priced[0].paid < def.cost * 0.4,
+     `${Math.round(priced[0].paid)} against the ${def.cost} it used to be`);
+  /* the CREWS still round up, because you cannot put two thirds of a crew on anything */
+  eq('a run under one crew still takes a whole one', priced[0].crews, 1);
+  eq('...and so does a run of exactly one', priced[2].crews, 1);
+  eq('...while a double run takes two', priced[3].crews, 2);
+
+  /* and the gateway, which is what a short run pays with */
+  eq('a short run has no gateway', priced[0].gated, false);
+  eq('...nor one barely wider than the hole', priced[1].gated, false);
+  eq('a run with stone to spare has one', priced[3].gated, true);
+
+  /* the gate is not decoration: it is the hole the owner's own columns walk through, so a
+   * run without one has to bar its owner along its WHOLE length */
+  const solid = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: base.x, y: base.y,
+                                           x2: base.x + base.ux * 60, y2: base.y + base.uy * 60 });
+  ok('a solid stretch goes up', solid.ok, solid.err);
+  const sb = pl.buildings.filter((q) => q.bt === 'wall').pop();
+  for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('...and it stands', !sb.raise && w.walls.length === 1);
+  eq('...ungated', w.walls[0].gate, false);
+  /* the gate is not decoration: it is the hole the owner's own columns walk through. A run
+   * without one has to bar its owner along its WHOLE length, or 'no gate' is just a missing
+   * ornament and the short run costs nothing at all. Measured the way the gated run is
+   * measured, by marching a man at the middle of it. */
+  {
+    const ends = World.wallEnds(sb);
+    const nx = -(ends[3] - ends[1]), ny = ends[2] - ends[0];
+    const nL = Math.hypot(nx, ny) || 1;
+    const sideOf = (d) => ({ x: sb.x + (nx / nL) * d, y: sb.y + (ny / nL) * d });
+    const near2 = sideOf(70), far = sideOf(-260);
+    const u = { id: w.nextId++, owner: 0, kind: 'soldier', tier: 1, x: near2.x, y: near2.y,
+                ox: 0, oy: 0, hp: 90, maxHp: 90, dmg: C.UNITS.soldier.dmg, cd: 0,
+                goal: null, co: 0, from: -1 };
+    w.units.push(u);
+    pl.banner = { x: far.x, y: far.y, site: -1 };
+    for (let i = 0; i < 30 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    const s2 = (nx / nL) * (u.x - sb.x) + (ny / nL) * (u.y - sb.y);
+    ok('a heir cannot walk through his own ungated run', s2 > 0, `${s2.toFixed(1)} past the stone`);
   }
 }
 

@@ -314,7 +314,10 @@
      * piers either side, so you can see where your own columns will go.
      * A BREACHED wall is drawn as what it is — a broken line of stumps with the middle of it
      * gone — because a ruin that still looks like a wall is a lie about where you are safe. */
-    const gate = (C.WALL && C.WALL.gate) || 30;
+    /* ...but only on a run long enough to spare the stone for one. Below WALL.gateMin the
+     * curtain is solid, and it has to LOOK solid or the player marches a column at a doorway
+     * the sim does not have. */
+    const gate = b.gated ? ((C.WALL && C.WALL.gate) || 30) : 0;
     const broken = !!b.breach;
     const p = [];
     for (let i = 0; i < n; i++) {
@@ -337,7 +340,7 @@
       if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, top + 6, oz, ang));
     }
     /* the gate piers — two posts that say "through here", and a lintel when it is whole */
-    if (!broken) {
+    if (!broken && gate) {
       const ux2 = (bx - ax) / len, uz2 = (bz - az) / len;
       for (const sgn of [-1, 1]) {
         const px = b.x + ux2 * gate * sgn, pz = b.y + uz2 * gate * sgn;
@@ -645,22 +648,32 @@
   R.hitBuilding = function (px, py) {
     if (!curView) return -1;
     const w2 = R.toWorld(px, py);
-    let best = -1, bd = 38 * 38;
+    /* A RUN IS THE LAST THING A TAP MEANS. A curtain answers along its WHOLE length — judging
+     * it by its midpoint made a long wall untappable everywhere except the middle — but that
+     * makes it the widest target on the board, and a tower built INTO it sits at distance
+     * zero from it. Ranked together, the wall won every time and the bastion could not be
+     * opened at all: no upgrade, no branch, no way to see what it was. So the two are ranked
+     * SEPARATELY and a work with a place beats a work with a length, exactly as the army's
+     * targeting does. */
+    let best = -1, bd = 38 * 38, wall = -1, wdd = 38 * 38;
     for (const b of curView.players[curViewer].buildings) {
-      /* a curtain answers along its WHOLE run — judging it by its midpoint made a long wall
-       * untappable everywhere except the middle of it */
-      let dd;
       if (b.x2 != null) {
         const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
         const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;
         let t = ((w2.x - ax) * vx + (w2.y - ay) * vy) / L2;
         t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const px = ax + vx * t, py = ay + vy * t;
-        dd = (w2.x - px) * (w2.x - px) + (w2.y - py) * (w2.y - py);
-      } else dd = (w2.x - b.x) * (w2.x - b.x) + (w2.y - b.y) * (w2.y - b.y);
-      if (dd < bd) { bd = dd; best = b.id; }
+        const qx = ax + vx * t, qy = ay + vy * t;
+        const dd = (w2.x - qx) * (w2.x - qx) + (w2.y - qy) * (w2.y - qy);
+        if (dd < wdd) { wdd = dd; wall = b.id; }
+      } else {
+        /* a tower on the parapet is DRAWN twenty-seven up, so the ground under the finger is
+         * behind where it looks — the same pitched-camera offset the wall snap allows for */
+        const r = b.onWall ? 52 * 52 : 38 * 38;
+        const dd = (w2.x - b.x) * (w2.x - b.x) + (w2.y - b.y) * (w2.y - b.y);
+        if (dd < r && dd < bd) { bd = dd; best = b.id; }
+      }
     }
-    return best;
+    return best >= 0 ? best : wall;
   };
   /* the COMPANY of the viewer's own man under the finger, or 0. Men are small and they move,
    * so the reach is generous — but it only ever answers with your own, and only when the tap
@@ -1485,6 +1498,7 @@
        * only how far the idle masons reach — so the preview says what THIS run will cost and
        * turns red on the one limit that actually exists. */
       const crews = Math.max(1, Math.ceil(len / C.WALL.unit));
+      const price = Math.max(1, Math.round(def.cost * (len / C.WALL.unit)));
       const reach = R.span.reach || 0;
       const short = len < def.span[0], over = reach > 0 && len > reach;
       const ok = !moved || (!short && !over);
@@ -1507,7 +1521,8 @@
         g.fillStyle = ok ? '#ffe9a8' : '#ff6a5a';
         const say = short ? Math.round(len) + ' — too short'
           : over ? Math.round(len) + ' — the masons reach ' + Math.round(reach)
-          : Math.round(len) + '  ◆ ' + def.cost * crews + '  ·  ' + crews + (crews > 1 ? ' crews' : ' crew');
+          : Math.round(len) + '  ◆ ' + price + '  ·  ' + crews + (crews > 1 ? ' crews' : ' crew') +
+            (len >= C.WALL.gateMin ? '' : '  ·  no gate');
         g.fillText(say, (a.x + b2.x) / 2, (a.y + b2.y) / 2 - 8);
         g.textAlign = 'left'; g.textBaseline = 'alphabetic';
       }

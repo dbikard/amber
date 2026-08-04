@@ -66,7 +66,10 @@
       const steps = Math.max(2, Math.ceil(len / (cw * 0.5)));
       for (let s = 0; s <= steps; s++) {
         const f = s / steps, px = w.ax + (w.bx - w.ax) * f, py = w.ay + (w.by - w.ay) * f;
-        const atGate = (px - w.gx) * (px - w.gx) + (py - w.gy) * (py - w.gy) < gateR * gateR;
+        /* a run too short to spare the stone has no gateway at all — solid to everyone,
+         * its owner included. See WALL.gateMin. */
+        const atGate = w.gate &&
+          (px - w.gx) * (px - w.gx) + (py - w.gy) * (py - w.gy) < gateR * gateR;
         const gx = Math.floor(px / cw), gy = Math.floor(py / cw);
         for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
           const cx = gx + dx, cy = gy + dy;
@@ -81,6 +84,7 @@
     }
     /* ...and the gateway is cleared last, so a neighbouring course cannot stamp it shut */
     for (const w of world.walls || []) {
+      if (!w.gate) continue;
       const gx0 = Math.floor((w.gx - gateR) / cw), gx1 = Math.floor((w.gx + gateR) / cw);
       const gy0 = Math.floor((w.gy - gateR) / cw), gy1 = Math.floor((w.gy + gateR) / cw);
       for (let cy = gy0; cy <= gy1; cy++) for (let cx = gx0; cx <= gx1; cx++) {

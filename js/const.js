@@ -190,7 +190,13 @@
      * stone or the upgrade would take essence and do nothing at all. */
     wall:     { name: 'Curtain Wall',  icon: '🧱', cost: 110, up: [90, 150], hp: 820, raise: 26,
                 perCrew: true,   // cost/hp/upkeep of crews all multiply by the run's length
-                hpAt: [820, 1290, 1880], span: [110], vision: 200,
+                /* A RUN IS PRICED BY THE FOOT, not by the crew. Rounding the length up to a
+                 * whole crew made every run under WALL.unit cost the same as a full one, so a
+                 * short stretch across a gap was billed as if it were the long wall it was
+                 * not, and there was no reason ever to draw one. Price, stone and the upgrade
+                 * all go by `len / WALL.unit` continuously; only the mason COUNT rounds up,
+                 * because you cannot put two thirds of a crew on anything. */
+                hpAt: [820, 1290, 1880], span: [26], vision: 200,
                 blurb: 'A run of stone. Nothing crosses it and nothing shoots through it — but men who come up to man it can be shot back.' },
     /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
      * hit points behind towers — so "win by force" meant grinding a rival's outworks forever
@@ -286,6 +292,13 @@
                   * `rubble` is what a ruin keeps standing — it bars nothing and shelters
                   * nobody, but the ground it sits on is not free until somebody clears it,
                   * and a single stray blow must not sweep the record away. */
+                 /* A SHORT RUN HAS NO GATEWAY. The gate is `gate` wide out of the middle of
+                  * the run, so on a stretch barely wider than the hole there is no wall left
+                  * either side of it — the "wall" is a doorway with two stumps. Under
+                  * `gateMin` the stone is solid: it stops your own men as surely as anyone
+                  * else's, which is the price of a short blocking piece and a real reason to
+                  * draw a longer one. */
+                 gateMin: 120,
                  repair: 0.5, fixWork: 0.7, rubble: 0.3 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.

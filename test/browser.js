@@ -1143,8 +1143,16 @@ async function match(browser, base, renderer) {
         }
         if (wall.breach) return { err: 'still breached' };
         const ends = W.wallEnds(wall);
-        const at = { x: wall.x + (ends[2] - ends[0]) * 0.24, y: wall.y + (ends[3] - ends[1]) * 0.24 };
-        const r2 = W.applyCommand(g.world, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y });
+        /* SEARCHED ALONG THE RUN, not picked. Earlier suites leave towers standing around the
+         * Seat and a run may pass within a tower's own clearance of one of them, so a fixed
+         * fraction along the wall lands on a spot that is legitimately crowded — which reads
+         * as 'a tower cannot join a wall' when the rule is working exactly as intended. */
+        let r2 = { ok: false, err: 'nospot' };
+        for (const f of [0.24, -0.24, 0.36, -0.36, 0.12, -0.12, 0, 0.46, -0.46]) {
+          const at = { x: wall.x + (ends[2] - ends[0]) * f, y: wall.y + (ends[3] - ends[1]) * f };
+          r2 = W.applyCommand(g.world, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y });
+          if (r2.ok) break;
+        }
         if (!r2.ok) return { err: r2.err };
         const tw = pl.buildings.filter((b) => b.bt === 'tower').pop();
         tw.raise = 0;

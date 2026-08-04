@@ -458,8 +458,8 @@
     }
     /* A BREACHED CURTAIN offers one thing and it is not an upgrade: put the stone back. */
     if (s.breach) {
-      const crews = s.crews || 1;
-      const price = Math.round(C.BUILDINGS.wall.cost * crews * C.WALL.repair);
+      const size = s.units != null ? s.units : (s.crews || 1);   // stone, not crews
+      const price = Math.max(1, Math.round(C.BUILDINGS.wall.cost * size * C.WALL.repair));
       const b = document.createElement('button');
       b.className = 'card' + (essence >= price ? '' : ' locked');
       b.dataset.cost = price;
