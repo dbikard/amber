@@ -572,20 +572,13 @@
       const site = view.map.sites[siteId];
       const foeCity = view.map.cities[1 - game.viewer] === siteId;
       UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
-                   view.players[game.viewer], view.players[1 - game.viewer],
-                   foeCity ? null : { x: site.x, y: site.y }, whyAt(site.x, site.y));
+                   view.players[game.viewer], view.players[1 - game.viewer]);
       return;
     }
     /* bare ground does nothing now: raising a work begins at the BUILD button, so the map is
      * only ever asked about things that are ON it. */
     Render.selected = -1;
   }
-
-  /* Why a work will not stand at a point, per type — asked of the sim itself so the sheet
-   * and the rules can never disagree. A guest has no local world: the host validates, and
-   * the cards simply go by price. */
-  const whyAt = (wx, wy) =>
-    game.world ? ((bt) => World.placementError(game.world, game.viewer, wx, wy, bt)) : null;
 
   /* ---------------- LAN pairing (QR flow ported from Perils) ---------------- */
   function setupLan() {
@@ -787,7 +780,7 @@
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
         game.targeting = false; game.armedFlag = null;
-        UI.buildSheet(null, view.players[game.viewer].essence, null, view.players[game.viewer]);
+        UI.buildSheet(view.players[game.viewer].essence, view.players[game.viewer]);
       },
       /* a card was chosen: hold it, and let the next tap on the map say where */
       onPick: (bt, co) => {

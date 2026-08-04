@@ -1199,113 +1199,77 @@ async function match(browser, base, renderer) {
       ok('...and stays in the match to do it', dropped.mode !== null, dropped.mode);
     }
 
-    /* ---------------- an open sheet keeps asking ---------------- *
-     * A card refused for a reason that can CHANGE — the masons are busy, or no troops of yours
-     * stand at the spring yet — has to go live in place. Closing and re-opening the menu to
-     * discover the answer changed is not an interface. */
+    /* ---------------- the sheet stays live, and a site is not a build tray ---------------- *
+     * The tray used to belong to a patch of GROUND — you tapped a spring, and the cards could
+     * say why that spring refused a Gate. Building is choose-then-place now: the button arms a
+     * work and the next tap puts it down, so a site sheet carrying its own build tray was a
+     * second, contradictory way to build that ignored whatever you were already holding.
+     * A site says what it IS and who holds it. What still changes under an open sheet is the
+     * PURSE and the YARD, and both must reach the card without it being reopened. */
     suite(`${r} · the sheet stays live`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
-    await pg.waitForTimeout(150);
     const live = await pg.evaluate(async () => {
-      const W = window.World, C = window.CONST, g = window.Game.game;
-      const c = g.world.map.sites[g.world.map.cities[0]];
-      g.world.players[0].essence = 99000;
-      /* finish anything standing, then start one work so the masons are demonstrably busy */
-      window.__step(40, { raising: true });
-      let at = null;
-      for (let rad = 170; rad < 400 && !at; rad += 20)
-        for (let a = 0; a < 40 && !at; a++) {
-          const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-          if (W.placementError(g.world, 0, x, y, 'tower') === null) at = { x, y };
-        }
-      if (!at) return { ok: false, why: 'nowhere to build' };
-      /* FILL THE YARD, not just one bench. Crews are hired one per Gate now, so a realm with
-       * four Gates shrugs off a single work and nothing ever reads 'busy'. Keep starting
-       * works until no crew is idle — that is the state this suite is about. */
-      let guard = 0;
-      while (W.masons(g.world, 0) - W.rising(g.world, 0) > 0 && guard++ < 12) {
-        let spot = null;
-        for (let rad = 170; rad < 430 && !spot; rad += 18)
-          for (let a = 0; a < 40 && !spot; a++) {
-            const th = a / 40 * Math.PI * 2 + guard * 0.11;
-            const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-            if (W.placementError(g.world, 0, x, y, 'tower') === null) spot = { x, y };
-          }
-        if (!spot) break;
-        W.applyCommand(g.world, 0, { c: 'build', ...spot, bt: 'tower' });
-      }
-      if (W.masons(g.world, 0) - W.rising(g.world, 0) > 0) return { ok: false, why: 'yard never filled' };
-      const shell = g.world.players[0].buildings.find((q) => q.raise > 0);
-
-      /* open the build sheet on some OTHER open ground while they are busy */
-      let at2 = null;
-      for (let rad = 200; rad < 420 && !at2; rad += 20)
-        for (let a = 0; a < 40 && !at2; a++) {
-          const th = a / 40 * Math.PI * 2 + 0.3, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-          if (W.placementError(g.world, 0, x, y, 'tower') === 'busy') at2 = { x, y };
-        }
-      if (!at2) return { ok: false, why: 'no spot reported busy' };
-      window.UI.buildSheet(at2, g.world.players[0].essence,
-        (bt) => W.placementError(g.world, 0, at2.x, at2.y, bt));
-      const card = () => document.querySelector('#sheet .card[data-bt="tower"]');
-      const lockedWhileBusy = card() && card().classList.contains('locked');
-      const saidBusy = card() && /masons/i.test(card().textContent);
-
-      /* let the masons finish WITHOUT touching the sheet */
-      window.__step(40, { raising: true });
-      window.UI.tick(g.world.players[0].essence);
+      const g = window.Game.game;
+      const pl = g.world.players[0];
+      for (const b of pl.buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+      const dear = Object.entries(window.CONST.BUILDINGS)
+        .filter(([k]) => window.CONST.BUILD_ORDER_UI.includes(k))
+        .sort((a, b) => b[1].cost - a[1].cost)[0];
+      pl.essence = dear[1].cost - 20;              // one card out of reach, the rest in it
+      window.UI.buildSheet(pl.essence, pl);
+      const card = () => document.querySelector(`#sheet .card[data-bt="${dear[0]}"]`);
+      const lockedPoor = card() && card().classList.contains('locked');
+      /* the war chest catches up while you are looking at it */
+      pl.essence = dear[1].cost + 50;
+      window.UI.tick(pl.essence);
       await new Promise((res) => requestAnimationFrame(res));
-      const stillOpen = window.UI.sheetOpen();
-      const freeNow = card() && !card().classList.contains('locked');
-      return { ok: true, lockedWhileBusy, saidBusy, stillOpen, freeNow,
-               text: card() ? card().textContent.slice(0, 70) : 'no card' };
+      return { bt: dear[0], cost: dear[1].cost, lockedPoor,
+               stillOpen: window.UI.sheetOpen(),
+               freeNow: card() && !card().classList.contains('locked') };
     });
-    ok('the scenario set up', live.ok, live.why || '');
-    if (live.ok) {
-      ok('a card is locked while the masons are busy', live.lockedWhileBusy);
-      ok('and says so', live.saidBusy, live.text);
-      ok('the sheet is still the one you opened', live.stillOpen);
-      ok('the card goes live when the masons finish, without reopening', live.freeNow, live.text);
-    }
-
-    /* the other reason that changes on its own: a spring beyond your writ needs your troops
-     * standing on it, and they may arrive long after you opened the sheet */
-    const arrive = await pg.evaluate(async () => {
-      const W = window.World, C = window.CONST, g = window.Game.game;
-      const c = g.world.map.sites[g.world.map.cities[0]];
-      g.world.players[0].essence = 99000;
-      window.__step(40, { raising: true });
-      /* an unheld spring outside the writ, with nobody of ours near it */
-      const spring = g.world.map.sites.filter((s) => s.kind === 'node')
-        .find((s) => Math.hypot(s.x - c.x, s.y - c.y) > C.CLAIM.seat + 120 &&
-                     W.placementError(g.world, 0, s.x + 40, s.y, 'gate') === 'presence');
-      if (!spring) return { ok: false, why: 'no spring reported presence' };
-      const at = { x: spring.x + 40, y: spring.y };
-      window.UI.buildSheet(at, g.world.players[0].essence,
-        (bt) => W.placementError(g.world, 0, at.x, at.y, bt));
-      const card = () => document.querySelector('#sheet .card[data-bt="gate"]');
-      const lockedAway = card() && card().classList.contains('locked');
-      const saidTroops = card() && /troops/i.test(card().textContent);
-      /* march someone there — a Trump champion is the quickest honest way */
-      g.world.players[0].powers.trump = 0;
-      W.applyCommand(g.world, 0, { c: 'power', k: 'trump' });
-      const champ = g.world.units.find((u) => u.id === g.world.players[0].championId);
-      if (!champ) return { ok: false, why: 'no champion' };
-      champ.x = spring.x; champ.y = spring.y;
-      W.update(g.world, C.SIM_DT);
-      window.UI.tick(g.world.players[0].essence);
-      await new Promise((res) => requestAnimationFrame(res));
-      return { ok: true, lockedAway, saidTroops,
-               freeNow: card() && !card().classList.contains('locked'),
-               text: card() ? card().textContent.slice(0, 70) : 'no card' };
-    });
-    ok('a spring beyond the writ was found', arrive.ok, arrive.why || '');
-    if (arrive.ok) {
-      ok('its Gate is locked while no troops of yours stand there', arrive.lockedAway);
-      ok('and says why', arrive.saidTroops, arrive.text);
-      ok('it goes live the moment a soldier arrives, without reopening', arrive.freeNow, arrive.text);
-    }
+    ok('the dearest card is locked while the purse is short', live.lockedPoor,
+       `${live.bt} at ${live.cost}`);
+    ok('the sheet is still the one you opened', live.stillOpen);
+    ok('and it goes live when the essence arrives, without reopening', live.freeNow);
     await pg.evaluate(() => window.UI.closeSheet());
+
+    /* A SPRING IS NOT A BUILD MENU. Reported from play. */
+    const springTap = await pg.evaluate(async () => {
+      const R = window.Render, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      R.setZoom(1); R.lookAt(c.x, c.y);
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const lid = window.innerHeight - 20;
+      /* a spring that is actually on screen, hit through the renderer's own projection */
+      for (const s2 of g.world.map.sites) {
+        if (s2.kind !== 'node') continue;
+        const p = R.project(s2.x, s2.y);
+        if (!(p.x > 40 && p.x < window.innerWidth - 40 && p.y > 100 && p.y < lid)) continue;
+        if (R.hitSite(p.x, p.y, g.world, 0, false) !== s2.id) continue;
+        return { ok: true, x: p.x, y: p.y, name: s2.name };
+      }
+      return { ok: false };
+    });
+    ok('a spring can be found on screen to tap', springTap.ok);
+    if (springTap.ok) {
+      await pg.evaluate(({ x, y }) => {
+        const cvs = document.getElementById('game');
+        for (const t of ['pointerdown', 'pointerup'])
+          cvs.dispatchEvent(new PointerEvent(t, { pointerId: 9, clientX: x, clientY: y, bubbles: true }));
+      }, { x: springTap.x, y: springTap.y });
+      await pg.waitForTimeout(200);
+      const sheet = await pg.evaluate(() => ({
+        open: window.UI.sheetOpen(),
+        title: (document.querySelector('#sheet .sheet-title') || {}).textContent || '',
+        cards: document.querySelectorAll('#sheet .card[data-bt]').length,
+        armed: !!window.Game.game.placing
+      }));
+      ok('tapping it tells you what it is', sheet.open && /\S/.test(sheet.title), sheet.title);
+      ok('...and offers no works to raise', sheet.cards === 0, `${sheet.cards} build cards`);
+      ok('...and arms nothing', !sheet.armed);
+      await pg.evaluate(() => window.UI.closeSheet());
+      await pg.waitForTimeout(120);
+    }
 
     /* ---------------- the Shrine's sheet ---------------- */
     suite(`${r} · the Shrine`);

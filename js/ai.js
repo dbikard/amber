@@ -217,7 +217,7 @@
   /* what an assault costs to be worth making: a real army, and more of it than he can see of
    * the other man's. Both are read fresh every time the heir thinks, so the march is a
    * standing decision rather than a one-way door. */
-  const COMMIT = 14;
+  const COMMIT = +(typeof process !== 'undefined' && process.env && process.env.AMBER_COMMIT) || 14;
 
   /* ---------------- the heirs ---------------- */
   const HEIRS = {

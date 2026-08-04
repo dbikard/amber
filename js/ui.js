@@ -370,10 +370,13 @@
            `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : d.blurb}` +
            `${bad || !d.raise ? '' : ' <b>· ' + d.raise + 's to raise</b>'}</span>${bad ? '' : rateTag(bt, 1)}`;
   }
-  function buildCards(el, at, essence, why) {
+  /* ONE caller now: the BUILD button's sheet. The `at`/`why` pair went with the site sheet —
+   * a tray that belonged to a patch of ground could say why THAT ground refused a work, and
+   * nothing belongs to a patch of ground any more. */
+  function buildCards(el, essence) {
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
-      const bad = why ? why(bt) : null;
+      const bad = null;   // the ground answers when you put it down, not here
       const card = document.createElement('button');
       card.className = 'card' + (essence >= d.cost && !bad ? '' : ' locked');
       card.dataset.cost = d.cost;      // live affordability: UI.tick unlocks it as income catches up
@@ -402,21 +405,20 @@
       });
       el.appendChild(card);
     }
-    /* the sheet remembers WHERE it was opened and HOW to ask, so the answer can change while
-     * it is open: the masons finish, or a soldier finally reaches the spring, and the card
-     * you are already looking at goes live without you closing and re-opening it */
-    el._why = why || null;
+    /* A card still goes live while you look at it — the masons finish, the purse catches up —
+     * but what changes is the PURSE and the YARD, not the ground, so UI.tick reads those and
+     * there is nothing here to remember. */
   }
   const freshSheet = () => { const el = $('sheet'); el._why = null; el._raising = null; return el; };
   /* CHOOSE FIRST, PLACE SECOND. The sheet no longer belongs to a spot on the map — it is what
    * the BUILD button opens — so the cards cannot say why a particular patch of ground refuses
    * them. They say what a work costs and whether you can afford it; the ground answers when
    * you put it down, which is also when you can see where it is going. */
-  UI.buildSheet = function (at, essence, why, me) {
+  UI.buildSheet = function (essence, me) {
     const el = freshSheet();
     el._me = me || null;
     el.innerHTML = `<div class="sheet-title">Raise a work ${trChip(essence)}</div>`;
-    buildCards(el, at, essence, why);
+    buildCards(el, essence);
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
@@ -566,7 +568,7 @@
     road: 'A milestone of the black road. Chaos favors this ground.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, at, why) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo) {
     freshSheet();
     const el = $('sheet');
     el._me = pinfo || null;
@@ -610,14 +612,12 @@
         el.appendChild(mu);
       }
     }
-    /* raise a work right here — this is how a spring gets claimed */
-    if (site.kind !== 'city' && at) {
-      const hdr = document.createElement('div');
-      hdr.className = 'sheet-blurb';
-      hdr.innerHTML = '<b>Raise a work here</b>';
-      el.appendChild(hdr);
-      buildCards(el, at, essence, why);
-    }
+    /* AND NOTHING TO BUILD. This sheet used to carry the whole build tray, because there was a
+     * time when a tap on the ground was how you raised a work — but building is CHOOSE THEN
+     * PLACE now: the 🔨 button arms a work and the next tap on the map puts it down. Leaving
+     * the cards here left two contradictory ways to build, one of which ignored the armed
+     * work you were already holding. A site says what it IS and who holds it; the button
+     * raises things. */
     addCancel(el);
     el._openedAt = performance.now();
     el.classList.remove('hidden');
