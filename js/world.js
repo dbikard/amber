@@ -751,7 +751,14 @@
       if (cmd.k === 'trump') {
         if (world.units.find((u) => u.id === pl.championId)) return { ok: false, err: 'alive' };
         pl.essence -= def.cost;
-        pl.championId = spawnUnit(world, pi, 'champion');
+        /* THE TRUMP GETS A STANDARD OF ITS OWN. Everything that fights answers a flag now, and
+         * the champion answered none — he was spawned under the old company 0, which meant
+         * "follows the gold banner", and the gold banner is gone. He walked to wherever the
+         * Recall last pointed and could not be ordered anywhere else. His company is marked,
+         * so the tray can show it for what it is rather than as another numbered detachment. */
+        const tco = { id: pl.nextCo++, rally: null, trump: true };
+        pl.companies.push(tco);
+        pl.championId = spawnUnit(world, pi, 'champion', undefined, undefined, undefined, tco.id);
         pl.powers.trump = def.cd;
         emit(world, { e: 'trump', pi });
         return { ok: true };
@@ -1319,13 +1326,24 @@
     }
 
     /* bury the dead */
+    let fellChampion = -1;
     for (let i = world.units.length - 1; i >= 0; i--) {
       if (world.units[i].hp <= 0) {
         const u = world.units[i];
-        if (u.kind === 'champion') { const pl = world.players[u.owner]; if (pl && pl.championId === u.id) pl.championId = 0; }
+        if (u.kind === 'champion') {
+          const pl = world.players[u.owner];
+          if (pl && pl.championId === u.id) pl.championId = 0;
+          if (pl) fellChampion = u.owner;
+        }
         world.units.splice(i, 1);
       }
     }
+    /* AND HIS CARD GOES WITH HIM — after the burial, not during it. Companies are pruned
+     * when a HALL is razed or moved, which never happens to the Trump's, since no hall
+     * musters into it: a fallen Champion left a chip in the tray that pointed at nobody and
+     * could still be planted. He is the only unit whose company hangs on him alone. Pruning
+     * before the splice finds him still standing in world.units and keeps the card. */
+    if (fellChampion >= 0) pruneCos(world, fellChampion);
   }
 
   /* A Seat falls. In a duel that ends it. In a free-for-all it puts one heir OUT — their

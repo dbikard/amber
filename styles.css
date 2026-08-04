@@ -92,6 +92,12 @@ body {
   line-height: 1; cursor: pointer; margin-right: 10px;
 }
 #btn-build #build-lbl { font-size: 9px; letter-spacing: 1.5px; color: #cbbf9a; }
+/* the Trump's chip is a CARD, not a pennant — one summoned Amberite, not a detachment */
+.fbtn.trump {
+  border-color: rgba(196,142,255,0.75);
+  background: radial-gradient(circle at 50% 30%, rgba(196,142,255,0.28), rgba(20,16,30,0.7) 70%);
+  box-shadow: 0 0 10px rgba(196,142,255,0.35);
+}
 #btn-build:active, #btn-build.armed { background: rgba(200,164,79,0.28); }
 #btn-build.armed { border-color: #ffd98a; }
 .pw {

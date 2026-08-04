@@ -1399,6 +1399,54 @@ suite('veterans, not crowds')
  * rather than merely hiding it: no clock, no muster, no Chaos, and no orders. A pause you can
  * build through is a planning phase, and in a duel it is a way to buy thinking time the other
  * heir does not get. */
+/* THE TRUMP ANSWERS ITS OWN CARD. Everything that fights answers a flag now, and the champion
+ * answered none: he was spawned under the old company 0 — "follows the gold banner" — and the
+ * gold banner is gone, so he walked wherever the Recall last pointed and could be ordered
+ * nowhere else. His company is MARKED, so the tray can draw it as a card rather than as
+ * another numbered detachment, and the hall chooser never offers it. */
+suite('the Trump has its own standard')
+{
+  const w = World.createWorld(1000, 2);
+  w.chaosNext = 1e9;
+  const pl = w.players[0];
+  pl.essence = 100000;
+  eq('no standard flies before he is called', pl.companies.length, 0);
+  ok('the Trump can be played', World.applyCommand(w, 0, { c: 'power', k: 'trump' }).ok);
+  const ch = w.units.find((u) => u.kind === 'champion');
+  ok('a Champion answers it', !!ch);
+  ok('...under a standard of his own', ch.co > 0, `co ${ch.co}`);
+  eq('...which is one company', pl.companies.length, 1);
+  const tc = pl.companies[0];
+  ok('...marked as the Trump\'s', !!tc.trump);
+  eq('...and it is his', tc.id, ch.co);
+
+  /* it is a real standard: he goes where it is planted, like any other company */
+  const site = w.map.sites.find((s) => s.kind === 'node');
+  ok('the card can be planted', World.applyCommand(w, 0, { c: 'rally', co: tc.id, site: site.id }).ok);
+  World.update(w, C.SIM_DT);
+  ok('and the Champion answers it', ch.goal && ch.goal.site === site.id,
+     JSON.stringify(ch.goal));
+
+  /* a hall must never be able to muster into it — one summoned Amberite is not a company */
+  const c = World.cityOf(w, 0);
+  let at = null;
+  for (let rad = 170; rad < 400 && !at; rad += 20)
+    for (let a = 0; a < 40 && !at; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 0, x, y, 'barracks') === null) at = { x, y };
+    }
+  ok('there is ground for a hall', !!at);
+  World.applyCommand(w, 0, { c: 'build', ...at, bt: 'barracks' });
+  const hall = pl.buildings.filter((b) => b.bt === 'barracks').pop();
+  ok('a hall raised beside it takes a standard of its OWN', hall.co !== tc.id, `co ${hall.co}`);
+
+  /* and when he falls, his card goes with him */
+  ch.hp = 0;
+  for (let i = 0; i < 30 * 2; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('a fallen Champion takes his card off the tray', !pl.companies.some((q) => q.trump),
+     JSON.stringify(pl.companies));
+}
+
 suite('the halt')
 {
   const w = World.createWorld(4242, 3);

@@ -156,7 +156,7 @@
      * flags to think about, which is the whole point of companies */
     const cos = me.companies || [];
     const halls = (id) => me.buildings.filter((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.co === id).length;
-    const rows = cos.map((co) => [co.id, !!co.rally, halls(co.id)]);
+    const rows = cos.map((co) => [co.id, !!co.rally, halls(co.id), !!co.trump]);
     const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
     if (hash === trayHash) return;
     trayHash = hash;
@@ -174,10 +174,13 @@
      * gold one was both redundant and a trap — it struck every standing detachment order the
      * moment you touched it. Every hall flies a standard of its own now, so the tray is the
      * army: one flag per company, and nothing that quietly overrules them. */
-    for (const [id, afield, n] of rows) {
-      const col = UI.coColor(id);
-      const b = mk(id, '⚐', 'co', col);
-      b.title = n + (n === 1 ? ' hall' : ' halls');
+    for (const [id, afield, n, trump] of rows) {
+      /* THE TRUMP IS NOT A DETACHMENT. It is one summoned Amberite who answers to nothing
+       * else, so it gets the card rather than a pennant, and a colour no company can take. */
+      const col = trump ? '#c48eff' : UI.coColor(id);
+      const b = mk(id, trump ? '🃏' : '⚐', trump ? 'co trump' : 'co', col);
+      b.title = trump ? 'the Champion you called through the Trump'
+                      : n + (n === 1 ? ' hall' : ' halls');
       if (n > 1) {
         const c2 = document.createElement('span');
         c2.className = 'fcount';
@@ -331,6 +334,7 @@
     };
     for (const co of cos) {
       const n = me.buildings.filter((q) => C.BUILDINGS[q.bt] && C.BUILDINGS[q.bt].spawns && q.co === co.id).length;
+      if (co.trump) continue;   // the Champion answers his own card and nothing else
       row('Standard ' + co.id,
           (n ? n + (n === 1 ? ' hall musters' : ' halls muster') + ' under it' : 'no hall under it yet') +
           (co.rally ? ' · posted afield' : ' · holding at home'),

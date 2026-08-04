@@ -393,10 +393,19 @@
         p.push(part(sph(1.1), crest, 3.5, 27, 0));                   // motes at his shoulder
       }
     } else if (kind === 'champion') {
-      p.push(part(cyl(4.4, 5.6, 16, 6), 0xcccccc, 0, 10, 0));
-      p.push(part(sph(4.2), 0xeeeeee, 0, 21.5, 0));
-      p.push(part(box(1.6, 16, 4), 0xffffff, 6.5, 14, 0));
-      p.push(part(box(2, 4, 2), 0xff8888, 0, 27, 0));
+      /* AN AMBERITE, NOT A BIGGER SOLDIER. He was a recruit at 1.25 scale with a red comb,
+       * which at the zoom this is played at is a soldier you squint at. He is built to be
+       * told apart at a glance instead: a long cloak that breaks the upright silhouette every
+       * other unit has, a two-handed blade held high, and the Trump's own violet — a colour
+       * no company standard can take — burning over his head. */
+      p.push(part(cyl(3.4, 4.6, 18, 6), 0xdcd4e8, 0, 11, 0));            // the man
+      p.push(part(sph(4.0), 0xefeaf6, 0, 23, 0));
+      p.push(part(cone(7.5, 20, 7), 0x6a4a9a, 0, 12, -2.5));             // the cloak, falling wide
+      p.push(part(box(9, 3, 9), 0x8a6ac0, 0, 22, -2));                   // its clasp at the shoulder
+      p.push(part(box(1.8, 26, 3.2), 0xf2f0ff, 7, 20, 0));               // a great blade, raised
+      p.push(part(box(6, 2.4, 4), 0xc48eff, 7, 9, 0));                    // its guard
+      p.push(part(sph(2.6), 0xc48eff, 0, 33, 0));                        // the Trump's light
+      p.push(part(cyl(5.5, 5.5, 0.8, 8), 0xc48eff, 0, 35.5, 0));         // ...and its ring
     } else if (kind === 'engine') {
       /* a trebuchet on a cart: a low hull, rollers either side, a mast and a throwing arm
        * with the counterweight hauled back. Squat and wide, so a siege train reads as one
@@ -1016,7 +1025,7 @@
           dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
           dum.rotation.set(0, f.a, 0);
         }
-        const s2 = (u.kind === 'champion' ? 1.25 : 1) * (1 + (rankOf(u) - 1) * 0.06);
+        const s2 = (u.kind === 'champion' ? 1.35 : 1) * (1 + (rankOf(u) - 1) * 0.06);
         dum.scale.set(s2, s2, s2);
         dum.updateMatrix();
         im.setMatrixAt(i, dum.matrix);
