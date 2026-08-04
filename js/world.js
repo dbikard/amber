@@ -167,23 +167,39 @@
    * would stand on — a tower raised astride a run is part of it, and that is what lets it
    * shoot over the stone instead of at the back of it. */
   function wallUnder(world, pi, x, y) {
-    if (!world.anyWall) return null;
-    const r2 = (C.WALL.thick + 16) * (C.WALL.thick + 16);
-    for (const w of world.walls)
-      if (w.owner === pi && segD2(w.b, x, y) < r2) return w.b;
-    return null;
+    const r2 = C.WALL.join * C.WALL.join;
+    let best = null, bd = r2;
+    /* the heir's OWN stone, scaffolding included — `world.walls` holds only finished runs, and
+     * going by that list meant a curtain could not be given its gatehouse until the masons
+     * were out of it, which is precisely when you want to plan one. Rubble is not stone: a
+     * ruin is ground waiting to be cleared, not a run to build into. */
+    for (const b of world.players[pi].buildings) {
+      if (!isWall(b) || b.breach) continue;
+      const dd = segD2(b, x, y);
+      if (dd < bd) { bd = dd; best = b; }
+    }
+    return best;
   }
   function clearOfWorks(world, x, y, pi) {
     const need = C.BUILD.foot * 2 + C.BUILD.gap;
     const on = pi != null ? wallUnder(world, pi, x, y) : null;
+    const near = C.WALL.join * C.WALL.join;
     for (let q = 0; q < world.players.length; q++)
       for (const b of world.players[q].buildings) {
-        /* the wall you are building INTO does not crowd you out of it, and neither does a
-         * tower already standing on some other stretch of the same run */
-        if (on && (b === on || b.onWall === on.id)) {
-          if (b !== on && d2(x, y, b.x, b.y) < need * need) return false;
+        /* A RUN CROWDS BY ITS LENGTH, NOT BY ITS MIDDLE. A wall is stored by its midpoint so
+         * that every point-shaped consumer keeps working, but nothing about a two-hundred-foot
+         * curtain is at its middle: measured as a point it left the whole length of a long run
+         * free ground to build astride, and refused the one spot anybody actually wants a
+         * tower. The radius is WALL.join, the same one the snap uses, so a tap too near the
+         * stone to stand beside it is by definition a tap ON the stone. */
+        if (isWall(b)) {
+          /* the run you are joining does not crowd you out of it — and neither does any other
+           * run of your own, or the corner where two curtains meet could hold no tower */
+          if (on && q === pi) continue;
+          if (segD2(b, x, y) < near) return false;
           continue;
         }
+        /* a tower already up on the same run still needs its own room on it */
         if (d2(x, y, b.x, b.y) < need * need) return false;
       }
     for (let pi = 0; pi < world.players.length; pi++) {   // and never inside the Seat itself
@@ -597,13 +613,8 @@
        * behind the run, not on it — and that gap fell straight into the band where a tower
        * is too far to join and too near to stand. Snap it, so pointing at your own curtain
        * means what it looks like it means. */
-      if (cmd.bt === 'tower' && world.anyWall) {
-        let near2 = null, nd = C.WALL.join * C.WALL.join;
-        for (const wl of world.walls) {
-          if (wl.owner !== pi) continue;
-          const dd = segD2(wl.b, x, y);
-          if (dd < nd) { nd = dd; near2 = wl.b; }
-        }
+      if (cmd.bt === 'tower') {
+        const near2 = wallUnder(world, pi, x, y);
         if (near2) { const q = segNear(near2, x, y); x = q.x; y = q.y; }
       }
       const bad = def.span ? null : placementError(world, pi, x, y, cmd.bt);

@@ -1361,6 +1361,86 @@ suite('the curtain wall')
   eq('a whole wall has nothing to mend', World.applyCommand(w, 0, { c: 'fix', id: b.id }).err, 'whole');
 }
 
+/* A TOWER JOINS THE CURTAIN OR IT STANDS CLEAR OF IT — there is no third answer, and there
+ * must be no OFFSET that gives one. The bug this suite exists for: the snap reached WALL.join
+ * from the run while the crowding test measured BUILD.foot*2+gap from the wall's MIDPOINT, so
+ * two different radii from two different points drew a band where a tower could neither join
+ * the stone nor stand beside it. Every tap in the band came back 'too close to another work'
+ * and there was no spot that would take it. One radius now, measured from the RUN, used by
+ * both — which is a thing a test can state rather than sample. */
+suite('a tower and a curtain leave no dead band');
+{
+  const w = World.createWorld(20260804, 2);
+  const pl = w.players[0];
+  pl.essence = 1e6;
+  const c = w.map.sites[w.map.cities[0]];
+  /* crews, hired well away from the ground under test so nothing but the wall can crowd it */
+  const gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 4; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  /* a run, wherever the map will take one */
+  let run = null;
+  for (let rad = 190; rad < 430 && !run; rad += 20)
+    for (let a = 0; a < 48 && !run; a++) {
+      const th = a / 48 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      const x2 = x + 160, y2 = y;
+      if (World.applyCommand(w, 0, { c: 'build', bt: 'wall', x, y, x2, y2 }).ok) run = { x, y, x2, y2 };
+    }
+  ok('a curtain goes up to test against', !!run);
+  const wall = pl.buildings.filter((q) => q.bt === 'wall').pop();
+
+  /* THE SCAFFOLDING COUNTS. A curtain is at its most interesting while the masons are still
+   * in it — that is when you are planning its gatehouse — and going by `world.walls`, which
+   * holds only finished runs, meant the answer was 'too close to another work' until it was
+   * done and 'on the wall' a minute later, for the same tap. */
+  {
+    const p = { x: wall.x, y: wall.y + 30 };
+    const r = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: p.x, y: p.y });
+    const t = pl.buildings.filter((q) => q.bt === 'tower').pop();
+    ok('a tower joins a run the masons are still raising', r.ok && t && t.onWall === wall.id,
+       r.ok ? `onWall ${t && t.onWall}` : r.err);
+    if (r.ok) pl.buildings.splice(pl.buildings.indexOf(t), 1);
+  }
+
+  for (let i = 0; i < 60 * 30; i++) World.update(w, 1 / 30);
+  ok('...and it finishes', !wall.raise && w.anyWall, `raise ${wall.raise}`);
+
+  /* the sweep: straight out from the run, at three places ALONG it — the middle, where the
+   * midpoint measurement was tightest, and either end, where it was no measurement at all */
+  const bad = [];
+  const joined = [], stood = [];
+  for (const along of [0, 0.4, -0.4]) {
+    for (let d = 0; d <= C.WALL.join + 60; d += 4) {
+      const x = wall.x + (wall.x2 - wall.x) * along, y = wall.y + d;
+      const r = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x, y });
+      if (!r.ok) { if (r.err === 'crowded') bad.push(`${along}@${d}`); continue; }
+      const t = pl.buildings.pop();
+      (t.onWall ? joined : stood).push(d);
+    }
+  }
+  eq('no tap near your own curtain is ever refused as crowded', bad.length, 0, bad.join(' '));
+  ok('...taps on the stone join it', joined.length > 0 && Math.max(...joined) >= C.WALL.join - 4,
+     `joined out to ${joined.length ? Math.max(...joined) : 'none'}`);
+  ok('...and taps past the snap stand on their own', stood.length > 0 && Math.min(...stood) > C.WALL.join,
+     `stood from ${stood.length ? Math.min(...stood) : 'none'}`);
+  ok('every offset gave one answer or the other', joined.length + stood.length > 0 &&
+     Math.max(...joined) < Math.min(...stood), `join <= ${Math.max(...joined)} < stand ${Math.min(...stood)}`);
+
+  /* and the rule the whole thing rests on: ONE radius, so a band cannot be reintroduced by
+   * tuning one of the two numbers and forgetting the other */
+  {
+    const t = pl.buildings.filter((q) => q.bt === 'tower');
+    ok('a run crowds by its length, not by its middle',
+       World.placementError(w, 0, wall.x2, wall.y2 + 20, 'barracks') === 'crowded' &&
+       World.placementError(w, 0, wall.x2, wall.y2 + C.WALL.join + 30, 'barracks') !== 'crowded',
+       `end+20 ${World.placementError(w, 0, wall.x2, wall.y2 + 20, 'barracks')}`);
+    eq('and nothing was left standing by the sweep', t.length, 0);
+  }
+}
+
 /* A LEVEL MAKES BETTER MEN, NOT MORE OF THEM. Halls used to buy THROUGHPUT — the same
  * soldier arriving faster — so an upgraded realm fought with bigger crowds of identical men
  * and there was nothing to see. The muster interval is flat now and the level rides on the
