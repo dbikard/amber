@@ -452,14 +452,19 @@ async function match(browser, base, renderer) {
 
     /* ---------------- input routing ---------------- */
     suite(`${r} · input`);
+    /* BARE GROUND IS INERT NOW. Raising a work begins at the BUILD button, so the map is only
+     * ever asked about things that are ON it — which is what stopped a tap on your own men
+     * and a tap on the ground beside them meaning two different things. */
     let p = await nearSeat(110, 0);
-    await pg.mouse.click(p.x, p.y); await until(pg, () => window.UI.sheetOpen());
-    ok('a build sheet opens on bare ground', await sheetOpen());
+    await pg.click('#btn-build'); await until(pg, () => window.UI.sheetOpen());
+    ok('the BUILD button opens the sheet', await sheetOpen());
     p = await nearSeat(-110, 40);
     await pg.mouse.click(p.x, p.y); await until(pg, () => !window.UI.sheetOpen());
-    ok('tapping outside closes it rather than opening another', !(await sheetOpen()));
-    await pg.mouse.click(p.x, p.y); await until(pg, () => window.UI.sheetOpen());
-    ok('a second tap then opens the sheet normally', await sheetOpen());
+    ok('tapping the map closes it rather than opening another', !(await sheetOpen()));
+    await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(200);
+    ok('...and bare ground opens nothing by itself', !(await sheetOpen()));
+    await pg.click('#btn-build'); await until(pg, () => window.UI.sheetOpen());
+    ok('the button opens it again', await sheetOpen());
 
     /* an ARMED flag must still act through an open sheet, not merely dismiss it */
     await pg.evaluate(() => document.querySelector('#flag-tray .fbtn').click());
@@ -1338,8 +1343,8 @@ async function match(browser, base, renderer) {
     suite(`${r} · back button`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
     await pg.waitForTimeout(200);
-    p = await nearSeat(110, 0);
-    await pg.mouse.click(p.x, p.y); await until(pg, () => window.UI.sheetOpen());
+    /* the sheet belongs to the BUILD button now — tapping the ground opens nothing */
+    await pg.click('#btn-build'); await until(pg, () => window.UI.sheetOpen());
     ok('a build sheet is open', await sheetOpen());
     await pg.goBack(); await until(pg, () => !window.UI.sheetOpen());
     ok('back closes the sheet', !(await sheetOpen()));
@@ -1400,10 +1405,16 @@ async function match(browser, base, renderer) {
       window.Render.lookAt(seat.x, seat.y);
       const s = window.Render.project(seat.x + 150, seat.y);
       const cvs = document.getElementById('game');
+      /* the tap still goes in — a guest's input path must survive it — but the sheet is the
+       * BUILD button's now, so that is what opens it */
       for (const t of ['pointerdown', 'pointerup'])
         cvs.dispatchEvent(new PointerEvent(t, { pointerId: 7, clientX: s.x, clientY: s.y, bubbles: true }));
-      await new Promise((res) => setTimeout(res, 250));
-      return { ...drew, sheet: window.UI.sheetOpen(), sent: sent.map((o) => o.t), hostEss: before };
+      await new Promise((res) => setTimeout(res, 200));
+      const bare = window.UI.sheetOpen();
+      document.getElementById('btn-build').click();
+      await new Promise((res) => setTimeout(res, 200));
+      return { ...drew, sheet: window.UI.sheetOpen(), bare,
+               sent: sent.map((o) => o.t), hostEss: before };
     });
     ok('the guest enters the match from a start message', lan.mode === 'guest', `mode=${lan.mode}`);
     /* the readout ticks toward its target, so allow a little lag — but it must be tracking
@@ -1412,7 +1423,8 @@ async function match(browser, base, renderer) {
        Math.abs(parseInt(lan.ess, 10) - lan.wantEss) <= Math.max(20, lan.wantEss * 0.25),
        `ess-n = ${lan.ess}, host has ${lan.wantEss}`);
     ok('the guest renders a host world with works on it', lan.works > 0, `${lan.works} rival works`);
-    ok('a guest can open a build sheet', lan.sheet);
+    ok('bare ground opens nothing for a guest either', !lan.bare);
+    ok('a guest can open the build sheet from the button', lan.sheet);
     ok('the guest raised no errors rendering snapshots', errs.length === 0, errs.slice(0, 3).join(' | '));
 
     /* A HALT IS THE TABLE'S. A guest holds no world, so the only way it can learn the world
