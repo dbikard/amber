@@ -59,12 +59,24 @@
       if (dd < fbd) { fbd = dd; frontier = s; }
     }
     const enemyArmy = visHostiles.filter((u) => u.owner !== me && u.owner !== C.CHAOS_ID).length;
+    /* SOMEBODY IS AT THE GATE. `threats` is a wide net — anything hostile within six hundred
+     * of the Seat — and three of them is the bar for calling the army home, which is right for
+     * a column massing to attack and wrong for the thing that actually kills you: one or two
+     * strays already chewing the stone while your whole army is off across the board. Measured
+     * the moment the heirs started marching: benedict fell from 87% against `random` to 30%,
+     * because random never masses and so never tripped the wide net. This is the narrow one. */
+    /* AT THE GATE means at the GATE. Measured from the Seat's own ground plus a little, not
+     * from the wide six-hundred net `threats` uses: with the wide one, a single scout
+     * loitering anywhere near the court pinned the whole army at home for the rest of the
+     * match and the heir never attacked at all. */
+    const gateR = C.CASTLE_ZONE + 70;
+    const atGate = visHostiles.filter((u) => d2(u.x, u.y, myCity.x, myCity.y) < gateR * gateR).length;
     const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
     return {
       t: world.t, me, pl, world, have, free, raising,
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
-      visHostiles, threats, push, enemyArmy, mySprings,
+      visHostiles, threats, push, enemyArmy, mySprings, atGate,
       enCityId, frontier, unexplored: world.map.sites.filter((s) => !pl.explored[s.id]).length,
       nodes,
       myPattern: pl.pattern, walking: pl.walking,
@@ -202,6 +214,10 @@
   const seek = (v) => (v.frontier ? v.frontier.id : ownChoke(v).id);
   /* the assault, but only against a Seat that has been found */
   const strike = (v) => (v.enCity ? v.enCityId : seek(v));
+  /* what an assault costs to be worth making: a real army, and more of it than he can see of
+   * the other man's. Both are read fresh every time the heir thinks, so the march is a
+   * standing decision rather than a one-way door. */
+  const COMMIT = 14;
 
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
@@ -394,7 +410,8 @@
       }
 
       /* expansion missions: pick one, march the banner there, build on arrival */
-      const homeThreat = v.threats.length >= 3;
+      /* one hand on your own door outranks any errand and any assault */
+      const homeThreat = v.threats.length >= 3 || v.atGate > 0;
       if (mission) {
         const s = world.map.sites[mission.site];
         const done = !s || (mission.bt === 'gate' ? held(v, s) : worksNear(v, s.x, s.y, mission.bt, 130));
@@ -422,15 +439,36 @@
        * An heir who has decided to attack marches, and does not pick up a new errand while
        * he is doing it. Defending home still outranks both: a Seat under threat is not a
        * choice. */
-      const call = P.banner(v);
-      const striking = !homeThreat && v.enCity && call === v.enCityId;
-      if (!mission && !homeThreat && !striking) {
+      /* MARCH WHEN YOU CAN WIN. Every doctrine's assault clause was written in an era when it
+       * could never fire, so none of them was ever tuned — benedict's says `v.army >= 6`, and
+       * six men walking onto a defended Seat is a donation. Measured the moment the clauses
+       * started firing: benedict marched sixty men at the ghost's Seat, lost all sixty, and
+       * went from 87% against `random` to 30%. The heir advances, and because the decision is
+       * remade every couple of seconds he re-reads the odds as he closes: the moment he can
+       * SEE more of the enemy than he brought, he stops committing and falls back to his own
+       * ground. That is the difference between an assault and a donation. */
+      const call0 = P.banner(v);
+      const wantsWar = v.enCity && call0 === v.enCityId;
+      /* ONE test, and it is a floor rather than an edge. Requiring a quarter more men than he
+       * can SEE reads well and measured badly: two heirs of the same mind never have it, so
+       * neither ever moves and the mirror runs to the clock — the bleys mirror went from
+       * ending at 8 minutes to timing out in half its games. A column big enough to be worth
+       * marching is the whole rule; whether it wins is what the fight is for. */
+      const ready = v.army >= COMMIT;
+      const striking = !homeThreat && wantsWar && ready;
+      /* an assault he cannot afford is not an errand either — he holds his own choke */
+      const call = wantsWar && !ready ? ownChoke(v).id : call0;
+      if (!mission && !homeThreat) {
         for (const w of P.missions(v)) {
           const site = w.pick(v);
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
         }
       }
-      if (striking) mission = null;   // the errand is dropped, not queued behind the war
+      /* the errand loses the BANNER to the war, not the heir's attention: a realm that stops
+       * growing the moment it attacks trades its economy for the assault, and against a foe
+       * that never masses — `random` — that trade lost outright. It still cannot plant a Gate
+       * with the army away, since a spring needs troops standing on it, and that is the honest
+       * price of marching. */
 
       /* the banner: defend home under threat > the assault > mission site > personality call */
       let want = homeThreat ? v.myCity.id : (striking ? call : (mission ? mission.site : call));

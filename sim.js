@@ -14,6 +14,8 @@
  *   node sim.js --quick    half the games again, for iterating; the full run is the referee.
  *   node sim.js --rr=12    more games in the ladder section, when the order looks like a coin
  *                          toss rather than a field.
+ *   node sim.js --cap=20   call a match a timeout after 20 minutes of play. --quick does it by
+ *                          default, and it is the only reason the cheap run was ever slow.
  */
 'use strict';
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -26,7 +28,15 @@ require('./js/world.js');
 require('./js/ai.js');
 
 const { CONST: C, World, AI } = globalThis;
-const DT = C.SIM_DT, MAX_T = 2700;   // 45 min hard cap — the target band is 15-30 min
+/* 45 min hard cap on a match. The band is 5-20, so anything near this is a match that never
+ * resolved — and in --quick those are the whole cost: one matchup that will not converge runs
+ * nine times longer than one that does, and the pool is only as fast as its slowest worker.
+ * Quick mode caps at twenty and calls the rest a timeout, which is the same information for a
+ * third of the price: a run of timeouts says "this does not converge", and if you want to know
+ * how long they REALLY take, that is what the full run is for. */
+const QUICK_T = 1200;
+let MAX_T = (workerData && workerData.maxT) || 2700;   // the main thread sets it from --cap
+const DT = C.SIM_DT;
 
 function playMatch(aKind, bKind, seed, opts) {
   opts = opts || {};
@@ -91,9 +101,17 @@ for (const a of process.argv.slice(2)) { const m = /^--(\w+)(?:=(.*))?$/.exec(a)
  * What IS still a target: a mirror near 50% (that is seat fairness, not heir balance), the
  * skill gradient (that is the AI working at all), and convergence (matches must end). */
 const QUICK = !!args.quick;
-const N = +args.n || (QUICK ? 10 : 20), SEED = +args.seed || 1000;
-const CONV = QUICK ? 4 : 8;
-const RR = +args.rr || (QUICK ? 4 : 6);
+const N = +args.n || (QUICK ? 6 : 20), SEED = +args.seed || 1000;
+const CONV = QUICK ? 3 : 8;
+const RR = +args.rr || (QUICK ? 3 : 6);
+/* AND THE CAP IS THE WHOLE COST. A matchup that will not converge runs to the 45-minute wall
+ * and costs nine times what one that resolves in five costs — and the pool is only as fast as
+ * its slowest worker, so ONE such matchup sets the length of the run. Quick mode calls a match
+ * a timeout at twenty minutes, which is the same information for a third of the price: a row
+ * of timeouts says "this does not converge", and how long they really take is what the full
+ * run is for. */
+const CAP = (+args.cap ? +args.cap * 60 : (QUICK ? QUICK_T : 2700));
+MAX_T = CAP;   // --jobs=1 plays in THIS thread, and must obey the same cap the workers do
 
 if (args.a && args.b) {
   const r = series(args.a, args.b, N, SEED);
@@ -127,6 +145,8 @@ jobs.push({ a: 'julian', b: 'julian', n: CONV, seed: SEED + 6000 });
 /* The LONGEST jobs are handed out first. A pool is only as fast as its last worker, and the
  * julian mirror runs to the 45-minute cap where a bleys match is over in six — deal that one
  * last and three cores idle while it finishes alone. */
+for (const j of jobs) j.maxT = CAP;   // ...and every worker is handed it with its job
+
 const order = jobs.map((_, i) => i);
 const WEIGHT = { julian: 3, brand: 2, corwin: 2, benedict: 2, random: 1, greedy: 1, bleys: 1 };
 const cost = (j) => j.n * ((WEIGHT[j.a] || 2) + (WEIGHT[j.b] || 2));
