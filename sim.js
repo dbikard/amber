@@ -2,8 +2,19 @@
 /* sim.js — the referee. Headless bot-vs-bot matches over the SAME update() the browser runs.
  * Default: full suite (mirror / gradient / round-robin / durations).
  * One matchup:  node sim.js --a=brand --b=julian --n=40 [--seed=1] [--verbose]
+ *
+ * THE FULL SUITE IS ~470 MATCHES, and a match is up to 80,000 ticks of the real simulation —
+ * something like ten million ticks in all, which took half an hour in one thread while three
+ * cores sat idle. Each matchup is completely independent (its own world, its own seed), so
+ * they are dealt out to a pool of workers and the wall clock falls to roughly the core count.
+ * Results are unchanged: every series keeps the seed it always had, so a run is reproducible
+ * and comparable with the runs before it — only the ORDER they are computed in changes, and
+ * the output is re-ordered back before it is printed.
+ *   node sim.js --jobs=1   forces the old serial behaviour.
  */
 'use strict';
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const os = require('os');
 require('./js/rng.js');
 require('./js/const.js');
 require('./js/worldgen.js');
@@ -57,6 +68,12 @@ function fmt(aKind, bKind, r, n) {
          ` (draw ${r.draw})  ${(100 * r.a / n).toFixed(0).padStart(3)}%  med ${med}m  [${reasons}]`;
 }
 
+/* ---------------- a worker is one series ---------------- */
+if (!isMainThread) {
+  parentPort.postMessage(series(workerData.a, workerData.b, workerData.n, workerData.seed));
+  return;
+}
+
 /* ---------------- CLI ---------------- */
 const args = {};
 for (const a of process.argv.slice(2)) { const m = /^--(\w+)(?:=(.*))?$/.exec(a); if (m) args[m[1]] = m[2] === undefined ? true : m[2]; }
@@ -68,26 +85,73 @@ if (args.a && args.b) {
   process.exit(0);
 }
 
-console.log(`Amber sim — ${N} games/matchup, seed ${SEED}\n`);
-
-console.log('— mirror symmetry (target ≈50%) —');
-for (const k of ['benedict', 'bleys']) console.log(fmt(k, k, series(k, k, N, SEED), N));
-
-console.log('\n— skill gradient (skilled > greedy > random) —');
-console.log(fmt('benedict', 'random', series('benedict', 'random', N, SEED + 100), N));
-console.log(fmt('benedict', 'greedy', series('benedict', 'greedy', N, SEED + 200), N));
-console.log(fmt('greedy', 'random', series('greedy', 'random', N, SEED + 300), N));
-
-console.log('\n— heir round-robin (no dominant strategy) —');
+/* THE WHOLE SUITE, as a list of independent series. Building it up front is what lets them
+ * be dealt out in any order and printed back in this one — `head` is the section banner a
+ * job opens, if any. */
 const heirs = Object.keys(AI.HEIRS);
-const table = {};
+const jobs = [];
+jobs.push({ head: `Amber sim — ${N} games/matchup, seed ${SEED}\n\n— mirror symmetry (target ≈50%) —`,
+            a: 'benedict', b: 'benedict', n: N, seed: SEED });
+jobs.push({ a: 'bleys', b: 'bleys', n: N, seed: SEED });
+jobs.push({ head: '\n— skill gradient (skilled > greedy > random) —',
+            a: 'benedict', b: 'random', n: N, seed: SEED + 100 });
+jobs.push({ a: 'benedict', b: 'greedy', n: N, seed: SEED + 200 });
+jobs.push({ a: 'greedy', b: 'random', n: N, seed: SEED + 300 });
+let first = true;
 for (let i = 0; i < heirs.length; i++) for (let j = i + 1; j < heirs.length; j++) {
-  const r = series(heirs[i], heirs[j], N, SEED + 1000 + i * 37 + j);
-  console.log(fmt(heirs[i], heirs[j], r, N));
-  table[heirs[i]] = (table[heirs[i]] || 0) + r.a; table[heirs[j]] = (table[heirs[j]] || 0) + r.b;
+  jobs.push({ head: first ? '\n— heir round-robin (no dominant strategy) —' : null,
+              a: heirs[i], b: heirs[j], n: N, seed: SEED + 1000 + i * 37 + j, rr: true });
+  first = false;
 }
-console.log('\ntotal wins: ' + Object.entries(table).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join('  '));
+const rrEnd = jobs.length;
+jobs.push({ head: '\n— convergence (passive-vs-passive must still end) —',
+            a: 'greedy', b: 'greedy', n: 10, seed: SEED + 5000 });
+jobs.push({ a: 'julian', b: 'julian', n: 10, seed: SEED + 6000 });
 
-console.log('\n— convergence (passive-vs-passive must still end) —');
-console.log(fmt('greedy', 'greedy', series('greedy', 'greedy', 10, SEED + 5000), 10));
-console.log(fmt('julian', 'julian', series('julian', 'julian', 10, SEED + 6000), 10));
+/* The LONGEST jobs are handed out first. A pool is only as fast as its last worker, and the
+ * julian mirror runs to the 45-minute cap where a bleys match is over in six — deal that one
+ * last and three cores idle while it finishes alone. */
+const order = jobs.map((_, i) => i);
+const WEIGHT = { julian: 3, brand: 2, corwin: 2, benedict: 2, random: 1, greedy: 1, bleys: 1 };
+const cost = (j) => j.n * ((WEIGHT[j.a] || 2) + (WEIGHT[j.b] || 2));
+order.sort((x, y) => cost(jobs[y]) - cost(jobs[x]));
+
+const POOL = Math.max(1, Math.min(+args.jobs || os.cpus().length, jobs.length));
+const done = new Array(jobs.length).fill(null);
+let next = 0, printed = 0, live = 0;
+
+/* print everything that is ready, in the ORIGINAL order — so a parallel run reads exactly
+ * like a serial one, and can still be diffed against the run before it */
+function flush() {
+  while (printed < jobs.length && done[printed]) {
+    const j = jobs[printed], r = done[printed];
+    if (j.head) console.log(j.head);
+    console.log(fmt(j.a, j.b, r, j.n));
+    printed++;
+    if (printed === rrEnd) {
+      const table = {};
+      for (let i = 0; i < rrEnd; i++) {
+        if (!jobs[i].rr) continue;
+        table[jobs[i].a] = (table[jobs[i].a] || 0) + done[i].a;
+        table[jobs[i].b] = (table[jobs[i].b] || 0) + done[i].b;
+      }
+      console.log('\ntotal wins: ' + Object.entries(table).sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}:${v}`).join('  '));
+    }
+  }
+}
+
+function pump() {
+  while (live < POOL && next < order.length) {
+    const idx = order[next++];
+    live++;
+    const w = new Worker(__filename, { workerData: jobs[idx], argv: [] });
+    w.on('message', (r) => { done[idx] = r; flush(); });
+    w.on('error', (e) => { console.error('worker failed on ' + jobs[idx].a + ' vs ' + jobs[idx].b, e); process.exit(1); });
+    w.on('exit', () => { live--; pump(); });
+  }
+}
+
+if (POOL === 1) {                    // --jobs=1: the old serial path, for a like-for-like check
+  for (let i = 0; i < jobs.length; i++) { done[i] = series(jobs[i].a, jobs[i].b, jobs[i].n, jobs[i].seed); flush(); }
+} else pump();
