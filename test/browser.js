@@ -219,9 +219,24 @@ async function match(browser, base, renderer) {
        * outward until the renderer agrees there is nothing but ground under the finger */
       const bare = (p) => R.hitBuilding(p.x, p.y) < 0 && R.hitSite(p.x, p.y, g.world, 0, false) < 0
         && R.hitUnit(p.x, p.y, 0) === 0;
-      for (let k = 1; k <= 12 && !bare(s); k++) {
-        const q = R.project(c.x + a * (1 + k * 0.22), c.y + b * (1 + k * 0.22));
-        if (q.y < lid && q.y > 80 && q.x > 20 && q.x < window.innerWidth - 20) s = q;
+      /* SWEEP ANGLES AS WELL AS DISTANCE, and say so if nothing bare was found. The old walk
+       * only pushed straight outward and, when no candidate fitted on screen, returned the
+       * last point it had whether it was bare or not — so a caller could be handed a spot on
+       * a SITE and get a site sheet where it expected bare ground. It failed about one run in
+       * three, which is worse than failing every time. */
+      const fits = (q) => q.y < lid && q.y > 80 && q.x > 20 && q.x < window.innerWidth - 20;
+      if (!bare(s)) {
+        let found = null;
+        const base = Math.atan2(b, a), rad0 = Math.hypot(a, b);
+        for (let k = 0; k < 14 && !found; k++) {
+          for (let t = 0; t < 12 && !found; t++) {
+            const th = base + (t % 2 ? 1 : -1) * Math.ceil(t / 2) * 0.5;
+            const rr = rad0 * (1 + k * 0.16);
+            const q = R.project(c.x + Math.cos(th) * rr, c.y + Math.sin(th) * rr);
+            if (fits(q) && bare(q)) found = q;
+          }
+        }
+        if (found) s = found;
       }
       /* AND CLEAR IT OF YOUR OWN MEN. A tap on a soldier picks up his standard now, so a
        * point that was bare when it was chosen stops being bare the moment the army wanders
@@ -231,7 +246,7 @@ async function match(browser, base, renderer) {
         const u = g.world.units[i];
         if (u.owner === 0 && Math.hypot(u.x - w3.x, u.y - w3.y) < 70) g.world.units.splice(i, 1);
       }
-      return { x: s.x, y: s.y, lid: Math.round(lid) };
+      return { x: s.x, y: s.y, lid: Math.round(lid), bare: bare(s) };
     }, [ox, oy]);
 
     /* ---------------- camera ---------------- */
@@ -459,6 +474,7 @@ async function match(browser, base, renderer) {
     await pg.click('#btn-build'); await until(pg, () => window.UI.sheetOpen());
     ok('the BUILD button opens the sheet', await sheetOpen());
     p = await nearSeat(-110, 40);
+    ok('the ground tapped is genuinely bare', p.bare, 'nearSeat found nothing clear on screen');
     await pg.mouse.click(p.x, p.y); await until(pg, () => !window.UI.sheetOpen());
     ok('tapping the map closes it rather than opening another', !(await sheetOpen()));
     await pg.mouse.click(p.x, p.y); await pg.waitForTimeout(200);
