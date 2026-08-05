@@ -250,9 +250,32 @@
       if (pc.iceGatheringState === 'complete') return res();
       let done = false;
       const finish = (why) => { if (done) return; done = true; if (why) diag(why); res(); };
-      pc.addEventListener('icegatheringstatechange', () => {
+      /* ENOUGH IS ENOUGH. Waiting for `complete` is correct and it is also the slowest thing
+       * in the pairing — one phone took forty-five seconds, held up by a STUN probe that was
+       * never going to answer (candidate error 701), long after it had everything it needed.
+       * What the other phone needs is a way IN and a way ROUND: one local address and one
+       * reflexive one. Once both are in hand the rest of gathering is a long tail of relay
+       * probes and address families nobody is going to use, and the code can be drawn. The
+       * ceiling stays as the disaster case and still says so. */
+      const enough = () => {
+        const c = pc._cand || {};
+        const local = (c.host || c.mdns || []).length;
+        return local > 0 && (c.srflx || []).length > 0;
+      };
+      const tick = () => {
         if (pc.iceGatheringState === 'complete') finish(null);
-      });
+        else if (enough()) finish('a way in and a way round — drawing the code now');
+      };
+      pc.addEventListener('icegatheringstatechange', tick);
+      pc.addEventListener('icecandidate', tick);
+      /* AND A LAN WITH NO INTERNET NEVER GETS A REFLEXIVE ONE. Waiting for `enough` on a
+       * network with no route out would hold the code for the full ceiling — the exact case
+       * that used to be instant, and the one this pairing was built for. A local address on
+       * its own is a complete answer there, so after a short grace we publish what we have. */
+      setTimeout(() => {
+        const c = pc._cand || {};
+        if ((c.host || c.mdns || []).length) finish('no reflexive route — drawing the local code');
+      }, 3000);
       setTimeout(() => finish('gathering did not finish in 15s — the code may be incomplete'), 15000);
     });
   }

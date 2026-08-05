@@ -764,7 +764,7 @@
       $('lan-help').classList.add('hidden');
       say('drawing your Trump…');
       try {
-          say('gathering routes — this takes a few seconds…');
+          say('finding a route to this phone…');
         const offer = await Net.host();
         if (!startPairStream(offer)) { say('could not draw the QR'); return; }
         qrJoin.classList.add('hidden');
@@ -805,7 +805,7 @@
         const offer = await scanQR();
         backToLan();
         lanNote = 'read an offer of ' + offer.length + ' chars'; paintDiag();
-        say('gathering routes — this takes a few seconds…');
+        say('finding a route to this phone…');
         const answer = await Net.join(offer);
         if (!startPairStream(answer)) { say('could not draw the reply QR'); return; }
         say('show this reply to Corwin — linking…');
