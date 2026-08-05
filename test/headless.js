@@ -450,8 +450,23 @@ suite('the Pattern is not upgraded')
        `${spent.toFixed(1)} spent, drain ${C.BUILDINGS.shrine.drain[0]}/s`);
   ok('the drain is reported to the HUD', pl.drainRate >= C.BUILDINGS.shrine.drain[0] - 0.5,
      `${pl.drainRate.toFixed(1)}/s`);
-  const full = C.BUILDINGS.shrine.drain[0] * (100 / C.BUILDINGS.shrine.rate[0]);
-  ok('a whole walk is a serious sum', full > 9000, `${Math.round(full)} essence over ${(100 / C.BUILDINGS.shrine.rate[0] / 60).toFixed(1)} min`);
+  /* A WALK IS A COMMITMENT, NOT A PURCHASE — and the number that says so is what a REALM can
+   * carry, not an absolute. It has to be beyond what a small holding earns and inside what a
+   * real one does, or it is either a decoration or a formality. Five Gates is the line the
+   * design draws: a walk must cost more than the base income can ever cover, and it must be
+   * something five Gates and a hall can pay for. */
+  const shr = C.BUILDINGS.shrine, secs = 100 / shr.rate[0];
+  const full = shr.drain[0] * secs;
+  const fiveGates = C.BASE_INCOME + 5 * C.BUILDINGS.gate.nodeIncome[0];
+  ok('a whole walk is a serious sum', full > C.BASE_INCOME * secs * 4,
+     `${Math.round(full)} essence over ${(secs / 60).toFixed(1)} min`);
+  ok('...and five Gates can carry it with a little to spare',
+     fiveGates > shr.drain[0] && fiveGates < shr.drain[0] * 1.4,
+     `five Gates draw ${fiveGates.toFixed(1)}/s against a ${shr.drain[0]}/s walk`);
+  ok('...over a walk the rival has time to come and stop', secs > 240 && secs < 480,
+     `${(secs / 60).toFixed(1)} min in plain sight`);
+  ok('...and the lines fade slower than they are drawn', shr.decay < shr.rate[0],
+     `${shr.decay}%/s fade against ${shr.rate[0]}%/s drawn`);
 
   /* A POOR PLAYER WALKS SLOWER, BUT NEVER STOPS. Partial payment alone had the same disease
    * as all-or-nothing, only slower: at a sixth of a percent a minute the Pattern is not the

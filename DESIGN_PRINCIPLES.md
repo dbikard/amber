@@ -64,6 +64,15 @@ Every balance question is answered with data:
   mechanic is decoration: cut or redesign.
 - **Convergence** — passive-vs-passive must still end (someone completes the Pattern) inside
   the match-length ceiling. No two policies may draw forever.
+- **Two roads to the throne, and both must be real.** A game with a second win condition
+  nobody takes has one win condition and a decoration. Across SKILLED play — the baselines are
+  not evidence about what a good player would choose — the Pattern must decide between 25% and
+  75% of the matches that resolve, and force the rest. `node sim.js` prints the split as "the
+  two roads". It was 19% when a full walk cost nine and a half minutes of drain in plain sight:
+  longer than most matches had left by the time anyone could afford to start, so the Pattern
+  was the consolation for failing at the other road rather than a choice between two.
+  Note what the mirrors cannot tell you here: a heir whose doctrine never walks will never end
+  its own mirror by walking, so the round-robin is the measure and a 0% mirror is not a fault.
 - **Nothing but an heir may end a match.** Chaos is the weather, not the opponent. When the
   black road was uncapped it was taking Seats outright, and a "castle" win in this table was
   as often Chaos finishing someone as a rival doing it — so the runner read healthy while the

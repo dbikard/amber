@@ -250,7 +250,22 @@
                  * one a second with a hall still running: a small income, which is the point.
                  * It is still 12,500 essence for a full walk, and it is still nine and a half
                  * minutes in plain sight of everyone at the table. */
-                drain: [22], rate: [0.175], minRate: 0.5, decay: 0.05, breakLoss: 22,
+                /* A RACE, NOT A LAST RESORT. At 0.175 a full walk was nine and a half minutes
+                 * of drain in plain sight — longer than most matches have left by the time
+                 * anyone can afford to start — so the Pattern decided about one skilled match
+                 * in five and force decided the rest. It is meant to be one of two ways to
+                 * take the throne, not the consolation for failing at the other. At 0.30 the
+                 * walk is five and a half minutes: begun around minute seven, when a realm can
+                 * carry the drain, it lands inside the 5-20 band and leaves the rival a real
+                 * window to come and stop it. Swept against the referee at 0.175 / 0.26 / 0.36
+                 * — the share of skilled matches decided by the Pattern went 19% / 23% / 38%.
+                 * DECAY is the other half of the same question and the gentler lever. A walk
+                 * that has to be paused — and the heirs pause now, rather than starving — bled
+                 * back at 3% a minute, so an heir who stopped to defend his Seat lost most of
+                 * what he had paid for. At 0.035 the lines fade slower than they are drawn, so
+                 * committing and then defending is a plan rather than a waste. That rewards
+                 * holding the ground you walk from, which is the shape the walk should have. */
+                drain: [22], rate: [0.32], minRate: 0.5, decay: 0.035, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'wall', 'barracks', 'tower', 'spire', 'siege', 'shrine'];

@@ -125,8 +125,8 @@ if (args.a && args.b) {
 const heirs = Object.keys(AI.HEIRS);
 const jobs = [];
 jobs.push({ head: `Amber sim — ${N} games/matchup, seed ${SEED}\n\n— mirror symmetry (target ≈50%) —`,
-            a: 'benedict', b: 'benedict', n: N, seed: SEED });
-jobs.push({ a: 'bleys', b: 'bleys', n: N, seed: SEED });
+            a: 'benedict', b: 'benedict', n: N, seed: SEED, skilled: true });
+jobs.push({ a: 'bleys', b: 'bleys', n: N, seed: SEED, skilled: true });
 jobs.push({ head: '\n— skill gradient (skilled > greedy > random) —',
             a: 'benedict', b: 'random', n: N, seed: SEED + 100 });
 jobs.push({ a: 'benedict', b: 'greedy', n: N, seed: SEED + 200 });
@@ -134,7 +134,7 @@ jobs.push({ a: 'greedy', b: 'random', n: N, seed: SEED + 300 });
 let first = true;
 for (let i = 0; i < heirs.length; i++) for (let j = i + 1; j < heirs.length; j++) {
   jobs.push({ head: first ? '\n— the ladder (heirs need not be equal; the campaign faces the weakest first) —' : null,
-              a: heirs[i], b: heirs[j], n: RR, seed: SEED + 1000 + i * 37 + j, rr: true });
+              a: heirs[i], b: heirs[j], n: RR, seed: SEED + 1000 + i * 37 + j, rr: true, skilled: true });
   first = false;
 }
 const rrEnd = jobs.length;
@@ -176,6 +176,21 @@ function flush() {
       /* and the answer this section exists for, ready to paste into game.js */
       console.log('LADDER = ' + JSON.stringify(rank.map(([k]) => k).reverse()) +
                   '   // weakest first');
+      /* TWO WAYS TO THE THRONE, AND BOTH MUST BE REAL. A game with a second win condition
+       * nobody takes has one win condition and a decoration. Counted over SKILLED play only —
+       * the baselines are not evidence about what a good player would choose — and only over
+       * matches that actually resolved. The band is the design's, not this runner's: see
+       * DESIGN_PRINCIPLES. */
+      let byForce = 0, byPattern = 0;
+      for (let i = 0; i < rrEnd; i++) {
+        if (!jobs[i].skilled || !done[i]) continue;
+        byForce += done[i].reasons.castle || 0;
+        byPattern += done[i].reasons.pattern || 0;
+      }
+      const dec = byForce + byPattern;
+      console.log('the two roads: ' + byForce + ' by force, ' + byPattern + ' by the Pattern' +
+                  (dec ? '  → Pattern decides ' + Math.round(byPattern / dec * 100) +
+                         '% of skilled matches (target 25-75)' : ''));
     }
   }
 }
