@@ -929,6 +929,7 @@
         UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },
       onMuster: (pause) => issue({ c: 'muster', pause }),
+      onMusterCo: (co, pause) => issue({ c: 'muster', co, pause }),
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
         if (!view) return;

@@ -836,6 +836,19 @@
       return { ok: true };
     }
     if (cmd.c === 'muster') {
+      /* A COMPANY MAY GO QUIET WITHOUT THE REALM GOING QUIET. The valve was the Seat's alone,
+       * so hoarding for a Gate meant stopping every hall you own — including the one holding
+       * the line. Named with a company it silences that standard's halls and no others; named
+       * with nothing it is the old realm-wide order, which is still what the Seat's sheet
+       * sends. The two stack: a hall is quiet if either says so, and lifting one does not
+       * countermand the other. */
+      if (cmd.co != null) {
+        const co = coOf(world, pi, cmd.co);
+        if (!co) return { ok: false, err: 'co' };
+        co.paused = !!cmd.pause;
+        emit(world, { e: 'muster', pi, co: co.id, pause: co.paused });
+        return { ok: true };
+      }
       pl.musterPaused = !!cmd.pause;
       emit(world, { e: 'muster', pi, pause: pl.musterPaused });
       return { ok: true };
@@ -1220,7 +1233,8 @@
         /* a Gate on a spring of Shadow draws far more than one that merely stands about */
         if (b.bt === 'gate') income += !working && b.node >= 0 ? def.nodeIncome[b.level - 1] : 0;
         else if (def.spawns) {
-          if (pl.musterPaused) { b.cd = Math.max(b.cd, 0.5); continue; }
+          const bco = b.co ? coOf(world, pi, b.co) : null;
+          if (pl.musterPaused || (bco && bco.paused)) { b.cd = Math.max(b.cd, 0.5); continue; }
           /* A HALL BEING RAISED A LEVEL MUSTERS NOBODY. That is the price of the upgrade
            * beyond its essence, and the reason to think about WHEN rather than only whether:
            * the men you would have had while the masons were in the yard are the real cost. */

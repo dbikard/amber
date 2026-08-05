@@ -1524,6 +1524,58 @@ for (const n of [2, 3, 4]) {
      `${w.units.filter((u) => u.owner === 0).length} men`);
 }
 
+/* A COMPANY MAY GO QUIET WITHOUT THE REALM GOING QUIET. The muster valve was the Seat's alone,
+ * so hoarding for a Gate meant stopping every hall you own — the one holding the line
+ * included. Named with a company it silences that standard's halls and no others. */
+suite('the muster is halted by standard, not only by realm');
+{
+  const w = World.createWorld(1000, 2), pl = w.players[0];
+  w.chaosNext = 1e9;
+  pl.essence = 1e6;
+  const c = World.cityOf(w, 0);
+  /* a second hall under a standard of its own, so there are two companies to tell apart */
+  let put = 0;
+  for (let a = 0; a < 40 && put < 1; a++) {
+    const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 210, y = c.y + Math.sin(th) * 210;
+    if (World.applyCommand(w, 0, { c: 'build', x, y, bt: 'barracks' }).ok) put++;
+  }
+  eq('a second hall stands', put, 1);
+  for (let i = 0; i < 30 * 40; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const halls = pl.buildings.filter((b) => b.bt === 'barracks' && !b.raise);
+  eq('two halls, under two standards', new Set(halls.map((b) => b.co)).size, 2);
+  const quiet = halls[0].co, loud = halls[1].co;
+
+  const count = (co) => w.units.filter((u) => u.owner === 0 && u.co === co).length;
+  ok('one standard is halted', World.applyCommand(w, 0, { c: 'muster', co: quiet, pause: true }).ok);
+  const q0 = count(quiet), l0 = count(loud);
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('...and it musters nobody', count(quiet), q0);
+  ok('...while the rest of the realm carries on', count(loud) > l0, `${l0} → ${count(loud)}`);
+  eq('...and the realm-wide valve was never touched', pl.musterPaused, false);
+
+  /* it lifts, and it rides the wire, and it is nobody else's business */
+  ok('the standard resumes', World.applyCommand(w, 0, { c: 'muster', co: quiet, pause: false }).ok);
+  const q1 = count(quiet);
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('...and musters again', count(quiet) > q1, `${q1} → ${count(quiet)}`);
+  World.applyCommand(w, 0, { c: 'muster', co: quiet, pause: true });
+  const snap = Net.snapFor(w, 0);
+  eq('a halted standard rides the wire', (snap.players[0].companies.find((q) => q.id === quiet) || {}).paused, 1);
+  eq('...and a rival is told nothing of your companies', Net.snapFor(w, 1).players[0].companies.length, 0);
+  eq('a standard that is not yours is refused',
+     World.applyCommand(w, 0, { c: 'muster', co: 999, pause: true }).err, 'co');
+
+  /* AND THE REALM-WIDE ORDER STILL WORKS, and the two stack rather than countermanding */
+  World.applyCommand(w, 0, { c: 'muster', pause: true });
+  const both = count(loud);
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('the Seat can still silence everything', count(loud), both);
+  World.applyCommand(w, 0, { c: 'muster', pause: false });
+  const after = count(quiet);
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('...and lifting it does not lift a standard you halted yourself', count(quiet), after);
+}
+
 /* A WORK IS SOMETHING YOU WALK ROUND. Men marched straight through their own halls, so an
  * army at home buried every building it passed — and a building under a crowd cannot be
  * tapped, which is how you raise it a level. Reported from play as exactly that. */

@@ -156,6 +156,8 @@
       : (C.SEAT_TINT[1 + (pi < viewer ? pi : pi - 1)] || C.SEAT_TINT[1]);
     return '#' + hex.toString(16).padStart(6, '0');
   };
+  /* a standard that has stopped mustering wears it: the tray is where you look to see what the
+   * army is doing, and 'why is nobody arriving' should be answerable from there */
   UI.flags = function (view, viewer, armed) {
     const tray = $('flag-tray');
     const me = view.players[viewer];
@@ -163,7 +165,7 @@
      * flags to think about, which is the whole point of companies */
     const cos = me.companies || [];
     const halls = (id) => me.buildings.filter((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.co === id).length;
-    const rows = cos.map((co) => [co.id, !!co.rally, halls(co.id), !!co.trump]);
+    const rows = cos.map((co) => [co.id, !!co.rally, halls(co.id), !!co.trump, !!co.paused]);
     const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
     if (hash === trayHash) return;
     trayHash = hash;
@@ -181,13 +183,16 @@
      * gold one was both redundant and a trap — it struck every standing detachment order the
      * moment you touched it. Every hall flies a standard of its own now, so the tray is the
      * army: one flag per company, and nothing that quietly overrules them. */
-    for (const [id, afield, n, trump] of rows) {
+    for (const [id, afield, n, trump, quiet] of rows) {
       /* THE TRUMP IS NOT A DETACHMENT. It is one summoned Amberite who answers to nothing
        * else, so it gets the card rather than a pennant, and a colour no company can take. */
       const col = trump ? '#c48eff' : UI.coColor(id);
       const b = mk(id, trump ? '🃏' : '⚐', trump ? 'co trump' : 'co', col);
       b.title = trump ? 'the Champion you called through the Trump'
-                      : n + (n === 1 ? ' hall' : ' halls');
+                      : n + (n === 1 ? ' hall' : ' halls') + (quiet ? ', mustering nobody' : '');
+      /* A QUIET STANDARD SAYS SO. The tray is where you look to see what the army is doing,
+       * so 'why is nobody arriving under this flag' has to be answerable from it. */
+      if (quiet) b.classList.add('quiet');
       if (n > 1) {
         const c2 = document.createElement('span');
         c2.className = 'fcount';
@@ -541,6 +546,23 @@
           (co.rally ? ' — posted afield; its flag is in the tray' : ' — holding at home')
         : '⚐ Its muster answers no standard yet';
       el.appendChild(info);
+      /* THE VALVE, PER STANDARD. Halting the muster used to be the Seat's order and the Seat's
+       * alone, so saving for a Gate meant silencing every hall you own — the one holding the
+       * line included. This one is the COMPANY's: it reaches every hall under that standard
+       * and no others, and it is offered here because a hall is where you already are when
+       * you are thinking about what it musters. */
+      if (co) {
+        const mu2 = document.createElement('button');
+        mu2.className = 'card';
+        mu2.id = 'co-muster';
+        mu2.innerHTML = co.paused
+          ? `<span class="c-ico">▶</span><span class="c-name">Resume Standard ${co.id}</span>` +
+            '<span class="c-blurb">Its halls pay for troops again</span>'
+          : `<span class="c-ico">⏸</span><span class="c-name">Halt Standard ${co.id}</span>` +
+            '<span class="c-blurb">Every hall under this standard stops mustering — the rest of the realm carries on</span>';
+        mu2.addEventListener('click', () => { H.onMusterCo(co.id, !co.paused); UI.closeSheet(); });
+        el.appendChild(mu2);
+      }
       const change = document.createElement('button');
       change.className = 'card';
       change.id = 'change-standard';

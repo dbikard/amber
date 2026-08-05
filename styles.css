@@ -288,6 +288,13 @@ body {
   box-shadow: 0 0 10px rgba(255, 220, 150, 0.2), inset 0 0 8px #000;
 }
 .fbtn.co { border-color: #8a8098; }
+/* a standard whose halls have stopped mustering: dimmed, and marked, because the tray is
+   where you look to see what the army is doing */
+.fbtn.quiet { opacity: 0.5; }
+.fbtn.quiet::after {
+  content: '⏸'; position: absolute; top: -3px; left: -3px;
+  font-size: 10px; color: #ffc8ce; text-shadow: 0 1px 2px #000;
+}
 .fbtn.armed { border-color: #ffe9a8; box-shadow: 0 0 16px rgba(255, 233, 168, 0.8); transform: scale(1.08); }
 .fbtn .dot {
   position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%;

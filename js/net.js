@@ -414,6 +414,7 @@
         /* your own companies and where their standards stand; a rival's are a secret */
         /* the Trump's own standard is flagged, so a guest's tray can draw it as what it is */
         companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally,
+                                                     ...(co.paused ? { paused: 1 } : {}),
                                                      ...(co.trump ? { trump: 1 } : {}) })) : [],
         /* A CURTAIN IS LONGER THAN ITS MIDDLE. Judging a wall by its centre hid a run whose
          * near end stood in plain sight, so a wall shows the moment any part of it is seen —
