@@ -19,6 +19,7 @@
     onOpen: null, onStart: null, onClose: null,
     onCmd: null,    // host: guest command arrived
     onSnap: null,   // guest: snapshot arrived
+    onFail: null,   // a peer connection gave up: the network will not carry this link
     diag: [], onDiag: null, _pairing: false
   };
 
@@ -178,7 +179,12 @@
     pc._cand = cand;   // kept on the connection so Net.state() can report it live
     pc.onicecandidateerror = (e) => diag('ICE candidate error ' + (e.errorCode || ''));
     pc.oniceconnectionstatechange = () => diag('ICE state: ' + pc.iceConnectionState);
-    pc.onconnectionstatechange = () => diag('peer connection: ' + pc.connectionState);
+    pc.onconnectionstatechange = () => {
+      diag('peer connection: ' + pc.connectionState);
+      /* a FAILED connection is the one moment advice is worth giving, and the only moment it
+       * will be read — see Net.onFail */
+      if (pc.connectionState === 'failed' && Net.onFail) Net.onFail(pc);
+    };
     return pc;
   }
   /* THE CODE ON SCREEN IS ALL THERE WILL EVER BE. A QR is a one-shot channel: whatever

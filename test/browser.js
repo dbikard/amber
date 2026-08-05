@@ -1152,8 +1152,22 @@ async function match(browser, base, renderer) {
          * suites left standing around the Seat first. A run may pass within a tower's own
          * clearance of one of them, which makes stretches of it legitimately crowded and reads
          * as 'a tower cannot join a wall' when the rule is working exactly as intended. */
-        for (let i = pl.buildings.length - 1; i >= 0; i--)
-          if (pl.buildings[i].bt === 'tower' && !pl.buildings[i].onWall) pl.buildings.splice(i, 1);
+        const segD2 = (b, px, py) => {
+          const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+          const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;
+          let t = ((px - ax) * vx + (py - ay) * vy) / L2;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = ax + vx * t, qy = ay + vy * t;
+          return (px - qx) * (px - qx) + (py - qy) * (py - qy);
+        };
+        /* every point-shaped work of ours near the run goes, not just the towers: the yard the
+         * earlier suites leave behind is what makes stretches of the run legitimately crowded,
+         * and this suite is about the tower/wall rule rather than about the clutter */
+        for (let i = pl.buildings.length - 1; i >= 0; i--) {
+          const b2 = pl.buildings[i];
+          if (b2.x2 != null || b2 === wall) continue;
+          if (segD2(wall, b2.x, b2.y) < 160 * 160) pl.buildings.splice(i, 1);
+        }
         let r2 = { ok: false, err: 'nospot' };
         const frac = [];
         for (let k = 0; k <= 24; k++) frac.push((k % 2 ? -1 : 1) * (k / 48));
@@ -1486,6 +1500,41 @@ async function match(browser, base, renderer) {
     ok('steadying the phone on the scanner does not shut the table behind it', pair.afterVideo);
     ok("...nor does tapping the scanner's own close button", pair.afterCancel);
     ok('but a tap on the menu itself still puts it away', !pair.afterMenu);
+
+    /* ---------------- the network that will not carry it ---------------- *
+     * A web page cannot switch on a phone's hotspot — there is no API for it on any platform.
+     * So the most the game can do when a network blocks its own devices from talking to each
+     * other is recognise the moment and say the one thing that fixes it. Shown only on a real
+     * failure, because advice nobody needs is advice nobody reads. */
+    suite(`${r} · when the network will not carry the link`);
+    const help = await pg.evaluate(async () => {
+      const $ = (id) => document.getElementById(id);
+      $('menu').classList.remove('hidden');
+      $('lan-panel').classList.remove('hidden');
+      $('lan-help').classList.add('hidden');
+      const hidden = $('lan-help').classList.contains('hidden');
+      /* the sim of a dead link: exactly what a peer connection does when ICE gives up */
+      window.Net.onFail(null);
+      const shown = !$('lan-help').classList.contains('hidden');
+      const body = $('lan-help').textContent;
+      /* and a fresh attempt puts it away again */
+      $('qr-host').click();
+      await new Promise((res) => setTimeout(res, 60));
+      const cleared = $('lan-help').classList.contains('hidden');
+      $('lan-help').classList.add('hidden');
+      $('lan-panel').classList.add('hidden');
+      $('menu').classList.add('hidden');
+      return { hidden, shown, cleared, body,
+               osLine: $('lan-help-os').textContent,
+               btn: !$('lan-hotspot').classList.contains('hidden') };
+    });
+    ok('nothing is said while pairing has not failed', help.hidden);
+    ok('a failed link says so', help.shown);
+    ok('...and names the fix', /hotspot/i.test(help.body), help.body.slice(0, 80));
+    ok('...with the route for this OS', /Settings/.test(help.osLine), help.osLine);
+    ok('...and the settings button only where it can work',
+       help.btn === /android/i.test(await pg.evaluate(() => navigator.userAgent)));
+    ok('trying again puts the advice away', help.cleared);
 
     /* ---------------- LAN: the guest's half ---------------- *
      * A guest never touches the sim — it renders whatever arrives on the wire. Rather than

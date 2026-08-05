@@ -217,6 +217,14 @@ body {
 #lan-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #lan-status { font-size: 12px; font-style: italic; color: #b8a878; }
 #qr-display { width: min(72vw, 300px); height: min(72vw, 300px); image-rendering: pixelated; border-radius: 6px; }
+#lan-help {
+  max-width: 94vw; margin: 4px 0; padding: 9px 11px; text-align: left;
+  background: rgba(56,32,42,0.55); border: 1px solid #e0566a88; border-radius: 8px;
+}
+#lan-help .help-title { font-size: 13px; color: #ffc8ce; margin-bottom: 5px; }
+#lan-help .help-body { font-size: 12px; line-height: 1.45; color: #d8c8b8; font-style: italic; }
+#lan-help .help-body b { font-style: normal; color: #ffe9a8; }
+#lan-hotspot { margin: 8px 0 4px; }
 /* readable in a PHOTOGRAPH: this is how a pairing bug gets reported */
 #lan-diag {
   font-family: monospace; font-size: 11px; line-height: 1.35; color: #9cc8b8; text-align: left;

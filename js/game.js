@@ -514,18 +514,14 @@
       if (!r || r.ok !== false) clearPlacing();
       return;
     }
-    /* AN ARMED WORK IS DROPPED BY ANYTHING THAT IS NOT GROUND. A tap on your own men or on one
-     * of your own works is the player having moved on to something else, and holding the work
-     * through it means the NEXT tap raises a barracks where they meant to send a company. The
-     * tap then does what it would have done, because cancelling AND swallowing the gesture
-     * makes you tap twice for one intention.
-     * A SITE is not "something else": a Gate stands on a spring and only there, so tapping a
-     * spring with a Gate armed is exactly the gesture the rules ask for. */
-    if (game.placing &&
-        ((Render.hitUnit && Render.hitUnit(x, y, game.viewer) > 0) || Render.hitBuilding(x, y) >= 0)) {
-      clearPlacing();
-      UI.banner('Cancelled', 'warn');
-    }
+    /* AN ARMED WORK OWNS THE MAP UNTIL IT IS PLACED. Cancelling it on a tap that landed on
+     * your own men or your own works was tried and it was wrong in both halves: a Gate stands
+     * on a spring and a spring must be HELD, so the ground you are aiming at is precisely the
+     * ground your troops are standing on — and with an army at home there is barely a patch of
+     * your own country that is not under somebody. Works are no better: a curtain may start at
+     * one of your own bastions, which is the whole point of being allowed to build into stone.
+     * What cancels an armed work is reaching for a DIFFERENT tool — a standard from the tray,
+     * a power — and those clear it where they are handled. The map only ever places. */
     if (game.placing) {
       const w = Render.toWorld(x, y, game.viewer);
       const def = C.BUILDINGS[game.placing.bt];
@@ -614,6 +610,29 @@
                       '\n---\n' + Net.diag.slice(-12).join('\n');
     };
     Net.onDiag = () => paintDiag();
+    /* WHEN THE WI-FI WILL NOT CARRY IT. A web page cannot switch on a phone's hotspot — there
+     * is no API for it on any platform, and there will not be one — so the most the game can
+     * do is recognise the moment, say the one thing that fixes it, and on Android offer to
+     * open the settings screen. Shown only on a real failure: advice nobody needs is advice
+     * nobody reads. */
+    const android = /android/i.test(navigator.userAgent || '');
+    $('lan-help-os').textContent = android
+      ? 'Android: Settings → Connections → Mobile Hotspot. The other phone joins it like any Wi-Fi.'
+      : 'iPhone: Settings → Personal Hotspot → Allow Others to Join. The other phone joins it like any Wi-Fi.';
+    $('lan-hotspot').classList.toggle('hidden', !android);
+    $('lan-hotspot').addEventListener('click', () => {
+      /* Android's Chrome will launch an activity from an intent: URL. If the OEM has moved the
+       * screen it simply does nothing, which is why the written route is above it and not
+       * behind it. */
+      try { global.location.href = 'intent://#Intent;action=android.settings.TETHER_SETTINGS;end'; }
+      catch (e) { /* the instructions are on screen either way */ }
+    });
+    Net.onFail = () => {
+      $('lan-panel').classList.remove('hidden');
+      $('lan-help').classList.remove('hidden');
+      say('this network will not carry the link — see below');
+      paintDiag();
+    };
     $('lan-status').addEventListener('click', () => $('lan-diag').classList.toggle('hidden'));
     /* repainted on a timer as well as on events: ICE moves without telling us, and a stuck
      * pairing produces no events at all — which is exactly the case worth photographing */
@@ -702,6 +721,7 @@
 
     $('qr-host').addEventListener('click', async () => {
       Net.diagReset();
+      $('lan-help').classList.add('hidden');
       say('drawing your Trump…');
       try {
           say('gathering routes — this takes a few seconds…');
@@ -740,6 +760,7 @@
     });
     qrJoin.addEventListener('click', async () => {
       Net.diagReset();
+      $('lan-help').classList.add('hidden');
       try {
         const offer = await scanQR();
         backToLan();
