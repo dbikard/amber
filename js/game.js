@@ -719,8 +719,8 @@
          * the two things that actually cause it. */
         setTimeout(() => {
           if (Net.active) return;
-          say('no link after 20s — same Wi-Fi? and allow Local Network for the browser');
-          UI.banner('No link after 20s — check both are on the same Wi-Fi', 'warn');
+          say('no link after 20s — tap HOST THE TABLE to draw a fresh Trump and try again');
+          UI.banner('No link — tap HOST THE TABLE to try again', 'warn');
           paintDiag();
         }, 20000);
       } catch (e) { backToLan(); say(e.message); UI.banner('Pairing failed — ' + e.message, 'warn'); }

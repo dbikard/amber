@@ -103,15 +103,42 @@
   }
 
   /* ---------------- connection (ported) ---------------- */
+  /* STUN — WHICH IS NOT A SERVER OF OURS, AND IS NOT OPTIONAL. This gathered host candidates
+   * only: 'LAN-only, smaller SDP, smaller QR'. That is a rule about the NETWORK dressed up as
+   * a rule about the game, and it fails on networks people actually have. Reported from play
+   * twice, with the diagnostics on screen both times: offer sent, answer read, sig=stable,
+   * `cand host:4` — and then ice=checking, ice=disconnected, conn=failed. The second run had
+   * both phones on the same Wi-Fi, so 'same network' was never the whole story: a host
+   * candidate still needs the access point to route between its own clients, and plenty do
+   * not. Worse, Chrome hides host candidates behind .local mDNS names until the page has
+   * media permission, and the HOST creates its offer before it has ever opened the camera —
+   * so the very candidates it publishes are the ones least likely to resolve.
+   * A public STUN server runs nothing of ours and signals nothing: the QR is still the only
+   * channel by which these two devices ever learn about each other, so the pairing is still
+   * serverless in the sense that matters. It buys a reflexive candidate, which is a route that
+   * does not depend on the access point's goodwill. If STUN cannot be reached — a LAN with no
+   * internet — gathering falls back to exactly what it did before. */
+  const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
   function makePC() {
-    /* LAN-only: skip STUN so only host/mDNS candidates gather — smaller SDP, smaller QR */
-    const pc = new RTCPeerConnection({});
+    const pc = new RTCPeerConnection({ iceServers: ICE });
     const cand = {};
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         const ty = e.candidate.type || (/ typ (\w+)/.exec(e.candidate.candidate) || [])[1] || '?';
-        cand[ty] = (cand[ty] || 0) + 1;
-      } else diag('ICE candidates gathered → ' + (Object.keys(cand).map((k) => k + ':' + cand[k]).join(' ') || '(none!)'));
+        /* an mDNS candidate is a host candidate the browser has hidden behind a .local name;
+         * it only resolves for someone on the same LAN, so it is worth counting apart */
+        const key = ty === 'host' && /\.local/.test(e.candidate.candidate || '') ? 'mdns' : ty;
+        cand[key] = (cand[key] || 0) + 1;
+      } else {
+        const got = Object.keys(cand).map((k) => k + ':' + cand[k]).join(' ');
+        diag('ICE candidates gathered → ' + (got || '(none!)'));
+        /* the verdict, in the one place anybody will read it. It is not an error — it is what
+         * this pairing IS — but it is the answer to "why did a stable handshake never link". */
+        if (cand.srflx || cand.relay) diag('a public route was found — this should link');
+        else if (got) diag('LOCAL ONLY — no public route. Same Wi-Fi, and an access point that '
+                           + 'lets its clients talk to each other');
+        else diag('no candidates at all — the browser gathered no route');
+      }
     };
     pc._cand = cand;   // kept on the connection so Net.state() can report it live
     pc.onicecandidateerror = (e) => diag('ICE candidate error ' + (e.errorCode || ''));
@@ -124,7 +151,7 @@
       if (pc.iceGatheringState === 'complete') return res();
       const done = () => { if (pc.iceGatheringState === 'complete') res(); };
       pc.addEventListener('icegatheringstatechange', done);
-      setTimeout(res, 2500);
+      setTimeout(res, 4000);   // STUN takes a round trip the host-only path never waited for
     });
   }
   /* ---------------- the star ----------------
