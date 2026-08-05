@@ -1524,6 +1524,85 @@ for (const n of [2, 3, 4]) {
      `${w.units.filter((u) => u.owner === 0).length} men`);
 }
 
+/* MEN HAVE WIDTH. Nothing kept one soldier off another, so a column arrived stacked and a
+ * melee was a single point with a hundred sprites in it — an army of twenty and an army of two
+ * hundred looked the same. Two rules together: a FORMATION that hands each man a place a berth
+ * from his neighbours, and a SEPARATION pass for the transient crowding a march produces. */
+suite('men have width');
+{
+  const w = World.createWorld(1000, 2), pl = w.players[0], c = World.cityOf(w, 0);
+  w.chaosNext = 1e9;
+  pl.essence = 1e6;
+  for (let a = 0; a < 40; a++) {
+    const th = a / 40 * Math.PI * 2;
+    World.applyCommand(w, 0, { c: 'build', x: c.x + Math.cos(th) * 210, y: c.y + Math.sin(th) * 210, bt: 'barracks' });
+  }
+  for (let i = 0; i < 30 * 240; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const mine = () => w.units.filter((u) => u.owner === 0);
+  const spacing = () => {
+    const us = mine();
+    let sum = 0, worst = 1e9;
+    for (const a of us) {
+      let m = 1e9;
+      for (const b of us) { if (a === b) continue; const d = Math.hypot(a.x - b.x, a.y - b.y); if (d < m) m = d; }
+      sum += m; worst = Math.min(worst, m);
+    }
+    return { n: us.length, avg: sum / us.length, worst };
+  };
+  const home = spacing();
+  ok('an army was mustered', home.n > 30, `${home.n} men`);
+  ok('a man at home stands about a berth from his nearest neighbour',
+     home.avg > C.CROWD.space * 0.7, `${home.avg.toFixed(1)} against a berth of ${C.CROWD.space}`);
+  /* IN THE OPEN. A man held against the wall of a hall cannot give way — stone has the last
+   * word, and two men handed the same bearing off the same building stand on the same foot of
+   * ground until one of them is ordered elsewhere. That is the geometry, not a failure of the
+   * crowd rule, so the claim is made where the rule actually governs. */
+  const open = () => {
+    const us = mine().filter((u) => !pl.buildings.some((b) => b.x2 == null &&
+      Math.hypot(u.x - b.x, u.y - b.y) < C.BUILD.pass + 2));
+    let worst = 1e9;
+    for (const a of us) for (const b of us) {
+      if (a === b) continue;
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < worst) worst = d;
+    }
+    return { n: us.length, worst };
+  };
+  const clear = open();
+  ok('...and in the open nobody is standing inside anybody',
+     clear.n > 10 && clear.worst > C.CROWD.space * 0.35,
+     `${clear.n} men clear of a work, closest pair ${clear.worst.toFixed(1)}`);
+
+  /* ...AND STILL SPREAD AFTER A MARCH, which is where a formation usually collapses */
+  pl.banner = { x: c.x + 700, y: c.y + 300, site: -1 };
+  for (let i = 0; i < 30 * 40; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const far = spacing();
+  ok('an army that has marched is still spread', far.avg > C.CROWD.space * 0.7,
+     `${far.avg.toFixed(1)} after a march`);
+
+  /* AND IT COMES TO REST. A separation rule that over-corrects looks fine in a snapshot and
+   * shivers in motion — men trading a rounding error back and forth thirty times a second. */
+  const us = mine();
+  let moved = 0, n = 0;
+  for (let i = 0; i < 30; i++) {
+    const was = us.map((u) => ({ x: u.x, y: u.y }));
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    us.forEach((u, k) => { moved += Math.hypot(u.x - was[k].x, u.y - was[k].y); n++; });
+  }
+  const drift = moved / n;
+  ok('a settled army stands still', drift < C.UNITS.soldier.speed * C.SIM_DT * 0.15,
+     `${drift.toFixed(3)} a tick against a stride of ${(C.UNITS.soldier.speed * C.SIM_DT).toFixed(2)}`);
+
+  /* the formation is what does the work, and it is deterministic: the same board twice puts
+   * the same man in the same place, or a guest and a host disagree about where the army is */
+  const a = World.createWorld(4242, 2), b = World.createWorld(4242, 2);
+  for (const q of [a, b]) { q.chaosNext = 1e9; for (let i = 0; i < 30 * 90; i++) { World.update(q, C.SIM_DT); q.events.length = 0; } }
+  const pa = a.units.filter((u) => u.owner === 0), pb = b.units.filter((u) => u.owner === 0);
+  eq('the same board musters the same army', pa.length, pb.length);
+  ok('...and puts every man in the same place',
+     pa.every((u, i) => Math.abs(u.x - pb[i].x) < 1e-6 && Math.abs(u.y - pb[i].y) < 1e-6));
+}
+
 /* A COMPANY MAY GO QUIET WITHOUT THE REALM GOING QUIET. The muster valve was the Seat's alone,
  * so hoarding for a Gate meant stopping every hall you own — the one holding the line
  * included. Named with a company it silences that standard's halls and no others. */
@@ -1800,9 +1879,19 @@ suite('a run is bought by the foot');
                 goal: null, co: 0, from: -1 };
     w.units.push(u);
     pl.banner = { x: far.x, y: far.y, site: -1 };
-    for (let i = 0; i < 30 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
-    const s2 = (nx / nL) * (u.x - sb.x) + (ny / nL) * (u.y - sb.y);
-    ok('a heir cannot walk through his own ungated run', s2 > 0, `${s2.toFixed(1)} past the stone`);
+    /* THROUGH, NOT PAST. Sixty feet of stone is something a man walks ROUND, and he should —
+     * the rule is that he may not walk THROUGH it. Asserting he never reaches the far side
+     * tested the length of the run, not the rule, and it only ever passed because nothing
+     * pushed him sideways; the moment a crowd could jostle him he strolled round the end and
+     * the assertion failed for a thing that is entirely correct. Watch the stone itself. */
+    let crossed = 0;
+    for (let i = 0; i < 30 * 30; i++) {
+      const px = u.x, py = u.y;
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      if (u.hp > 0 && World.crosses(px, py, u.x, u.y, ends[0], ends[1], ends[2], ends[3])) crossed++;
+    }
+    eq('a heir cannot walk through his own ungated run', crossed, 0,
+       `stepped through the stone ${crossed} times`);
   }
 }
 

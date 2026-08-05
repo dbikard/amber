@@ -408,6 +408,22 @@
    * are narrower than the grid can see. Pushed out at the rim, a column parts round a building
    * and closes up behind it, which is what it should look like anyway.
    * Walls are not in here: they have their own rule, with a gateway in it. */
+  /* AND THE STONE HAS THE LAST WORD. This runs BEFORE `shove`, always: walking a man off a
+   * hall can put him on the wrong side of a curtain — the stone is nineteen from its centre
+   * line and a work pushes twenty-six — and a wall a man can be shoved through is not a wall.
+   * Whichever of the two moves him, `shove` is the one that speaks last. */
+  /* would this step carry him through stone he is barred by? A wall is nineteen thick and a
+   * work pushes twenty-six, so walking a man off a hall can hop him clean over a curtain —
+   * and `shove` then holds him on the wrong side, because all it knows is which side he is on
+   * NOW. Cheaper to refuse the step than to unpick it. */
+  function barred(world, u, nx, ny) {
+    if (!world.anyWall) return false;
+    for (const w of world.walls) {
+      if (w.owner === u.owner && inGate(w, nx, ny)) continue;
+      if (crosses(u.x, u.y, nx, ny, w.ax, w.ay, w.bx, w.by)) return true;
+    }
+    return false;
+  }
   function stand(world, u) {
     const pad = C.BUILD.pass, p2 = pad * pad;
     for (let q = 0; q < world.players.length; q++)
@@ -416,9 +432,102 @@
         const dx = u.x - b.x, dy = u.y - b.y, dd = dx * dx + dy * dy;
         if (dd >= p2) continue;
         const L = Math.sqrt(dd);
-        if (L < 1e-3) { u.x = b.x + pad; continue; }      // dead centre: any direction will do
-        u.x = b.x + (dx / L) * pad; u.y = b.y + (dy / L) * pad;
+        const nx = L < 1e-3 ? b.x + pad : b.x + (dx / L) * pad;
+        const ny = L < 1e-3 ? u.y : b.y + (dy / L) * pad;
+        if (barred(world, u, nx, ny)) continue;           // rather in the hall than through the wall
+        u.x = nx; u.y = ny;
+        /* AND HE IS AS CLOSE TO HIS PLACE AS THE GROUND ALLOWS. The formation can hand a man
+         * a place inside a hall; walked off it he heads back, is walked off again, and shivers
+         * against the wall of it for the rest of the match. At the rim he has arrived —
+         * and he is PINNED there, because stone has the last word and a man the crowd pushes
+         * into a wall it cannot push him through is a man being shoved back and forth by two
+         * rules that will never agree. The crowd goes round him instead. */
+        u.set = 1; u.pin = world.tick;
       }
+  }
+  /* MEN HAVE WIDTH. Nothing kept one soldier off another, so a column arrived stacked and a
+   * melee was a single point with a hundred sprites in it — an army of twenty and an army of
+   * two hundred looked the same. This is the separation rule out of flocking, and nothing
+   * else from it: no cohesion (the flow field is the cohesion) and no alignment (the order is
+   * the alignment), because both would fight the pathing that already works.
+   * ON ITS OWN GRID. The bins the sim already keeps are 280 wide, which is right for "who can
+   * I shoot" and useless here: at melee density one bin holds hundreds and checking them all
+   * is the quadratic trap again. A cell the width of the separation itself means the nine
+   * cells around a man hold a handful, so the pass is linear in the army.
+   * Each PAIR is resolved once — a half-neighbourhood, and by index within the shared cell —
+   * and both men give way by half the overlap, which converges in two or three ticks without
+   * the jitter a spring force produces. */
+  function jostle(world) {
+    const R = C.CROWD.space, R2 = R * R, cw = R;
+    const grid = new Map();
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.man) continue;        // a berth on a parapet is not a crowd
+      const k = Math.floor(u.y / cw) * 100003 + Math.floor(u.x / cw);
+      const cell = grid.get(k);
+      if (cell) cell.push(u); else grid.set(k, [u]);
+    }
+    /* half the ring: (0,0) forward-only, then the four cells that have not seen us yet */
+    const NB = [[1, 0], [-1, 1], [0, 1], [1, 1]];
+    /* GATHERED, CLAMPED, THEN APPLIED. Three ways to do this and only one of them works.
+     * Push each man the moment a neighbour is found and every push he is owed is summed, so a
+     * man with six neighbours moves six times as far as he should and overshoots into somebody
+     * else: a settled army shimmered at a hundred units a second and never came to rest.
+     * Average the corrections instead and it converges beautifully and far too weakly — men
+     * settled five apart against a target of twenty-two, because in a dense crowd the mean of
+     * a dozen opposing pushes is nearly nothing.
+     * So the sum is kept and the STEP is capped. A man cannot be shoved faster than he walks,
+     * which bounds the overshoot to something smaller than the spacing and lets a packed
+     * company open out over a second or so rather than exploding in one tick. */
+    const part = (a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      let dd = dx * dx + dy * dy;
+      if (dd >= R2) return;
+      let nx, ny;
+      if (dd < 1e-6) {                          // exactly together: part them along their ids
+        const ang = ((a.id * 2654435761) % 6283) / 1000;
+        nx = Math.cos(ang); ny = Math.sin(ang); dd = 0;
+      } else { const L = Math.sqrt(dd); nx = dx / L; ny = dy / L; dd = L; }
+      const give = (R - dd) * 0.5 * C.CROWD.push;
+      a._cx -= nx * give; a._cy -= ny * give; a._cn++;
+      b._cx += nx * give; b._cy += ny * give; b._cn++;
+    };
+    for (const cell of grid.values()) for (const u of cell) { u._cx = 0; u._cy = 0; u._cn = 0; }
+    for (const [k, cell] of grid) {
+      for (let i = 0; i < cell.length; i++) {
+        for (let j = i + 1; j < cell.length; j++) part(cell[i], cell[j]);
+        for (const [dx, dy] of NB) {
+          const other = grid.get(k + dy * 100003 + dx);
+          if (!other) continue;
+          for (let j = 0; j < other.length; j++) part(cell[i], other[j]);
+        }
+      }
+    }
+    const cap = C.CROWD.step;
+    for (const cell of grid.values()) for (const u of cell) {
+      if (!u._cn) continue;
+      let dx = u._cx, dy = u._cy;
+      const L = Math.sqrt(dx * dx + dy * dy);
+      /* A CORRECTION TOO SMALL TO SEE IS NOT WORTH MAKING. Under a hair's breadth the pass is
+       * only trading rounding error back and forth between neighbours, which is invisible as
+       * distance and extremely visible as SHIVER — the ranks reversed direction four times a
+       * second while standing still. Below the deadband a man is where he should be. */
+      /* A MAN IN HIS PLACE IS NOT MOVED. Once he has arrived he is where the formation put
+       * him, and the formation already spaces men a berth apart — so a push on him is the
+       * pass arguing with the order, and the two of them trade him back and forth for the
+       * rest of the match. The ranks reversed direction four times a second doing it. Men
+       * still on the march give way around him, which is what a crowd does. */
+      /* ...but SOMEBODY STANDING INSIDE HIM still moves him. A settled man ignoring every push
+       * is stable and wrong: two men handed the same rim of the same hall, or a recruit
+       * mustered on top of one, stay in the same square foot for ever because neither will
+       * budge. He ignores the small corrections — which is all the shiver was — and gives way
+       * to a real overlap like anyone else. */
+      if (u.pin === world.tick) continue;               // held against stone: he cannot give way
+      if (u.set && L < C.CROWD.space * 0.25) continue;
+      if (L < C.CROWD.dead) continue;
+      if (L > cap) { dx = dx / L * cap; dy = dy / L * cap; }
+      if (barred(world, u, u.x + dx, u.y + dy)) continue;   // nor is a crowd a way through stone
+      u.x += dx; u.y += dy;
+    }
   }
   function shove(world, u) {
     const pad = C.WALL.thick + 6, p2 = pad * pad;
@@ -983,7 +1092,15 @@
       id: world.nextId++, owner, kind,
       x: (atX != null ? atX : home.x) + world.rng.range(-26, 26),
       y: (atY != null ? atY : home.y + (owner === 0 ? -60 : 60)) + world.rng.range(-16, 16),
-      ox: world.rng.range(-24, 24), oy: world.rng.range(-24, 24),   // personal formation offset
+      /* HIS PLACE IN THE LINE, and it is a place rather than a jitter. This was a random point
+       * in a 48-by-48 square, which for a company of a hundred is four units a man — packed
+       * far tighter than a man's own width, so an army arrived as a blob and the separation
+       * rule spent the rest of the match fighting the formation for the same ground.
+       * A phyllotaxis spiral instead: the k-th man stands at r = k^0.5 scaled so the DENSITY
+       * comes out at one man per CROWD.space, which is exactly the room the crowd rule wants
+       * him to have. The formation and the separation then agree, and a settled army stands
+       * still. Capped, because an army of six hundred should be a host and not a continent. */
+      ...formationPlace(world, owner),
       hp: def.hp * scale, maxHp: def.hp * scale,
       dmg: def.dmg * (owner === C.CHAOS_ID ? C.CHAOS.dmgScale(world.t) : 1) * vet,
       tier: lv,
@@ -996,6 +1113,17 @@
     return u.id;
   }
 
+  /* r = space * 0.6 * sqrt(k) puts one man per `space` of area, which is the same room the
+   * separation pass keeps; the golden angle keeps the ring even at every size. The counter is
+   * per heir and never reused, so a company that loses men keeps its shape rather than
+   * re-packing everyone the moment somebody falls. */
+  function formationPlace(world, owner) {
+    const pl = owner === C.CHAOS_ID ? null : world.players[owner];
+    const k = pl ? (pl.nextSeat = (pl.nextSeat || 0) + 1) : Math.floor(world.rng.next() * 400);
+    const r = Math.min(C.CROWD.ring, C.CROWD.space * 0.6 * Math.sqrt(k));
+    const a = k * 2.39996323;
+    return { ox: Math.cos(a) * r, oy: Math.sin(a) * r };
+  }
   const tierOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
   function hurt(world, victim, dmg, byOwner) {
     victim.hp -= dmg;
@@ -1427,9 +1555,8 @@
         } else {
           const mv = def.speed * dt / (foe.d || 1);
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
-          if (world.anyWall) shove(world, u);
-        stand(world, u);
           stand(world, u);
+          if (world.anyWall) shove(world, u);   // STONE HAS THE LAST WORD: see the note on stand()
         }
         continue;
       }
@@ -1457,13 +1584,13 @@
             const dg = Math.sqrt(d2(u.x, u.y, gx, gy));
             /* the whole run is his ground once he is on it, or he would be dragged back to
              * the order's point every tick — the same handover the muster ring needs */
-            if (dg < C.NAV.arrive) { if (dg > 3) { u.x += (gx - u.x) / dg * def.speed * dt; u.y += (gy - u.y) / dg * def.speed * dt; } continue; }
+            if (dg < C.NAV.arrive) { if (dg > 3) { u.x += (gx - u.x) / dg * def.speed * dt; u.y += (gy - u.y) / dg * def.speed * dt; } continue; }   // a berth on a parapet is exact: he is not jostled off it
             const s4 = NAV.steer(world.nav, world, u.owner, gx, gy, u.x, u.y);
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
             const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
             u.x += vx2 * def.speed * dt; u.y += vy2 * def.speed * dt;
-            shove(world, u);
             stand(world, u);
+            shove(world, u);
             continue;
           }
         }
@@ -1497,7 +1624,17 @@
         const dField = Math.sqrt(d2(u.x, u.y, gs.x, gs.y));
         let vx = 0, vy = 0;
         if (dgoal < C.NAV.arrive || dField < C.NAV.arrive || (muster && dField < muster)) {
-          if (dgoal > 4) { vx = (gx - u.x) / dgoal; vy = (gy - u.y) / dgoal; }
+          /* HE HAS ARRIVED WHEN HE IS STANDING WITH HIS FELLOWS, not when he is on a point.
+           * The stop was four units, which is inside the room a man now keeps: separation
+           * shoved him off his place and he walked back onto it, thirty times a second, and
+           * a settled army shimmered. Anything within a berth of his place IS his place. */
+          /* IN HIS PLACE, AND HE STAYS IN IT. A bare threshold flickers: a neighbour nudges him
+           * a foot past it, he sets off again, arrives, is nudged again — eighteen reversals
+           * in two seconds. Hysteresis. He arrives inside three quarters of a berth and does
+           * not set off again until something has moved him half a berth further than that. */
+          if (u.set && dgoal > C.CROWD.space * 1.5) u.set = 0;
+          if (!u.set && dgoal > C.CROWD.space * 0.75) { vx = (gx - u.x) / dgoal; vy = (gy - u.y) / dgoal; }
+          else u.set = 1;
         } else {
           const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);
           if (s3) { vx = s3.x; vy = s3.y; }
@@ -1511,9 +1648,20 @@
           }
         }
         u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
-        if (world.anyWall) shove(world, u);
         stand(world, u);
+        if (world.anyWall) shove(world, u);
       }
+    }
+
+    /* AND THEN THEY MAKE ROOM FOR EACH OTHER. Once, after everyone has moved, so the pass is
+     * symmetric — a man does not give way to a neighbour who has not taken his step yet. The
+     * stone has the last word: separation can push a man into a wall or onto a hall, so both
+     * shoves run again over whoever the crowd moved. */
+    jostle(world);
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.man) continue;
+      stand(world, u);
+      if (world.anyWall) shove(world, u);
     }
 
     /* bury the dead */
@@ -1574,7 +1722,7 @@
   }
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
-                   visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf,
+                   visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
                    wallCrews, wallReach };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;

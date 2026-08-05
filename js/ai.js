@@ -500,7 +500,12 @@
        * is held: until the named hour the heir expands, garrisons and defends, but does not
        * march on your Seat. It is not weakened in the fight it eventually brings — it just
        * gives you the opening minutes to learn the board. */
-      if (hold && v.t < hold && v.enCity && want === v.enCityId) want = v.myCity.id;
+      /* AND THE HOLD IS ABOUT THE GROUND, NOT ABOUT WHAT HE KNOWS OF IT. The guard asked for
+       * `v.enCity` — the rival's Seat EXPLORED — so an heir who had not found you yet could
+       * still send his banner to your Seat as the nearest unseen place and arrive inside the
+       * hour the footing promised you. It is the same square of ground either way; whether he
+       * has been told what is on it is not the player's problem. */
+      if (hold && v.t < hold && want === v.enCityId) want = v.myCity.id;
       if (want !== v.banner) issue({ c: 'banner', site: want });
 
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.

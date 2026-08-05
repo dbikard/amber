@@ -82,6 +82,14 @@
   CONST.START_ESSENCE = 180;
   CONST.BASE_INCOME = 2.5;        // essence/sec before any Shadow Gate
   CONST.CASTLE_ZONE = 46;         // units closer than this to a castle attack it
+  /* CROWD SEPARATION. Men had no width at all with respect to each other: a column arrived
+   * stacked, a melee was a single point with a hundred sprites in it, and you could not tell
+   * an army of twenty from an army of two hundred by looking. `space` is how much room a man
+   * keeps, `push` is how much of an overlap is resolved per tick — half of it, split between
+   * the two of them, which converges in two or three ticks without the jitter a spring force
+   * gives you. Men posted on a parapet are exempt: they have assigned berths WALL.berth apart
+   * and a separation wider than the berth would fight the roster for the same stretch. */
+  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, ring: 300, dead: 0.35 };
 
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle
