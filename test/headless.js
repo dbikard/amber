@@ -1506,6 +1506,60 @@ for (const n of [2, 3, 4]) {
      `${w.units.filter((u) => u.owner === 0).length} men`);
 }
 
+/* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gated the Pattern on a
+ * SNAPSHOT of the treasury — "essence > 200" — which says nothing about whether the realm can
+ * carry the Shrine's drain for the nine and a half minutes a walk takes. From a played match
+ * at PRINCE: Benedict set foot on the Pattern at 4:03 with seven works, ran his treasury to
+ * zero and held it there, could not pay his muster, watched his army fall from thirty-nine to
+ * three, and spent six minutes being dismantled — reaching 21% and then DECAYING back to 16%.
+ * He did not lose the race. He lost the game to have entered it. */
+suite('an heir does not walk himself broke');
+{
+  const shrineDrain = C.BUILDINGS.shrine.drain[0];
+  const w = World.createWorld(1000, 2), pl = w.players[0];
+  w.chaosNext = 1e9;
+  const bot = AI.make('benedict');
+  const iss = (cmd) => World.applyCommand(w, 0, cmd);
+  /* hand him a Shrine and a purse, and NOT the ground to pay for a walk */
+  const c = World.cityOf(w, 0);
+  const sd = C.BUILDINGS.shrine;
+  pl.buildings.push({ id: w.nextId++, bt: 'shrine', level: 1, x: c.x + 200, y: c.y, cd: 0,
+                      raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp, lastHurt: -99,
+                      node: -1, co: 0 });
+  pl.essence = 4000;
+  let sawWalk = false, brokeWhileWalking = 0;
+  for (let i = 0; i < 30 * 600 && w.winner === null; i++) {
+    bot.step(w, 0, iss, C.SIM_DT);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    if (pl.walking) { sawWalk = true; if (pl.essence < 1) brokeWhileWalking++; }
+  }
+  ok('the heir raised a realm and at some point walked', sawWalk || pl.pattern > 0,
+     `pattern ${pl.pattern.toFixed(1)}%`);
+  /* the whole point: he may walk, he may stop, but he must never sit on the Pattern with an
+   * empty treasury while his muster goes unpaid */
+  ok('...and never held the Pattern with an empty treasury', brokeWhileWalking < 30,
+     `${(brokeWhileWalking / 30).toFixed(1)}s walking at zero`);
+
+  /* and the rule stated directly: the two conditions the shared gate applies */
+  ok('a walk needs a realm that earns most of the drain', shrineDrain > 0);
+  const poor = World.createWorld(1000, 2), pp = poor.players[0];
+  poor.chaosNext = 1e9;
+  pp.buildings.push({ id: poor.nextId++, bt: 'shrine', level: 1, x: c.x + 200, y: c.y, cd: 0,
+                      raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp, lastHurt: -99,
+                      node: -1, co: 0 });
+  pp.essence = 100000;                 // rich for a moment, and earning almost nothing
+  const bot2 = AI.make('benedict');
+  const iss2 = (cmd) => World.applyCommand(poor, 0, cmd);
+  for (let i = 0; i < 30 * 60; i++) {
+    bot2.step(poor, 0, iss2, C.SIM_DT);
+    World.update(poor, C.SIM_DT); poor.events.length = 0;
+    pp.essence = 100000;               // a purse that never empties, so only INCOME can decide
+  }
+  ok('a full purse is not a reason to walk — the ground has to earn it',
+     !pp.walking || pp.incomeRate >= shrineDrain * 0.85,
+     `walking=${pp.walking} on ${(pp.incomeRate || 0).toFixed(1)}/s against a ${shrineDrain}/s drain`);
+}
+
 /* A GATE STANDS ON THE SPRING. It may be raised anywhere within NODE.r of one and it used to
  * be left wherever the finger landed, so the work that draws Shadow out of the ground sat on
  * the bank of its own pool — up to ninety-six from the water — and the picture said the two

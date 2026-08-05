@@ -79,6 +79,9 @@
       visHostiles, threats, push, enemyArmy, mySprings, atGate,
       enCityId, frontier, unexplored: world.map.sites.filter((s) => !pl.explored[s.id]).length,
       nodes,
+      /* what the realm EARNS and what it is already committed to — the two numbers a walk has
+       * to be judged against, and neither of them was in the view */
+      income: pl.incomeRate || 0, drain: pl.drainRate || 0,
       myPattern: pl.pattern, walking: pl.walking,
       enemyWalking: en.revealed && en.walking, enemyPattern: en.revealed ? en.pattern : 0,
       powers: pl.powers, banner: pl.banner ? pl.banner.site : -1
@@ -392,8 +395,26 @@
        * someone actually sets foot on it — two defensive lines with no shrine-walker between
        * them drew 15 of 30 at the cap. Past this hour, any heir holding a Shrine commits. */
       const late = v.t > 1500;
-      if (!v.walking && (P.walk(v) || (late && v.have.shrine))) issue({ c: 'walk', on: true });
-      else if (v.walking && !late && P.pauseWalk(v)) issue({ c: 'walk', on: false });
+      /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gates the walk on a
+       * SNAPSHOT of the treasury — 'essence > 200' — which says nothing about whether the
+       * realm can carry the drain for the nine and a half minutes the walk takes. Reported
+       * from play, at PRINCE: Benedict set foot on the Pattern at 4:03 with seven works, ran
+       * his treasury to zero and held it there, could not pay his muster, watched his army
+       * fall from thirty-nine to three, and spent the next six minutes being dismantled. He
+       * reached 21% and then DECAYED back to 16%. He did not lose the race; he lost the game
+       * to have entered it.
+       * So the shared rule, under every doctrine: start only if the ground earns most of what
+       * the Shrine will take, and STOP if the treasury runs dry. Stopping costs the lines
+       * their progress, which is exactly the trade — a walk resumed from 16% beats a realm
+       * that starved to reach 21%. */
+      const shrineDrain = C.BUILDINGS.shrine.drain[0];
+      const canAfford = v.income >= shrineDrain * 0.85;
+      const broke = v.essence < 140;
+      if (!v.walking && (P.walk(v) || (late && v.have.shrine)) && (canAfford || late)) {
+        issue({ c: 'walk', on: true });
+      } else if (v.walking && (broke || (!late && P.pauseWalk(v)))) {
+        issue({ c: 'walk', on: false });
+      }
 
       /* city: first unmet want in the plan (save up for it) */
       let saving = false;
