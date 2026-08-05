@@ -800,7 +800,10 @@ suite('the muster ground')
   /* the Seat stands on its own ground; an army standing WITH it disappears under the castle */
   ok('an army ordered home forms up in the court, not on the tower',
      d[d.length >> 1] > C.CITY.seatR + 20, `median ${Math.round(d[d.length >> 1])} from the Seat`);
-  ok('and it stays inside the court', d[d.length - 1] < C.CITY.r + 60,
+  /* ...and the rim is the court's plus a man's berth off a work: nobody stands IN a hall any
+   * more, so a man at the edge of the muster is pushed BUILD.pass beyond whatever he formed
+   * up against. That is the rule working, not the army wandering. */
+  ok('and it stays inside the court', d[d.length - 1] < C.CITY.r + 60 + C.BUILD.pass,
      `furthest ${Math.round(d[d.length - 1])}`);
 
   /* EVERY man reaches his place. A soldier on the muster ground steers to his own place in
@@ -1521,6 +1524,51 @@ for (const n of [2, 3, 4]) {
      `${w.units.filter((u) => u.owner === 0).length} men`);
 }
 
+/* A WORK IS SOMETHING YOU WALK ROUND. Men marched straight through their own halls, so an
+ * army at home buried every building it passed — and a building under a crowd cannot be
+ * tapped, which is how you raise it a level. Reported from play as exactly that. */
+suite('men walk round a work, not through it');
+{
+  const w = World.createWorld(1000, 2), pl = w.players[0];
+  w.chaosNext = 1e9;
+  const hall = pl.buildings.find((b) => b.bt === 'barracks');
+  ok('the opening hall is there to walk round', !!hall);
+  const d = C.UNITS.soldier;
+  /* a company put down ON the hall, which is what a muster at home looks like */
+  const men = [];
+  for (let i = 0; i < 24; i++) {
+    const a = i * 2.399;
+    const u = { id: w.nextId++, owner: 0, kind: 'soldier', tier: 1,
+                x: hall.x + Math.cos(a) * (i % 5), y: hall.y + Math.sin(a) * (i % 5),
+                ox: 0, oy: 0, hp: 90, maxHp: 90, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
+    w.units.push(u); men.push(u);
+  }
+  const inside = () => men.filter((u) => Math.hypot(u.x - hall.x, u.y - hall.y) < C.BUILD.pass - 0.5).length;
+  eq('they start standing in it', inside(), men.length);
+  for (let i = 0; i < 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('...and one second later not one of them is', inside(), 0);
+
+  /* AND THEY GO ROUND IT RATHER THAN STOPPING AT IT: a column ordered past a work still
+   * arrives, or 'walk round' would be 'walk into'. */
+  const far = { x: hall.x + 600, y: hall.y };
+  pl.banner = { x: far.x, y: far.y, site: -1 };
+  const near0 = men.map((u) => Math.hypot(u.x - far.x, u.y - far.y));
+  for (let i = 0; i < 30 * 25; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const near1 = men.filter((u) => u.hp > 0).map((u) => Math.hypot(u.x - far.x, u.y - far.y));
+  const closed = near1.filter((q, i) => q < near0[i] - 100).length;
+  ok('a column ordered past a work still gets there', closed >= near1.length * 0.6,
+     `${closed} of ${near1.length} closed 100+ on the order`);
+  eq('...and none of them ended up inside the hall', inside(), 0);
+
+  /* a work at the very centre of a man is still a work: he is put out, not left in */
+  const stuck = men[0];
+  stuck.x = hall.x; stuck.y = hall.y;
+  World.update(w, C.SIM_DT); w.events.length = 0;
+  ok('a man exactly on a work is put out of it',
+     Math.hypot(stuck.x - hall.x, stuck.y - hall.y) >= C.BUILD.pass - 0.5,
+     `${Math.hypot(stuck.x - hall.x, stuck.y - hall.y).toFixed(1)} from its middle`);
+}
+
 /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gated the Pattern on a
  * SNAPSHOT of the treasury — "essence > 200" — which says nothing about whether the realm can
  * carry the Shrine's drain for the nine and a half minutes a walk takes. From a played match
@@ -1989,9 +2037,18 @@ suite('the solo ladder')
    * Seat inside the hour it was given, however well the fight is going for it. Several
    * seeds, because one map is an anecdote — and because an heir CAN lose its Seat early to
    * Chaos or to a lucky baseline, which is a different thing from never having played. */
+  /* EIGHT MAPS, NOT THREE. The survival bar was `2 of 3`, on a thing that happens about half
+   * the time — a 57% chance of passing on a healthy build, which is a coin toss wearing an
+   * assertion's clothes. It flipped on a change that provably had nothing to do with it
+   * (measured at 6/10 before and 5/10 after). More maps, and a bar low enough to mean
+   * something: what this must catch is a Squire that is ERASED, not one that loses a close
+   * one. The rate is printed so a real slide is visible even while the test passes.
+   * The rate itself, ~55% against the random ghost, is not good and is not this suite's to
+   * fix — see the skill-gradient target in DESIGN_PRINCIPLES. */
   const hold = D.squire.hold;
-  let worst = 1e9, built = 0, lived = 0;
-  for (const seed of [1000, 7, 42]) {
+  let worst = 1e9, built = 0, lived = 0, maps = 0;
+  for (const seed of [1000, 7, 42, 1, 31337, 777, 4242, 99]) {
+    maps++;
     const w = World.createWorld(seed, 2);
     const bots = [AI.make('random'), AI.make('benedict', D.squire)];
     w.players[1].eco = D.squire.eco;
@@ -2010,9 +2067,10 @@ suite('the solo ladder')
   }
   ok('a Squire never points its banner at your Seat inside its hour',
      worst > C.CITY.r, `nearest the banner came: ${Math.round(worst)}`);
-  ok('...and spends the time building a realm of its own', built >= 2, `${built} of 3 maps`);
-  ok('...an heir, not a victim: it is still standing when its hour comes', lived >= 2,
-     `${lived} of 3 maps`);
+  ok('...and spends the time building a realm of its own', built >= maps * 0.6,
+     `${built} of ${maps} maps`);
+  ok('...an heir, not a victim: it is not simply erased', lived >= 3,
+     `still standing on ${lived} of ${maps} maps`);
 }
 
 /* Chaos is the price of the best ground, not a doomsday timer (DESIGN_PRINCIPLES §4). It may

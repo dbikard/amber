@@ -399,6 +399,27 @@
    * he cannot reach would otherwise stroll through the wall as if it were paint. So after he
    * moves, anyone standing in another heir's stone is put back on the side he came from. The
    * owner passes freely: it is his wall, and it has a gate in it. */
+  /* A WORK IS SOMETHING YOU WALK ROUND. Men marched straight through their own halls, so an
+   * army at home buried every building it passed — and a building under a crowd cannot be
+   * tapped, which is how you raise it a level. Reported from play as exactly that.
+   * A SHOVE rather than a hole in the movement grid: stamping footprints into the nav layer
+   * would route columns around works properly, and it would also let a heir wall himself into
+   * his own court by accident, since works stand seventy-eight apart and the gaps between them
+   * are narrower than the grid can see. Pushed out at the rim, a column parts round a building
+   * and closes up behind it, which is what it should look like anyway.
+   * Walls are not in here: they have their own rule, with a gateway in it. */
+  function stand(world, u) {
+    const pad = C.BUILD.pass, p2 = pad * pad;
+    for (let q = 0; q < world.players.length; q++)
+      for (const b of world.players[q].buildings) {
+        if (b.x2 != null) continue;                       // a run is shoved by `shove`
+        const dx = u.x - b.x, dy = u.y - b.y, dd = dx * dx + dy * dy;
+        if (dd >= p2) continue;
+        const L = Math.sqrt(dd);
+        if (L < 1e-3) { u.x = b.x + pad; continue; }      // dead centre: any direction will do
+        u.x = b.x + (dx / L) * pad; u.y = b.y + (dy / L) * pad;
+      }
+  }
   function shove(world, u) {
     const pad = C.WALL.thick + 6, p2 = pad * pad;
     for (const w of world.walls) {
@@ -1011,7 +1032,31 @@
   /* nearest hostile target within radius: units, any standing work, and the Seat-tower at
    * a city. Works are just places now, so a barracks out on the map is besieged exactly
    * like one in the court. */
+  /* KEEP THE MAN YOU ARE FIGHTING. Acquisition is a look at the nine grid cells around you,
+   * which is cheap when the board is empty and quadratic when two armies are standing in each
+   * other — every man scanning every other man, thirty times a second. Profiled with 1500 men
+   * in contact: 94% of the tick, and 40% of a frame's whole budget before a pixel is drawn.
+   * A man in a melee is fighting the same man for seconds at a time, so the answer is to stop
+   * asking. The target is remembered and re-validated — alive, still hostile, still in reach,
+   * still not behind stone — which is a handful of arithmetic against a scan of hundreds.
+   * It is refreshed on a stagger anyway, `RETARGET` ticks apart and offset by id, so nobody
+   * clings to a distant foe while a nearer one is at his elbow, and no two men re-scan on the
+   * same tick. Only UNIT targets are cached: works and Seats are found by a walk of a short
+   * list, they are chosen by rules that read the whole field, and they are not the hot path. */
+  const RETARGET = 15;
+  function cached(world, u, radius) {
+    const v = u._t;
+    if (!v || v.hp <= 0 || v.owner === u.owner) return null;
+    const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
+    if (d >= radius) return null;
+    if (world.anyWall && walled(world, u.x, u.y, v.x, v.y, u.owner, v.owner)) return null;
+    return { t: v, kind: 'unit', d, x: v.x, y: v.y };
+  }
   function acquire(world, u, radius) {
+    if ((world.tick + u.id) % RETARGET !== 0) {
+      const held = cached(world, u, radius);
+      if (held) return held;
+    }
     /* a fallen heir has nothing left to attack — and their Seat is a ruin, not a target */
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
     /* A WALL IS OPAQUE. Nothing is a target if stone stands in the way — the soldier looks
@@ -1060,6 +1105,7 @@
       const [d, ci, id, ax, ay] = stone[0];
       consider(d, { pi: ci, id }, 'work', ax, ay);
     }
+    u._t = kind === 'unit' ? best : null;
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
 
@@ -1368,6 +1414,8 @@
           const mv = def.speed * dt / (foe.d || 1);
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
           if (world.anyWall) shove(world, u);
+        stand(world, u);
+          stand(world, u);
         }
         continue;
       }
@@ -1401,6 +1449,7 @@
             const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
             u.x += vx2 * def.speed * dt; u.y += vy2 * def.speed * dt;
             shove(world, u);
+            stand(world, u);
             continue;
           }
         }
@@ -1449,6 +1498,7 @@
         }
         u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
         if (world.anyWall) shove(world, u);
+        stand(world, u);
       }
     }
 

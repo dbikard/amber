@@ -71,7 +71,11 @@
   CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];
   CONST.DIFFICULTY_DEFAULT = 'heir';
 
-  CONST.BUILD = { foot: 34, gap: 10 };   // footprint radius, and clearance between works
+  /* `foot` is the footprint a work claims against other works; `pass` is how close a MAN may
+   * come to one before he is walked round it. Smaller than the footprint on purpose — a
+   * column should hug a hall, not give it a wide berth — and large enough that the building
+   * is never buried under men, which is how you tap it to raise it a level. */
+  CONST.BUILD = { foot: 34, gap: 10, pass: 26 };
   /* a Shadow Gate within this of an essence node draws from it (and claims it) */
   CONST.NODE = { r: 96 };
   CONST.CASTLE_HP = 2500;         // retune: a Seat must not fall in ninety seconds of contact
