@@ -1,0 +1,4 @@
+# Agent scratch worktrees. Subagents run in their own checkout under here so they can
+# work in parallel without treading on each other; the checkouts are copies of this very
+# repository and have no business being committed into it.
+.claude/worktrees/
