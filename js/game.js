@@ -84,6 +84,8 @@
     Net.localIdx = game.viewer;
     game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
     game.span = null; game.placing = null; Render.span = null;
+    /* a call for another match belongs to the match that ended, not to this one */
+    game.called = false; game.noMore = false;
     game.names = C.SEAT_NAMES.slice(0, n);
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     game.world = Net.isHost ? World.createWorld(seed, n) : null;
@@ -210,9 +212,15 @@
       /* the link is still up: a rematch costs a tap, not another QR */
       if (!canRematch()) nextLabel = '';
     } else if (game.mode === 'guest') {
-      /* the host is the authority on when a match starts, this one included */
-      nextLabel = Net.active && !Net.peerGone ? 'AWAITING THE HOST' : '';
-      ready = false;
+      /* A GUEST MAY CALL FOR ANOTHER TOO. It used to be told, correctly, that the host is the
+       * authority on when a match starts — and then handed a dead button saying so, which is a
+       * true sentence and a useless screen: the loser is the one who wants the rematch, and on
+       * the losing phone there was nothing to press. The host still deals; the guest's tap is
+       * a CALL, and the wait after it is what the dead button used to be. A table with no host
+       * left on it is offered nothing, because nothing is what it can have. */
+      nextLabel = game.noMore || !Net.active || Net.peerGone ? ''
+                : game.called ? 'AWAITING THE HOST' : 'ANOTHER MATCH';
+      ready = !game.called;
     }
     UI.end(game.endWon, game.endSub, nextLabel, ready);
   }
@@ -224,12 +232,28 @@
    * The seat each guest holds is its peer index, so replaying with the same count keeps
    * everyone where they were. If somebody has dropped, that is no longer true — a seat with
    * nobody behind it would stand in the new world and be walked over — so the rematch is
-   * offered only while every heir who played is still linked. */
+   * offered only while every heir who played is still linked.
+   *
+   * ONE TAP, ON ANY PHONE. The dealing is the host's — it is the only seat that holds a world
+   * — but the WANTING is everybody's, and it is the beaten heir who wants it most. So a guest
+   * tapping ANOTHER MATCH sends `{t:'again'}` and the host deals on receipt exactly as if its
+   * own button had been pressed. This is the halt's rule again: anyone at the table may call
+   * one, because these people are in the same room and a rematch is not a negotiation. It is
+   * deliberately not a vote — a vote means the slowest reader at a four-way table holds up
+   * three others, and the cost of being dealt in when you had not asked is one board you
+   * were going to play anyway, against the same three people, at the seat you already had.
+   * Two heirs tapping at once cannot deal two matches: the host only answers a call while it
+   * is still ON the end screen, and dealing the first one takes it off. */
   function canRematch() {
     return Net.isHost && Net.active && !Net.peerGone && Net.seated() === game.seats;
   }
-  function rematch() {
+  /* `asker` is the seat whose call this is, or nothing when the host tapped its own button.
+   * A host that cannot deal answers the caller rather than going quiet: a guest cannot see
+   * that some OTHER guest has dropped, so silence would leave it waiting on a match that is
+   * never coming. */
+  function rematch(asker) {
     if (!canRematch()) {
+      if (asker != null) { Net.send({ t: 'nomore' }, asker); return; }
       UI.banner('An heir has left the link — pair again from the menu', 'warn');
       toMenu(); return;
     }
@@ -237,6 +261,17 @@
     for (const p of Net.peers)
       if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
     startMP(seed, seats, 0);
+  }
+  /* the guest half of the same button: a call up the wire, and then the wait it used to show
+   * without ever having asked for anything */
+  function callAgain() {
+    if (!Net.active || Net.peerGone) {
+      UI.banner('The Trump link is gone — pair again from the menu', 'warn');
+      toMenu(); return;
+    }
+    game.called = true;
+    Net.send({ t: 'again' });
+    endScreen();
   }
 
   /* ---------------- commands ---------------- */
@@ -849,6 +884,16 @@
     });
     Net.onStart = (m) => startMP(m.seed, m.seats, m.idx);
     Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
+    /* a call for another match is only ever answered BETWEEN matches, by the host. Mid-match
+     * it is stale — a message that crossed with the winning blow — and once the host has
+     * dealt, `game.over` is false again, which is what stops two callers dealing two boards. */
+    Net.onAgain = (from) => { if (game.mode === 'host' && game.over) rematch(from); };
+    Net.onNoMore = () => {
+      if (game.mode !== 'guest' || !game.over) return;
+      game.noMore = true;
+      UI.banner('An heir has left the table — pair again from the menu', 'warn');
+      endScreen();
+    };
     Net.onSnap = (s) => {
       snapPrev = snapCur; snapCur = s; snapAt = performance.now();
       if (!game.over) {
@@ -959,6 +1004,7 @@
             startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
           } else startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
         } else if (game.mode === 'host') rematch();
+        else if (game.mode === 'guest') callAgain();
         else toMenu();
       },
       onEndMenu: toMenu

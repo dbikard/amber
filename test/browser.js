@@ -1954,67 +1954,166 @@ async function match(browser, base, renderer) {
        `ess-n ${lan4.ess}, seat 2 has ${lan4.want}`);
     ok('four-player guest rendering raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
-    /* A REMATCH KEEPS THE LINK. Pairing by QR is the price of getting into a LAN game; paying
-     * it again to play a second game against the person sitting next to you is not. The host
-     * rolls a new seed and re-sends the lobby's own start message; the guest is already
-     * listening for it. Both sides are checked here — the guest first, since it must come out
-     * of the end screen with nothing more than a message arriving. */
+    /* A REMATCH KEEPS THE LINK, AND EITHER PHONE MAY CALL IT. Pairing by QR is the price of
+     * getting into a LAN game; paying it again to play a second game against the person
+     * sitting next to you is not. The dealing stays the host's — it is the only seat holding a
+     * world — but the WANTING is everybody's, and it is the beaten heir who wants it most, so
+     * a guest tapping ANOTHER MATCH sends `{t:'again'}` and the host deals on receipt exactly
+     * as if its own button had been pressed. Everything below drives that seam (the lobby's
+     * own start message, Net.onSnap, Net.onAgain) rather than standing up WebRTC: what is
+     * being tested is the protocol and the two end screens, not the browser's ICE stack.
+     * The guest goes first, since it is the half that used to have no button at all. */
     suite(`${r} · a rematch on the same link`);
     const again = await pg.evaluate(async () => {
       const { Game, Net, World } = window;
       const out = {};
-      /* --- the guest --- */
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      /* the end of a match is raised by the LOOP, so wait on the thing itself rather than on a
+       * guessed number of milliseconds — half a dozen matches begin and end in this one block,
+       * and a guessed number is either slower than it needs to be or flaky */
+      const till = async (fn, ms = 3000) => {
+        const t0 = Date.now();
+        while (!fn() && Date.now() - t0 < ms) await new Promise((res) => requestAnimationFrame(res));
+        return fn();
+      };
+      const ends = () => till(() => Game.game.over);
+      const begins = () => till(() => !Game.game.over && !!Game.game.mode);
+      /* `to` is which seat a message was addressed to; -1 is "everyone I am linked to" */
+      const log = (arr) => (o, to) => arr.push({ ...o, to: to == null ? -1 : to });
+      const endLabel = () => document.getElementById('end-next').textContent;
+      const endHidden = () => document.getElementById('end-next').classList.contains('hidden');
+
+      /* --- the guest: a real button, whose tap is a CALL and not a start --- */
+      const gsent = [];
       Net.isHost = false; Net.localIdx = 1; Net.active = true; Net.peerGone = false;
-      Net.send = () => {};
+      Net.peers = [];
+      Net.send = log(gsent);
       Game.startMP(9001, 2, 1);
       const hw = World.createWorld(9001, 2);
       hw.winner = 0; hw.winReason = 'castle';
       Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, []))));
-      await new Promise((res) => setTimeout(res, 60));
+      await ends();
       const nx = document.getElementById('end-next');
       out.guestEnded = !document.getElementById('end').classList.contains('hidden');
-      out.guestLabel = nx.textContent;
-      out.guestDead = nx.disabled;               // only the host may deal a new match
+      out.guestLabel = endLabel();
+      out.guestLive = !nx.disabled;              // the loser has something to press
       out.guestLinked = Net.active;              // ...and the link is NOT torn down
-      /* the host says "again" — the guest needs no tap at all */
+      nx.click();
+      out.guestSent = gsent.slice();
+      out.waitLabel = endLabel();
+      out.waitDead = nx.disabled;                // the offer has become a status
+      /* the host deals — and a guest that never tapped is dealt in by the same message */
       Net.onStart({ seed: 9002, seats: 2, idx: 1 });
-      await new Promise((res) => setTimeout(res, 60));
+      await begins();
       out.guestBack = document.getElementById('end').classList.contains('hidden')
                    && Game.game.mode === 'guest' && Game.game.over === false;
 
-      /* --- the host --- */
+      /* --- a guest whose host has gone is offered nothing it cannot have --- */
+      Game.startMP(9005, 2, 1);
+      const hw5 = World.createWorld(9005, 2);
+      hw5.winner = 1; hw5.winReason = 'pattern';
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw5, 1, []))));
+      await ends();
+      out.aloneBefore = endLabel();
+      Net.peerGone = true;                       // the host's phone leaves, on the end screen
+      Net.onClose(1);
+      out.aloneHidden = endHidden();
+      out.aloneLabel = endLabel();
+
+      /* --- the host: its own button still deals --- */
       const sent = [];
       Net.isHost = true; Net.localIdx = 0; Net.active = true; Net.peerGone = false;
       Net.peers = [{ idx: 1, dc: { readyState: 'open', send: () => {} }, pc: null }];
-      Net.send = (o) => sent.push(o);
+      Net.send = log(sent);
       Game.startMP(9003, 2, 0);
       const w = Game.game.world;
       /* the loop ends the match off the sim's own win event, so raise one */
       w.events.push({ e: 'win', winner: 0, reason: 'pattern' });
-      await new Promise((res) => setTimeout(res, 120));
-      out.hostLabel = document.getElementById('end-next').textContent;
+      await ends();
+      out.hostLabel = endLabel();
       document.getElementById('end-next').click();
-      await new Promise((res) => setTimeout(res, 120));
+      await begins();
       out.starts = sent.filter((o) => o.t === 'start');
       out.hostBack = document.getElementById('end').classList.contains('hidden')
                   && Game.game.mode === 'host' && Game.game.over === false;
       out.hostLinked = Net.active;
       out.newWorld = !!Game.game.world && Game.game.world !== w;
 
-      /* --- and NOT when somebody has left --- */
-      Game.startMP(9004, 2, 0);
-      Net.peers = [];                            // the guest is gone
+      /* --- ...and a GUEST's call deals it without the host touching anything --- */
+      sent.length = 0;
+      Game.startMP(9006, 2, 0);
+      const w6 = Game.game.world;
+      w6.events.push({ e: 'win', winner: 1, reason: 'castle' });
+      await ends();
+      Net.onAgain(1);
+      await begins();
+      out.calledStarts = sent.filter((o) => o.t === 'start');
+      out.calledBack = document.getElementById('end').classList.contains('hidden')
+                    && Game.game.mode === 'host' && Game.game.over === false
+                    && Game.game.world !== w6;
+      /* two heirs tapping at once must not deal two boards: the second call lands in a match
+       * that has already begun, and a call is only ever answered between matches */
+      Net.onAgain(1);
+      await wait(60);
+      out.doubleStarts = sent.filter((o) => o.t === 'start').length;
+
+      /* --- four seats: one heir's call deals the whole table back in, each to its own --- */
+      sent.length = 0;
+      Net.peers = [1, 2, 3].map((i) => ({ idx: i, dc: { readyState: 'open', send: () => {} }, pc: null }));
+      Game.startMP(9007, 4, 0);
+      Game.game.world.events.push({ e: 'win', winner: 2, reason: 'castle' });
+      await ends();
+      Net.onAgain(3);                            // the heir at seat 3 asks for another
+      await begins();
+      out.fourStarts = sent.filter((o) => o.t === 'start');
+      out.fourSeats = Game.game.seats;
+
+      /* --- and NOT when somebody has left: the host's own button goes away, and the call it
+             cannot honour is ANSWERED rather than swallowed. A guest cannot see that some
+             OTHER guest has dropped, so silence would leave it waiting forever --- */
+      sent.length = 0;
+      Net.peers = [1, 2].map((i) => ({ idx: i, dc: { readyState: 'open', send: () => {} }, pc: null }));
+      Game.startMP(9008, 3, 0);
+      Net.peers.pop();                           // seat 2 walks out of the three-way
       Game.game.world.events.push({ e: 'win', winner: 0, reason: 'castle' });
-      await new Promise((res) => setTimeout(res, 120));
-      out.goneLabel = document.getElementById('end-next').textContent;
-      out.goneHidden = document.getElementById('end-next').classList.contains('hidden');
+      await ends();
+      out.goneLabel = endLabel();
+      out.goneHidden = endHidden();
+      Net.onAgain(1);                            // seat 1 calls anyway — it cannot see seat 2 go
+      await wait(60);
+      out.refusal = sent.filter((o) => o.t === 'nomore' || o.t === 'start');
+      out.refusedStanding = Game.game.over && Game.game.mode === 'host';
+
+      /* --- and the guest end of that refusal: the button stops promising --- */
+      Net.isHost = false; Net.localIdx = 1; Net.active = true; Net.peerGone = false; Net.peers = [];
+      Net.send = () => {};
+      Game.startMP(9009, 2, 1);
+      const hw9 = World.createWorld(9009, 2);
+      hw9.winner = 0; hw9.winReason = 'castle';
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw9, 1, []))));
+      await ends();
+      document.getElementById('end-next').click();
+      out.refusedWaiting = endLabel();
+      Net.onNoMore();
+      out.refusedHidden = endHidden();
+      out.refusedOver = Game.game.over;          // still on the end screen, not dumped out
       return out;
     });
     ok('a guest that loses is left on the end screen', again.guestEnded);
-    ok('and told the host holds the next match', /AWAITING/.test(again.guestLabel), again.guestLabel);
-    ok('with no button it can press', again.guestDead);
+    ok('and is offered another match of its own', /ANOTHER MATCH/.test(again.guestLabel), again.guestLabel);
+    ok('with a button it can actually press', again.guestLive);
     ok('and its link still up', again.guestLinked);
+    ok('its tap is a CALL up the wire, not a start it dealt itself',
+       again.guestSent.length === 1 && again.guestSent[0].t === 'again',
+       JSON.stringify(again.guestSent));
+    ok('...addressed to the host, which is the only link a guest has',
+       again.guestSent.length === 1 && again.guestSent[0].to === -1, JSON.stringify(again.guestSent[0]));
+    ok('...and the offer becomes a status while it waits',
+       /AWAITING/.test(again.waitLabel) && again.waitDead, `"${again.waitLabel}" disabled=${again.waitDead}`);
     ok('a start message alone puts the guest back in a match', again.guestBack);
+    ok('a guest whose host has gone is offered nothing',
+       again.aloneBefore === 'ANOTHER MATCH' && again.aloneHidden,
+       `before "${again.aloneBefore}", after "${again.aloneLabel}"`);
     ok('the host is offered a rematch', again.hostLabel === 'REMATCH', again.hostLabel);
     ok('tapping it re-sends the lobby start message', again.starts.length === 1,
        JSON.stringify(again.starts));
@@ -2022,7 +2121,27 @@ async function match(browser, base, renderer) {
        && again.starts[0].idx === 1 && again.starts[0].seed !== 9003, JSON.stringify(again.starts[0]));
     ok('the host is back in a match on a fresh world', again.hostBack && again.newWorld);
     ok('and nobody re-paired', again.hostLinked);
+    ok('a guest calling for another deals it on the host too', again.calledStarts.length === 1
+       && again.calledStarts[0].seats === 2 && again.calledStarts[0].seed !== 9006,
+       JSON.stringify(again.calledStarts));
+    ok('...with the host in the new match, untapped', again.calledBack);
+    ok('a second call cannot deal a second board', again.doubleStarts === 1, `${again.doubleStarts} starts`);
+    ok('one call at a four-way deals every seat back in', again.fourStarts.length === 3
+       && again.fourStarts.every((s) => s.seats === 4), JSON.stringify(again.fourStarts));
+    ok('...each guest told its OWN seat, down its own link',
+       again.fourStarts.every((s) => s.idx === s.to) &&
+       new Set(again.fourStarts.map((s) => s.idx)).size === 3, JSON.stringify(again.fourStarts));
+    ok('...on one board, not three', new Set(again.fourStarts.map((s) => s.seed)).size === 1
+       && again.fourStarts[0].seed !== 9007 && again.fourSeats === 4, JSON.stringify(again.fourStarts[0]));
     ok('but a host whose guest left is offered nothing', again.goneHidden, `label "${again.goneLabel}"`);
+    ok('a call it cannot honour is refused out loud, not swallowed',
+       again.refusal.length === 1 && again.refusal[0].t === 'nomore' && again.refusal[0].to === 1,
+       JSON.stringify(again.refusal));
+    ok('...and the host stays on its end screen', again.refusedStanding);
+    ok('a refused guest stops being promised a match',
+       again.refusedWaiting === 'AWAITING THE HOST' && again.refusedHidden,
+       `waiting "${again.refusedWaiting}", hidden=${again.refusedHidden}`);
+    ok('...without being thrown off the end screen', again.refusedOver);
     ok('the rematch path raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
     /* The chronicle is only worth having if it comes OFF the phone. Clipboard first, because

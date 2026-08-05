@@ -19,6 +19,13 @@
     onOpen: null, onStart: null, onClose: null,
     onCmd: null,    // host: guest command arrived
     onSnap: null,   // guest: snapshot arrived
+    /* THE REMATCH IS A LOBBY AFFAIR, and the lobby is still host-authoritative. A guest calls
+     * for another ({t:'again'}, which carries nothing — the seat it arrived on is the whole
+     * message) and the host answers with the ordinary start message, the same one the lobby
+     * sends. It cannot answer with a world, because only the host holds one. {t:'nomore'} is
+     * the refusal: the table cannot be dealt again, which only the host can know. */
+    onAgain: null,  // host: a guest has called for another match
+    onNoMore: null, // guest: the host cannot deal one
     onFail: null,   // a peer connection gave up: the network will not carry this link
     diag: [], onDiag: null, _pairing: false
   };
@@ -388,6 +395,8 @@
     if (m.t === 'cmd') { if (Net.onCmd) Net.onCmd(m.c, from); }
     else if (m.t === 'snap') { if (Net.onSnap) Net.onSnap(m.s); }
     else if (m.t === 'start') { if (Net.onStart) Net.onStart(m); }
+    else if (m.t === 'again') { if (Net.onAgain) Net.onAgain(from); }
+    else if (m.t === 'nomore') { if (Net.onNoMore) Net.onNoMore(); }
   }
 
   /* ---------------- fog-filtered snapshots (host → each viewer) ----------------
