@@ -627,12 +627,52 @@
       try { global.location.href = 'intent://#Intent;action=android.settings.TETHER_SETTINGS;end'; }
       catch (e) { /* the instructions are on screen either way */ }
     });
+    /* FOUR DIFFERENT PROBLEMS, FOUR DIFFERENT SENTENCES. 'It did not connect' is not advice.
+     * Net.advice() names which one it is from the evidence — this phone's own candidates and
+     * the ones the other phone sent — and each name gets the thing that actually fixes it. */
+    const ADVICE = {
+      cell: ['This phone is on mobile data, not Wi-Fi',
+             'Two phones can only find each other on one network. <b>Join a Wi-Fi network — or ' +
+             'make THIS phone a hotspot and have the other join it.</b>'],
+      nolan: ['This phone has no local network address',
+              'It gathered no Wi-Fi address at all, so there is no network for the other phone ' +
+              'to reach it on. <b>Join a Wi-Fi network, or make this phone a hotspot.</b>'],
+      diff: ['The two phones are on DIFFERENT networks',
+             'Their addresses have nothing in common — one may be on mobile data, or on a ' +
+             'guest network. <b>Put both on the same Wi-Fi, or make this phone a hotspot and ' +
+             'have the other join it.</b>'],
+      same: ['This Wi-Fi will not pass the two phones to each other',
+             'They are on the same network and it is refusing to carry traffic between its own ' +
+             'devices — guest Wi-Fi and a good many home routers do this. Nothing on either ' +
+             'phone can change it from here. <b>Make THIS phone a hotspot, join it from the ' +
+             'other, and pair again.</b> A hotspot is a network of two with nothing in the way.'],
+      unknown: ['The link could not be made',
+                'The two phones completed the handshake and then could not reach each other. ' +
+                '<b>Check both are on the same Wi-Fi — or make this phone a hotspot and have ' +
+                'the other join it.</b>']
+    };
     Net.onFail = () => {
+      const [title, why] = ADVICE[Net.advice()] || ADVICE.unknown;
+      $('lan-help-title').innerHTML = title;
+      $('lan-help-why').innerHTML = why;
       $('lan-panel').classList.remove('hidden');
       $('lan-help').classList.remove('hidden');
-      say('this network will not carry the link — see below');
+      say('the link could not be made — see below');
       paintDiag();
     };
+    /* AND SAY IT BEFORE THEY START, where the platform will tell us. Chrome on Android reports
+     * the transport outright; an iPhone says nothing, so nothing is claimed. */
+    const paintNet = () => {
+      const el = $('lan-net'), k = Net.netKind({});
+      if (k.told === 'cellular') {
+        el.textContent = '⚠ This phone is on mobile data — join a Wi-Fi network, or make it a hotspot';
+        el.className = 'warn';
+      } else if (k.told === 'wifi') { el.textContent = '✓ This phone is on Wi-Fi'; el.className = ''; }
+      else { el.classList.add('hidden'); return; }
+      el.classList.remove('hidden');
+    };
+    $('btn-lan').addEventListener('click', paintNet);
+    paintNet();
     $('lan-status').addEventListener('click', () => $('lan-diag').classList.toggle('hidden'));
     /* repainted on a timer as well as on events: ICE moves without telling us, and a stuck
      * pairing produces no events at all — which is exactly the case worth photographing */

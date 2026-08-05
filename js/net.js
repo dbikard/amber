@@ -135,6 +135,51 @@
    * screen can show both sides — and comparing the two sets of addresses is the whole
    * diagnosis: same subnet and no link means the access point is isolating its clients;
    * different subnets means they were never on the same network at all. */
+  /* IS THIS PHONE ON A LAN AT ALL, AND IS IT THE SAME ONE?
+   * Two sources, because neither is enough alone. navigator.connection.type says 'wifi' or
+   * 'cellular' outright, and is the friendlier answer — but it is Chrome-on-Android only, so
+   * on an iPhone it says nothing. The candidates say it everywhere: a phone on Wi-Fi gathers a
+   * host candidate in a private range, and a phone on mobile data gathers a carrier one in
+   * 100.64/10 (CGNAT) or none at all. The second source is also the only one that can answer
+   * the question that actually matters, which is not "am I on Wi-Fi" but "are we on the SAME
+   * Wi-Fi" — and that is a comparison of the two phones' addresses. */
+  const isPrivate4 = (a) => /^10\./.test(a) || /^192\.168\./.test(a) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(a);
+  const isCgnat4 = (a) => /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a);
+  const net24 = (a) => (isPrivate4(a) ? a.split('.').slice(0, 3).join('.') : null);
+  const addrsOf = (cand) => [].concat(cand.host || [], cand.mdns || []);
+  Net.netKind = function (cand) {
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const c = nav && (nav.connection || nav.mozConnection || nav.webkitConnection);
+    const told = c && c.type ? c.type : null;         // 'wifi' | 'cellular' | … | undefined
+    const addrs = addrsOf(cand || {});
+    const lan = addrs.some(isPrivate4);
+    const cell = !lan && addrs.some(isCgnat4);
+    return { told, lan, cell };
+  };
+  /* the verdict, once both sides' candidates are known */
+  Net.sameNet = function (mine, theirs) {
+    const a = new Set(addrsOf(mine).map(net24).filter(Boolean));
+    const b = addrsOf(theirs).map(net24).filter(Boolean);
+    if (!a.size || !b.length) return null;            // one side published nothing to compare
+    return b.some((n) => a.has(n));
+  };
+  /* WHICH OF THE FOUR THINGS IS WRONG. Named rather than described, so the wording lives with
+   * the screen that shows it and the reasoning lives here with the evidence. */
+  Net.advice = function () {
+    const pc = Net.isHost ? (Net._pending && Net._pending.pc) : Net.pc;
+    const mine = (pc && pc._cand) || {};
+    const k = Net.netKind(mine);
+    if (k.told === 'cellular' || k.cell) return 'cell';       // this phone is on mobile data
+    if (pc && !k.lan && Object.keys(mine).length) return 'nolan';   // gathered, and no LAN address
+    const theirs = pc && pc._theirs;
+    if (theirs) {
+      const same = Net.sameNet(mine, theirs);
+      if (same === false) return 'diff';                      // two different networks
+      if (same === true) return 'same';                       // one network that will not pass them
+    }
+    return 'unknown';
+  };
   function sdpCands(sdp) {
     const cand = {};
     for (const line of (sdp || '').split(/\r?\n/)) {
@@ -147,8 +192,13 @@
     }
     return cand;
   }
-  function reportRemote(sdp) {
-    diag('THEIR candidates → ' + (summarise(sdpCands(sdp)) || '(NONE in what they sent!)'));
+  function reportRemote(pc, sdp) {
+    const theirs = sdpCands(sdp);
+    if (pc) pc._theirs = theirs;
+    diag('THEIR candidates → ' + (summarise(theirs) || '(NONE in what they sent!)'));
+    const same = Net.sameNet(pc && pc._cand || {}, theirs);
+    if (same === true) diag('SAME network — so the Wi-Fi itself is refusing to pass them');
+    else if (same === false) diag('DIFFERENT networks — these two phones are not on one Wi-Fi');
   }
   function makePC() {
     const pc = new RTCPeerConnection({ iceServers: ICE });
@@ -274,7 +324,7 @@
     const pc = Net.pc = makePC();
     pc.ondatachannel = (e) => wireChannel(e.channel, null);
     await pc.setRemoteDescription(JSON.parse(await decompress(offerCode)));
-    reportRemote(pc.remoteDescription && pc.remoteDescription.sdp);
+    reportRemote(pc, pc.remoteDescription && pc.remoteDescription.sdp);
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
     reportLocal(pc, 'MY REPLY');
@@ -288,7 +338,7 @@
      * answer to, that is a thing the player needs told. */
     if (!pc) { diag('no offer is waiting for an answer'); throw new Error('no offer is waiting — tap HOST THE TABLE first'); }
     await pc.setRemoteDescription(JSON.parse(await decompress(answerCode)));
-    reportRemote(pc.remoteDescription && pc.remoteDescription.sdp);
+    reportRemote(pc, pc.remoteDescription && pc.remoteDescription.sdp);
     diag('answer accepted — waiting for the link to open');
   };
 

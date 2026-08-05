@@ -8,11 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.8.38';</script>
-<link rel="manifest" href="manifest.json?v=0.8.38">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.8.38">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.8.38">
-<link rel="stylesheet" href="styles.css?v=0.8.38">
+<script>window.GAME_VERSION = '0.8.39';</script>
+<link rel="manifest" href="manifest.json?v=0.8.39">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.8.39">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.8.39">
+<link rel="stylesheet" href="styles.css?v=0.8.39">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -71,6 +71,7 @@
   <div id="skirmish-row" class="hidden"></div>
   <button id="btn-lan" class="mbtn">LAN — UP TO FOUR HEIRS</button>
   <div id="lan-panel" class="hidden">
+    <div id="lan-net" class="hidden"></div>
     <div id="lan-status">same Wi-Fi · no server · pair by QR · two to four heirs</div>
     <canvas id="qr-display" class="hidden"></canvas>
     <div class="lan-row">
@@ -82,13 +83,8 @@
     <!-- WHAT TO DO WHEN THE WI-FI REFUSES. Shown only when a pairing has actually failed:
          advice nobody needs is advice nobody reads. -->
     <div id="lan-help" class="hidden">
-      <div class="help-title">This Wi-Fi will not pass the two phones to each other</div>
-      <div class="help-body">
-        Some networks — guest Wi-Fi, and a good many home routers — block their own devices
-        from talking directly. Nothing on either phone can change that from here.
-        <b>Make THIS phone a hotspot, join it from the other, and pair again.</b>
-        A hotspot is a network of two with nothing in the way.
-      </div>
+      <div class="help-title" id="lan-help-title"></div>
+      <div class="help-body" id="lan-help-why"></div>
       <button id="lan-hotspot" class="mbtn small hidden">OPEN HOTSPOT SETTINGS</button>
       <div class="help-body" id="lan-help-os"></div>
     </div>
@@ -121,20 +117,20 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.8.38"></script>
-<script src="js/rng.js?v=0.8.38"></script>
-<script src="js/const.js?v=0.8.38"></script>
-<script src="js/worldgen.js?v=0.8.38"></script>
-<script src="js/nav.js?v=0.8.38"></script>
-<script src="js/world.js?v=0.8.38"></script>
-<script src="js/ai.js?v=0.8.38"></script>
-<script src="js/terrain.js?v=0.8.38"></script>
-<script src="js/render3d.js?v=0.8.38"></script>
-<script src="js/render_select.js?v=0.8.38"></script>
-<script src="js/qrcode.js?v=0.8.38"></script>
-<script src="js/net.js?v=0.8.38"></script>
-<script src="js/record.js?v=0.8.38"></script>
-<script src="js/ui.js?v=0.8.38"></script>
-<script src="js/game.js?v=0.8.38"></script>
+<script src="js/vendor/three.min.js?v=0.8.39"></script>
+<script src="js/rng.js?v=0.8.39"></script>
+<script src="js/const.js?v=0.8.39"></script>
+<script src="js/worldgen.js?v=0.8.39"></script>
+<script src="js/nav.js?v=0.8.39"></script>
+<script src="js/world.js?v=0.8.39"></script>
+<script src="js/ai.js?v=0.8.39"></script>
+<script src="js/terrain.js?v=0.8.39"></script>
+<script src="js/render3d.js?v=0.8.39"></script>
+<script src="js/render_select.js?v=0.8.39"></script>
+<script src="js/qrcode.js?v=0.8.39"></script>
+<script src="js/net.js?v=0.8.39"></script>
+<script src="js/record.js?v=0.8.39"></script>
+<script src="js/ui.js?v=0.8.39"></script>
+<script src="js/game.js?v=0.8.39"></script>
 </body>
 </html>

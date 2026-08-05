@@ -1514,6 +1514,22 @@ async function match(browser, base, renderer) {
       $('lan-help').classList.add('hidden');
       const hidden = $('lan-help').classList.contains('hidden');
       /* the sim of a dead link: exactly what a peer connection does when ICE gives up */
+      /* the four verdicts, each from the evidence a real pairing would have left behind */
+      const said = {};
+      for (const [kind, cands] of [
+        ['same', { host: ['192.168.1.5'] }],
+        ['diff', { host: ['192.168.1.5'] }],
+        ['cell', { host: ['100.70.1.2'] }]
+      ]) {
+        window.Net.isHost = true;
+        window.Net._pending = { pc: { _cand: cands,
+          _theirs: kind === 'same' ? { host: ['192.168.1.9'] }
+                 : kind === 'diff' ? { host: ['10.0.0.9'] } : null } };
+        window.Net.onFail(null);
+        said[kind] = { verdict: window.Net.advice(),
+                       title: $('lan-help-title').textContent };
+      }
+      window.Net.isHost = false; window.Net._pending = null;
       window.Net.onFail(null);
       const shown = !$('lan-help').classList.contains('hidden');
       const body = $('lan-help').textContent;
@@ -1524,12 +1540,20 @@ async function match(browser, base, renderer) {
       $('lan-help').classList.add('hidden');
       $('lan-panel').classList.add('hidden');
       $('menu').classList.add('hidden');
-      return { hidden, shown, cleared, body,
+      return { hidden, shown, cleared, body, said,
                osLine: $('lan-help-os').textContent,
                btn: !$('lan-hotspot').classList.contains('hidden') };
     });
     ok('nothing is said while pairing has not failed', help.hidden);
     ok('a failed link says so', help.shown);
+    /* THE FOUR PROBLEMS ARE FOUR PROBLEMS. 'It did not connect' is not advice. */
+    ok('one network refusing to pass them is named as that',
+       help.said.same.verdict === 'same' && /will not pass/i.test(help.said.same.title),
+       `${help.said.same.verdict}: ${help.said.same.title}`);
+    ok('...two different networks as that', help.said.diff.verdict === 'diff' &&
+       /DIFFERENT/.test(help.said.diff.title), `${help.said.diff.verdict}: ${help.said.diff.title}`);
+    ok('...and mobile data as that', help.said.cell.verdict === 'cell' &&
+       /mobile data/i.test(help.said.cell.title), `${help.said.cell.verdict}: ${help.said.cell.title}`);
     ok('...and names the fix', /hotspot/i.test(help.body), help.body.slice(0, 80));
     ok('...with the route for this OS', /Settings/.test(help.osLine), help.osLine);
     ok('...and the settings button only where it can work',

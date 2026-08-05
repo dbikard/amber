@@ -217,6 +217,8 @@ body {
 #lan-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #lan-status { font-size: 12px; font-style: italic; color: #b8a878; }
 #qr-display { width: min(72vw, 300px); height: min(72vw, 300px); image-rendering: pixelated; border-radius: 6px; }
+#lan-net { font-size: 12px; color: #9cc8ff; margin-bottom: 4px; }
+#lan-net.warn { color: #ffc8ce; }
 #lan-help {
   max-width: 94vw; margin: 4px 0; padding: 9px 11px; text-align: left;
   background: rgba(56,32,42,0.55); border: 1px solid #e0566a88; border-radius: 8px;
