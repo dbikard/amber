@@ -427,9 +427,16 @@
     dmgScale: (t) => Math.min(1.35, 1 + t / 1200)
   };
 
+  /* THE KNELL. A rival's walk is the one thing on this board that wins without touching you,
+   * and it is nine and a half minutes long — so being told about it once, in a banner that
+   * shares its corner with rift warnings and storm calls, is not being told. Four marks: the
+   * moment he sets foot, and then the three quarters of the way that mean something. They are
+   * thrown across the middle of the screen and fade, because the one place a player is
+   * certainly looking is where the fight is. */
   CONST.PATTERN_ALERTS = [
     { at: 0.001, msg: ' has set foot upon the Pattern!' },
     { at: 50,    msg: ' walks the Pattern — halfway to the throne' },
+    { at: 75,    msg: ' is three quarters of the way round the Pattern' },
     { at: 90,    msg: ' nears the final veil of the Pattern!' }
   ];
 

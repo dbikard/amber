@@ -350,8 +350,17 @@
     Render.addEvents(seen, view, game.viewer);
     const siteName = (id) => view.map.sites[id] ? view.map.sites[id].name : 'a far place';
     for (const ev of seen) {
-      if (ev.e === 'walk') UI.banner(game.names[ev.pi] + ' has set foot upon the Pattern!', 'alert');
-      else if (ev.e === 'pattern' && ev.idx > 0) UI.banner(game.names[ev.pi] + C.PATTERN_ALERTS[ev.idx].msg, 'alert');
+      /* A RIVAL ON THE PATTERN GETS THE KNELL, not a banner. Your own walk stays a banner —
+       * you know you started it, and you have the count on the board — but a rival's is the
+       * one thing that takes the throne without ever coming near you, and being told once in
+       * the same corner as the weather is not being told. */
+      if (ev.e === 'walk' || (ev.e === 'pattern' && ev.idx > 0)) {
+        const mine = ev.pi === game.viewer;
+        const at = ev.e === 'walk' ? 0 : C.PATTERN_ALERTS[ev.idx].at;
+        const msg = ev.e === 'walk' ? ' has set foot upon the Pattern!' : C.PATTERN_ALERTS[ev.idx].msg;
+        if (mine) UI.banner('You' + msg.replace(' has ', ' have '), 'alert');
+        else UI.knell(at ? Math.round(at) + '%' : '⟡', game.names[ev.pi] + msg);
+      }
       else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner('Chaos tears open a rift in the black road', 'chaos'); }
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');

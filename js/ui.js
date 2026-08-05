@@ -117,6 +117,7 @@
   };
   UI.startMatch = function (rivalName) {
     haltShown = null; masonHash = '';
+    $('knell').classList.add('hidden');   // no warning carries over from the last match
     $('halt').classList.add('hidden');
     $('menu').classList.add('hidden');
     $('end').classList.add('hidden');
@@ -716,6 +717,24 @@
   UI.sheetOpen = () => !$('sheet').classList.contains('hidden');
 
   /* ---------------- banners ---------------- */
+  /* THE KNELL: a rival's progress on the Pattern, across the middle of the board and gone
+   * again. It is not a banner — banners share a corner with rift warnings and storm calls,
+   * and the one thing on this board that wins without touching you should not have to queue
+   * behind the weather. `mark` is the number, which is what a player actually reads; the line
+   * under it says whose walk it is. */
+  let knellTimer = null;
+  UI.knell = function (mark, line) {
+    const el = $('knell');
+    if (knellTimer) { clearTimeout(knellTimer.a); clearTimeout(knellTimer.b); }
+    el.innerHTML = `<div class="knell-mark">${mark}</div><div class="knell-line">${line}</div>`;
+    el.classList.remove('hidden', 'fade', 'ring');
+    void el.offsetWidth;              // restart the animation even if it is already showing
+    el.classList.add('ring');
+    knellTimer = {
+      a: setTimeout(() => el.classList.add('fade'), 2600),
+      b: setTimeout(() => { el.classList.add('hidden'); el.classList.remove('fade', 'ring'); }, 3800)
+    };
+  };
   UI.banner = function (text, cls) {
     const wrap = $('banner-wrap');
     while (wrap.children.length >= 3) wrap.removeChild(wrap.firstChild);

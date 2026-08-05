@@ -135,6 +135,30 @@ body {
 .banner.warn { border-color: #ff8a96aa; color: #ffc8ce; }
 .banner.fade { opacity: 0; }
 
+/* THE KNELL — a rival on the Pattern. Across the middle of the board, where the player is
+   certainly looking, and gone again: this is a warning, not a readout, and a warning that
+   stays is furniture. Blue-white, because that is the Pattern's colour everywhere else. */
+#knell {
+  position: fixed; left: 0; right: 0; top: 42%;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  pointer-events: none; z-index: 35; text-align: center; padding: 0 18px;
+}
+#knell .knell-mark {
+  font-size: 40px; font-weight: bold; letter-spacing: 3px; color: #dceaff;
+  text-shadow: 0 0 26px rgba(156, 200, 255, 0.85), 0 2px 6px #000;
+}
+#knell .knell-line {
+  font-size: 17px; font-style: italic; color: #9cc8ff; max-width: 90vw;
+  text-shadow: 0 0 14px rgba(156, 200, 255, 0.5), 0 2px 5px #000;
+}
+#knell.ring { animation: knell-in 0.45s ease-out; }
+#knell.fade { opacity: 0; transition: opacity 1.1s ease-in; }
+@keyframes knell-in {
+  0%   { opacity: 0; transform: scale(0.82); }
+  60%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
 /* ---------------- build / upgrade sheet ---------------- */
 #sheet {
   position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0) + 70px);

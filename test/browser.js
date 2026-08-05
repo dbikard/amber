@@ -775,6 +775,53 @@ async function match(browser, base, renderer) {
     await pg.evaluate(() => window.UI.closeSheet());
     await pg.waitForTimeout(120);
 
+    /* ---------------- the knell ---------------- *
+     * A rival on the Pattern is the one thing on this board that takes the throne without ever
+     * coming near you, and it is nine and a half minutes long. Told once, in a banner sharing
+     * its corner with rift warnings and storm calls, is not being told. Four marks — the foot
+     * set, then halfway, three quarters and the final veil — thrown across the middle of the
+     * screen and gone again. */
+    suite(`${r} · the knell`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const knell = await pg.evaluate(async () => {
+      const C = window.CONST, g = window.Game.game;
+      const el = document.getElementById('knell');
+      const shown = () => !el.classList.contains('hidden');
+      const start = shown();
+      /* the rival sets foot: the sim's own event, through the shipping path */
+      g.world.players[1].walking = true;
+      g.world.players[1].revealed = true;
+      g.world.events.push({ e: 'walk', pi: 1 });
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const onFoot = { shown: shown(), text: el.textContent };
+      /* ...and each mark after it */
+      const marks = [];
+      for (let i = 1; i < C.PATTERN_ALERTS.length; i++) {
+        g.world.events.push({ e: 'pattern', pi: 1, idx: i });
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        marks.push({ at: C.PATTERN_ALERTS[i].at, text: el.textContent });
+      }
+      /* YOUR OWN walk is not a knell — you started it, and the count is on the board */
+      el.classList.add('hidden');
+      g.world.events.push({ e: 'walk', pi: 0 });
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const mine = shown();
+      return { start, onFoot, marks, mine,
+               ats: C.PATTERN_ALERTS.map((a) => a.at),
+               banner: document.getElementById('banner-wrap').textContent };
+    });
+    ok('nothing tolls before anybody walks', !knell.start);
+    ok('a rival setting foot on the Pattern tolls', knell.onFoot.shown, knell.onFoot.text);
+    ok('...and names him', /\S/.test(knell.onFoot.text), knell.onFoot.text);
+    ok('there are four marks: the foot set, and three quarters of the way',
+       knell.ats.length === 4 && knell.ats[1] === 50 && knell.ats[2] === 75 && knell.ats[3] === 90,
+       knell.ats.join(','));
+    for (const m of knell.marks)
+      ok(`...and ${m.at}% tolls with the number on it`, m.text.indexOf(Math.round(m.at) + '%') >= 0, m.text);
+    ok('your OWN walk is not a knell', !knell.mine);
+    ok('...it is a banner, as it was', /Pattern/.test(knell.banner), knell.banner.slice(0, 60));
+    await pg.evaluate(() => document.getElementById('knell').classList.add('hidden'));
+
     /* ---------------- the halt ---------------- *
      * A pause has one job beyond stopping the clock: it must not BANK the time it stood
      * still for. An accumulator left filling would fast-forward the match the moment you
