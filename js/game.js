@@ -514,6 +514,18 @@
       if (!r || r.ok !== false) clearPlacing();
       return;
     }
+    /* AN ARMED WORK IS DROPPED BY ANYTHING THAT IS NOT GROUND. A tap on your own men or on one
+     * of your own works is the player having moved on to something else, and holding the work
+     * through it means the NEXT tap raises a barracks where they meant to send a company. The
+     * tap then does what it would have done, because cancelling AND swallowing the gesture
+     * makes you tap twice for one intention.
+     * A SITE is not "something else": a Gate stands on a spring and only there, so tapping a
+     * spring with a Gate armed is exactly the gesture the rules ask for. */
+    if (game.placing &&
+        ((Render.hitUnit && Render.hitUnit(x, y, game.viewer) > 0) || Render.hitBuilding(x, y) >= 0)) {
+      clearPlacing();
+      UI.banner('Cancelled', 'warn');
+    }
     if (game.placing) {
       const w = Render.toWorld(x, y, game.viewer);
       const def = C.BUILDINGS[game.placing.bt];
@@ -836,6 +848,8 @@
       onBanner: (site) => issue({ c: 'banner', site }),
       onFlagArm: (id) => {
         game.targeting = false;
+        clearPlacing();   // picking up a standard is not placing a work
+
         game.armedFlag = game.armedFlag === id ? null : id;
         if (game.armedFlag != null)
           UI.banner('⚐ Tap where this company should stand', 'alert');
@@ -859,6 +873,7 @@
         const me = view.players[game.viewer];
         if (me.powers[k] > 0) return;
         if (me.essence < C.POWERS[k].cost) { UI.banner('Not enough Essence', 'warn'); return; }
+        clearPlacing();   // aiming a power is not placing a work either
         if (k === 'storm') { game.armedFlag = null; game.targeting = !game.targeting; }
         else issue({ c: 'power', k: 'trump' });
       },

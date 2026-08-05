@@ -44,7 +44,7 @@
     const line = (pc, dc, tag) => {
       if (!pc) return tag + ': none';
       const c = pc._cand || {};
-      const cands = Object.keys(c).map((k) => k + ':' + c[k]).join(' ') || 'NONE';
+      const cands = summarise(c) || 'NONE';
       return tag + ': sig=' + pc.signalingState + ' gather=' + pc.iceGatheringState +
              ' ice=' + pc.iceConnectionState + ' conn=' + pc.connectionState +
              ' dc=' + (dc ? dc.readyState : 'none') + '\n      cand ' + cands;
@@ -119,6 +119,33 @@
    * does not depend on the access point's goodwill. If STUN cannot be reached — a LAN with no
    * internet — gathering falls back to exactly what it did before. */
   const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  /* '...typ host 192.168.1.23 54321 ...' → '192.168.1.23' */
+  function addrOf(line) {
+    const m = /candidate:\S+ \d+ \S+ \d+ (\S+) /.exec(line || '');
+    return m ? m[1] : null;
+  }
+  function summarise(cand) {
+    return Object.keys(cand).map((k) => {
+      const uniq = [...new Set(cand[k])];
+      return k + ' ' + uniq.slice(0, 3).join(',') + (uniq.length > 3 ? '…' : '');
+    }).join('  ');
+  }
+  /* WHAT THE OTHER PHONE OFFERED. Its candidates ride in the SDP we were just handed, so one
+   * screen can show both sides — and comparing the two sets of addresses is the whole
+   * diagnosis: same subnet and no link means the access point is isolating its clients;
+   * different subnets means they were never on the same network at all. */
+  function reportRemote(sdp) {
+    const cand = {};
+    for (const line of (sdp || '').split(/\r?\n/)) {
+      const m = /^a=candidate:(.*)$/.exec(line.trim());
+      if (!m) continue;
+      const ty = (/ typ (\w+)/.exec(m[1]) || [])[1] || '?';
+      const a = addrOf('candidate:' + m[1]) || '?';
+      const key = ty === 'host' && /\.local/.test(m[1]) ? 'mdns' : ty;
+      (cand[key] = cand[key] || []).push(a);
+    }
+    diag('THEIR candidates → ' + (summarise(cand) || '(none in the offer!)'));
+  }
   function makePC() {
     const pc = new RTCPeerConnection({ iceServers: ICE });
     const cand = {};
@@ -128,9 +155,14 @@
         /* an mDNS candidate is a host candidate the browser has hidden behind a .local name;
          * it only resolves for someone on the same LAN, so it is worth counting apart */
         const key = ty === 'host' && /\.local/.test(e.candidate.candidate || '') ? 'mdns' : ty;
-        cand[key] = (cand[key] || 0) + 1;
+        /* THE ADDRESS, not just the tally. host:4 on both phones and no link is one of two
+         * completely different problems — two DIFFERENT networks, or one network whose access
+         * point refuses to pass traffic between its own clients — and the only thing that
+         * tells them apart is the numbers. Kept per type, deduplicated, so the panel can be
+         * read against the other phone's. */
+        (cand[key] = cand[key] || []).push(addrOf(e.candidate.candidate) || '?');
       } else {
-        const got = Object.keys(cand).map((k) => k + ':' + cand[k]).join(' ');
+        const got = summarise(cand);
         diag('ICE candidates gathered → ' + (got || '(none!)'));
         /* the verdict, in the one place anybody will read it. It is not an error — it is what
          * this pairing IS — but it is the answer to "why did a stable handshake never link". */
@@ -215,6 +247,7 @@
     const pc = Net.pc = makePC();
     pc.ondatachannel = (e) => wireChannel(e.channel, null);
     await pc.setRemoteDescription(JSON.parse(await decompress(offerCode)));
+    reportRemote(pc.remoteDescription && pc.remoteDescription.sdp);
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
     return compress(JSON.stringify(pc.localDescription));
@@ -227,6 +260,7 @@
      * answer to, that is a thing the player needs told. */
     if (!pc) { diag('no offer is waiting for an answer'); throw new Error('no offer is waiting — tap HOST THE TABLE first'); }
     await pc.setRemoteDescription(JSON.parse(await decompress(answerCode)));
+    reportRemote(pc.remoteDescription && pc.remoteDescription.sdp);
     diag('answer accepted — waiting for the link to open');
   };
 

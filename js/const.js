@@ -242,7 +242,15 @@
      * penny you own goes into the lines and none into an army — it simply cannot stop.
      * drain = essence/sec while walking, rate = %/sec: ~9.5 minutes and ~18k essence. */
     shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 900, raise: 54,
-                drain: [32], rate: [0.175], minRate: 0.5, decay: 0.05, breakLoss: 22,
+                /* WALKABLE ON FIVE GATES. At 32 a walk cost more than five Shadow Gates earn —
+                 * five at level 1 draw 25 a second against the base 2.5, so the walker went
+                 * seven a second into the red before a single soldier was paid for, and the
+                 * Pattern was a thing you did after winning rather than a way of winning. At
+                 * 22 the same five Gates leave three a second spare with the muster halted and
+                 * one a second with a hall still running: a small income, which is the point.
+                 * It is still 12,500 essence for a full walk, and it is still nine and a half
+                 * minutes in plain sight of everyone at the table. */
+                drain: [22], rate: [0.175], minRate: 0.5, decay: 0.05, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'wall', 'barracks', 'tower', 'spire', 'siege', 'shrine'];
