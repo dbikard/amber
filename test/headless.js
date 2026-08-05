@@ -1397,6 +1397,176 @@ suite('the curtain wall')
   eq('a whole wall has nothing to mend', World.applyCommand(w, 0, { c: 'fix', id: b.id }).err, 'whole');
 }
 
+/* A WORK IS A WORK FROM THE MOMENT IT IS PAID FOR — it stands on the ground, it can be seen,
+ * and it can be knocked over. That was one rule written in three places, and all three of them
+ * quietly excused a shell from the war:
+ *   — `acquire` judged a curtain by its MIDPOINT unless it was finished, so a man standing at
+ *     the END of a run still going up measured half a run away from it, found nothing in reach
+ *     and stood there watching the masons work. A rising run was untouchable along nearly its
+ *     whole length: raise a long enough wall and nobody could reach any of it but the middle.
+ *   — the raise HANDED BACK every blow. The shell's hit points were SET from the fraction of
+ *     the work done, so damage was undone by the next tick of masonry — a work under
+ *     construction could be hammered all day and never fall. Worse, the fraction was read off
+ *     the CARD, so a run bought by the foot started above its own ramp, sat frozen at its
+ *     opening hit points for the whole raise, and stood finished on one crew's worth of stone
+ *     out of the several it had been paid for.
+ *   — and a run knocked down while it was still going up was BREACHED like one that had stood:
+ *     a wall that had never been a wall wearing a ruin, masons still raising it, the rubble
+ *     healing back up under them, a 'raised' event for a run that barred nothing — and `fix`
+ *     standing by to buy the whole curtain for half the stone, which is cheaper than finishing
+ *     the one you were already paying for.
+ * A shell is not a ruin. There is nothing to mend, because nothing ever stood. */
+suite('a shell can be knocked over');
+{
+  const step = (w, secs) => { for (let i = 0; i < Math.round(30 * secs); i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+  const put = (w, owner, x, y, kind, dmg) => {
+    const d = C.UNITS[kind];
+    const u = { id: w.nextId++, owner, kind, x, y, ox: 0, oy: 0, hp: 1e9, maxHp: 1e9,
+                dmg: dmg == null ? d.dmg : dmg, cd: 0, goal: null, co: 0, from: -1 };
+    w.units.push(u);
+    w.players[owner].banner = { x, y, site: -1 };   // the banner moves the army: pin him where he stands
+    return u;
+  };
+  const gates = (w, pi, n) => {   // crews are hired one per Gate, and a long run wants several
+    const c = World.cityOf(w, pi);
+    while (World.masons(w, pi) < n)
+      w.players[pi].buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x, y: c.y, raise: 0,
+                                     hp: 1, maxHp: 1, node: -1, co: 0, lastHurt: -99, cd: 0 });
+  };
+
+  /* ---- a point work: the masons do not undo what a blow did ---- */
+  {
+    const w = World.createWorld(1000, 2);
+    w.chaosNext = 1e9;
+    const pl = w.players[0], c = World.cityOf(w, 0);
+    pl.essence = 1e6;
+    let spot = null;
+    for (let a = 0; a < 6.28 && !spot; a += 0.3)
+      for (let r = 150; r <= 280 && !spot; r += 20) {
+        const p = { x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r };
+        if (!World.placementError(w, 0, p.x, p.y, 'tower')) spot = p;
+      }
+    ok('there is ground beside the Seat for a tower', !!spot);
+    const r0 = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: spot.x, y: spot.y });
+    ok('and the order is accepted', r0.ok, r0.err);
+    const t = pl.buildings[pl.buildings.length - 1];
+    ok('it goes up as a shell', t.raise > 0, t.raise);
+    near('a shell stands on its share of the stone', t.hp, t.maxHp * C.RAISE.hpFrom, 1);
+    const perSec = t.maxHp * (1 - C.RAISE.hpFrom) / t.raiseFor;   // what a second of masonry adds
+    step(w, 2);
+    near('...and the masons fill it out as they work', t.hp, t.maxHp * C.RAISE.hpFrom + perSec * 2, 2);
+    const before = t.hp;
+    World.hurtBuilding(w, 0, t.id, perSec * 6, 1);
+    ok('a work under construction can be struck', t.hp < before, `${Math.round(t.hp)} of ${Math.round(before)}`);
+    const struck = t.hp;
+    step(w, 2);
+    ok('...and the masons do not hand the blow back', t.hp < before,
+       `struck to ${Math.round(struck)}, two seconds of masonry later ${Math.round(t.hp)} — it was ${Math.round(before)}`);
+    near('...they only carry on from where it left it', t.hp, struck + perSec * 2, 2);
+    eq('the crew is on it while it goes up', World.rising(w, 0), 1);
+    World.hurtBuilding(w, 0, t.id, 1e9, 1);
+    ok('a shell knocked to nothing is gone from the board', !pl.buildings.some((q) => q.id === t.id));
+    eq('...and the crew comes off it', World.rising(w, 0), 0);
+    eq('...and the ground it stood on is free again',
+       World.placementError(w, 0, spot.x, spot.y, 'tower'), null);
+  }
+
+  /* ---- a curtain still rising: struck where you STAND, not at its middle ---- */
+  const lay = (w, pi, len) => {   // a legal run of about `len`, laid on ground beside the Seat
+    const c = World.cityOf(w, pi);
+    for (let a = 0; a < 6.28; a += 0.2)
+      for (let r = 200; r <= 340; r += 22) {
+        const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
+        const px = -Math.sin(a) * len / 2, py = Math.cos(a) * len / 2;
+        if (!World.wallError(w, pi, mx - px, my - py, mx + px, my + py)) return [mx - px, my - py, mx + px, my + py];
+      }
+    return null;
+  };
+  {
+    const w = World.createWorld(1000, 2);
+    w.chaosNext = 1e9;
+    const pl = w.players[0];
+    pl.essence = 1e6;
+    gates(w, 0, 3);
+    const line = lay(w, 0, C.WALL.unit * 2.4);
+    ok('a long run can be laid beside the Seat', !!line);
+    const rb = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: line[0], y: line[1], x2: line[2], y2: line[3] });
+    ok('and the order is accepted', rb.ok, rb.err);
+    const b = pl.buildings.find((q) => q.bt === 'wall');
+    const ends = World.wallEnds(b);
+    const dMid = Math.hypot(ends[0] - b.x, ends[1] - b.y);
+    /* THIS IS THE GEOMETRY THE BUG LIVED IN. Judged from the midpoint, a man at the end of
+     * this run is further from the wall than he can see — so he found no target at all. */
+    ok('the end of the run is further from its middle than a man can see',
+       dMid > C.UNITS.soldier.aggro, `${Math.round(dMid)} from the middle, aggro ${C.UNITS.soldier.aggro}`);
+    ok('a run bought by the foot carries more stone than the card', b.maxHp > C.BUILDINGS.wall.hp,
+       `${Math.round(b.maxHp)} vs ${C.BUILDINGS.wall.hp}`);
+    const perSec = b.maxHp * (1 - C.RAISE.hpFrom) / b.raiseFor;
+    /* a pair of Engines at the far end of the shell — the siege train, whose whole purpose is
+     * stone, and which between them out-hit the masons */
+    const hp0 = b.hp;
+    put(w, 1, ends[0], ends[1], 'engine');
+    put(w, 1, ends[0] + 12, ends[1] + 12, 'engine');
+    step(w, 2);
+    ok('an Engine at the END of a rising run can reach it',
+       b.hp < hp0 + perSec * 2 - 1, `${Math.round(b.hp)}, and masonry alone would have made it ${Math.round(hp0 + perSec * 2)}`);
+    let secs = 2;
+    while (secs < 20 && pl.buildings.some((q) => q.id === b.id)) { step(w, 1); secs++; }
+    ok('and knock it over while the masons are still on it', !pl.buildings.some((q) => q.id === b.id),
+       `still standing at ${Math.round(b.hp)} after ${secs}s`);
+    /* A SHELL LEAVES NO RUIN. Nothing stood, so there is nothing to mend, and no rubble to
+     * hold the ground: the essence bought a hole in the ground and that is the whole loss. */
+    ok('a curtain that never stood leaves no ruin', !b.breach, b.breach);
+    eq('...nothing to mend', World.applyCommand(w, 0, { c: 'fix', id: b.id }).err, 'id');
+    ok('...and no stone barring anything', w.walls.length === 0 && !w.anyWall);
+    eq('...and the crews are free for another run', World.rising(w, 0), 0);
+    eq('...and the ground is clear for one', World.wallError(w, 0, line[0], line[1], line[2], line[3]), null);
+  }
+
+  /* ---- and the other side of the rule: a run that DID stand still leaves its ruin ---- */
+  {
+    const w = World.createWorld(1000, 2);
+    w.chaosNext = 1e9;
+    const pl = w.players[0];
+    pl.essence = 1e6;
+    gates(w, 0, 3);
+    const line = lay(w, 0, C.WALL.unit * 2.4);
+    World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: line[0], y: line[1], x2: line[2], y2: line[3] });
+    const b = pl.buildings.find((q) => q.bt === 'wall');
+    step(w, C.BUILDINGS.wall.raise + 1);
+    eq('the masons finish the run', b.raise, 0);
+    /* AND IT STANDS ON EVERY STONE IT WAS BILLED FOR. Filled out from the card rather than
+     * from its own hit points, a two-and-a-half-crew run finished on the hit points of one. */
+    eq('...standing on all the stone it was paid for', Math.round(b.hp), Math.round(b.maxHp));
+    World.hurtBuilding(w, 0, b.id, 1e9, 1);
+    eq('a run that stood is breached, not razed', b.breach, 1);
+    ok('...and is still there to be mended', pl.buildings.some((q) => q.id === b.id));
+    ok('...for a crew and half the stone', World.applyCommand(w, 0, { c: 'fix', id: b.id }).ok);
+  }
+
+  /* ---- scaffolding is still the LAST thing a man strikes ---- */
+  {
+    const w = World.createWorld(1000, 2);
+    w.chaosNext = 1e9;
+    const pl = w.players[0];
+    pl.essence = 1e6;
+    gates(w, 0, 3);
+    const line = lay(w, 0, C.WALL.unit * 2.4);
+    World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: line[0], y: line[1], x2: line[2], y2: line[3] });
+    const b = pl.buildings.find((q) => q.bt === 'wall');
+    const ends = World.wallEnds(b);
+    const perSec = b.maxHp * (1 - C.RAISE.hpFrom) / b.raiseFor;
+    const hp0 = b.hp;
+    /* a defender at the end of the shell, and a rival right on top of him */
+    const held = put(w, 0, ends[0], ends[1], 'soldier');
+    held.hp = held.maxHp = 4000;
+    put(w, 1, ends[0] + 16, ends[1] + 16, 'soldier');
+    step(w, 4);
+    ok('a soldier strikes the living man, not the scaffolding', held.hp < 4000, `the defender is at ${Math.round(held.hp)}`);
+    near('...and the masons are left to their work', b.hp, Math.min(b.maxHp, hp0 + perSec * 4), 2);
+  }
+}
+
 /* A TOWER JOINS THE CURTAIN OR IT STANDS CLEAR OF IT — there is no third answer, and there
  * must be no OFFSET that gives one. The bug this suite exists for: the snap reached WALL.join
  * from the run while the crowding test measured BUILD.foot*2+gap from the wall's MIDPOINT, so

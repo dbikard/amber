@@ -1226,14 +1226,19 @@
       const cs = world.map.sites[world.map.cities[ci]];
       const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
       for (const b of tp.buildings) {
-        /* the stone you strike is the span in front of you, not the middle of the run */
-        const w = isWall(b) && !b.raise, aim = w ? segNear(b, u.x, u.y) : b;
+        /* the stone you strike is the span in front of you, not the middle of the run — and
+         * that is true of a run the masons are still on. Judged by its MIDPOINT, a curtain
+         * going up was untouchable along nearly its whole length: a man standing at the end
+         * of a long shell measured half a run away from it, found nothing in reach and stood
+         * there while it finished. A work is a work from the moment it is paid for. */
+        const w = isWall(b), aim = w ? segNear(b, u.x, u.y) : b;
         const d = w ? Math.sqrt(segD2(b, u.x, u.y)) : Math.sqrt(d2(u.x, u.y, b.x, b.y));
         /* YOU STRIKE THE STONE WHEN THERE IS NOTHING ALIVE TO STRIKE. A curtain is always
          * the nearest thing to a man standing at it, so judging walls by distance like any
          * other work meant an assault hacked at the masonry while the parapet above shot
          * down at it untouched — the exact opposite of the bargain. Walls are held back and
-         * weighed only if nothing else was found. */
+         * weighed only if nothing else was found, scaffolding with the rest: a shell is worth
+         * knocking over, but never while a living man is in reach. */
         if (w) { if (d < bestD && seen(aim.x, aim.y, ci, b)) stone.push([d, ci, b.id, aim.x, aim.y]); continue; }
         if (d < bestD && seen(aim.x, aim.y, ci))
           consider(d, { pi: ci, id: b.id }, 'work', aim.x, aim.y);
@@ -1259,7 +1264,13 @@
      * — it bars nothing and hides nobody, which is the whole point of having broken it, but
      * the masons can raise it again for half the stone. Otherwise winning a stretch of wall
      * once wins it forever, and a long run is a single hit-point bar you cannot mend. */
-    if (b.hp <= 0 && isWall(b) && !b.breach) {
+    /* ...but ONLY a run that actually stood. A shell knocked over is not a ruin to mend: it
+     * is a hole in the ground and the essence is gone. Breaching one instead left a wall that
+     * had never been a wall wearing a breach, with the masons still raising it — the raise
+     * healed the rubble back up, the run reported itself 'raised' while barring nothing, and
+     * `fix` then bought the whole curtain for half the stone, which is cheaper than finishing
+     * the one you were already paying for. */
+    if (b.hp <= 0 && isWall(b) && !b.breach && !b.raise) {
       /* THE RUBBLE HAS HIT POINTS OF ITS OWN. A ruin left at zero would be swept off the
        * board by the very next blow that touched it — the record gone and the mend with it.
        * It keeps a share of its stone: enough that clearing the ground is WORK, and it can
@@ -1326,8 +1337,15 @@
          * Damage does not stop the work — it just means there is less of it standing. */
         if (b.raise > 0) {
           b.raise = Math.max(0, b.raise - dt);
-          const done = 1 - b.raise / b.raiseFor;
-          b.hp = Math.max(b.hp, def.hp * (C.RAISE.hpFrom + (1 - C.RAISE.hpFrom) * done));
+          /* THE SHELL FILLS OUT BY ITS OWN STONE, AND KEEPS WHAT WAS TAKEN OUT OF IT. Two
+           * things were wrong with reading the ramp off the card. It measured `def.hp` — one
+           * crew's worth — so a run bought by the foot started ABOVE the ramp and sat frozen
+           * at its opening hit points for the whole raise, then stood finished at a fraction
+           * of the stone it had been paid for. And it SET hp rather than adding to it, so
+           * every blow struck at a work under construction was handed back by the next tick
+           * of masonry: a shell could be hammered all day and never fall. It grows by its
+           * share of the work done, damage stays done, and a shell can be knocked over. */
+          b.hp = Math.min(b.maxHp, b.hp + b.maxHp * (1 - C.RAISE.hpFrom) * dt / b.raiseFor);
           if (b.raise <= 0) {
             /* the ground changes the moment the stone is finished, not when it was paid for */
             if (isWall(b)) { world.navVersion++; noteWalls(world); }
