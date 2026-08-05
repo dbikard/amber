@@ -213,7 +213,14 @@ translucent scaffolding a rising one does.
   the march loop, which runs after it.
   **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
   punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
-  **A breach is a ruin**: `b.breach` keeps the record on the board, out of `world.walls`, and
+  **A breach is a ruin, but a SHELL is not.** Only a run that actually stood is breached; one
+  knocked over while `raise > 0` is razed like any other work — nothing stood, so there is
+  nothing to mend, and `fix` for half the stone would have been cheaper than finishing it.
+  A work under construction is attackable exactly like a finished one: `acquire` aims at the
+  nearest point of a rising RUN (not its midpoint, which put most of a long shell out of
+  reach), and the raise ADDS its share of `b.maxHp` rather than setting hp from the card, so
+  damage done to a shell stays done and a run bought by the foot finishes on all its stone.
+  `b.breach` keeps the record on the board, out of `world.walls`, and
   `{c:'fix'}` puts it back for a crew and half the stone. A mend takes a crew (`b.fixing`); a
   LEVEL does not — see the note on the `up` command. Rubble keeps `WALL.rubble` of its stone so
   a stray blow cannot sweep the record away, does NOT regenerate (masons only), and can be
