@@ -197,8 +197,9 @@ body {
 .mbtn:active { background: #3a2e4e; }
 .mbtn:disabled { border-color: #5a4c30; color: #8f8467; box-shadow: none; }
 .mbtn:disabled:active { background: linear-gradient(#2a2138, #171020); }
-/* a guest waiting on the host's rematch: the button is a STATUS, not an offer, and the
- * pulse is what says so — "AWAITING THE HOST" sitting dead still reads as a broken button */
+/* a guest that has CALLED for another match and is waiting for the host to deal it: the button
+ * has stopped being an offer and become a STATUS, and the pulse is what says so — "AWAITING
+ * THE HOST" sitting dead still reads as a button that swallowed the tap */
 #end-next:disabled { animation: waiting 2.2s ease-in-out infinite; }
 @keyframes waiting { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.95; } }
 .mbtn.small { width: auto; padding: 9px 14px; font-size: 12px; }
