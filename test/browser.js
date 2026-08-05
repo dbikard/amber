@@ -1148,10 +1148,12 @@ async function match(browser, base, renderer) {
         }
         if (wall.breach) return { err: 'still breached' };
         const ends = W.wallEnds(wall);
-        /* SEARCHED ALONG THE RUN, not picked. Earlier suites leave towers standing around the
-         * Seat and a run may pass within a tower's own clearance of one of them, so a fixed
-         * fraction along the wall lands on a spot that is legitimately crowded — which reads
+        /* SEARCHED ALONG THE RUN, not picked — and the yard is cleared of the towers earlier
+         * suites left standing around the Seat first. A run may pass within a tower's own
+         * clearance of one of them, which makes stretches of it legitimately crowded and reads
          * as 'a tower cannot join a wall' when the rule is working exactly as intended. */
+        for (let i = pl.buildings.length - 1; i >= 0; i--)
+          if (pl.buildings[i].bt === 'tower' && !pl.buildings[i].onWall) pl.buildings.splice(i, 1);
         let r2 = { ok: false, err: 'nospot' };
         const frac = [];
         for (let k = 0; k <= 24; k++) frac.push((k % 2 ? -1 : 1) * (k / 48));
@@ -1243,16 +1245,20 @@ async function match(browser, base, renderer) {
     /* A SPRING IS NOT A BUILD MENU. Reported from play. */
     const springTap = await pg.evaluate(async () => {
       const R = window.Render, g = window.Game.game;
-      const c = g.world.map.sites[g.world.map.cities[0]];
-      R.setZoom(1); R.lookAt(c.x, c.y);
-      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      R.setZoom(1);
       const lid = window.innerHeight - 20;
-      /* a spring that is actually on screen, hit through the renderer's own projection */
+      /* LOOK AT each spring in turn rather than hoping one is near the Seat: the tap has to
+       * REACH the site, and game.js tries your men and your works first, so a spring with a
+       * soldier on it answers with his standard and one beside a Gate answers with the Gate. */
       for (const s2 of g.world.map.sites) {
         if (s2.kind !== 'node') continue;
+        R.lookAt(s2.x, s2.y);
+        await frame();
         const p = R.project(s2.x, s2.y);
         if (!(p.x > 40 && p.x < window.innerWidth - 40 && p.y > 100 && p.y < lid)) continue;
         if (R.hitSite(p.x, p.y, g.world, 0, false) !== s2.id) continue;
+        if (R.hitUnit(p.x, p.y, 0) > 0 || R.hitBuilding(p.x, p.y) >= 0) continue;
         return { ok: true, x: p.x, y: p.y, name: s2.name };
       }
       return { ok: false };

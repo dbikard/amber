@@ -588,8 +588,24 @@
   /* ---------------- LAN pairing (QR flow ported from Perils) ---------------- */
   function setupLan() {
     const say = (t2) => { $('lan-status').textContent = t2; };
-    Net.onDiag = (lines) => { const d = $('lan-diag'); d.textContent = lines.slice(-12).join('\n'); };
+    /* THE DIAGNOSTICS ARE NOT A SECRET. They were behind a tap on the status line, which is
+     * fine when pairing works and useless when it does not — the one time anybody wants them
+     * is the one time they are hard to find, and a photograph of the screen is how a bug like
+     * this gets reported. While pairing they are ON, and they lead with the LIVE state of
+     * every connection rather than a history of what has already happened. */
+    let lanNote = '';
+    const paintDiag = () => {
+      const d = $('lan-diag');
+      d.classList.remove('hidden');
+      d.textContent = 'amber v' + (global.GAME_VERSION || '?') + '\n' + Net.state() +
+                      (lanNote ? '\n' + lanNote : '') +
+                      '\n---\n' + Net.diag.slice(-12).join('\n');
+    };
+    Net.onDiag = () => paintDiag();
     $('lan-status').addEventListener('click', () => $('lan-diag').classList.toggle('hidden'));
+    /* repainted on a timer as well as on events: ICE moves without telling us, and a stuck
+     * pairing produces no events at all — which is exactly the case worth photographing */
+    setInterval(() => { if (Net._pairing || Net.active) paintDiag(); }, 1000);
 
     const qrDisplay = $('qr-display'), qrJoin = $('qr-join'), qrScanReply = $('qr-scan-reply');
     let pairStop = null;
@@ -601,6 +617,8 @@
       const chunks = [];
       for (let i2 = 0; i2 < payload.length; i2 += CHUNK) chunks.push(payload.slice(i2, i2 + CHUNK));
       const id = Math.random().toString(36).slice(2, 6), n = chunks.length;
+      lanNote = 'showing ' + payload.length + ' chars as ' + n + ' QR frame' + (n === 1 ? '' : 's');
+      paintDiag();
       let i = 0, timer = null;
       const drawFrame = () => {
         try { global.QR.render(qrDisplay, 'AQ|' + id + '|' + i + '|' + n + '|' + chunks[i], { size: 560, quiet: 4, dark: '#000000', light: '#ffffff' }); } catch (e) {}
@@ -652,7 +670,11 @@
               if (p.length < 5) continue;
               const id = p[1], idx = +p[2], total = +p[3];
               if (pid !== id) { pid = id; need = total; have = 0; for (const k in parts) delete parts[k]; }
-              if (parts[idx] == null) { parts[idx] = p.slice(4).join('|'); have++; hint.textContent = 'reading the Trump… ' + have + '/' + need; }
+              if (parts[idx] == null) {
+                parts[idx] = p.slice(4).join('|'); have++;
+                hint.textContent = 'reading the Trump… ' + have + '/' + need;
+                lanNote = 'scanned ' + have + '/' + need + ' frames';
+              }
               if (need > 0 && have >= need) {
                 let full = '', ok = true;
                 for (let k = 0; k < need; k++) { if (parts[k] == null) { ok = false; break; } full += parts[k]; }
@@ -687,8 +709,20 @@
         if (pairStop) { pairStop(); pairStop = null; }
         const answer = await scanQR();
         backToLan();
+        lanNote = 'read a reply of ' + answer.length + ' chars'; paintDiag();
         say('the Trumps touch…');
         await Net.acceptAnswer(answer);
+        paintDiag();
+        /* A LINK THAT NEVER OPENS SAYS NOTHING ON ITS OWN. Everything above this point can
+         * succeed and the connection still never come up — the two phones cannot reach each
+         * other — and the only symptom is a guest flashing its reply forever. Say so, and say
+         * the two things that actually cause it. */
+        setTimeout(() => {
+          if (Net.active) return;
+          say('no link after 20s — same Wi-Fi? and allow Local Network for the browser');
+          UI.banner('No link after 20s — check both are on the same Wi-Fi', 'warn');
+          paintDiag();
+        }, 20000);
       } catch (e) { backToLan(); say(e.message); UI.banner('Pairing failed — ' + e.message, 'warn'); }
     });
     qrJoin.addEventListener('click', async () => {
@@ -696,6 +730,7 @@
       try {
         const offer = await scanQR();
         backToLan();
+        lanNote = 'read an offer of ' + offer.length + ' chars'; paintDiag();
         say('drawing your reply…');
         const answer = await Net.join(offer);
         if (!startPairStream(answer)) { say('could not draw the reply QR'); return; }

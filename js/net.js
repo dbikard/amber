@@ -36,6 +36,26 @@
          '  compress=' + (typeof CompressionStream !== 'undefined'));
   };
   Net.diagText = function () { return Net.diag.join('\n'); };
+  /* A LIVE PICTURE, not a log. The diagnostics were a history of things that had happened,
+   * which is the wrong shape for the question actually being asked in a pairing that will not
+   * finish: what state is it stuck IN. This is every connection's current standing, cheap
+   * enough to repaint every second and short enough to photograph. */
+  Net.state = function () {
+    const line = (pc, dc, tag) => {
+      if (!pc) return tag + ': none';
+      const c = pc._cand || {};
+      const cands = Object.keys(c).map((k) => k + ':' + c[k]).join(' ') || 'NONE';
+      return tag + ': sig=' + pc.signalingState + ' gather=' + pc.iceGatheringState +
+             ' ice=' + pc.iceConnectionState + ' conn=' + pc.connectionState +
+             ' dc=' + (dc ? dc.readyState : 'none') + '\n      cand ' + cands;
+    };
+    const rows = ['role=' + (Net.isHost ? 'HOST' : (Net.pc ? 'GUEST' : '-')) +
+                  ' seat=' + Net.localIdx + ' pairing=' + (Net._pairing ? 'yes' : 'no') +
+                  ' active=' + (Net.active ? 'yes' : 'no') + ' peers=' + Net.peers.length];
+    if (Net.isHost) { for (const p of Net.peers) rows.push(line(p.pc, p.dc, 'peer' + p.idx)); }
+    else rows.push(line(Net.pc, Net.dc, 'link'));
+    return rows.join('\n');
+  };
 
   /* ---------------- link codes: compressed base64url SDP (ported) ---------------- */
   function b64encode(bytes) {
@@ -93,6 +113,7 @@
         cand[ty] = (cand[ty] || 0) + 1;
       } else diag('ICE candidates gathered → ' + (Object.keys(cand).map((k) => k + ':' + cand[k]).join(' ') || '(none!)'));
     };
+    pc._cand = cand;   // kept on the connection so Net.state() can report it live
     pc.onicecandidateerror = (e) => diag('ICE candidate error ' + (e.errorCode || ''));
     pc.oniceconnectionstatechange = () => diag('ICE state: ' + pc.iceConnectionState);
     pc.onconnectionstatechange = () => diag('peer connection: ' + pc.connectionState);
@@ -137,6 +158,19 @@
   Net.host = async function () {
     Net.isHost = true; Net.localIdx = 0;
     Net._pairing = true; acquireWake();
+    /* ONE OFFER IN FLIGHT AT A TIME. Tapping HOST twice made a SECOND half-open connection and
+     * pointed `_pending` at it — while the QR on screen was still the first one's. The guest
+     * scans that stale offer, sends back an answer for it, and the host hands the answer to
+     * the wrong connection: no error anywhere, no link ever, and a guest flashing its reply at
+     * a host that is listening on a different socket. Whatever was half-open is dropped first,
+     * so the code on screen and the connection waiting for its answer are always the same one. */
+    if (Net._pending && !(Net._pending.dc && Net._pending.dc.readyState === 'open')) {
+      diag('dropping the previous unanswered offer');
+      try { Net._pending.pc.close(); } catch (e) { /* already gone */ }
+      const i = Net.peers.indexOf(Net._pending);
+      if (i >= 0) Net.peers.splice(i, 1);
+      Net._pending = null;
+    }
     const pc = makePC();
     const peer = { pc, dc: null, idx: Net.peers.length + 1 };
     Net.peers.push(peer);

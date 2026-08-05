@@ -217,9 +217,12 @@ body {
 #lan-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #lan-status { font-size: 12px; font-style: italic; color: #b8a878; }
 #qr-display { width: min(72vw, 300px); height: min(72vw, 300px); image-rendering: pixelated; border-radius: 6px; }
+/* readable in a PHOTOGRAPH: this is how a pairing bug gets reported */
 #lan-diag {
-  font-family: monospace; font-size: 10px; color: #8aa; text-align: left;
-  max-width: 90vw; max-height: 24vh; overflow: auto; background: #000a; padding: 6px; border-radius: 6px;
+  font-family: monospace; font-size: 11px; line-height: 1.35; color: #9cc8b8; text-align: left;
+  white-space: pre-wrap; word-break: break-word;
+  max-width: 94vw; max-height: 46vh; overflow: auto; background: #000c; padding: 7px;
+  border: 1px solid #2a4a44; border-radius: 6px;
 }
 #version { position: fixed; bottom: 8px; right: 12px; font-size: 11px; color: #5a4c30; }
 
