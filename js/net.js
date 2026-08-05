@@ -134,7 +134,7 @@
    * screen can show both sides — and comparing the two sets of addresses is the whole
    * diagnosis: same subnet and no link means the access point is isolating its clients;
    * different subnets means they were never on the same network at all. */
-  function reportRemote(sdp) {
+  function sdpCands(sdp) {
     const cand = {};
     for (const line of (sdp || '').split(/\r?\n/)) {
       const m = /^a=candidate:(.*)$/.exec(line.trim());
@@ -144,7 +144,10 @@
       const key = ty === 'host' && /\.local/.test(m[1]) ? 'mdns' : ty;
       (cand[key] = cand[key] || []).push(a);
     }
-    diag('THEIR candidates → ' + (summarise(cand) || '(none in the offer!)'));
+    return cand;
+  }
+  function reportRemote(sdp) {
+    diag('THEIR candidates → ' + (summarise(sdpCands(sdp)) || '(NONE in what they sent!)'));
   }
   function makePC() {
     const pc = new RTCPeerConnection({ iceServers: ICE });
@@ -178,13 +181,30 @@
     pc.onconnectionstatechange = () => diag('peer connection: ' + pc.connectionState);
     return pc;
   }
+  /* THE CODE ON SCREEN IS ALL THERE WILL EVER BE. A QR is a one-shot channel: whatever
+   * candidates are in the SDP at the moment it is drawn are the only ones the other phone will
+   * ever hear about, because there is no way to trickle a late one across. So giving up on
+   * gathering after a few seconds does not mean "start without the stragglers" the way it does
+   * with a signalling server — it means publishing a link with holes in it, permanently.
+   * Caught from play: a guest whose ICE gathering did not complete until 45s had already drawn
+   * its reply at 31s, and its reflexive and IPv6 candidates never left the phone. Wait for
+   * `complete`, and treat the ceiling as the disaster case it is rather than the normal path. */
   function gathered(pc) {
     return new Promise((res) => {
       if (pc.iceGatheringState === 'complete') return res();
-      const done = () => { if (pc.iceGatheringState === 'complete') res(); };
-      pc.addEventListener('icegatheringstatechange', done);
-      setTimeout(res, 4000);   // STUN takes a round trip the host-only path never waited for
+      let done = false;
+      const finish = (why) => { if (done) return; done = true; if (why) diag(why); res(); };
+      pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState === 'complete') finish(null);
+      });
+      setTimeout(() => finish('gathering did not finish in 15s — the code may be incomplete'), 15000);
     });
+  }
+  /* what is ACTUALLY in the code we are about to show: the ground truth of what the other
+   * phone will receive, as against what this one has found since */
+  function reportLocal(pc, tag) {
+    diag((tag || 'MY') + ' published candidates → ' + (summarise(sdpCands(pc.localDescription &&
+      pc.localDescription.sdp)) || '(NONE — this link cannot work)'));
   }
   /* ---------------- the star ----------------
    * A guest has exactly one link, to the host. The HOST may hold up to three, one per guest,
@@ -237,6 +257,7 @@
     wireChannel(pc.createDataChannel('amber', { ordered: true }), peer);
     await pc.setLocalDescription(await pc.createOffer());
     await gathered(pc);
+    reportLocal(pc, 'MY OFFER');
     return compress(JSON.stringify(pc.localDescription));
   };
   Net.canAdd = () => Net.peers.length < (global.CONST.MAX_PLAYERS - 1);
@@ -250,6 +271,7 @@
     reportRemote(pc.remoteDescription && pc.remoteDescription.sdp);
     await pc.setLocalDescription(await pc.createAnswer());
     await gathered(pc);
+    reportLocal(pc, 'MY REPLY');
     return compress(JSON.stringify(pc.localDescription));
   };
   Net.acceptAnswer = async function (answerCode) {
