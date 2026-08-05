@@ -1489,6 +1489,223 @@ async function match(browser, base, renderer) {
          `${co.chips} chips, ${co.coChips} of them companies`);
     }
 
+    /* ---------------- a work you can see breaking ---------------- *
+     * A work's hit points were invisible until the instant it stopped existing. You could
+     * watch a hall you had paid three hundred essence for be taken apart over a minute and
+     * the only sign of it was the hole where it used to stand — so "pull the company back
+     * before that one goes" and "that one is nearly gone, mend it" were not decisions anyone
+     * could make. Damage is shown twice on purpose: in the STONE, which is what you read
+     * while you are looking at the board, and on a small bar, which is what you read when you
+     * want the number. Both have to be driven by hp/maxHp alone, since that is all the wire
+     * carries — a guest gets no `lastHurt` and must still see the same work breaking. */
+    suite(`${r} · a work you can see breaking`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const dmg = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game, pl = g.world.players[0];
+      g.world.chaosNext = 1e9;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      /* ITS OWN WORK, standing on the Seat's own ground. Reusing whatever happens to be left
+       * over from an earlier suite meant measuring a work that might be under attack while
+       * the assertions ran — and a work being hit re-arms the very flash this is timing. */
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const def = C.BUILDINGS.tower;
+      const b = { id: g.world.nextId++, bt: 'tower', level: 1, x: c.x + 46, y: c.y + 46,
+                  cd: 0, raise: 0, raiseFor: def.raise, hp: def.hp, maxHp: def.hp,
+                  lastHurt: -99, node: -1, co: 0 };
+      pl.buildings.push(b);
+      R.lookAt(b.x, b.y);
+      /* hold the masons' slow self-mending off: STRUCT_REGEN would walk the hp back over a
+       * threshold mid-suite and the model would rebuild under the assertion */
+      const hurtTo = (f) => { b.hp = b.maxHp * f; b.lastHurt = g.world.t; };
+      const read = () => {
+        const wk = R.debugWorks(b.id);
+        return { key: wk && wk.key, verts: wk && wk.verts, bar: R.debugWorkBars(b.id),
+                 hp: Math.round(b.hp * 100) / 100 };
+      };
+      b.hp = b.maxHp; b.lastHurt = g.world.t;
+      await paint();
+      const whole = read();
+      hurtTo(0.5);
+      await paint();
+      const hurt = read();
+      /* where the bar landed, against the projection the player actually sees */
+      const ground = R.project(b.x, b.y);
+      hurtTo(0.18);
+      await paint();
+      const ruin = read();
+      /* and the flash burns down on its own. Waited on as a CONDITION: this page is running a
+       * whole game under a headless GPU and a fixed sleep would be a race either way. */
+      const t0 = performance.now();
+      while (performance.now() - t0 < 6000) {
+        await paint();
+        const r2 = R.debugWorkBars(b.id);
+        if (r2 && r2.flash === 0) break;
+      }
+      const cooled = read();
+      cooled.after = Math.round(performance.now() - t0);
+      /* mended: the bar goes away and the stone comes back */
+      b.hp = b.maxHp; b.lastHurt = g.world.t;
+      await paint();
+      const mended = read();
+      /* A CURTAIN IS A DIFFERENT MODEL ENTIRELY — a chain of courses built from the run's own
+       * ends, not a model dropped on a spot — so it has to be shown breaking on its own terms
+       * (it loses its teeth) and proved separately. */
+      const W = window.World;
+      pl.essence = 99000;
+      for (const q of pl.buildings) { q.raise = 0; q.work = 0; q.fixing = 0; }
+      const half = Math.min(70, W.wallReach(g.world, 0) / 2 - 4);
+      let wl = null;
+      for (let a = 0; a < 6.283 && !wl; a += 0.3) {
+        for (let rr = 150; rr <= 250 && !wl; rr += 25) {
+          const mx = c.x + Math.cos(a) * rr, my = c.y + Math.sin(a) * rr;
+          const px = -Math.sin(a) * half, py = Math.cos(a) * half;
+          if (W.wallError(g.world, 0, mx - px, my - py, mx + px, my + py)) continue;
+          if (!W.applyCommand(g.world, 0, { c: 'build', bt: 'wall', x: mx - px, y: my - py,
+                                            x2: mx + px, y2: my + py }).ok) continue;
+          wl = pl.buildings[pl.buildings.length - 1];
+          wl.raise = 0; wl.hp = wl.maxHp;
+        }
+      }
+      let wall = null;
+      if (wl) {
+        R.lookAt(wl.x, wl.y);
+        wl.hp = wl.maxHp; wl.lastHurt = g.world.t;
+        await paint();
+        const w0 = R.debugWorks(wl.id);
+        wl.hp = wl.maxHp * 0.2; wl.lastHurt = g.world.t;
+        await paint();
+        const w1 = R.debugWorks(wl.id);
+        wall = { k0: w0 && w0.key, k1: w1 && w1.key, bar: R.debugWorkBars(wl.id) };
+      }
+      return { ok: true, bt: b.bt, whole, hurt, ruin, cooled, mended, wall,
+               wallWhy: wl ? '' : 'no legal run near the Seat, reach ' + Math.round(W.wallReach(g.world, 0)),
+               ground: { x: ground.x, y: ground.y } };
+    });
+    ok('the scenario set up', dmg.ok, dmg.why || '');
+    if (dmg.ok) {
+      ok('a whole work carries no bar — the board is not a field of full bars',
+         dmg.whole.bar === null, JSON.stringify(dmg.whole.bar));
+      ok('a hurt work does', dmg.hurt.bar && Math.abs(dmg.hurt.bar.frac - 0.5) < 0.02,
+         `frac ${dmg.hurt.bar && dmg.hurt.bar.frac}`);
+      ok('and the bar rides over the stone rather than through the ground under it',
+         dmg.hurt.bar && Math.abs(dmg.hurt.bar.x - dmg.ground.x) < 6 && dmg.hurt.bar.y < dmg.ground.y - 10,
+         `bar at ${Math.round(dmg.hurt.bar.x)},${Math.round(dmg.hurt.bar.y)} for ground ` +
+         `${Math.round(dmg.ground.x)},${Math.round(dmg.ground.y)}`);
+      /* the bar alone would be a HUD element on a work you are not looking at. The stone has
+       * to say it too, and it has to say it in the silhouette — rubble at the foot — not in
+       * paint that vanishes at the zoom this is played at. */
+      ok('the model itself is rebuilt as it is broken',
+         dmg.whole.key !== dmg.hurt.key && dmg.hurt.key !== dmg.ruin.key,
+         `${dmg.whole.key} -> ${dmg.hurt.key} -> ${dmg.ruin.key}`);
+      ok('...and it sheds stone as it goes, so the damage is in the silhouette',
+         dmg.hurt.verts > dmg.whole.verts && dmg.ruin.verts > dmg.hurt.verts,
+         `${dmg.whole.verts} -> ${dmg.hurt.verts} -> ${dmg.ruin.verts} verts`);
+      /* a fresh hit is a different fact from an old wound: one wants the company back NOW */
+      ok('a fresh hit flashes the bar', dmg.ruin.bar && dmg.ruin.bar.flash > 0,
+         `flash ${dmg.ruin.bar && dmg.ruin.bar.flash}`);
+      ok('...and the flash burns down while the bar stays',
+         dmg.cooled.bar && dmg.cooled.bar.flash === 0,
+         `after ${dmg.cooled.after}ms: ${JSON.stringify(dmg.cooled.bar)}`);
+      ok('a mended work drops its bar and its ruin', dmg.mended.bar === null &&
+         dmg.mended.key === dmg.whole.key,
+         `${dmg.ruin.key} -> ${dmg.mended.key}, hp ${dmg.mended.hp}/${dmg.whole.hp}, ` +
+         `bar ${JSON.stringify(dmg.mended.bar)}`);
+      ok('a curtain could be raised to test the run itself', !!dmg.wall, dmg.wallWhy || '');
+      if (dmg.wall) {
+        ok('a curtain shows it too — the run is rebuilt and carries a bar',
+           dmg.wall.k0 !== dmg.wall.k1 && !!dmg.wall.bar,
+           `${dmg.wall.k0} -> ${dmg.wall.k1}, bar ${JSON.stringify(dmg.wall.bar)}`);
+      }
+    }
+
+    /* ---------------- the armed standard's men ---------------- *
+     * Arming a standard lit a chip in the tray and changed NOTHING on the ground, so on a
+     * field with three companies on it you tapped and hoped the right column moved. The men
+     * of the armed company are marked instead — but the army is drawn as instanced meshes
+     * bucketed `kind#tier`, and giving a subset its own geometry would split every bucket in
+     * two. So the mark costs no bucket and no draw call per man: the men keep their bucket
+     * and take their standard's colour per instance, and ONE more instanced mesh lays a ring
+     * of that same colour on the ground under each of them. */
+    suite(`${r} · the armed standard's men`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const halo = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      R.debugSlots = true;
+      g.world.chaosNext = 1e9;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const pl = g.world.players[0];
+      /* Two companies of KNOWN size, mustered past every id a hall has handed out — so the
+       * count under test is exactly the men this suite put on the board and cannot be moved
+       * by whatever the halls did while earlier suites ran. */
+      const A = Math.max(0, ...pl.companies.map((q) => q.id)) + 1, B = A + 1;
+      const d = C.UNITS.soldier;
+      const put = (co, n, rad) => {
+        const ids = [];
+        for (let i = 0; i < n; i++) {
+          const th = i / n * Math.PI * 2;
+          const u = { id: g.world.nextId++, owner: 0, kind: 'soldier', x: c.x + Math.cos(th) * rad,
+                      y: c.y + Math.sin(th) * rad, ox: 0, oy: 0, hp: d.hp, maxHp: d.hp,
+                      dmg: d.dmg, cd: 0, goal: null, co, from: -1 };
+          g.world.units.push(u); ids.push(u.id);
+        }
+        return ids;
+      };
+      const inA = put(A, 6, 70), inB = put(B, 4, 95);
+      R.lookAt(c.x, c.y);
+      g.armedFlag = null;
+      await paint();
+      const off = R.debugHalo();
+      g.armedFlag = A;
+      await paint();
+      const onA = R.debugHalo();
+      const litA = R.debugUnitSlot(inA[0]), unlit = R.debugUnitSlot(inB[0]);
+      /* every ring has to stand on a man of that company — a mark in the wrong place is
+       * worse than none. The men are still marching, so this is a nearness, not an equality. */
+      let far = 0;
+      for (const at of onA.at) {
+        let best = 1e9;
+        for (const id of inA) {
+          const u = g.world.units.find((q) => q.id === id);
+          if (u) best = Math.min(best, Math.hypot(at.x - u.x, at.z - u.y));
+        }
+        far = Math.max(far, best);
+      }
+      g.armedFlag = B;
+      await paint();
+      const onB = R.debugHalo();
+      g.armedFlag = null;
+      await paint();
+      const off2 = R.debugHalo();
+      R.debugSlots = false;
+      return { nA: inA.length, nB: inB.length, far,
+               off: off && off.count, offNull: off === null,
+               onA: onA.count, onB: onB.count, off2: off2 && off2.count,
+               colA: onA.color, colB: onB.color, coA: onA.co,
+               litA, unlit, mine: g.world.units.filter((u) => u.owner === 0).length };
+    });
+    ok('nothing is ringed while no standard is armed', halo.offNull || halo.off === 0,
+       `${halo.off} rings`);
+    ok('arming a standard rings its men', halo.onA === halo.nA,
+       `${halo.onA} rings for ${halo.nA} men of that company`);
+    ok('...and only its men, out of a whole army on the board',
+       halo.onB === halo.nB && halo.mine > halo.nA + halo.nB,
+       `${halo.onB} rings for ${halo.nB} men, ${halo.mine} of yours standing`);
+    ok('every ring stands on the man it marks', halo.far < 24,
+       `worst ring is ${Math.round(halo.far)} from any of its men`);
+    ok('the ring takes the COMPANY\'s colour, not one mark for all of them',
+       halo.colA !== halo.colB, `${halo.colA.toString(16)} vs ${halo.colB.toString(16)}`);
+    /* the ring is the mark you see across the board; the man's own tint is the one you see
+     * when the camera is close enough to pick him out of a column */
+    ok('the man himself is lit with it', halo.litA && halo.unlit &&
+       (Math.abs(halo.litA.r - halo.unlit.r) + Math.abs(halo.litA.g - halo.unlit.g) +
+        Math.abs(halo.litA.b - halo.unlit.b)) > 0.05,
+       `armed ${JSON.stringify(halo.litA)} against unarmed ${JSON.stringify(halo.unlit)}`);
+    ok('...in the same instanced bucket, so the mark costs no extra army draw call',
+       halo.litA && halo.unlit && halo.litA.bucket === halo.unlit.bucket,
+       `${halo.litA && halo.litA.bucket} / ${halo.unlit && halo.unlit.bucket}`);
+    ok('disarming takes every ring off the board', halo.off2 === 0, `${halo.off2} rings`);
+
     /* ---------------- the back button ---------------- *
      * Start from a clean slate: the input suite deliberately leaves a sheet open, and a
      * tap on ground with a sheet already up DISMISSES rather than opens. */

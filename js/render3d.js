@@ -9,7 +9,7 @@
   'use strict';
 
   const C = global.CONST;
-  const R = { targeting: false, span: null, selected: -1, pointer: null,
+  const R = { targeting: false, span: null, selected: -1, pointer: null, armed: null,
               camX: 0, camY: 0, zoom: 1, ready: false };
   let renderer = null, scene, cam, rig, worldG;
   let overlay = null, octx = null;
@@ -30,6 +30,20 @@
   R.groundH = (x, z) => groundH(x, z);
   /* test handle: the army's instanced meshes, so a suite can prove they are still drawn */
   R.debugUnitMeshes = () => unitIM;
+  /* test handle: which slot of which instanced bucket a given man was drawn in, and the
+   * colour that went with him — an InstancedMesh has no per-man object to interrogate, so
+   * without this "the armed company's men are lit" is unprovable. Off unless a suite asks
+   * for it: the bookkeeping is per man per frame and play should not pay for it. */
+  R.debugSlots = false;
+  const unitSlot = new Map();
+  R.debugUnitSlot = (id) => {
+    const s = unitSlot.get(id);
+    if (!s) return null;
+    const cut = s.indexOf('|'), im = unitIM[s.slice(0, cut)], i = +s.slice(cut + 1);
+    if (!im || !im.instanceColor) return null;
+    const a = im.instanceColor.array;
+    return { bucket: s.slice(0, cut), i, r: a[i * 3], g: a[i * 3 + 1], b: a[i * 3 + 2] };
+  };
   /* test handle: the works as the renderer currently holds them, so a suite can prove a
    * level (or a wall's run, or scaffolding) actually rebuilt the model rather than trusting
    * that it must have */
@@ -51,6 +65,24 @@
     for (const g of cityObjs) for (const [wid, w] of g.works) out.set(wid, shape(wid, w));
     return out;
   };
+  /* test handle: the damage bars the last overlay pass actually PAINTED, keyed by work id.
+   * A bar lives on the 2D overlay, where there is no scene graph to interrogate — without
+   * this a suite could only prove the hp changed, which was never in doubt. */
+  R.debugWorkBars = (id) => (id != null ? barRec.get(id) || null
+                                        : [...barRec].map(([wid, r2]) => ({ id: wid, ...r2 })));
+  /* test handle: the ring drawn under the armed company's men — how many, whose, what colour,
+   * and where each one landed (plain numbers: this crosses a page boundary in the suite) */
+  R.debugHalo = () => {
+    if (!haloIM) return null;
+    const at = [];
+    for (let i = 0; i < haloIM.count; i++) {
+      haloIM.getMatrixAt(i, dum.matrix);
+      const e = dum.matrix.elements;
+      at.push({ x: e[12], y: e[13], z: e[14] });
+    }
+    return { co: haloCo, count: haloIM.count, room: haloIM._room,
+             color: haloIM.material.color.getHex(), visible: haloIM.visible, at };
+  };
   /* the work's own mesh and world matrix, so a suite can walk the STONE against the terrain
    * rather than trust that a model which claims to follow the ground does */
   R.debugWorkGroup = (id) => {
@@ -66,6 +98,16 @@
     return null;
   };
   let unitIM = {}, shadowIM = null, unitFace = new Map();
+  let haloIM = null, haloCo = null;
+  /* what the last overlay pass painted over each hurt work, and what each work's hp was the
+   * frame before — a drop is what makes a bar FLASH, and it is the one way to tell "this is
+   * being broken right now" from "this was broken an hour ago". Kept here rather than read
+   * off `b.lastHurt` because lastHurt does not ride the wire: a guest would have no flash. */
+  const barRec = new Map(), hpMem = new Map(), flash = new Map();
+  let lastDt = 0;
+  /* the damage step a work's MODEL is currently built at, so the stone can be rebuilt when it
+   * changes and left alone when it does not */
+  const hurtMem = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
   /* have I found THIS seat? one flag per seat now; `foeSeen` is the old two-player spelling */
   const seatFound = (view, pi) => pi === curViewer ||
@@ -76,6 +118,7 @@
   const dummy = () => new THREE.Object3D();
   const dum = typeof THREE !== 'undefined' ? new THREE.Object3D() : null;
   const colTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
+  const penTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
   /* no world flip: the map is asymmetric now, so both players read the same ground and
    * simply start their camera over their own Seat */
   const dx = (x) => x;
@@ -120,6 +163,64 @@
   const sph = (r2) => new THREE.SphereGeometry(r2, 7, 5);
   function meshOf(parts) { return new THREE.Mesh(merge(parts), MAT); }
 
+  /* ---------------- damage ----------------
+   * A WORK'S HP WAS INVISIBLE UNTIL IT FELL. You could watch a hall you had paid for be taken
+   * apart and the only sign was the moment it stopped existing — so there was no such thing as
+   * "get the men back before it goes" or "that one is nearly gone, mend it". Damage is shown
+   * twice, deliberately: in the STONE, which is what you read while you are looking at the
+   * board, and on a small bar, which is what you read when you need the number.
+   *
+   * The stone is stepped rather than continuous: the model is rebuilt from its key, and a key
+   * that carried a percentage would rebuild the geometry every time a bolt landed. Three steps
+   * — whole, hurt, ruinous — cost at most two rebuilds in a work's whole life. */
+  const HURT_AT = [0.66, 0.33];
+  function hurtOf(b) {
+    /* a work still going up is BELOW full hp by design (RAISE.hpFrom) and already wears
+     * scaffolding — calling that damage would be a lie about what is happening to it */
+    if (!b.maxHp || b.hp == null || b.raise > 0) return 0;
+    const f = b.hp / b.maxHp;
+    let t = f > HURT_AT[0] ? 0 : f > HURT_AT[1] ? 1 : 2;
+    /* HYSTERESIS. Stone regenerates (STRUCT_REGEN), so a work sitting on a threshold while it
+     * mends would otherwise rebuild its geometry every few frames. Coming back up costs more
+     * than going down did. */
+    const was = hurtMem.get(b.id) || 0;
+    if (t < was && f < HURT_AT[was - 1] + 0.06) t = was;
+    hurtMem.set(b.id, t);
+    return t;
+  }
+  /* char the vertex colours in place: cheaper than a second material, and it survives the
+   * merge into one mesh, which is the only reason a work is one draw call at all */
+  function soot(geo, amt) {
+    const col = geo.attributes.color, c2 = new THREE.Color(0x2b2430);
+    for (let i = 0; i < col.count; i++) {
+      col.setXYZ(i, col.getX(i) + (c2.r - col.getX(i)) * amt,
+                    col.getY(i) + (c2.g - col.getY(i)) * amt,
+                    col.getZ(i) + (c2.b - col.getZ(i)) * amt);
+    }
+    return geo;
+  }
+  /* How high over the ground a work's bar rides. These are the heights the models above
+   * actually reach, per level — the renderer is the only thing that knows them, and a single
+   * flat number put the bar through the Spire's light and a storey over the Shrine. */
+  const TOPS = { gate: [46, 8], sgate: [46, 8], barracks: [48, 6], tower: [62, 9], watch: [62, 9],
+                 siege: [46, 5], spire: [70, 12], shrine: [22, 0], veiled: [30, 0], wall: [40, 4] };
+  function barTop(b) {
+    const t = TOPS[b.x2 != null ? 'wall' : b.bt] || [46, 6];
+    return t[0] + (Math.max(1, Math.min(3, b.level || 1)) - 1) * t[1] + (b.onWall ? 27 : 0);
+  }
+
+  /* the stone that has come OFF it, lying where it fell. Fixed angles, not random: a model is
+   * rebuilt whenever anything about it changes, and rubble that jumped on every rebuild would
+   * read as a work shivering rather than a work in trouble. */
+  function rubble(p, hurt, r2) {
+    const n = hurt > 1 ? 7 : 4;
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.399, d = r2 * (0.62 + (i % 3) * 0.16), s2 = 2.6 + (i % 4) * 1.3;
+      p.push(part(box(s2 * 1.6, s2, s2 * 1.3), i % 2 ? 0x554c60 : 0x3d3648,
+                  Math.cos(a) * d, s2 / 2, Math.sin(a) * d, a));
+    }
+  }
+
   /* models */
   function towerModel(gold) {
     const wall = gold ? 0xb99a4e : 0x9a4a56, light = gold ? 0xe6d391 : 0xd18a94,
@@ -163,6 +264,11 @@
    * A level you paid for and cannot see is a level you will forget you bought — so every
    * work grows with its rank, in the silhouette rather than the paint. */
   function buildingModel(key) {
+    /* ...and a DAMAGE step after that: 'barracks@2%1'. It is part of the key so that a work
+     * being broken rebuilds its stone, exactly as a level does. */
+    const pc = key.indexOf('%');
+    const hurt = pc < 0 ? 0 : Math.max(0, Math.min(2, +key.slice(pc + 1) || 0));
+    key = pc < 0 ? key : key.slice(0, pc);
     const at = key.indexOf('@');
     const lv = at < 0 ? 1 : Math.max(1, Math.min(3, +key.slice(at + 1) || 1));
     const head = at < 0 ? key : key.slice(0, at);
@@ -265,7 +371,13 @@
       p.push(part(sph(16), 0x241a2e, 0, 9, 0));
       p.push(part(sph(10), 0x18101f, 10, 6, 6));
     }
-    return meshOf(p);
+    /* a hurt work is scorched and shedding stone, and more of both as it goes — the fallen
+     * courses lie at its foot, which is a change to the SILHOUETTE and so survives the zoom
+     * this game is actually played at, where paint alone does not */
+    if (hurt) rubble(p, hurt, bt === 'barracks' || bt === 'siege' ? 30 : 21);
+    const m = meshOf(p);
+    if (hurt) soot(m.geometry, hurt > 1 ? 0.44 : 0.2);
+    return m;
   }
   /* A CURTAIN IS NOT A POINT. Every other work is a model dropped on a spot; a wall is a run
    * of stone between two ends, and it has to FOLLOW THE GROUND — a single long box laid over
@@ -273,7 +385,7 @@
    * each set at its own ground height and turned along the line, and the whole chain merged
    * into one mesh. Offsets are relative to the stored midpoint, which is where the group
    * stands, so the group itself needs no rotation. */
-  function wallModel(b) {
+  function wallModel(b, hurt) {
     const ax = b.x * 2 - b.x2, az = b.y * 2 - b.y2, bx = b.x2, bz = b.y2;
     const len = Math.hypot(bx - ax, bz - az) || 1;
     /* SHORT COURSES, so the run can bend with the hill under it. A course that spans more
@@ -336,8 +448,15 @@
       p.push(part(box(seg, hgt, th), broken ? stD : st, ox, mid2, oz, ang));
       if (atGate || broken) continue;                    // no parapet over a gate or a ruin
       p.push(part(box(seg, 3.5, th + 4), stL, ox, top + 1, oz, ang));       // the walkway coping
-      /* merlons, every other course, so the top reads as a parapet and not a kerb */
-      if (i % 2 === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, top + 6, oz, ang));
+      /* merlons, every other course, so the top reads as a parapet and not a kerb.
+       * A BATTERED CURTAIN LOSES ITS TEETH FIRST — a hurt run keeps half of them and a
+       * ruinous one keeps none, which is the same line of stone read at a glance as a
+       * gap-toothed one, and it is what tells you where the assault is landing. */
+      const teeth = hurt > 1 ? 0 : hurt > 0 ? 4 : 2;
+      if (teeth && i % teeth === 0) p.push(part(box(seg * 0.45, 7, th + 4), stD, ox, top + 6, oz, ang));
+      /* ...and the fallen ones lie at the foot of it */
+      if (hurt > 1 && i % 3 === 0)
+        p.push(part(box(6, 4, 5), stD, ox + nx * (th * 0.9), foot + 4, oz + nz * (th * 0.9), ang + i));
     }
     /* the gate piers — two posts that say "through here", and a lintel when it is whole */
     if (!broken && gate) {
@@ -358,7 +477,9 @@
       p.push(part(cyl(th * 0.62, th * 0.75, top - foot, 7), st, ex - b.x, (top + foot) / 2, ez - b.y));
       p.push(part(cyl(th * 0.75, th * 0.62, 5, 7), stL, ex - b.x, top + 2, ez - b.y));
     }
-    return meshOf(p);
+    const m = meshOf(p);
+    if (hurt) soot(m.geometry, hurt > 1 ? 0.4 : 0.18);
+    return m;
   }
 
   /* A VETERAN LOOKS LIKE ONE. The hall's level rides on the man (u.tier), and it has to be
@@ -721,6 +842,10 @@
       worldG.remove(c2);
     }
     siteObjs.clear(); unitIM = {}; unitFace.clear(); coFlags.clear();
+    /* the halo hangs in worldG, which was just emptied — forget the handle or the next frame
+     * writes instances into a mesh that is no longer in the scene */
+    haloIM = null; haloCo = null;
+    hurtMem.clear(); hpMem.clear(); flash.clear(); barRec.clear();
     writG = null; writKey = '';
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
     fx = [];
@@ -913,7 +1038,7 @@
   /* ---------------- per-frame ---------------- */
   R.frame = function (view, viewer, dt) {
     if (!R.ready) return;
-    T += dt;
+    T += dt; lastDt = dt;
     curViewer = viewer; curView = view;
     if (mapKey(view, viewer) !== lastKey) buildWorld(view, viewer);
 
@@ -990,7 +1115,65 @@
     return { x: ax + vx * t, y: ay + vy * t, h: 27, ang: Math.atan2(nx / nL, ny / nL) };
   }
 
+  /* WHICH MEN THE NEXT TAP MOVES. Arming a standard is a question the board has to answer:
+   * before this, a tray chip lit up and nothing on the ground did, so on a field with three
+   * companies in it you tapped and hoped. game.js owns the answer (`game.armedFlag`) and the
+   * renderer only READS it — the same one-way traffic as `R.selected` and `R.targeting`.
+   * `R.armed` is the hook for game.js to hand it over directly; until it does, the flag is
+   * read off Game.game, which is where it has always lived. */
+  function armedCo() {
+    if (R.armed != null) return R.armed;
+    const G = global.Game;
+    return G && G.game ? G.game.armedFlag : null;
+  }
+  /* THE MARK ITSELF. The army is instanced by `kind#tier`, so a subset cannot have its own
+   * geometry without splitting every bucket in two — instead the marked men keep their bucket
+   * and are marked TWICE, both ways free of a draw call: their per-instance colour is pulled
+   * toward the company's own pennant, and one extra instanced mesh lays a ring of that colour
+   * on the ground under each of them. One mesh, one material, however many men. */
+  /* its own geometry each time it is made, not one shared ring: buildWorld empties worldG by
+   * disposing the geometry of everything in it, and a shared ring would be disposed out from
+   * under the next match */
+  const haloGeo = () => new THREE.RingGeometry(8.5, 11.5, 18).rotateX(-Math.PI / 2);
+  function updateHalo(marked, co) {
+    if (!marked.length) { if (haloIM) haloIM.count = 0; haloCo = null; return; }
+    if (haloIM && marked.length > haloIM._room) {
+      haloIM.removeFromParent(); haloIM.geometry.dispose(); haloIM.material.dispose();
+      haloIM.dispose(); haloIM = null;
+    }
+    if (!haloIM) {
+      let room = 256;
+      while (room < marked.length) room *= 2;
+      haloIM = new THREE.InstancedMesh(haloGeo(),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }),
+        room);
+      haloIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      haloIM.frustumCulled = false;      // rewritten every frame — see makeIM
+      haloIM.renderOrder = 1;
+      haloIM._room = room;
+      worldG.add(haloIM);
+    }
+    haloCo = co;
+    haloIM.material.color.setHex(PENNANT[(co - 1) % PENNANT.length]);
+    /* a slow breath, so the mark reads as live rather than as painted ground */
+    haloIM.material.opacity = 0.45 + 0.22 * Math.sin(T * 4);
+    const puff = 1 + 0.06 * Math.sin(T * 4);
+    for (let i = 0; i < marked.length; i++) {
+      const u = marked[i];
+      dum.position.set(u.x, groundH(u.x, u.y) + 1.6, u.y);
+      dum.rotation.set(0, 0, 0);
+      dum.scale.set(puff, 1, puff);
+      dum.updateMatrix();
+      haloIM.setMatrixAt(i, dum.matrix);
+    }
+    haloIM.count = marked.length;
+    haloIM.instanceMatrix.needsUpdate = true;
+  }
+
   function updateUnits(view, viewer, dt) {
+    const armed = armedCo();
+    const marked = [];
+    if (R.debugSlots) unitSlot.clear();
     const byKind = {};
     for (const k of KINDS) byKind[k] = [];
     for (const u of view.units) {
@@ -1042,7 +1225,16 @@
         dum.scale.set(s2, s2, s2);
         dum.updateMatrix();
         im.setMatrixAt(i, dum.matrix);
-        im.setColorAt(i, colTmp.setHex(tintOf(u.owner, viewer)));
+        colTmp.setHex(tintOf(u.owner, viewer));
+        /* the armed company's own men, lit toward their standard's colour. Every seat is a
+         * different tint and the pennants are a different set again, so this cannot be read
+         * as a change of owner. */
+        if (armed && u.owner === viewer && u.co === armed) {
+          colTmp.lerp(penTmp.setHex(PENNANT[(armed - 1) % PENNANT.length]), 0.6);
+          marked.push(u);
+        }
+        im.setColorAt(i, colTmp);
+        if (R.debugSlots) unitSlot.set(u.id, kind + '|' + i);
       }
       im.count = list.length;
       im.instanceMatrix.needsUpdate = true;
@@ -1056,6 +1248,7 @@
       for (const u of view.units) live.add(u.id);
       for (const id of unitFace.keys()) if (!live.has(id)) unitFace.delete(id);
     }
+    updateHalo(marked, armed);
   }
 
   function updateSites(view, viewer) {
@@ -1096,10 +1289,14 @@
         /* the key carries everything that changes the MODEL: the branch, a wall's ends, the
          * LEVEL, and whether it is scaffolded — so raising a level rebuilds the group at the
          * new shape instead of leaving last level's stones standing. */
+        /* ...and its DAMAGE step, so a work being taken apart is taken apart on the board and
+         * not only in a number. A ghost has no hp on the wire, so it is never hurt. */
+        const hurt = ghost ? 0 : hurtOf(b);
         const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
           + '@' + (b.level || 1) + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
-          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
+          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '')
+          + (hurt ? '%' + hurt : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
@@ -1116,8 +1313,14 @@
             : new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
                 new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
           pad.position.y = -0.4;
-          grp.add(pad, isW ? wallModel(b)
-            : buildingModel((b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt) + '@' + (b.level || 1)));
+          grp.add(pad, isW ? wallModel(b, hurt)
+            : buildingModel((b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
+                            + '@' + (b.level || 1) + (hurt ? '%' + hurt : '')));
+          /* a work about to go leans. It is a small angle on purpose — enough that a ruinous
+           * hall reads as one out of the corner of the eye, not so much that the board looks
+           * broken — and a curtain is spared it, since a whole run tipping together would
+           * lift one end of it clear off the ground. */
+          if (!isW && hurt > 1) grp.rotation.z = 0.05;
           if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
             /* the hall flies its COMPANY's colour, and every hall has one */
@@ -1161,6 +1364,9 @@
         if (w.seen) { w.seen = false; continue; }
         w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
         w.grp.removeFromParent(); g.works.delete(id);
+        /* a work that is gone takes its damage bookkeeping with it — these are keyed by id
+         * and ids are never reused, so nothing would ever clear them otherwise */
+        hurtMem.delete(id); hpMem.delete(id); flash.delete(id); barRec.delete(id);
       }
     }
   }
@@ -1410,6 +1616,49 @@
       g.fillStyle = '#000a'; g.fillRect(p.x - 10, p.y, 20, 3);
       g.fillStyle = '#' + tintOf(u.owner, viewer).toString(16).padStart(6, '0');
       g.fillRect(p.x - 10, p.y, 20 * Math.max(0, u.hp / u.maxHp), 3);
+    }
+    /* WHAT IS BEING BROKEN. A bar over every work would be a board covered in bars — most of
+     * them full, none of them worth reading — so only a HURT work carries one, and it goes
+     * away again when the masons or the slow regrowth of stone have put it right. The bar
+     * takes the owner's tint, exactly as a unit's sliver does: what a glance has to answer is
+     * "whose, and how far gone", and a bar in a third colour would answer neither.
+     * It FLASHES on a fresh hit, which is what separates "this is under attack right now"
+     * from "this took a beating an hour ago" — and the flash is driven by the hp the renderer
+     * saw last frame rather than by `b.lastHurt`, because lastHurt does not ride the wire and
+     * a guest would sit there watching a bar that never moved. */
+    barRec.clear();
+    for (let pi = 0; pi < view.players.length; pi++) {
+      for (const b of view.players[pi].buildings) {
+        if (!b.maxHp || b.hp == null) continue;
+        const was = hpMem.get(b.id);
+        hpMem.set(b.id, b.hp);
+        /* a work still going up is under its full hp by design and wears scaffolding for it */
+        if (b.raise > 0 || b.hp >= b.maxHp) continue;
+        const frac = Math.max(0, Math.min(1, b.hp / b.maxHp));
+        const p = proj(b.x, groundH(b.x, b.y) + barTop(b), b.y);
+        if (!p.ok || p.y < -20 || p.y > H + 20) continue;
+        const hit = was != null && b.hp < was - 0.01;
+        if (hit) flash.set(b.id, 0.45);
+        const fl = flash.get(b.id) || 0;
+        const bw = 30, bh = 5, x0 = Math.round(p.x - bw / 2), y0 = Math.round(p.y);
+        g.fillStyle = 'rgba(0,0,0,0.72)';
+        g.fillRect(x0 - 1, y0 - 1, bw + 2, bh + 2);
+        g.fillStyle = '#' + tintOf(pi, viewer).toString(16).padStart(6, '0');
+        g.fillRect(x0, y0, bw * frac, bh);
+        if (fl > 0) {
+          g.strokeStyle = 'rgba(255,238,214,' + (fl / 0.45).toFixed(2) + ')';
+          g.lineWidth = 1.5;
+          g.strokeRect(x0 - 2.5, y0 - 2.5, bw + 5, bh + 5);
+          g.lineWidth = 1;
+        }
+        barRec.set(b.id, { x: p.x, y: p.y, w: bw, h: bh, frac, flash: fl, owner: pi });
+      }
+    }
+    /* the flash fades on the same clock the world turns on — one entry per work that was hit,
+     * dropped the moment it has burned down */
+    for (const [id, t] of [...flash]) {
+      const n = t - lastDt;
+      if (n <= 0) flash.delete(id); else flash.set(id, n);
     }
     /* site labels + structure bars + pips */
     g.textAlign = 'center'; g.font = '600 11px Georgia, serif';
