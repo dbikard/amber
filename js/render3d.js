@@ -1121,11 +1121,7 @@
    * renderer only READS it — the same one-way traffic as `R.selected` and `R.targeting`.
    * `R.armed` is the hook for game.js to hand it over directly; until it does, the flag is
    * read off Game.game, which is where it has always lived. */
-  function armedCo() {
-    if (R.armed != null) return R.armed;
-    const G = global.Game;
-    return G && G.game ? G.game.armedFlag : null;
-  }
+  function armedCo() { return R.armed; }   // game.js hands it over, one way, like `selected`
   /* THE MARK ITSELF. The army is instanced by `kind#tier`, so a subset cannot have its own
    * geometry without splitting every bucket in two — instead the marked men keep their bucket
    * and are marked TWICE, both ways free of a draw call: their per-instance colour is pulled

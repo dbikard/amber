@@ -398,6 +398,9 @@
     const dtReal = Math.min(0.1, (now - lastFrame) / 1000 || 0);
     lastFrame = now;
     Render.targeting = game.targeting;
+    /* which standard is armed, one way, exactly as `selected` and `targeting` go — the
+     * renderer rings that company's men so it is obvious whom the next tap will move */
+    Render.armed = game.armedFlag;
 
     if (game.mode === 'sp' || game.mode === 'host') {
       /* A HALT BANKS NO TIME. Letting the accumulator fill while the world is stopped would
