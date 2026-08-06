@@ -765,6 +765,43 @@
       if (hold && v.t < hold && want === v.enCityId) want = v.myCity.id;
       if (want !== v.banner) issue({ c: 'banner', site: want });
 
+      /* ---------------- THE ERRAND GETS A COMPANY OF ITS OWN ----------------
+       * THE HEIRS HAD NEVER ISSUED `rally` — not once, in any doctrine. Every man an heir owned
+       * answered the one Banner, so the errand and the war wanted the same army and the line
+       * above is the whole argument: home first, the assault second, the search third, the
+       * errand last. It gets what is left, which is nothing.
+       *
+       * What that costs is not a missed errand, it is the economy. Measured over fifteen-minute
+       * matches: an heir raises three to five Gates and finishes with ONE — twice as many are
+       * eaten by the black road as by the rival — and fourteen of the board's fourteen springs
+       * end the match unheld. Income sits at 7-16 against a Pattern walk that drains 22 and was
+       * priced to be walkable on five Gates. So the Pattern is closed by arithmetic, matches
+       * cannot end by the Pattern, and the stalemates follow. The heir is not too poor to
+       * expand; it is too busy, because it has exactly one army.
+       *
+       * It has companies. Every mustering hall flies a standard of its own (`joinCo` never
+       * returns 0), so an heir holding two halls already owns two, and one of them can be sent
+       * to take ground while the rest fights. The YOUNGEST standard draws the errand — a stable
+       * choice, so the company does not change identity every tick — and it goes to the nearest
+       * free spring in his own half or the middle. It does not need to build anything: standing
+       * there is enough, because "a spring under his feet is a spring he takes" above will raise
+       * the Gate out of the ordinary build budget on the next think.
+       *
+       * AND IT STAYS. A Gate on a forward spring is exactly what Chaos comes for, and the men
+       * who took it are the garrison — this is the answer to the losses above, not a second
+       * rule about defending. It rejoins the Banner only when there is nothing left to take, or
+       * when the Seat itself is threatened: a realm about to lose its throne does not need a
+       * fourth Gate. */
+      const cos = v.pl.companies || [];
+      if (cos.length >= 2) {
+        const errand = cos[cos.length - 1];
+        const spring = homeThreat ? null
+          : nearestOf(v, v.nodes.own.concat(v.nodes.mid)).filter((s) => !held(v, s))[0] || null;
+        const wantAt = spring ? spring.id : -1;
+        const at = errand.rally && errand.rally.site != null ? errand.rally.site : -1;
+        if (at !== wantAt) issue({ c: 'rally', co: errand.id, site: wantAt });
+      }
+
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.
        * Gates drawing on a node come first — that is where the essence actually is.
        *
