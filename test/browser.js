@@ -1437,6 +1437,12 @@ async function match(browser, base, renderer) {
         }
       if (!wall) return { err: 'no run' };
       const out = {};
+      /* A SHEET IGNORES ITS FIRST THIRD OF A SECOND — the tap that opened it must not also
+       * choose a card on a phone (ui.js swallows clicks inside 320ms of `_openedAt`). A test
+       * that clicks in the same tick is testing nothing, silently: the event never reaches the
+       * button, no error is raised, and the assertion below simply reports that the order did
+       * not take. So the wait is part of the test, not padding around it. */
+      const settle = () => new Promise((res) => setTimeout(res, 400));
       /* while the masons are still in it */
       window.UI.upSheet(wall, pl.essence, false, pl);
       out.onScaffold = !!document.getElementById('wall-flip');
@@ -1445,13 +1451,13 @@ async function match(browser, base, renderer) {
       window.UI.upSheet(wall, pl.essence, false, pl);
       out.onFinished = !!document.getElementById('wall-flip');
       out.was = !!wall.flip;
+      await settle();
       document.getElementById('wall-flip').click();
-      await new Promise((res) => requestAnimationFrame(res));
       out.now = !!wall.flip;
       /* ...and it is a state, not a toggle: the button asks for the opposite of what IS */
       window.UI.upSheet(wall, pl.essence, false, pl);
+      await settle();
       document.getElementById('wall-flip').click();
-      await new Promise((res) => requestAnimationFrame(res));
       out.back = !!wall.flip;
       /* no other work offers it — it is an order about a RUN */
       const hall = pl.buildings.find((b) => b.bt === 'barracks');
