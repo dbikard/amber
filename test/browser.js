@@ -220,7 +220,7 @@ async function match(browser, base, renderer) {
         named: forking.every((bt) => C.BUILDINGS[bt].branchUI.every((k) => txt.indexOf(C.BUILDINGS[bt].branches[k].name) >= 0)),
         manned: Object.keys(C.UNITS).every((k) => txt.indexOf(C.UNITS[k].name) >= 0),
         /* the three flags are what a branch is FOR, and they must be said in words */
-        saysStone: /cannot touch stone/.test(txt),
+        saysStone: /besieges nothing/.test(txt) && /strikes a Shrine/.test(txt),
         saysWalls: /holds walls and towers/.test(txt),
         saysMend: /mends/.test(txt)
       };
