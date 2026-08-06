@@ -2185,6 +2185,33 @@ suite('men walk round a work, not through it');
   ok('a man exactly on a work is put out of it',
      Math.hypot(stuck.x - hall.x, stuck.y - hall.y) >= C.BUILD.pass - 0.5,
      `${Math.hypot(stuck.x - hall.x, stuck.y - hall.y).toFixed(1)} from its middle`);
+
+  /* ---------------- AND HE DOES NOT WEDGE ON IT ----------------
+   * The push only REPELS, and point works are not in the nav masks — only runs are — so the
+   * flow field aims a man straight at a hall and the push walks him straight back out along
+   * the same line. Order him to a spot dead behind one and the two cancel exactly: he shivers
+   * against the wall of it for the rest of the match. Reported from play as troops stuck
+   * behind buildings, and this is the arrangement that produces it every time. */
+  const w2 = World.createWorld(1000, 2), p2 = w2.players[0];
+  w2.chaosNext = 1e9;
+  const h2 = p2.buildings.find((b) => b.bt === 'barracks');
+  const d2u = C.UNITS.soldier;
+  /* dead in line: man, hall, order — so every step he takes is straight into the stone */
+  const ang = Math.atan2(h2.y - World.cityOf(w2, 0).y, h2.x - World.cityOf(w2, 0).x);
+  const ux = Math.cos(ang), uy = Math.sin(ang);
+  const start = { x: h2.x - ux * 90, y: h2.y - uy * 90 };
+  const goal = { x: h2.x + ux * 260, y: h2.y + uy * 260 };
+  const lone = { id: w2.nextId++, owner: 0, kind: 'soldier', tier: 1, x: start.x, y: start.y,
+                 ox: 0, oy: 0, hp: 90, maxHp: 90, dmg: d2u.dmg, cd: 0, goal: null, co: 0, from: -1 };
+  w2.units.length = 0; w2.units.push(lone);
+  p2.banner = { x: goal.x, y: goal.y, site: -1 };
+  const d0 = Math.hypot(lone.x - goal.x, lone.y - goal.y);
+  for (let i = 0; i < 30 * 30; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  const d1 = Math.hypot(lone.x - goal.x, lone.y - goal.y);
+  ok('a man ordered to the far side of a work walks round it and arrives',
+     d1 < C.NAV.arrive, `${d0.toFixed(0)} from his order, then ${d1.toFixed(0)}`);
+  ok('...and he did not end the walk standing in the hall',
+     Math.hypot(lone.x - h2.x, lone.y - h2.y) >= C.BUILD.pass - 0.5);
 }
 
 /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gated the Pattern on a

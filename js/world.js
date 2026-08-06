@@ -483,7 +483,16 @@
     }
     return false;
   }
-  function stand(world, u) {
+  /* `lx, ly` — where he stood before this tick moved him, when the caller knows. A push that
+   * only REPELS wedges him: point works are not in the nav masks (only runs are), so the flow
+   * field routes him straight at a hall, the march walks him in, and this walks him back out
+   * along the very same line. With his order dead behind the building the two cancel exactly
+   * and he shivers against the wall of it for the rest of the match — reported from play as
+   * troops stuck behind buildings.
+   * So he SLIDES. The part of his step that went into the stone is dropped and the part that
+   * went ACROSS it is kept, which is what walking round a corner is. Nothing else changes:
+   * with no motion to slide, or with the motion already leading away, this is the old push. */
+  function stand(world, u, lx, ly) {
     const pad = C.BUILD.pass, p2 = pad * pad;
     for (let q = 0; q < world.players.length; q++)
       for (const b of world.players[q].buildings) {
@@ -491,8 +500,19 @@
         const dx = u.x - b.x, dy = u.y - b.y, dd = dx * dx + dy * dy;
         if (dd >= p2) continue;
         const L = Math.sqrt(dd);
-        const nx = L < 1e-3 ? b.x + pad : b.x + (dx / L) * pad;
-        const ny = L < 1e-3 ? u.y : b.y + (dy / L) * pad;
+        const ux = L < 1e-3 ? 1 : dx / L, uy = L < 1e-3 ? 0 : dy / L;   // outward from the work
+        let nx = b.x + ux * pad, ny = b.y + uy * pad;
+        /* the step he was making, minus the part of it that pointed into the stone */
+        let slid = 0;
+        if (lx != null) {
+          const mx = u.x - lx, my = u.y - ly, into = mx * ux + my * uy;
+          if (into < 0) {
+            const tx = mx - into * ux, ty = my - into * uy;
+            if (tx * tx + ty * ty > 1e-6 && !barred(world, u, nx + tx, ny + ty)) {
+              nx += tx; ny += ty; slid = 1;
+            }
+          }
+        }
         if (barred(world, u, nx, ny)) continue;           // rather in the hall than through the wall
         u.x = nx; u.y = ny;
         /* AND HE IS AS CLOSE TO HIS PLACE AS THE GROUND ALLOWS. The formation can hand a man
@@ -500,7 +520,12 @@
          * against the wall of it for the rest of the match. At the rim he has arrived —
          * and he is PINNED there, because stone has the last word and a man the crowd pushes
          * into a wall it cannot push him through is a man being shoved back and forth by two
-         * rules that will never agree. The crowd goes round him instead. */
+         * rules that will never agree. The crowd goes round him instead.
+         * THE PIN STAYS, sliding or not. Skipping it for a man who slid was tried and it
+         * un-pins a SETTLED company too — they jostle by a fraction of a unit a tick, that
+         * counts as sliding, and they shiver against the work for the rest of the match, which
+         * is the exact thing the pin exists to stop. The slide is geometry; the pin is about
+         * the crowd, and they do not need to know about each other. */
         u.set = 1; u.pin = world.tick;
       }
   }
@@ -1719,6 +1744,12 @@
      * both where he walks and whether he can shoot over it */
     if (world.anyWall || world.hadWall) { postWalls(world); world.hadWall = world.anyWall; }
     postTowers(world);
+    /* WHERE EVERY MAN STOOD BEFORE THIS TICK TOUCHED HIM. The last `stand` of the tick runs
+     * after the crowd pass, where there is no single step to slide along — and without one it
+     * can only REPEL, which snapped a man back onto the rim of a work every tick and undid the
+     * slide the march had just made. Measured: 23 men across three matches standing at exactly
+     * BUILD.pass from a Gate with an order 1300-1900 away, one of them for 307 seconds. */
+    for (const u of world.units) { u._px = u.x; u._py = u.y; }
     /* units: fight what's near, else march the paths toward the banner/goal */
     const n = world.units.length, fwd = world.tick % 2 === 0;   // alternate order: no first-strike seat bias
     for (let ii = 0; ii < n; ii++) {
@@ -1785,8 +1816,9 @@
           }
         } else {
           const mv = def.speed * dt / (foe.d || 1);
+          const cx0 = u.x, cy0 = u.y;
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
-          stand(world, u);
+          stand(world, u, cx0, cy0);
           if (world.anyWall) shove(world, u);   // STONE HAS THE LAST WORD: see the note on stand()
         }
         continue;
@@ -1837,8 +1869,9 @@
             const s4 = NAV.steer(world.nav, world, u.owner, gx, gy, u.x, u.y);
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
             const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
+            const wx0 = u.x, wy0 = u.y;
             u.x += vx2 * def.speed * dt; u.y += vy2 * def.speed * dt;
-            stand(world, u);
+            stand(world, u, wx0, wy0);
             shove(world, u);
             continue;
           }
@@ -1896,8 +1929,9 @@
             vx = (gx - u.x) / db; vy = (gy - u.y) / db;
           }
         }
+        const mx0 = u.x, my0 = u.y;
         u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
-        stand(world, u);
+        stand(world, u, mx0, my0);
         if (world.anyWall) shove(world, u);
       }
     }
@@ -1911,7 +1945,7 @@
       /* a man holding a place on stone is not shoved off it — his station IS his position,
        * and a tower's garrison stands inside the ring `stand` would push him out of */
       if (u.hp <= 0 || u.man || u.tow) continue;
-      stand(world, u);
+      stand(world, u, u._px, u._py);
       if (world.anyWall) shove(world, u);
     }
 

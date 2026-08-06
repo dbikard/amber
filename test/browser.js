@@ -447,10 +447,23 @@ async function match(browser, base, renderer) {
             }
           }
       }
-      return { placed, before, after: outline(), at };
+      const shell = outline();
+      /* AND NOW LET THE MASONS FINISH. A shell claims nothing — World.inClaim has always
+       * required !b.raise — so the line must not move until the Gate actually stands. */
+      const gate = g.world.players[0].buildings.filter((b) => b.bt === 'gate').pop();
+      const rising = gate ? gate.raise > 0 : false;
+      if (gate) gate.raise = 0;
+      return { placed, before, shell, rising, after: outline(), at };
     });
-    ok('raising a Gate on a spring you go and take extends the writ', grew.placed && grew.after > grew.before,
-       `spring at ${grew.at}: ${grew.before} -> ${grew.after} segments`);
+    ok('a Gate you go and take can be raised on its spring', grew.placed, `spring at ${grew.at}`);
+    ok('...and it goes up as a shell first', grew.rising);
+    /* THE LINE IS A PICTURE OF THE RULE. Drawn around a Gate still going up it promised ground
+     * the sim would refuse to build on — the outline said the writ had grown and every tap out
+     * there came back 'beyond your writ'. */
+    ok('the writ does NOT reach round a Gate that is still going up',
+       grew.shell === grew.before, `${grew.before} -> ${grew.shell} segments while a shell`);
+    ok('...and DOES the moment the masons are off it', grew.after > grew.before,
+       `${grew.before} -> ${grew.after} segments once it stands`);
 
     /* ---------------- the army is on screen ---------------- *
      * Troops went invisible in 3D: an InstancedMesh is culled against a bounding sphere built

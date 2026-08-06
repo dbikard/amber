@@ -228,13 +228,16 @@
     }
     return segs;
   }
-  /* the discs your writ is made of: the Seat, and every work that carries a claim */
+  /* The discs your writ is made of: the Seat, and every FINISHED work that carries a claim.
+   * A shell claims nothing — `World.inClaim` has always required `!b.raise` — so drawing the
+   * line around a Gate still going up promised ground the sim would refuse to build on. The
+   * outline is a picture of the rule and has to be the same rule. */
   function claimAnchors(view, viewer) {
     const me = view.players[viewer], out = [];
     const seat = view.map.sites[view.map.cities[viewer]];
     out.push({ x: seat.x, y: seat.y, r: C.CLAIM.seat });
     for (const b of me.buildings)
-      if (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].claim) out.push({ x: b.x, y: b.y, r: C.CLAIM.gate });
+      if (!b.raise && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].claim) out.push({ x: b.x, y: b.y, r: C.CLAIM.gate });
     return out;
   }
   const claimKey = (anchors) => anchors.map((a) => (a.x | 0) + ',' + (a.y | 0) + ',' + a.r).join(';');
