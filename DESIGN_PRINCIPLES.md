@@ -13,6 +13,24 @@ Economy vs. military vs. defense vs. the Pattern. If one opening is always right
 choice. Rock-paper-scissors must hold at the strategy level: rush beats greed, turtle beats
 rush, greed beats turtle (roughly).
 
+A LEVEL AND A BRANCH ARE DIFFERENT AXES, and for a long time the halls only had one. A level
+buys the same man better armed; a **fork** at level 2 rebuilds the hall around one soldiery and
+cannot be taken back. Without it an army was decided by how much you had spent and never by what
+you chose — which is a bet against the treasury, not against the other heir.
+
+### 2a. Shooters hold walls; melee and siege break stone
+The one hard division in the army, and the two rules that make it:
+
+- **A shooter has no target among works at all** — not a reduced blow, no target. So no host of
+  archers, sorcerers, wardens and binders can take a Seat however large it grows, and a shooting
+  company has to be escorted by a Shieldwall, a Ram or a Bombard.
+- **Only a shooter may man stone.** A swordsman on a parapet was a man in the open with further
+  to fall, holding a berth an archer needed. A curtain is a shooting platform you must muster
+  *for*, and a wall defended by a soldier company kills nothing.
+
+Both are content-free rules with large consequences, so they are the first suspects whenever the
+match-length band or the by-force half of the two roads moves.
+
 ### 3. The walk forces the fight
 Pattern progress is revealed. A walking player must be attackable and a stalling player must
 lose to Chaos. There is no passive path to victory.

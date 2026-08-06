@@ -34,7 +34,7 @@ js/render_select.js — hands game.js the renderer, or null when the device has 
 js/qrcode.js    — QR encoder (verbatim from perils)
 js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
 js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
-js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners
+js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners, the Muster Roll
 js/game.js      — orchestration: modes, fixed-timestep loop, input routing, MP wiring (last)
 sim.js          — Node balance runner: mirror / gradient / round-robin / durations
 test/run.js     — the whole suite: test/headless.js (Node) + test/browser.js (Playwright)
@@ -183,16 +183,45 @@ instanced meshes are bucketed `kind#tier` (a rank without a bucket silently draw
 recruit), `buildingModel` keys on `bt[:br]@level`, and a work with masons in it wears the same
 translucent scaffolding a rising one does.
 
+## The fork — a level and a branch are different axes
+
+A level makes the same man better armed; a **branch** makes him somebody else. Any work carrying
+`branches` in `CONST.BUILDINGS` forks at its `fork` level, permanently: the Watchtower into a
+Ballista or a Cannon, the Barracks into a Shieldwall / Outriders / Archers, the Spire into the
+Warden's Art or the Binding, the Works into a Ram Shed or a Gun Pit. Per-branch arrays are
+indexed by `level - fork`.
+
+**Nothing names a building.** `World.branchesOf(bt)`, `forkAt(bt)`, `branchOf(b)` and
+`mustersOf(b)` are the four answers, and the price, the `{c:'up'}` command, the sheet, the model
+key and the heirs all ask them — this was six hardcoded `bt === 'tower'` tests once, and
+generalising it is what let three halls fork for the price of a table entry. `mustersOf` is the
+one answer to who a hall raises and how often; `def.spawns` is only ever its level-1 answer now.
+`cmd.br` is read at the fork level and nowhere else, which is what makes the choice permanent.
+A hall that forks clamps `b.paid` — a part-paid dear recruit becoming a cheap one would hand out
+several men at once. `br` never rides the wire to a rival (`net.js`), so a fork stays private.
+
+**Three flags on `CONST.UNITS` decide what a man is for.** `menOnly` — no target among works or
+Seats *at all*; `acquire` returns before it looks, so he walks past stone hunting men. Every
+shooter has it, which is why no host of archers, sorcerers, wardens and binders can end a match,
+and why the AI carries `v.breakers`. `mans` — may hold a berth or a tower place. `siege` — his
+blow against stone, multiplied.
+
 ## Common Tasks
 
 - **Add a building**: table entry in `const.js` (cost/up/effect) + `BUILD_ORDER_UI` → handle
   in `world.js` (spawn/aura/etc.) → geometry in `render3d.js` `buildingModel` → card
   auto-appears → teach the AI when to want it (`ai.js` plans/upPref, and the `rear` set if it
   is economy rather than a fighting position) → `node sim.js`.
-- **Add a unit**: `const.js` `UNITS` stats → spawn source in `world.js` → a case in
-  `render3d.js` `unitGeo` → sim. The renderer buckets by every key in `UNITS`, so a kind with
-  no geometry silently draws as a soldier — add the case.
-- **Add an heir**: personality entry in `ai.js` HEIRS block + menu entry in `ui.js`.
+- **Add a unit**: `const.js` `UNITS` stats — *plus `name`/`icon`/`blurb`, which the Muster Roll
+  reads* → spawn source in `world.js` → a case in `render3d.js` `unitGeo` → sim. The renderer
+  buckets by every key in `UNITS`, so a kind with no geometry silently draws as a FIEND, and a
+  kind with no bucket is dropped from the frame entirely — add the case.
+- **Add a branch**: `branches` + `branchUI` + `fork` + `forkHint` on the building in
+  `const.js` → an arm in `buildingModel` keyed off `br` → a doctrine in each heir's `branch`
+  block in `ai.js` (anything unnamed falls to `branchUI[0]`) → `node sim.js`. The sheet card,
+  the price, the command and the Muster Roll all follow from the table with no code.
+- **Add an heir**: personality entry in `ai.js` HEIRS block (including a `branch` doctrine per
+  forking building) + menu entry in `ui.js`.
 - **A work with a LENGTH** (only the Curtain Wall today): `span:[min]` in the table makes it a
   two-tap placement. It is stored by its MIDPOINT with `x2`/`y2` as the far end, so every
   point-shaped consumer — fog, minimap, ghosts, the snapshot — keeps working; anything that
@@ -205,12 +234,21 @@ translucent scaffolding a rising one does.
   multiply together (`b.crews`), `rising()` counts crews rather than works, and
   `World.wallReach` is the longest run a heir could start right now. A run past it is
   `'crews'`, which is a different refusal from `'busy'` and has a different fix.
-  **Manning is a ROSTER, not a distance.** `postWalls` runs once a tick, before anything moves:
-  every man whose ORDER (company rally, else banner) is within `WALL.man*1.5` of one of his own
-  runs is posted to it, ranked by id, and the first `len/WALL.berth` take the parapet — `u.man`
-  is the wall he holds a place on and the rest wait at the FOOT in rows. Only berthed men shoot
-  over and are exposed. It reads the order rather than `u.goal` because goals are assigned in
-  the march loop, which runs after it.
+  **Manning is a ROSTER, not a distance — and STONE IS FOR SHOOTERS.** `postWalls` runs once a
+  tick, before anything moves: every man whose ORDER (company rally, else banner) is within
+  `WALL.man*1.5` of one of his own runs is posted to it. The roster is sorted **shooters first,
+  then by id**, and only a unit the table marks `mans` (archer, sorcerer) may take one of the
+  `len/WALL.berth` berths — `u.man` is the wall he holds a place on. Everyone else still gets a
+  `post` and stations at the FOOT in rows, in cover, which is where a Shieldwall belongs. A
+  swordsman on a parapet was only ever a man in the open holding a berth an archer needed. Only
+  berthed men shoot over and are exposed. It reads the order rather than `u.goal` because goals
+  are assigned in the march loop, which runs after it.
+  **A tower holds a garrison.** `postTowers` is the same rule one storey up: `TOWER.berths`
+  shooters whose order falls within `TOWER.man` of one of their own finished towers go up it,
+  carry `u.tow` (NOT `u.man` — the renderer and `station()` read that as "the wall he holds"),
+  throw `TOWER.over`, and can be shot back. The tower's own gunnery is unaffected: the garrison
+  shoots as well as the tower, which is what makes filling one worth the men. The tower does not
+  change shape for it — it wears one shield on its crown per man, keyed into the model as `+n`.
   **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
   punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
   **A breach is a ruin, but a SHELL is not.** Only a run that actually stood is breached; one

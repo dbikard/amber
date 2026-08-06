@@ -84,10 +84,28 @@ named sites. Units march the paths; fights happen where armies meet.
 | **Shadow Gate** | a stabilized path into Shadow | +Essence/sec (economy) |
 | **Barracks** | shadow-drawn soldiery | spawns Soldiers (melee) on a timer |
 | **Sorcery Spire** | Fiona's arts | spawns Sorcerers (ranged) on a timer |
-| **Watchtower** | Julian's vigil | shoots attackers near your castle |
+| **Siege Works** | the timber yard | spawns Engines — made for stone, useless against men |
+| **Curtain Wall** | a run of stone with a length | bars the ground; shooters man its parapet |
+| **Watchtower** | Julian's vigil | shoots attackers near your castle; holds a small garrison |
 | **Pattern Shrine** | a reflection of the Pattern (one only) | channel Essence → Pattern progress; 100% = throne |
 
 All buildings upgrade to level 3. Castle (Seat of Power) is pre-placed with HP.
+
+**And every hall that raises men FORKS at level 2, permanently** — a level makes the same man
+better armed, a branch makes him somebody else:
+
+| Hall | Branches |
+|---|---|
+| **Barracks** | Shieldwall (heavy, holds ground) · Outriders (fast, cheap) · Archers (the garrison) |
+| **Sorcery Spire** | the Warden's Art (Wardens MEND — nothing else in Amber heals) · the Binding (Shadow-binders turn a beaten fiend) |
+| **Siege Works** | the Ram Shed (contact, huge against stone) · the Gun Pit (Bombards out-range every tower) |
+| **Watchtower** | Ballista (far, heavy, single target) · Cannon (shorter, bursts over a column) |
+
+Two rules follow from it and shape every army: **shooters — archers and sorcerers — cannot
+attack buildings at all**, so no host of them can take a Seat; and **only shooters may man a
+wall or a tower**, so a curtain is a shooting platform you have to muster *for*. Melee and siege
+break stone; shooters hold walls and kill men. The **Muster Roll** on the main menu lists the
+whole tree with every man's numbers.
 
 ## Royal Powers (cooldown buttons — the real-time agency)
 
@@ -97,8 +115,10 @@ All buildings upgrade to level 3. Castle (Seat of Power) is pre-placed with HP.
 
 ## Units (autonomous)
 
-Soldier (melee line), Sorcerer (ranged, fragile), Champion (Trump hero), Chaos Fiend (PvE,
-attacks everyone, scales with time). Kills pay a small Essence bounty.
+Soldier (melee line), Shieldman (heavy), Outrider (fast), Archer (the garrison), Sorcerer
+(ranged, fragile, longest reach on a wall), Warden (mends), Shadow-binder (turns fiends), Siege
+Engine / Ram / Bombard (stone-breakers), Champion (Trump hero), Chaos Fiend (PvE, attacks
+everyone, scales with time). Kills pay a small Essence bounty.
 
 ## The AI: Rival Heirs (first-class system)
 
