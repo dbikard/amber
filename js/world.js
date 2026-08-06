@@ -541,6 +541,37 @@
    * went ACROSS it is kept, which is what walking round a corner is. Nothing else changes:
    * with no motion to slide, or with the motion already leading away, this is the old push. */
   function stand(world, u, lx, ly) {
+    /* THE GROUND HAS THE LAST WORD, AND IT SAYS THIS BEFORE THE STONE DOES. The nav grid has
+     * always known that rock and water are impassable — it is what the flow fields route
+     * around — but knowing it and being bound by it are different things. Inside `NAV.arrive`
+     * a man beelines with no field to steer him, the crowd rules shove him sideways with no
+     * opinion about what is underneath, and the last `stand` of the tick only ever asked about
+     * WORKS. So a column rounding a lake walked into it, and men fought in the water.
+     *
+     * A destination is already folded onto standable ground (`placeAt`); this is the other
+     * half — the STEP. Collide and slide: keep whichever axis of the step still lands on
+     * ground, so a man walking into a shoreline walks ALONG it instead of stopping dead
+     * against it, and only refuse the step outright when neither axis will do.
+     *
+     * The `standable(lx, ly)` guard is an escape hatch and it matters: a man who is somehow
+     * already on bad ground — spawned there, dropped there by a tower coming down, left there
+     * by a rule written later — must be free to walk OUT. Without it the fix would strand
+     * exactly the men it is meant to rescue.
+     *
+     * FOREST IS NOT ROCK. Only cost-0 cells refuse a man; forest is passable at a price and
+     * that price is the flow field's business, not this rule's. */
+    if (lx != null && !standable(world, u.x, u.y) && standable(world, lx, ly)) {
+      if (standable(world, u.x, ly)) u.y = ly;
+      else if (standable(world, lx, u.y)) u.x = lx;
+      else { u.x = lx; u.y = ly; }
+      /* HE IS NOT PINNED HERE, and that is the difference between ground and stone. A pinned
+       * man is skipped by the crowd pass so it can route around him, which is right for a wall
+       * — thin, few men against it — and wrong for a shoreline or the edge of the world, which
+       * a whole company can press at once: pin them all and none of them separate. Measured,
+       * that stacked a marched army to 2.4 apart against a rule asking for 15.4. The crowd is
+       * kept out of the water at ITS end instead (see `jostle`), so there is no fight for a pin
+       * to settle, and these men go on giving way to each other along the bank. */
+    }
     const pad = C.BUILD.pass, p2 = pad * pad;
     for (let q = 0; q < world.players.length; q++)
       for (const b of world.players[q].buildings) {
@@ -747,6 +778,17 @@
       if (L < C.CROWD.dead) continue;
       if (L > cap) { dx = dx / L * cap; dy = dy / L * cap; }
       if (barred(world, u, u.x + dx, u.y + dy)) continue;   // nor is a crowd a way through stone
+      /* ...NOR A WAY INTO A LAKE. The crowd is the only rule that moves a man sideways with no
+       * opinion about what is under him, so it is the one that walks him off the bank — and
+       * refusing the push HERE is what stops it, rather than putting him back afterwards.
+       * Putting him back was tried: the ground shoves, the crowd shoves, thirty times a second,
+       * and a settled company jittered 0.602 a tick against a stride of 1.77. Pinning him
+       * instead — stone's cure — was worse, because a wall is thin and few men press it while a
+       * shore or a map edge can take a whole company, and pinned men are skipped by this pass,
+       * so they stacked: 2.4 apart where the rule asks for 15.4. Refused at source there is no
+       * fight to settle, and the men spread ALONG the bank, which is what a company blocked by
+       * water should do. */
+      if (!standable(world, u.x + dx, u.y + dy) && standable(world, u.x, u.y)) continue;
       u.x += dx; u.y += dy;
     }
   }
