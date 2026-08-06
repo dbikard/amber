@@ -47,7 +47,7 @@ Turtling inside your starting ground loses on its own: the rival claims more ess
 bigger army, and comes for you. Map control is the pressure behind both win conditions.
 Chaos is *the price of the best ground* — the richest nodes sit on the corrupt road, so
 expanding is exposure — not a doomsday timer. Convergence is guaranteed by the Pattern walk,
-never by PvE. Target: 5–20 min.
+never by PvE. Target: **most matchups under 20 min, and none of them past 30**.
 
 ### 5. Readable chaos
 Color language is law: **gold = you**, **crimson = rival**, **sickly green = Chaos**,
@@ -122,10 +122,15 @@ Every balance question is answered with data:
   game had quietly become about who survives the weather longest. Capping it exposed what was
   underneath, which is the real question this section now asks: can an army beat a defended
   Seat at all?
-- **Match length** — median 5–20 min across the matchup table. It was 15–30 while every heir
-  had to find and claim its first spring; the opening now starts with a Gate already drawing,
-  the early economy arrives sooner, and the whole match telescopes with it. The band follows
-  the game rather than the game chasing the band.
+- **Match length** — the MAJORITY of the matchup table under 20 min, and a tail that may reach
+  30 but not pass it. It was a flat 5–20 band; a long game between two heirs who both know what
+  they are doing is a good game, and the band was calling it a failure. What has NOT been
+  relaxed is the thing the band was really protecting: a matchup that runs to the CAP is a
+  matchup where neither army can crack the other's Seat, and that is a broken rule wearing a
+  long median as a disguise. Read the bracket, not just the median — `timeout:n` at the cap is
+  a stalemate; `med 25m [castle:6]` is six matches that were decided.
+  **`--quick` caps at twenty minutes**, which turns "long" and "unfinished" into the same
+  number, so a run being used to judge length wants `--cap=30`.
 - **Expansion pays** — a bot that claims map must beat an otherwise-identical bot that does
   not, decisively. If turtling is competitive, the anti-stall model is broken at the root.
 

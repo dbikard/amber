@@ -177,10 +177,14 @@ sustainable pipeline, richer than Perils' neon vectors. `render.js` stays isolat
 
 ## Match Targets
 
-**5–20 minutes.** Free placement, the claim race and walls are an attention budget a very
-short match cannot spend — but an heir now opens with a Gate already drawing on his one
-spring, so the early economy no longer has to be found before it can be spent. Convergence is guaranteed by the Pattern walk (an uncontested
-player always wins eventually) and driven by the essence race, not by a PvE timer.
+**Most matches under 20 minutes, none past 30.** Free placement, the claim race and walls are
+an attention budget a very short match cannot spend — but an heir now opens with a Gate already
+drawing on his one spring, so the early economy no longer has to be found before it can be
+spent. A long game between two heirs who both know what they are doing is a good game, so the
+ceiling is a tail rather than a wall; what is not allowed is a match that cannot END, which is
+a broken rule wearing a long clock as a disguise. Convergence is guaranteed by the Pattern walk
+(an uncontested player always wins eventually) and driven by the essence race, not by a PvE
+timer.
 
 ## Later (post-MVP)
 
