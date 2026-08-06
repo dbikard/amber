@@ -26,6 +26,13 @@
      * the refusal: the table cannot be dealt again, which only the host can know. */
     onAgain: null,  // host: a guest has called for another match
     onNoMore: null, // guest: the host cannot deal one
+    /* THE RECORD IS THE HOST'S, BECAUSE ONLY THE HOST HAS ONE. A guest samples its own
+     * fog-filtered snapshots, where a rival's essence never crosses the wire and a rival's
+     * works and men are only the ones it can see — so its end screen drew a different match
+     * from the host's, which is what "the stats are completely different" means. The match is
+     * OVER by then and there is nothing left to hide, so the host sends the true table and
+     * every seat reads the same match. {t:'chron'} carries it. */
+    onChron: null,  // guest: the host's true record of the match just played
     onFail: null,   // a peer connection gave up: the network will not carry this link
     diag: [], onDiag: null, _pairing: false
   };
@@ -397,6 +404,7 @@
     else if (m.t === 'start') { if (Net.onStart) Net.onStart(m); }
     else if (m.t === 'again') { if (Net.onAgain) Net.onAgain(from); }
     else if (m.t === 'nomore') { if (Net.onNoMore) Net.onNoMore(); }
+    else if (m.t === 'chron') { if (Net.onChron) Net.onChron(m.rows); }
   }
 
   /* ---------------- fog-filtered snapshots (host → each viewer) ----------------

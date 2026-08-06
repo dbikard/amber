@@ -200,6 +200,11 @@
       : (won ? 'The rival Seat of Power lies in ruin along the black road.'
              : 'Your Seat of Power lies in ruin. The road took it.');
     game.endNext = null;
+    /* THE RECORD IS THE HOST'S. A guest samples its own fog-filtered snapshots — a rival's
+     * essence is never on the wire — so its end screen drew a different match from the host's.
+     * The match is over and there is nothing left to hide, so hand the true table over and let
+     * every seat read the same one. */
+    if (game.mode === 'host' && Net.active) Net.send({ t: 'chron', rows: Rec.rows() });
     if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
       localStorage.setItem('amber_rung', String(rung() + 1));
       /* the last rung is not the end of the button: walking again starts the succession over */
@@ -901,6 +906,12 @@
      * it is stale — a message that crossed with the winning blow — and once the host has
      * dealt, `game.over` is false again, which is what stops two callers dealing two boards. */
     Net.onAgain = (from) => { if (game.mode === 'host' && game.over) rematch(from); };
+    /* the host's true table, which supersedes whatever the fog let this seat see. It can
+     * arrive a moment after the end screen is already up, so the screen is redrawn. */
+    Net.onChron = (rows) => {
+      if (game.mode !== 'guest' || !Rec.adopt(rows)) return;
+      if (game.over) endScreen();
+    };
     Net.onNoMore = () => {
       if (game.mode !== 'guest' || !game.over) return;
       game.noMore = true;

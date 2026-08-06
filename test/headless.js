@@ -3341,6 +3341,7 @@ suite('the chronicle')
    * ends, so the end screen draws these — but WHICH numbers tell the story of a match is a
    * question about the game, which is why the series live here and not in the DOM. */
   const cv = Rec.curves();
+  const rows0 = Rec.rows();
   ok('the match comes back as curves', !!cv && cv.t.length > 8, cv ? cv.t.length + ' samples' : 'null');
   ok('...over the same hours the table covers', cv.t[0] < cv.t[cv.t.length - 1]);
   eq('one seat per player', cv.seats.length, 2);
@@ -3390,6 +3391,43 @@ suite('the chronicle')
   ok('five identical orders read as one line', /Recall.*×5/.test(t2),
      t2.split('— your orders —')[1].split('\n').slice(0, 3).join(' / '));
   ok('and a different order still gets its own', /BEGIN THE WALK/.test(t2));
+
+  /* ---------------- THE RECORD CROSSES THE WIRE ----------------
+   * A guest samples its own fog-filtered snapshots: a rival's essence is never on the wire, a
+   * rival's works and men are only the ones it can see. So its end screen drew a different
+   * match from the host's — reported from play as "the stats are completely different for the
+   * guest and the host". The match is over by then and there is nothing left to hide, so the
+   * host hands over the true table. */
+  /* `rows0` is the host's table, captured beside its curves — NOT re-read here, because by
+   * this point later blocks have begun their own records and Rec holds one of those. */
+  const packed = rows0;
+  ok('the host can hand its table over', packed.length > 8 && packed[0].length > 4,
+     `${packed.length} rows of ${packed[0] ? packed[0].length : 0} numbers`);
+  ok('...and it is numbers, not objects, so a long match still fits a DataChannel',
+     packed.every((r) => r.every((v) => typeof v === 'number')) &&
+     JSON.stringify(packed).length < 60000, `${JSON.stringify(packed).length} bytes`);
+  {
+    /* a GUEST's record of the same match, built the way a guest builds one */
+    const w4 = World.createWorld(seed, 2);
+    for (let i = 0; i < 30 * 120; i++) { World.update(w4, C.SIM_DT); w4.events.length = 0; }
+    Rec.begin({ version: 'test', seed, viewer: 1, names: ['Corwin', 'Eric'],
+                mode: 'LAN 2-way', partial: true });
+    /* two hours of it: a curve needs two points, exactly as the host's does */
+    Rec.sample(Rec.fromSnap(JSON.parse(JSON.stringify(Net.snapFor(w4, 1, []))), 1));
+    for (let i = 0; i < 30 * 25; i++) { World.update(w4, C.SIM_DT); w4.events.length = 0; }
+    Rec.sample(Rec.fromSnap(JSON.parse(JSON.stringify(Net.snapFor(w4, 1, []))), 1));
+    const fogged = Rec.curves();
+    ok('a guest does record something of its own', !!fogged);
+    ok('a guest\'s own record admits it is partial', fogged.partial);
+    ok('...and it cannot see a rival\'s purse', fogged.series.find((q) => q.key === 'ess').lines[0][0] === 0);
+    ok('the host\'s table is adopted', Rec.adopt(packed));
+    const truth = Rec.curves();
+    eq('...and it has the host\'s hours in it', truth.t.length, packed.length);
+    ok('...the rival\'s purse among them', truth.series.find((q) => q.key === 'ess').lines[0].some((v) => v > 0));
+    ok('...and it stops calling itself partial, because it is the truth now', !truth.partial);
+    eq('the guest is still the guest', truth.viewer, 1);
+    ok('every hour survived the crossing', truth.series.every((q) => q.lines.every((l) => l.length === packed.length)));
+  }
 
   /* a guest records from snapshots and must SAY so rather than pass fog off as truth */
   Rec.begin({ version: 'test', seed: 5, viewer: 2, names: C.SEAT_NAMES.slice(0, 4),

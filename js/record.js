@@ -243,6 +243,45 @@
 
   Rec.clock = clock;
 
+  /* ---------------- handing the record across the wire ----------------
+   * A GUEST CANNOT RECORD THE TRUTH and should not pretend to. It samples its own fog-filtered
+   * snapshots: a rival's essence is never on the wire, a rival's works and men are only the
+   * ones it can see. So the two end screens drew different matches — reported from play as
+   * "the stats are completely different for the guest and the host".
+   * The host has the world, and by the time this is sent the match is OVER and there is
+   * nothing left to hide. `rows()` is what it hands over; `adopt()` is the guest taking it.
+   *
+   * Compact on purpose. A long four-way match is a hundred and thirty rows, and a row of
+   * objects with named keys is most of a DataChannel message spent on the same eleven words
+   * over and over. Numbers in a fixed order instead — see FIELDS. */
+  const FIELDS = ['ess', 'income', 'works', 'rising', 'gates', 'army', 'pattern', 'hp'];
+  Rec.rows = function () {
+    return rows.map((r) => [Math.round(r.t), r.chaos, r.lostFoe || 0, r.lostChaos || 0].concat(
+      ...r.players.map((p) => FIELDS.map((k) => Math.round((p[k] || 0) * 10) / 10)
+        .concat(p.walking ? 1 : 0, p.out ? 1 : 0))));
+  };
+  Rec.adopt = function (packed) {
+    if (!head || !packed || !packed.length) return false;
+    const per = FIELDS.length + 2;
+    const n = Math.floor((packed[0].length - 4) / per);
+    if (n < 1) return false;
+    rows = packed.map((a) => {
+      const r = { t: a[0], tick: 0, chaos: a[1], lostFoe: a[2], lostChaos: a[3], players: [] };
+      for (let i = 0; i < n; i++) {
+        const o = 4 + i * per, p = {};
+        FIELDS.forEach((k, j) => { p[k] = a[o + j]; });
+        p.walking = !!a[o + FIELDS.length];
+        p.out = !!a[o + FIELDS.length + 1];
+        r.players.push(p);
+      }
+      return r;
+    });
+    /* it is the truth now, so the record stops calling itself partial */
+    head.partial = false;
+    head.adopted = true;
+    return true;
+  };
+
   /* ---------------- the artefact ---------------- */
   /* a column heading has to fit: "Benedict, Master of Arms" is a title, not a label */
   const tag = (i) => (i === head.viewer ? 'YOU'
