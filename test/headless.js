@@ -286,6 +286,11 @@ suite('shooters, stone, and the arts')
 {
   const w = World.createWorld(31337, 2);
   w.chaosNext = 1e9;
+  /* AND THE SEATS ARE SILENT. The throne carries a gun of its own now — longer-reaching than
+   * any Watchtower and stopped by no stone — and every rig below stands inside its arc, so it
+   * and not the men under test would be doing the damage. Its cooldown lives on the player
+   * (there is no work to hang it on), and parked past the end of time it never fires. */
+  for (const p of w.players) p.seatCd = 1e9;
   const c0 = World.cityOf(w, 0), c1 = World.cityOf(w, 1);
   const p0 = w.players[0], p1 = w.players[1];
   p0.essence = p1.essence = 100000;
@@ -1195,6 +1200,10 @@ suite('the curtain wall')
   /* placement: the first tap is a point, the second is the run */
   const w = World.createWorld(1000);
   w.chaosNext = 1e9;
+  /* and the Seat's own gun with it: a curtain raised inside the writ stands well within the
+   * throne's reach, and it shoots over stone by design — which would answer every question
+   * this suite asks about who can shoot whom through a wall before the wall got a word in */
+  for (const p of w.players) p.seatCd = 1e9;
   const c = World.cityOf(w, 0);
   const pl = w.players[0];
   pl.essence = 100000;
@@ -1964,6 +1973,131 @@ suite('a tower and a curtain leave no dead band');
   }
 }
 
+/* THE SEAT SHOOTS BACK. It is worth the two Watchtower branches at their best put together,
+ * and — alone on the board — its shot is not stopped by stone. */
+suite('the Seat of Power holds its own gun');
+{
+  /* the figure, derived here from the branch tables rather than read off CONST, so a Seat that
+   * quietly stopped matching the towers it is defined by fails this line and not a play-test */
+  const bo = C.TOWER_BRANCHES.bolt, ca = C.TOWER_BRANCHES.cannon;
+  const top = 3 - C.BUILDINGS.tower.fork;        // per-branch arrays are indexed by level - fork
+  const want = bo.dmg[top] / bo.atk[top] + ca.dmg[top] / ca.atk[top];
+  near('a Ballista and a Cannon, both fully upgraded, fired as one gun',
+       C.SEAT_GUN.dmg / C.SEAT_GUN.atk, want, 0.01, `${(C.SEAT_GUN.dmg / C.SEAT_GUN.atk).toFixed(3)} vs ${want.toFixed(3)}`);
+  eq('and it reaches as far as the longer of the two', C.SEAT_GUN.range, Math.max(bo.range[top], ca.range[top]));
+
+  /* A BARE BOARD. Both realms are stripped of works and essence and the black road is held off,
+   * so the only thing that can hurt anybody in these rigs is the Seat. */
+  const rig = () => {
+    const w = World.createWorld(4242, 2);
+    w.chaosNext = 1e9;
+    for (const p of w.players) { p.buildings.length = 0; p.essence = 0; }
+    w.units.length = 0;
+    const c = World.cityOf(w, 0);
+    const pins = [];
+    return {
+      w, c, pins,
+      /* a man staked out where he is put: pinned every tick, so what these tests measure is
+       * gunnery and never marching */
+      man: (owner, dx, dy, hp) => {
+        const d = C.UNITS.soldier;
+        const u = { id: w.nextId++, owner, kind: 'soldier', x: c.x + dx, y: c.y + dy, ox: 0, oy: 0,
+                    hp: hp, maxHp: hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+        w.units.push(u); pins.push({ u, x: u.x, y: u.y });
+        return u;
+      },
+      /* a work dropped straight into the realm: these rigs are testing shots, not placement.
+       * A run goes up with a breath of masonry left on it so the next tick finishes it, which
+       * is the only thing that rebuilds `world.walls`. */
+      work: (b) => { w.players[0].buildings.push(b); return b; },
+      run: (secs) => {
+        const shots = [];
+        for (let i = 0; i < Math.round(secs * 30); i++) {
+          World.update(w, C.SIM_DT);
+          for (const ev of w.events) if (ev.e === 'shot' && ev.pi === 0) shots.push(ev);
+          w.events.length = 0;
+          for (const p of pins) { p.u.x = p.x; p.u.y = p.y; }
+        }
+        return shots;
+      }
+    };
+  };
+  const wallAcross = (r, dx, half) => {
+    const d = C.BUILDINGS.wall;
+    return r.work({ id: r.w.nextId++, bt: 'wall', level: 1, x: r.c.x + dx, y: r.c.y,
+                    x2: r.c.x + dx, y2: r.c.y + half, crews: 1, units: 1,
+                    cd: 0, raise: 0.001, raiseFor: 1, hp: d.hp, maxHp: d.hp,
+                    lastHurt: -99, node: -1, co: 0 });
+  };
+  const towerAt = (r, dx) => {
+    const d = C.BUILDINGS.tower;
+    return r.work({ id: r.w.nextId++, bt: 'tower', level: 1, x: r.c.x + dx, y: r.c.y,
+                    cd: d.atk, raise: 0, raiseFor: d.raise, hp: d.hp, maxHp: d.hp,
+                    lastHurt: -99, node: -1, co: 0 });
+  };
+
+  /* ---- it fires, and only at the other man ---- */
+  {
+    const r = rig();
+    const foe = r.man(1, 300, 0, 1e6);
+    const own = r.man(0, -240, 0, 1e6);
+    const far = r.man(1, 0, C.SEAT_GUN.range + 80, 1e6);
+    const shots = r.run(6);
+    ok('the Seat fires on an enemy at its gate', foe.hp < 1e6 && shots.length > 0,
+       `${(1e6 - foe.hp).toFixed(1)} damage in ${shots.length} shots`);
+    eq('...and never on its own men', own.hp, 1e6);
+    eq('...nor on anyone beyond its reach', far.hp, 1e6);
+    ok('the shot it emits has a tower\'s shape, with no work behind it',
+       shots.every((s) => s.id === 0 && s.to && s.x === r.c.x && s.y === r.c.y && s.splash > 0),
+       JSON.stringify(shots[0]));
+  }
+
+  /* ---- and it hits as hard as the two towers together ---- */
+  {
+    const r = rig();
+    const foe = r.man(1, 300, 0, 1e6);
+    const secs = 60;
+    r.run(secs);
+    const dps = (1e6 - foe.hp) / secs;
+    ok('its damage per second is the two towers added up', Math.abs(dps - want) / want < 0.05,
+       `${dps.toFixed(2)} dps vs ${want.toFixed(2)}`);
+  }
+
+  /* ---- STONE IS NO ANSWER TO IT ---- */
+  {
+    const r = rig();
+    const foe = r.man(1, 300, 0, 1e6);
+    const tower = towerAt(r, 80);
+    const wall = wallAcross(r, 150, 60);
+    const shots = r.run(10);
+    eq('the curtain across the line is standing', wall.raise, 0, `anyWall ${r.w.anyWall}`);
+    ok('a wall between the Seat and its target does not stop the shot',
+       foe.hp < 1e6 && shots.some((s) => s.id === 0), `${(1e6 - foe.hp).toFixed(1)} damage`);
+    eq('...while a Watchtower in the same place IS stopped by it',
+       shots.filter((s) => s.id === tower.id).length, 0);
+  }
+  {
+    /* the control: the same tower with nothing in the way does shoot, so the line above is
+     * measuring the stone and not a tower that was never in range */
+    const r = rig();
+    r.man(1, 300, 0, 1e6);
+    const tower = towerAt(r, 80);
+    const shots = r.run(10);
+    ok('and with the curtain gone that tower shoots as usual',
+       shots.filter((s) => s.id === tower.id).length > 0);
+  }
+
+  /* ---- a ruin does not shoot ---- */
+  {
+    const r = rig();
+    const foe = r.man(1, 300, 0, 1e6);
+    r.w.players[0].out = true; r.w.players[0].castleHp = 0;
+    const shots = r.run(10);
+    eq('a toppled heir\'s Seat is silent', shots.length, 0);
+    eq('...and nothing takes a scratch from it', foe.hp, 1e6);
+  }
+}
+
 /* AND WITH A HALL. A Seat with no muster is an heir who spends his first half-minute raising
  * the one work he was always going to raise first — the same opening every match, chosen by
  * nobody. The board hands it over and the choosing starts at the second work. */
@@ -2009,6 +2143,211 @@ for (const n of [2, 3, 4]) {
   ok('an heir who has built nothing still has an army at half a minute',
      w.units.filter((u) => u.owner === 0).length > 0,
      `${w.units.filter((u) => u.owner === 0).length} men`);
+}
+
+/* ---- scaffolding the two suites below share: a realm with crews, and a curtain drawn where
+ * the map will take one ---- */
+function walledRealm(seed, opts) {
+  const o = opts || {};
+  const w = World.createWorld(seed, 2), pl = w.players[0];
+  pl.essence = 1e6; w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 6; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  let run = null;
+  for (let rad = 190; rad < 430 && !run; rad += 20)
+    for (let a = 0; a < 48 && !run; a++) {
+      const th = a / 48 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.applyCommand(w, 0, { c: 'build', bt: 'wall', x, y, x2: x + (o.len || 220), y2: y }).ok)
+        run = { x, y };
+    }
+  const wall = pl.buildings.filter((q) => q.bt === 'wall').pop();
+  for (let i = 0; i < 90 * 30 && wall && wall.raise > 0; i++) World.update(w, 1 / 30);
+  return { w, pl, c, wall };
+}
+/* a man of a given kind, standing where you put him and answering the Banner */
+function manAt(w, owner, kind, x, y) {
+  const d = C.UNITS[kind];
+  const u = { id: w.nextId++, owner, kind, tier: 1, x, y, ox: 0, oy: 0,
+              hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
+  w.units.push(u);
+  return u;
+}
+
+/* WHICH FACE OF A RUN SHELTERS IS THE HEIR'S TO SAY. The sim guesses from where the owner's
+ * Seat lies, which is right for the one curtain drawn across the road home and wrong for a run
+ * around a forward spring or along a flank — there it puts the whole reserve in the open. The
+ * `flip` order is the answer, and it is an ORDER about a wall: no crew, no stone, and it may be
+ * given while the masons are still on it. */
+suite('a wall can be turned about');
+{
+  const { w, pl, wall } = walledRealm(20260806);
+  ok('a curtain goes up to test against', !!wall && !wall.raise && w.anyWall,
+     wall ? `raise ${wall.raise}` : 'no run');
+  /* the run lies east-west, so its two faces are north and south of it */
+  pl.banner = { x: wall.x, y: wall.y };
+  const men = [manAt(w, 0, 'archer', wall.x - 60, wall.y - 80),
+               manAt(w, 0, 'archer', wall.x - 30, wall.y - 80),
+               manAt(w, 0, 'soldier', wall.x, wall.y - 80)];
+  const run = (n) => { for (let i = 0; i < n; i++) World.update(w, 1 / 30); };
+  run(400);
+  ok('the company is posted to the run', men.every((u) => u.post === wall.id),
+     men.map((u) => u.post).join(','));
+  const side = (u) => Math.sign(u.y - wall.y);
+  const before = men.map(side);
+  ok('...and every man of it takes the same face', before.every((s) => s === before[0]),
+     before.join(','));
+
+  eq('the order is refused on anything that is not a run',
+     World.applyCommand(w, 0, { c: 'flip', id: pl.buildings[0].id }).err, 'nowall');
+  eq('...and on a work that is not there', World.applyCommand(w, 0, { c: 'flip', id: 999999 }).err, 'id');
+  /* measured across the order and nothing else — the realm earns while the ticks run, so a
+   * fixed figure here would be testing the income */
+  const purse = pl.essence;
+  ok('the run turns about for nothing but the order — no crew, no stone',
+     World.applyCommand(w, 0, { c: 'flip', id: wall.id, on: true }).ok &&
+     World.rising(w, 0) === 0 && pl.essence === purse,
+     `rising ${World.rising(w, 0)}, purse ${purse} -> ${pl.essence}`);
+  /* it asks for a STATE, so two seats tapping it in one tick cannot cancel each other out */
+  ok('...and asking twice for the same state changes nothing',
+     World.applyCommand(w, 0, { c: 'flip', id: wall.id, on: true }).ok && wall.flip === 1);
+  run(500);
+  const after = men.map(side);
+  ok('every man crosses to the other face', after.every((s, i) => s === -before[i]),
+     `${before.join(',')} -> ${after.join(',')}`);
+  ok('turning it back brings them home',
+     World.applyCommand(w, 0, { c: 'flip', id: wall.id, on: false }).ok && !wall.flip);
+  run(500);
+  ok('...and they are on the face they started on', men.map(side).every((s, i) => s === before[i]),
+     men.map(side).join(','));
+}
+
+/* A TOWER IS A ROOM. Shooters go INSIDE — ten of them — and while they are in there the stone
+ * is their shield: nothing can touch them, and the only way to them is to bring the tower down.
+ * When it comes down they are in the field again, on that tick, where it stood. */
+suite('a tower shelters its garrison');
+{
+  const w = World.createWorld(20260807, 2), pl = w.players[0], foe = w.players[1];
+  pl.essence = 1e6; w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 4; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  let tower = null;
+  for (let rad = 200; rad < 420 && !tower; rad += 20)
+    for (let a = 0; a < 48 && !tower; a++) {
+      const th = a / 48 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.applyCommand(w, 0, { c: 'build', bt: 'tower', x, y }).ok)
+        tower = pl.buildings.filter((q) => q.bt === 'tower').pop();
+    }
+  ok('a tower goes up to test against', !!tower);
+  for (let i = 0; i < 90 * 30 && tower.raise > 0; i++) World.update(w, 1 / 30);
+  pl.banner = { x: tower.x, y: tower.y };
+  /* two more than it holds, so the cap is proved by the men left outside rather than asserted */
+  const over = C.TOWER.berths + 2;
+  const shooters = [], swords = [];
+  for (let i = 0; i < over; i++) shooters.push(manAt(w, 0, 'archer', tower.x + 40 + i, tower.y + 40));
+  for (let i = 0; i < 3; i++) swords.push(manAt(w, 0, 'soldier', tower.x + 40, tower.y + 60 + i));
+  const run = (n) => { for (let i = 0; i < n; i++) World.update(w, 1 / 30); };
+  run(500);
+  const inside = shooters.filter((u) => u.tow === tower.id);
+  eq('it holds exactly what the table says it holds', inside.length, C.TOWER.berths,
+     `${inside.length} of ${over} shooters got in`);
+  eq('...and no swordsman is one of them', swords.filter((u) => u.tow).length, 0);
+  ok('the men inside are AT the tower, not ringed round its foot',
+     inside.every((u) => Math.hypot(u.x - tower.x, u.y - tower.y) <= C.TOWER.ring + 2),
+     inside.map((u) => Math.round(Math.hypot(u.x - tower.x, u.y - tower.y))).join(','));
+
+  /* THE STONE IS THE SHIELD. A rival host standing in the tower's lap must not be able to
+   * touch a man inside it — the tower is what they have to spend their blows on.
+   *
+   * RAMS, NOT SWORDSMEN, and the first draft of this got it wrong in an instructive way: six
+   * soldiers sent at the tower were all dead inside twenty seconds without scratching it, shot
+   * down by the ten men inside plus the tower's own gun. That is the feature working, but it
+   * measures nothing — the assertion below wants attackers who LIVE long enough to land blows,
+   * so the shelter is proved against real damage rather than against a host that never arrived.
+   *
+   * And everything that is NOT under test is cleared off the ground first — the throne's own
+   * gun, the swordsmen, and the two shooters who did not get in — all of which have already
+   * made their point above. Left standing they answer the question for the tower: the rams
+   * went for the men outside it (men before stone is the right aggro, and `acquire` skips the
+   * ones inside), so the tower took nothing and the line below would have reported an empty
+   * field as a shelter. What is left on this ground is a garrison and an assault. */
+  for (const p of w.players) p.seatCd = 1e9;
+  w.units = w.units.filter((u) => swords.indexOf(u) < 0 &&
+                                  (shooters.indexOf(u) < 0 || inside.indexOf(u) >= 0));
+  const raiders = [];
+  for (let i = 0; i < 2; i++) raiders.push(manAt(w, 1, 'ram', tower.x + 26 + i * 6, tower.y + 8));
+  foe.banner = { x: tower.x, y: tower.y };
+  const hpBefore = inside.map((u) => u.hp), towerBefore = tower.hp;
+  /* TWO SECONDS, and the assertion below that the tower is still standing is what keeps this
+   * honest. A ram's blow against stone is enormous — two of them take a Watchtower down in
+   * under four — so a ten-second window measured the wrong thing entirely: the tower fell
+   * mid-window, the garrison spilled into the middle of the assault exactly as it should, and
+   * "nothing reached a man inside" then failed on men who were no longer inside anything. */
+  run(60);
+  ok('the assault is still standing to make the point', raiders.some((u) => u.hp > 0),
+     `${raiders.filter((u) => u.hp > 0).length} of 2 alive`);
+  ok('...and so is the tower, or what follows measures the wrong thing',
+     tower.hp > 0 && pl.buildings.some((q) => q.id === tower.id), `${Math.round(tower.hp)} hp`);
+  ok('...and its blows land on the tower', tower.hp < towerBefore,
+     `${Math.round(towerBefore)} -> ${Math.round(tower.hp)}`);
+  ok('...while nothing at all reaches a man inside', inside.every((u, i) => u.hp === hpBefore[i]),
+     inside.map((u, i) => `${hpBefore[i]}->${u.hp}`).join(' '));
+
+  /* AND THEY COME OUT WHEN IT GOES. On that tick — a man still carrying `tow` for a tower that
+   * is not there is a man nothing can hurt, in the middle of the assault that felled it. */
+  const id = tower.id, tx = tower.x, ty = tower.y;
+  World.hurtBuilding(w, 0, id, tower.hp + 1, 1);
+  ok('the tower is gone', !pl.buildings.some((q) => q.id === id));
+  eq('the garrison is out of it on the same tick', inside.filter((u) => u.tow).length, 0);
+  ok('...and standing where it stood',
+     inside.every((u) => Math.hypot(u.x - tx, u.y - ty) <= C.TOWER.ring + 2),
+     inside.map((u) => Math.round(Math.hypot(u.x - tx, u.y - ty))).join(','));
+  /* a fresh swordsman put among them, rather than whichever rams happened to live through the
+   * siege — who is left standing at the end of an assault is contingent, and the claim here is
+   * not "that assault killed them", it is "they can be hurt again at all". The Seats are
+   * silenced for the same reason: the measurement must be the swordsman's. */
+  for (const p of w.players) p.seatCd = 1e9;
+  manAt(w, 1, 'soldier', tx + 6, ty + 6);
+  const outHp = inside.map((u) => u.hp);
+  run(600);
+  ok('and now they can be killed like anyone else',
+     inside.some((u, i) => u.hp < outHp[i]),
+     inside.map((u, i) => `${outHp[i]}->${Math.round(u.hp)}`).join(' '));
+}
+
+/* A BASTION IS PART OF ITS RUN. A company told to hold a curtain used to line the parapet and
+ * leave the towers standing in that curtain empty — the safest places on the board, unfilled,
+ * while the men who could have used them stood in the open beside them. */
+suite('a company holding a wall fills the towers on it');
+{
+  const { w, pl, wall } = walledRealm(20260808, { len: 300 });
+  ok('a curtain goes up to test against', !!wall && !wall.raise && w.anyWall);
+  const r = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: wall.x, y: wall.y });
+  const tower = pl.buildings.filter((q) => q.bt === 'tower').pop();
+  ok('a tower is raised INTO it', r.ok && tower && tower.onWall === wall.id,
+     r.ok ? `onWall ${tower && tower.onWall}` : r.err);
+  for (let i = 0; i < 90 * 30 && tower.raise > 0; i++) World.update(w, 1 / 30);
+  /* the order is on the WALL, not on the tower — that is the whole point: nobody asked for
+   * the bastion to be filled, and holding the run means holding the run */
+  pl.banner = { x: wall.x, y: wall.y };
+  const men = [];
+  for (let i = 0; i < 14; i++) men.push(manAt(w, 0, 'archer', wall.x - 40 + i * 3, wall.y - 90));
+  for (let i = 0; i < 500; i++) World.update(w, 1 / 30);
+  const onStone = men.filter((u) => u.man === wall.id).length;
+  const inTower = men.filter((u) => u.tow === tower.id).length;
+  ok('the parapet is manned', onStone > 0, String(onStone));
+  ok('...and so is the bastion on it, from the same order', inTower > 0, String(inTower));
+  ok('the company is SPLIT, not poured into one of them',
+     onStone > 0 && inTower > 0 && onStone + inTower === Math.min(14, onStone + inTower),
+     `${onStone} on the stone, ${inTower} inside`);
+  eq('nobody holds a berth and a room at once', men.filter((u) => u.man && u.tow).length, 0);
 }
 
 /* MEN HAVE WIDTH. Nothing kept one soldier off another, so a column arrived stacked and a
@@ -2212,6 +2551,28 @@ suite('men walk round a work, not through it');
      d1 < C.NAV.arrive, `${d0.toFixed(0)} from his order, then ${d1.toFixed(0)}`);
   ok('...and he did not end the walk standing in the hall',
      Math.hypot(lone.x - h2.x, lone.y - h2.y) >= C.BUILD.pass - 0.5);
+
+  /* HE NEVER TOUCHED IT. This is the whole of the change: the old model let him walk into the
+   * stone and pushed him back out, which is repulsion-after-contact and oscillates by
+   * construction. He now turns early enough to graze the work and no closer — so there is
+   * nothing to push him off, and nothing that can shove him back and forth. */
+  const w3 = World.createWorld(1000, 2), p3 = w3.players[0];
+  w3.chaosNext = 1e9;
+  const h3 = p3.buildings.find((b) => b.bt === 'barracks');
+  const ang3 = Math.atan2(h3.y - World.cityOf(w3, 0).y, h3.x - World.cityOf(w3, 0).x);
+  const ex = Math.cos(ang3), ey = Math.sin(ang3);
+  const man = { id: w3.nextId++, owner: 0, kind: 'soldier', tier: 1,
+                x: h3.x - ex * 200, y: h3.y - ey * 200, ox: 0, oy: 0, hp: 90, maxHp: 90,
+                dmg: C.UNITS.soldier.dmg, cd: 0, goal: null, co: 0, from: -1 };
+  w3.units.length = 0; w3.units.push(man);
+  p3.banner = { x: h3.x + ex * 260, y: h3.y + ey * 260, site: -1 };
+  let closest = 1e9;
+  for (let i = 0; i < 30 * 40; i++) {
+    World.update(w3, C.SIM_DT); w3.events.length = 0;
+    closest = Math.min(closest, Math.hypot(man.x - h3.x, man.y - h3.y));
+  }
+  ok('marching past a work, he never comes inside its ground at all',
+     closest >= C.BUILD.pass - 1.5, `closest he came: ${closest.toFixed(1)} of ${C.BUILD.pass}`);
 }
 
 /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gated the Pattern on a

@@ -86,7 +86,7 @@ named sites. Units march the paths; fights happen where armies meet.
 | **Sorcery Spire** | Fiona's arts | spawns Sorcerers (ranged) on a timer |
 | **Siege Works** | the timber yard | spawns Engines — made for stone, useless against men |
 | **Curtain Wall** | a run of stone with a length | bars the ground; shooters man its parapet |
-| **Watchtower** | Julian's vigil | shoots attackers near your castle; holds a small garrison |
+| **Watchtower** | Julian's vigil | shoots attackers near your castle; **shelters ten shooters inside**, untouchable until the tower falls |
 | **Pattern Shrine** | a reflection of the Pattern (one only) | channel Essence → Pattern progress; 100% = throne |
 
 All buildings upgrade to level 3. Castle (Seat of Power) is pre-placed with HP.
@@ -106,6 +106,18 @@ attack buildings at all**, so no host of them can take a Seat; and **only shoote
 wall or a tower**, so a curtain is a shooting platform you have to muster *for*. Melee and siege
 break stone; shooters hold walls and kill men. The **Muster Roll** on the main menu lists the
 whole tree with every man's numbers.
+
+**A tower is a room, not a firing step.** Ten shooters go *inside* one, and while they are in
+there nothing on the board can touch them — the tower's own hit points are all an attacker has
+to spend. It is the safest and furthest-shooting place in Amber and it is also a single work
+with a single bar, so a siege that concentrates on the tower gets the whole garrison at once,
+and gets it standing in the middle of the assault. A tower raised *into* a curtain is part of
+that curtain: order a company to hold the wall and it splits between the parapet and the
+bastions on it. And since the sim can only guess which face of a run shelters — it faces your
+Seat — **a wall can be turned about**, one order, no crew, no stone.
+
+**And the Seat of Power answers for itself.** The throne carries the two Watchtower branches at
+their best, added together, and it is the one gun on the board no curtain shades.
 
 ## Royal Powers (cooldown buttons — the real-time agency)
 

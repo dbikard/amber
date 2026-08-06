@@ -221,7 +221,8 @@ async function match(browser, base, renderer) {
         manned: Object.keys(C.UNITS).every((k) => txt.indexOf(C.UNITS[k].name) >= 0),
         /* the three flags are what a branch is FOR, and they must be said in words */
         saysStone: /besieges nothing/.test(txt) && /strikes a Shrine/.test(txt),
-        saysWalls: /holds walls and towers/.test(txt),
+        /* the fact, not the wording — a phrasing pinned here would be a test of the phrasing */
+        saysWalls: /parapet/.test(txt) && /shelters inside a tower/.test(txt),
         saysMend: /mends/.test(txt)
       };
     });
@@ -737,6 +738,65 @@ async function match(browser, base, renderer) {
      * showing through the stone */
     ok('the scaffolding is see-through, so the pause in the muster is visible',
        rank.midOpacity < 1, `opacity ${rank.midOpacity}`);
+
+    /* ---------------- a branch you can see ---------------- *
+     * A LEVEL AND A BRANCH ARE DIFFERENT AXES, and the suite above only proved the level: it
+     * forked a hall and watched it grow, which it would have done for any branch or none. The
+     * frame asked for its model with a key that carried the branch only for a Watchtower, so
+     * every hall's branch arm was unreachable and three Barracks that had chosen three
+     * different soldieries were the same building on the board. This is the assertion that
+     * was missing — same type, same level, different choice, different work — and it is made
+     * against every forking building in CONST rather than a list, so a fork added later is
+     * covered the day it is added. */
+    suite(`${r} · a branch you can see`);
+    const brs = await pg.evaluate(async () => {
+      const R = window.Render, C2 = window.CONST;
+      const out = [];
+      for (const bt of Object.keys(C2.BUILDINGS)) {
+        const d = C2.BUILDINGS[bt];
+        if (!d.branches) continue;
+        const lv = d.fork || 2;
+        const seen = new Map();
+        /* ...and the unforked work at the same level, which must differ from all of them */
+        seen.set('—', R.model(R.modelKey({ bt, level: lv }, 0, 0)));
+        for (const br of Object.keys(d.branches))
+          seen.set(br, R.model(R.modelKey({ bt, br, level: lv }, 0, 0)));
+        const verts = [];
+        for (const [name, m] of seen) {
+          let v = 0;
+          m.traverse((o) => { if (o.geometry && o.geometry.attributes.position) v += o.geometry.attributes.position.count; });
+          verts.push([name, v]);
+        }
+        out.push({ bt, verts, distinct: new Set(verts.map((q) => q[1])).size, n: verts.length });
+      }
+      return out;
+    });
+    ok('every building that forks actually forks on the board', brs.length >= 4,
+       `${brs.length} forking buildings found`);
+    for (const b of brs)
+      ok(`...a ${b.bt} looks different for every branch it may take`, b.distinct === b.n,
+         b.verts.map((q) => `${q[0]}:${q[1]}`).join('  '));
+    /* the key the FRAME builds, not one written by hand in the test — a model that differs
+     * only when asked directly is a model the player never sees */
+    const brLive = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      g.world.players[0].essence = 99000;
+      for (const b of g.world.players[0].buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+      W.applyCommand(g.world, 0, { c: 'build', bt: 'barracks', x: c.x - 150, y: c.y + 30 });
+      const two = g.world.players[0].buildings.filter((b) => b.bt === 'barracks').pop();
+      two.raise = 0; two.hp = two.maxHp;
+      const up = W.applyCommand(g.world, 0, { c: 'up', id: two.id, br: 'raid' });
+      two.work = 0;
+      await paint();
+      const first = g.world.players[0].buildings.filter((b) => b.bt === 'barracks' && b.br === 'line').pop();
+      const a = R.debugWorks(first && first.id), b2 = R.debugWorks(two.id);
+      return { up: up.ok, err: up.err, a: a && { k: a.key, v: a.verts }, b: b2 && { k: b2.key, v: b2.verts } };
+    });
+    ok('...and the frame asks for the branch, not just the level',
+       brLive.a && brLive.b && brLive.a.k !== brLive.b.k && brLive.a.v !== brLive.b.v,
+       JSON.stringify(brLive));
 
     /* ---------------- the yard ---------------- *
      * What this game rations is the MASONS, and until now the only way to discover you had
@@ -1351,6 +1411,62 @@ async function match(browser, base, renderer) {
      * second, contradictory way to build that ignored whatever you were already holding.
      * A site says what it IS and who holds it. What still changes under an open sheet is the
      * PURSE and the YARD, and both must reach the card without it being reopened. */
+    /* WHICH FACE OF A RUN SHELTERS IS THE HEIR'S TO SAY. The sim guesses it from where the
+     * owner's Seat lies, which is right for the one curtain across the road home and wrong for
+     * a run around a forward spring or along a flank — there it stations the whole reserve in
+     * the open. The order that overrules it has to be reachable from the wall's own sheet,
+     * including while the masons are still on the run: when a wall faces is exactly the thing
+     * worth settling before it is finished. */
+    suite(`${r} · a wall can be turned about`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const flip = await pg.evaluate(async () => {
+      const W = window.World, g = window.Game.game, pl = g.world.players[0];
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      pl.essence = 99000;
+      for (const b of pl.buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
+      const had = pl.buildings.length;         // this suite tidies up after itself
+      let wall = null;
+      for (let rad = 150; rad < 300 && !wall; rad += 20)
+        for (let a2 = 0; a2 < 6.283 && !wall; a2 += 0.2) {
+          const half = Math.min(70, W.wallReach(g.world, 0) / 2 - 4);
+          const mx = c.x + Math.cos(a2) * rad, my = c.y + Math.sin(a2) * rad;
+          const px = -Math.sin(a2) * half, py = Math.cos(a2) * half;
+          if (W.applyCommand(g.world, 0, { c: 'build', bt: 'wall', x: mx - px, y: my - py,
+                                           x2: mx + px, y2: my + py }).ok)
+            wall = pl.buildings.filter((b) => b.bt === 'wall').pop();
+        }
+      if (!wall) return { err: 'no run' };
+      const out = {};
+      /* while the masons are still in it */
+      window.UI.upSheet(wall, pl.essence, false, pl);
+      out.onScaffold = !!document.getElementById('wall-flip');
+      window.UI.closeSheet();
+      wall.raise = 0; wall.hp = wall.maxHp;
+      window.UI.upSheet(wall, pl.essence, false, pl);
+      out.onFinished = !!document.getElementById('wall-flip');
+      out.was = !!wall.flip;
+      document.getElementById('wall-flip').click();
+      await new Promise((res) => requestAnimationFrame(res));
+      out.now = !!wall.flip;
+      /* ...and it is a state, not a toggle: the button asks for the opposite of what IS */
+      window.UI.upSheet(wall, pl.essence, false, pl);
+      document.getElementById('wall-flip').click();
+      await new Promise((res) => requestAnimationFrame(res));
+      out.back = !!wall.flip;
+      /* no other work offers it — it is an order about a RUN */
+      const hall = pl.buildings.find((b) => b.bt === 'barracks');
+      if (hall) { window.UI.upSheet(hall, pl.essence, false, pl); out.onHall = !!document.getElementById('wall-flip'); }
+      window.UI.closeSheet();
+      pl.buildings.length = had;
+      return out;
+    });
+    ok('the wall sheet offers the order once the run stands', flip.onFinished, JSON.stringify(flip));
+    ok('...and while the masons are still on it', flip.onScaffold, JSON.stringify(flip));
+    ok('tapping it turns the run about', flip.was === false && flip.now === true, JSON.stringify(flip));
+    ok('...and tapping it again turns it back', flip.back === false, JSON.stringify(flip));
+    ok('nothing but a run is offered it', flip.onHall === false || flip.onHall === undefined,
+       String(flip.onHall));
+
     suite(`${r} · the sheet stays live`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
     const live = await pg.evaluate(async () => {

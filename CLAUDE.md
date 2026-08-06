@@ -52,7 +52,7 @@ globals (`RNG`, `CONST`, `World`, `AI`) so `sim.js` can `require()` them in orde
   p=1000. Units also carry a small lateral `x` for visuals. Guest's renderer flips the view.
 - `world.events` is an append-only queue for the renderer/UI (shots, deaths, rifts, alerts);
   the sim never reads it. Consumers drain it each frame.
-- Commands: `{c:'build',slot,bt}`, `{c:'up',slot}`, `{c:'walk',on}`,
+- Commands: `{c:'build',slot,bt}`, `{c:'up',slot}`, `{c:'walk',on}`, `{c:'flip',id,on}`,
   `{c:'power',k,p}` — all validated in `applyCommand(world, playerIdx, cmd)`.
 - **The halt** is world state (`world.paused = {by, at}`), not a session flag, so it is
   host-authoritative and rides the snapshot to every seat. `update()` returns early and
@@ -180,8 +180,11 @@ blocking, seeing and holding its spring. Both `tier` and `work` ride the wire.
 
 Rank and level must be VISIBLE or the whole change is a number in a tooltip. The army's
 instanced meshes are bucketed `kind#tier` (a rank without a bucket silently draws as a
-recruit), `buildingModel` keys on `bt[:br]@level`, and a work with masons in it wears the same
-translucent scaffolding a rising one does.
+recruit), `buildingModel` keys on `bt[:br]@level[+garrison][%hurt]`, and a work with masons in it
+wears the same translucent scaffolding a rising one does. **`R.modelKey` is the only place that
+key is written**, and the frame's cache key is built from it rather than beside it — the two were
+separate expressions once and drifted, so the cache learned the branch and the model did not, and
+every branch arm below the Watchtower's was unreachable code.
 
 ## The fork — a level and a branch are different axes
 
@@ -243,12 +246,27 @@ blow against stone, multiplied.
   swordsman on a parapet was only ever a man in the open holding a berth an archer needed. Only
   berthed men shoot over and are exposed. It reads the order rather than `u.goal` because goals
   are assigned in the march loop, which runs after it.
-  **A tower holds a garrison.** `postTowers` is the same rule one storey up: `TOWER.berths`
-  shooters whose order falls within `TOWER.man` of one of their own finished towers go up it,
-  carry `u.tow` (NOT `u.man` — the renderer and `station()` read that as "the wall he holds"),
-  throw `TOWER.over`, and can be shot back. The tower's own gunnery is unaffected: the garrison
-  shoots as well as the tower, which is what makes filling one worth the men. The tower does not
-  change shape for it — it wears one shield on its crown per man, keyed into the model as `+n`.
+  **A TOWER IS A ROOM, AND THE STONE IS THE SHIELD.** `TOWER.berths` shooters whose order falls
+  near one of their own finished towers go INSIDE it, carry `u.tow` (NOT `u.man` — the renderer
+  and `station()` read that as "the wall he holds"), and throw `TOWER.over`. While `u.tow` is set
+  `hurt()` refuses every blow — guarded there rather than at each place that deals damage, so a
+  splash pass added later cannot forget — `acquire` skips him as a target, and the renderer does
+  not draw him at all. The only way to the men is to bring the tower down, and `hurtBuilding`
+  spills them out **on that tick**, where it stood, with the hp they went in with; a man left
+  carrying `tow` for a tower that no longer exists is a man nothing can hurt. The tower's own
+  gunnery is unaffected: the garrison shoots as well as the tower. The tower does not change
+  shape for it — it wears one shield on its crown per man, keyed into the model as `+n`, and
+  since the men are invisible that badge is the *only* sign ten archers are in there.
+  **A bastion is part of its run.** A tower with `onWall` is not `postTowers`' business: it is a
+  place on that curtain, and `postWalls` deals the roster round the parapet and every tower in
+  the run together, so holding a wall fills its bastions too. `postAll` clears `man`/`tow` once
+  and runs the two passes in order — they each used to clear `tow` at their own start, so
+  whichever ran second wiped the other's answer.
+  **A run's sheltered face is a guess the heir may overrule.** `station` faces the owner's Seat,
+  which is right for the one curtain across the road home and wrong for a run around a forward
+  spring or along a flank. `{c:'flip', id, on}` sets `b.flip` and `station` (and the renderer's
+  parapet facing) negate the normal. It asks for a STATE, not a toggle, takes no crew and no
+  stone, and may be given while the masons are still on the run.
   **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
   punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
   **A breach is a ruin, but a SHELL is not.** Only a run that actually stood is breached; one
@@ -266,6 +284,13 @@ blow against stone, multiplied.
   **A tower does not shoot through stone, not even its own** — build it INTO the run (`onWall`)
   and it shoots over that wall like a man on the parapet; behind the wall it covers the ground
   behind the wall. `clearOfWorks` takes the owner so a tower may stand on its own curtain.
+  **The Seat is the exception, and the hardest gun on the board.** `seatFire` is its own pass —
+  the Seat is not in `pl.buildings`, it is the city site with its hp in `pl.castleHp`, so its
+  cooldown has nowhere to live but `pl.seatCd`. `CONST.SEAT_GUN` is DERIVED from the two
+  Watchtower branches at their top level added together (retune a branch, retune the Seat), and
+  it alone is **not stopped by stone**: a Watchtower shut in by a curtain can be rebuilt on the
+  curtain, the Seat stands where worldgen put it forever, so if stone could shade it the cheapest
+  work in the game would switch the throne's guns off from outside their reach.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an
   abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,

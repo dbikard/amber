@@ -457,6 +457,11 @@
           ...(b.crews > 1 ? { crews: b.crews } : {}),
           ...(b.units != null ? { units: Math.round(b.units * 1000) / 1000 } : {}),
           ...(b.gated ? { gated: 1 } : {}),
+          /* WHICH FACE OF THE RUN SHELTERS. It rides for everyone, not only its owner: the men
+           * standing behind a rival's curtain are on the board where they are on the board, and
+           * a guest whose renderer turned that line the other way would draw a rival's parapet
+           * facing its own reserve. It gives nothing away that watching the men would not. */
+          ...(b.flip ? { flip: 1 } : {}),
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
           co: mine ? b.co : 0            // which company a hall musters into is yours to know

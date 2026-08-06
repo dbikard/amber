@@ -323,9 +323,16 @@
    * Shieldwall belongs. A flag rather than a reach threshold on purpose: an Engine throws 150
    * and a Bombard 365, and a siege train does not climb a curtain. */
   const mans = (u) => !!C.UNITS[u.kind].mans;
+  /* ONE PASS OWNS THE POSTING, because two of them owning half of it each did not work: both
+   * cleared `u.tow` at their own start, so whichever ran second wiped what the first had just
+   * decided. Cleared once here, then the runs are dealt (bastions included), then the towers
+   * standing on open ground take whoever is still free. */
+  function postAll(world) {
+    for (const u of world.units) { if (u.man) u.man = 0; if (u.tow) u.tow = 0; }
+    if (world.anyWall) postWalls(world);
+    postTowers(world);
+  }
   function postWalls(world) {
-    for (const u of world.units) if (u.man) u.man = 0;
-    if (!world.anyWall) return;
     const rosters = new Map();
     const reach = C.WALL.man * 1.5;
     for (const u of world.units) {
@@ -358,9 +365,37 @@
       list.sort((p, q) => (mans(q) - mans(p)) || (p.id - q.id));
       const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
       const berths = Math.max(2, Math.round(L / C.WALL.berth));
-      for (let i = 0; i < list.length; i++) {
-        list[i].berth = i;
-        if (i < berths && mans(list[i])) list[i].man = id;   // he has a place on the stone
+      /* A BASTION IS PART OF THE RUN. A tower built INTO a curtain used to be filled by its own
+       * pass, on its own rule — how near the order fell to the TOWER — so a company told to
+       * hold the wall lined the parapet, left the bastions on it empty, and the men who could
+       * have been in the safest place on the board stood in the open beside it. The towers on
+       * this run are places on this run: the roster is dealt round the parapet and every tower
+       * standing in it together, so both fill at once rather than one filling first. Dealt in
+       * that order — a place on the stone, then a room in each tower, and round again — because
+       * a wall with nobody on it is a wall nobody shoots over. */
+      const towers = world.players[w.owner].buildings.filter(
+        (b) => b.bt === 'tower' && !b.raise && !b.work && b.onWall === id);
+      const places = [];
+      for (let i = 0; i < Math.max(berths, C.TOWER.berths); i++) {
+        if (i < berths) places.push({ man: id });
+        for (const t of towers) if (i < C.TOWER.berths) places.push({ tow: t.id, slot: i });
+      }
+      /* `station` reads ONE number: a `berth` below `berths` is a place on the parapet, and
+       * anything above it is a row at the foot. So the two are counted separately — a man given
+       * a room in a tower is stationed by the tower and takes neither. Handing out the roster
+       * index instead put the third man at the foot in the eighth row because five shooters had
+       * gone up ahead of him. */
+      let take = 0, parapet = 0, foot = 0;
+      for (const u of list) {
+        /* only a shooter may take a place, and the queue is only spent when one does: a
+         * swordsman at the head of the roster must not consume a berth on his way to the foot */
+        if (mans(u) && take < places.length) {
+          const p = places[take++];
+          if (p.man) { u.man = p.man; u.berth = parapet++; }
+          else { u.tow = p.tow; u.towSlot = p.slot; }
+          continue;
+        }
+        u.berth = berths + foot++;
       }
       w.berths = berths;
     }
@@ -374,6 +409,10 @@
     const cs = cityOf(world, u.owner);
     let nx = -uy, ny = ux;
     if (nx * (cs.x - w.b.x) + ny * (cs.y - w.b.y) < 0) { nx = -nx; ny = -ny; }
+    /* ...unless the heir has turned the run about. Facing home is the right guess for the one
+     * curtain drawn across the road to your Seat and the wrong one for every other, so the
+     * `flip` order overrules it — see the command. */
+    if (w.b.flip) { nx = -nx; ny = -ny; }
     const i = u.berth || 0;
     if (i < berths) {
       const t = ((i % berths) + 0.5) / berths, off = C.WALL.man * 0.45;
@@ -388,28 +427,37 @@
     return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
   }
   /* ---------------- the tower garrison ----------------
-   * A TOWER IS A PLACE TO STAND, not only a gun. It shot on its own and men stood in the grass
-   * beneath it, which made a Watchtower a thing you built INSTEAD of defending a spot rather
-   * than a thing you defended it FROM. A few shooters may go up — `TOWER.berths` of them, and
-   * no more, because a tower is a room and not a field — and from up there they throw
-   * `TOWER.over`, further than any of them can on the ground. The tower's own gunnery is
-   * untouched: the garrison shoots AS WELL AS the tower, which is what makes filling one worth
-   * the men. They are exposed while they are up there, exactly as a man on a parapet is.
+   * A TOWER IS A ROOM, not a firing step. It shot on its own and men stood in the grass beneath
+   * it, which made a Watchtower a thing you built INSTEAD of defending a spot rather than a
+   * thing you defended it FROM. Shooters go INSIDE — `TOWER.berths` of them, and no more,
+   * because it is a room — and from up there they throw `TOWER.over`, further than any of them
+   * can on the ground. The tower's own gunnery is untouched: the garrison shoots AS WELL AS the
+   * tower, which is what makes filling one worth the men.
+   *
+   * AND THE STONE IS THEIR SHIELD. Nothing can touch a man while he is inside (see `hurt`) —
+   * the only way to them is to bring the tower down, and when it comes down they are in the
+   * field again on that tick, where it stood, with whatever they had left. That is the whole
+   * bargain: a tower full of archers is the safest and furthest-shooting place on the board and
+   * it is also a single work with a single hit-point bar, so an assault that concentrates on it
+   * gets all of them at once.
    *
    * Ordered by the same rule as a wall — the ORDER a man is under, not where he happens to be
-   * — so filling a tower is something you decide rather than something that happens. */
+   * — so filling a tower is something you decide rather than something that happens. A tower
+   * standing IN a curtain is not this pass's business: it is a place on that run, dealt with
+   * the parapet by `postWalls`, or a company told to hold the wall would line the stone and
+   * leave the bastions on it empty. */
   function postTowers(world) {
-    for (const u of world.units) if (u.tow) u.tow = 0;
     const rosters = new Map();
     for (const u of world.units) {
       if (u.hp <= 0 || u.owner === C.CHAOS_ID || !mans(u)) continue;
+      if (u.man || u.tow) continue;             // already given a place by the run he was sent to
       const pl3 = world.players[u.owner];
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
       const gs = co3 && co3.rally ? co3.rally : pl3.banner;
       if (!gs) continue;
       let post = null, pd = C.TOWER.man;
       for (const b of pl3.buildings) {
-        if (b.bt !== 'tower' || b.raise > 0) continue;
+        if (b.bt !== 'tower' || b.raise > 0 || b.work > 0 || b.onWall) continue;
         const dd = Math.sqrt(d2(b.x, b.y, gs.x, gs.y));
         if (dd < pd) { pd = dd; post = b; }
       }
@@ -529,6 +577,80 @@
         u.set = 1; u.pin = world.tick;
       }
   }
+  /* ---------------- ANTICIPATION: steer clear before you arrive ----------------
+   * THE MODEL WAS THE BUG. `stand` is a POSITION projection — let a man walk into the stone,
+   * then put him back out — and repulsion-after-contact is the one formulation that is
+   * guaranteed to oscillate: with his order behind a hall, the march walks him in and the
+   * projection walks him out along the same line, thirty times a second, forever. `u.set` and
+   * `u.pin` were damping bolted on to hide it. Measured: 17 men across three matches standing
+   * at exactly BUILD.pass from a work with an order 1300-1900 away, one for 307 seconds.
+   *
+   * The crowd literature settled this. Helbing's social-force model repels on SEPARATION and
+   * has the same jitter; what Karamouzas, Skinner and Guy measured in real pedestrians (PRL
+   * 2014) is that people react to projected TIME TO COLLISION, not to distance — they turn
+   * early and never touch. ORCA makes it operational by choosing among VELOCITIES rather than
+   * correcting positions: an obstacle forbids a set of velocities, and you take the permitted
+   * one nearest what you wanted.
+   *
+   * For a single static disc that reduces to this: if holding your course would put you inside
+   * the disc within `look` seconds, turn just enough to graze it — the tangent — on whichever
+   * side is closer to where you were going. Nothing ever pushes back, so nothing can oscillate,
+   * and `stand` is left as the safety net it should always have been (a recruit spawns INSIDE
+   * his hall, and something has to put him out).
+   *
+   * Two guards earn their place. A man does not swerve round a work that stands BEYOND his
+   * destination — the ground he is walking to may be the far side of it — and he does not
+   * swerve round the thing he was sent to break, which is why this is not called on the chase. */
+  function steerClear(world, u, vx, vy, reach, gx, gy) {
+    const look = C.CROWD.look, speed = C.UNITS[u.kind].speed;
+    const ahead = speed * look;
+    let best = null, bestT = look;
+    for (let q = 0; q < world.players.length; q++)
+      for (const b of world.players[q].buildings) {
+        if (b.x2 != null || b.raise > 0) continue;      // runs are `shove`'s; a shell bars nothing
+        const rx = b.x - u.x, ry = b.y - u.y;
+        const d = Math.sqrt(rx * rx + ry * ry);
+        const R = C.BUILD.pass;
+        if (d > ahead + R || d <= 1e-3) continue;
+        if (d - R > reach) continue;                    // it stands past where he is going
+        /* ...AND HE DOES NOT WALK ROUND WHAT HE IS WALKING TO. A muster ring sits in a court
+         * full of works, so a man's own destination is very often within a stride of one. Left
+         * out, this rule steers him off his own place, he re-aims, and he orbits his hall for
+         * the rest of the match — measured as brand falling from nine wins to two and three
+         * mirrors running to the cap. */
+        if (gx != null && (gx - b.x) * (gx - b.x) + (gy - b.y) * (gy - b.y) < (R + C.CROWD.space) * (R + C.CROWD.space)) continue;
+        /* time to the closest approach if he holds this course, and how near he would pass */
+        const t = rx * vx + ry * vy;                    // v is a unit vector; t is in units
+        if (t <= 0) continue;                           // it is behind him
+        const miss = Math.abs(rx * vy - ry * vx);       // perpendicular distance at closest approach
+        if (miss >= R) continue;                        // he already clears it
+        const tt = t / speed;                           // ...in seconds
+        if (tt < bestT) { bestT = tt; best = { rx, ry, d, R, id: b.id }; }
+      }
+    if (!best) { u.dg = 0; return null; }
+    /* GRAZE IT. The two courses that just clear the disc are the bearing to its middle turned
+     * by asin(R/d); take whichever is the smaller turn from the course he wanted. Standing
+     * inside it already (a fresh recruit) there is no tangent — head straight out and let
+     * `stand` finish the job. */
+    if (best.d <= best.R) return { x: -best.rx / best.d, y: -best.ry / best.d };
+    const to = Math.atan2(best.ry, best.rx);
+    const off = Math.asin(Math.max(-1, Math.min(1, best.R / best.d)));
+    const want = Math.atan2(vy, vx);
+    const a1 = to + off, a2 = to - off;
+    const wrap = (a) => Math.atan2(Math.sin(a - want), Math.cos(a - want));
+    /* AND HE COMMITS TO A SIDE. Whether a course clears a disc is a yes/no question, and a man
+     * walking the edge of it answers differently every tick: steer, clear, steer, clear — six
+     * men in a hundred and thirty-nine reversing four times in two seconds, which is the
+     * shivering the arrival rule already had to cure with hysteresis. It is also what people
+     * do: you pick a side of the obstacle early and keep it rather than re-deciding at every
+     * stride. `u.dg` is the work he is going round and `u.dgs` the hand he chose; both are
+     * dropped the moment it is behind him. */
+    const t1 = wrap(a1), t2 = wrap(a2);
+    let side = u.dg === best.id ? u.dgs : (Math.abs(t1) <= Math.abs(t2) ? 1 : -1);
+    u.dg = best.id; u.dgs = side;
+    return { x: Math.cos(side > 0 ? a1 : a2), y: Math.sin(side > 0 ? a1 : a2) };
+  }
+
   /* MEN HAVE WIDTH. Nothing kept one soldier off another, so a column arrived stacked and a
    * melee was a single point with a hundred sprites in it — an army of twenty and an army of
    * two hundred looked the same. This is the separation rule out of flocking, and nothing
@@ -1072,6 +1194,25 @@
       emit(world, { e: 'mending', pi, id: s2.id, x: s2.x, y: s2.y });
       return { ok: true };
     }
+    /* TURN A RUN ABOUT. `station` works out which face of a curtain is the sheltered one from
+     * where the owner's Seat lies. For the curtain you draw across the approach to your own
+     * Seat that is exactly right, and it is right for nothing else: a run thrown up around a
+     * forward spring, or along a flank, or between two rivals in a free-for-all, faces home and
+     * puts the whole reserve in the field on the wrong side of its own stone. Which way the war
+     * is coming from is not a thing the sim can work out — it changes hour to hour, and in a
+     * four-handed match there is no single answer — so it is the player's to say.
+     *
+     * It costs nothing, takes no crew and may be given while the run is still going up: it is
+     * an ORDER about a wall, not work done to one. Like the halt it asks for a STATE rather
+     * than a toggle, so two seats tapping it in the same tick cannot cancel each other out. */
+    if (cmd.c === 'flip') {
+      const s3 = bldOf(world, pi, cmd.id);
+      if (!s3) return { ok: false, err: 'id' };
+      if (!isWall(s3)) return { ok: false, err: 'nowall' };
+      const on = cmd.on === undefined ? !s3.flip : !!cmd.on;
+      if (on) s3.flip = 1; else delete s3.flip;
+      return { ok: true };
+    }
     if (cmd.c === 'walk') {
       if (!pl.buildings.some((b) => b.bt === 'shrine')) return { ok: false, err: 'shrine' };
       pl.walking = !!cmd.on;
@@ -1260,6 +1401,14 @@
   }
   const tierOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
   function hurt(world, victim, dmg, byOwner) {
+    /* THE TOWER IS THE SHIELD. A garrison used to stand on the crown and be shot like a man on
+     * a parapet, which made filling a tower a way to lose archers slightly further from home:
+     * a bombard's burst took the lot, and a tower's whole worth is that it is a ROOM. Inside,
+     * the only way to the men is through the stone — the tower's own hit points are what an
+     * attacker has to spend, and when it goes they are back in the field on the same tick with
+     * whatever they had left. Guarded here rather than at each of the half-dozen places that
+     * deal damage, because a splash pass added later would not have known to ask. */
+    if (victim.tow) return;
     victim.hp -= dmg;
     if (victim.hp <= 0 && !victim.dead) {
       victim.dead = true;
@@ -1350,6 +1499,10 @@
       for (const v of cell) {
         if (v.hp <= 0 || v.owner === u.owner) continue;
         const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
+        /* a man inside a tower is not a target — the stone is. `hurt` refuses the blow anyway,
+         * but a swordsman who aimed at him would stand at the foot of the tower swinging at
+         * somebody he can never reach instead of going for the tower or moving on. */
+        if (v.tow) continue;
         if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
       }
     }
@@ -1499,6 +1652,21 @@
     }
     if (b.hp <= 0) {
       emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
+      /* AND THE GARRISON IS IN THE FIELD AGAIN. They were sheltered by this stone and it is
+       * gone, so they come out where it stood, on this tick and not on the next pass — a man
+       * left carrying `tow` for a tower that no longer exists is a man nothing can hurt.
+       * `postTowers` would clear it a tick later; a tick of invulnerability at the exact moment
+       * the tower falls is a tick spent inside the assault that felled it. They keep the hit
+       * points they went up with: taking the tower is what the attacker paid for, not the men.
+       * Spread around the ruin rather than stacked on it, so the crowd rule has somewhere to
+       * put them and the company reads as a company. */
+      const spill = world.units.filter((u) => u.tow === b.id);
+      for (let k = 0; k < spill.length; k++) {
+        const u = spill[k];
+        const a = (k + 0.5) / spill.length * Math.PI * 2;
+        u.tow = 0; u.towSlot = 0;
+        u.x = b.x + Math.cos(a) * C.TOWER.ring; u.y = b.y + Math.sin(a) * C.TOWER.ring;
+      }
       pl.buildings.splice(i, 1);
       if (isWall(b)) { world.navVersion++; noteWalls(world); }   // a breach is a hole
       if (b.bt === 'shrine') {
@@ -1522,6 +1690,55 @@
        * taking three quarters of their army. */
       emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y, by: by == null ? null : by });
     }
+  }
+
+  /* ---------------- the Tower of the Seat shoots ----------------
+   * The Seat is not in `pl.buildings` — it is the city site, with its hit points in
+   * `pl.castleHp` — so its gunnery cannot live in the per-building loop and its cooldown has
+   * nowhere to sit but the player. That is the only reason this is a pass of its own.
+   *
+   * AND ITS SHOT IS NOT STOPPED BY STONE. Every other gun on the board is: that is what makes a
+   * curtain worth its price, and what makes raising a tower INTO one a decision rather than a
+   * formality. The Seat is the deliberate exception, because the answer available to a
+   * Watchtower is not available to it — a tower shut in by a wall can be rebuilt on the wall,
+   * and the Seat stands where worldgen put it forever. Left blockable, the first thing any
+   * besieger would raise is a curtain across the court, and the throne's own guns would be
+   * switched off by the cheapest work in the game from outside their reach. It stands a hundred
+   * feet over its own city; it shoots over everything, including its owner's walls. */
+  function seatFire(world, pi, pl, city, dt) {
+    /* a toppled heir's Seat is a ruin, and a ruin does not shoot — the update loop skips a
+     * fallen heir already, but the rule belongs with the gun rather than with the caller */
+    if (pl.out || !city) return;
+    const g = C.SEAT_GUN;
+    pl.seatCd = (pl.seatCd || 0) - dt;
+    if (pl.seatCd > 0) return;
+    /* hostile to its owner, exactly as a tower is: rivals AND the black road, and nobody of
+     * his own. `forNear` walks the same spatial hash the towers do. */
+    let best = null, bd = g.range * g.range;
+    forNear(world, city.x, city.y, g.range, (u) => {
+      if (u.owner === pi) return;
+      const d = d2(u.x, u.y, city.x, city.y);
+      if (d < bd) { bd = d; best = u; }
+    });
+    if (!best) { pl.seatCd = 0.15; return; }   // ready again shortly, so an arrival is answered
+    hurt(world, best, g.dmg, pi);
+    /* the burst is the cannon's, and it falls off the same way: a column bleeds, no single
+     * foe dies to it */
+    if (g.splash > 0 && g.splashDmg > 0) {
+      const r2 = g.splash * g.splash, hits = [];
+      forNear(world, best.x, best.y, g.splash, (u) => {
+        if (u.owner === pi || u === best) return;
+        if (d2(u.x, u.y, best.x, best.y) < r2) hits.push(u);
+      });
+      for (const u of hits) hurt(world, u, g.splashDmg, pi);
+    }
+    /* the renderer draws a shot from this event and nothing else, so it must have a tower's
+     * shape. `id: 0` because work ids are handed out from 1: anything that goes looking for the
+     * building that fired finds nothing, which is the truth. `br: 'cannon'` is not a branch —
+     * the Seat has none — it is the colour a bursting shot is drawn in, and this one bursts. */
+    emit(world, { e: 'shot', pi, id: 0, x: city.x, y: city.y,
+                  to: { x: best.x, y: best.y }, br: 'cannon', splash: g.splash });
+    pl.seatCd = g.atk;
   }
 
   /* ---------------- update ---------------- */
@@ -1664,6 +1881,8 @@
           }
         }
       }
+      /* and the Seat itself, which is a tower with no work to hang its gunnery on */
+      seatFire(world, pi, pl, city, dt);
       /* the solo handicap: an heir set to an easier footing simply draws less from the same
        * ground. It plays its own game exactly as it would otherwise — it is just poorer. */
       income *= pl.eco;
@@ -1742,8 +1961,7 @@
 
     /* the parapet roster, before anyone moves or shoots: who is ON the wall this tick decides
      * both where he walks and whether he can shoot over it */
-    if (world.anyWall || world.hadWall) { postWalls(world); world.hadWall = world.anyWall; }
-    postTowers(world);
+    postAll(world);
     /* WHERE EVERY MAN STOOD BEFORE THIS TICK TOUCHED HIM. The last `stand` of the tick runs
      * after the crowd pass, where there is no single step to slide along — and without one it
      * can only REPEL, which snapped a man back onto the rim of a work every tick and undid the
@@ -1864,8 +2082,27 @@
             gx = st2.x; gy = st2.y;
             const dg = Math.sqrt(d2(u.x, u.y, gx, gy));
             /* the whole run is his ground once he is on it, or he would be dragged back to
-             * the order's point every tick — the same handover the muster ring needs */
-            if (dg < C.NAV.arrive) { if (dg > 3) { u.x += (gx - u.x) / dg * def.speed * dt; u.y += (gy - u.y) / dg * def.speed * dt; } continue; }   // a berth on a parapet is exact: he is not jostled off it
+             * the order's point every tick — the same handover the muster ring needs.
+             *
+             * ...UNLESS HIS PLACE IS ON THE OTHER SIDE OF IT. The shortcut walks a straight
+             * line, and a straight line to the far face goes through the wall: the march put
+             * him into the stone, the end-of-tick `stand` put him back out, and he spent the
+             * match pressed against his own curtain a stride from where he was going. It is
+             * what a heir sees the moment he turns a run about — the shooters cross and the
+             * reserve does not — but it was there before the order existed, for any man whose
+             * row happened to lie beyond the run. Crossing his own line means he wants the
+             * GATEWAY, which is the nav layer's answer and not a beeline's.
+             *
+             * A MAN WITH A BERTH IS THE EXCEPTION, and it is the same exception `walled` makes:
+             * he is not walking THROUGH the stone, he is climbing onto it. His place sits a
+             * little to the sheltered side, so turning the run about moves it across the line —
+             * send him round to the gateway for that and the parapet empties every time an heir
+             * changes his mind. */
+            if (dg < C.NAV.arrive && (u.man === post.b.id ||
+                                      !crosses(u.x, u.y, gx, gy, post.ax, post.ay, post.bx, post.by))) {
+              if (dg > 3) { u.x += (gx - u.x) / dg * def.speed * dt; u.y += (gy - u.y) / dg * def.speed * dt; }
+              continue;   // a berth on a parapet is exact: he is not jostled off it
+            }
             const s4 = NAV.steer(world.nav, world, u.owner, gx, gy, u.x, u.y);
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
             const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
@@ -1929,6 +2166,11 @@
             vx = (gx - u.x) / db; vy = (gy - u.y) / db;
           }
         }
+        /* ANTICIPATE. The course is chosen to clear the stone BEFORE he reaches it, which is
+         * what stops him wedging on it — see steerClear. Only on the march: a man on the chase
+         * is closing on something he means to hit. */
+        const clear = steerClear(world, u, vx, vy, Math.sqrt(d2(u.x, u.y, gx, gy)), gx, gy);
+        if (clear) { vx = clear.x; vy = clear.y; }
         const mx0 = u.x, my0 = u.y;
         u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
         stand(world, u, mx0, my0);

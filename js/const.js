@@ -99,7 +99,11 @@
    * men close to 18 and a hundred and twenty close to 7, and both take it to zero inside four
    * minutes. The geometry is fine. An assault that does nothing is being stopped in the FIELD,
    * which is turtle beating rush and is what pillar 2 asks for — do not damp this. */
-  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, ring: 300, dead: 0.35 };
+  /* `look` is how many seconds ahead a man watches for stone he would walk into. It is the one
+   * number the anticipatory steering has: turn early enough and he never touches a work, so
+   * nothing has to push him off one and nothing can oscillate. At a soldier's pace this is
+   * about sixty units of warning — a couple of strides more than the work is wide. */
+  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, ring: 300, dead: 0.35, look: 1.2 };
 
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle
@@ -329,10 +333,18 @@
   CONST.UP_WORK = 1.0;
 
   /* THE TOWER GARRISON. `man` is how near an ORDER must fall to a tower for its shooters to go
-   * up; `berths` is how many fit, because a tower is a room and not a field; `over` is how far
+   * in; `berths` is how many fit, because a tower is a room and not a field; `over` is how far
    * a man throws from up there, further than any shooter reaches on the ground; `ring` is how
-   * far from the tower's foot the garrison stands, so three men read as three. */
-  CONST.TOWER = { man: 76, over: 150, berths: 3, ring: 22 };
+   * far from the tower's middle they stand, which is now INSIDE its footprint rather than in a
+   * circle round its foot — they are sheltered by the stone, and standing outside it is exactly
+   * what they are not doing.
+   *
+   * TEN, AND THEY ARE SAFE IN THERE. Three exposed men was a garrison worth neither the walk
+   * nor the risk — a bombard's burst took all three, and a tower's entire worth is that it is a
+   * ROOM. Ten of them, untouchable until the tower comes down, is a real decision with a real
+   * answer: it is still ONE work with ONE hit-point bar, so a siege that concentrates on the
+   * tower gets the whole garrison at once, and they come out into the middle of it. */
+  CONST.TOWER = { man: 76, over: 150, berths: 10, ring: 9 };
 
   CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150,
                  /* A PARAPET HOLDS WHAT IT HOLDS. One berth per `berth` of length, and the men
@@ -393,6 +405,39 @@
    * reads these two keys and never names a building. */
   CONST.BUILDINGS.tower.branches = CONST.TOWER_BRANCHES;
   CONST.BUILDINGS.tower.branchUI = CONST.TOWER_BRANCH_UI;
+
+  /* ---------------- the Seat's own gun ----------------
+   * THE TALLEST TOWER AN HEIR OWNS DID NOT SHOOT. A Seat was a pile of hit points with a ring
+   * of ground around it, so an assault that beat the field met nothing at the gate but arithmetic
+   * — and a Watchtower raised in the court out-fought the throne it was guarding. The Seat now
+   * answers for itself, and it answers as hard as the two Watchtower branches put together:
+   * whatever you might have built beside it, it is already there.
+   *
+   * DERIVED, NOT WRITTEN DOWN. These are the two branches at their top level added together, so
+   * retuning a branch retunes the Seat and the two can never drift apart. Per-branch arrays are
+   * indexed by (level - fork), so the last entry is the fully-upgraded tower.
+   *   ballista L3   31 dmg / 1.9s = 16.32 dps
+   *   cannon   L3   18 dmg / 2.1s =  8.57 dps
+   *                                 --------
+   *                                 24.89 dps, fired on the quicker of the two cadences (1.9s),
+   *                                 so one blow is 47.29 — at the ballista's reach, with the
+   *                                 cannon's burst.
+   * The burst is the CANNON'S burst and no more: its splash damage per second carried over onto
+   * the Seat's cadence, rather than a fraction of the (much larger) combined blow, which would
+   * have made the Seat better than the sum by a wide margin against a column. */
+  CONST.SEAT_GUN = (function () {
+    const b = CONST.TOWER_BRANCHES.bolt, c = CONST.TOWER_BRANCHES.cannon;
+    const bi = b.dmg.length - 1, ci = c.dmg.length - 1;          // the fully-upgraded entry
+    const dps = b.dmg[bi] / b.atk[bi] + c.dmg[ci] / c.atk[ci];
+    const atk = Math.min(b.atk[bi], c.atk[ci]);
+    return {
+      atk,
+      dmg: dps * atk,
+      range: Math.max(b.range[bi], c.range[ci]),
+      splash: c.splash[ci],
+      splashDmg: (c.dmg[ci] * (c.splashFrac || 0) / c.atk[ci]) * atk
+    };
+  })();
 
   /* ---------------- the halls fork ----------------
    * A LEVEL AND A BRANCH ARE DIFFERENT AXES, and the halls only had one of them. A level makes

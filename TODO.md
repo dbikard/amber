@@ -617,6 +617,40 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       at one height. Elevation varied by up to 18 units across that footprint, so the land
       poked through and took a wedge out of the water. Worldgen levels a `springLevel` radius
       around every spring; measured spread across the pool+ring is now 0.00 on every seed.
+- [x] **The Seat answers for itself.** The tallest tower an heir owns did not shoot: a Seat was
+      a pile of hit points, so an assault that beat the field met nothing at the gate but
+      arithmetic, and a Watchtower raised in the court out-fought the throne it guarded.
+      `CONST.SEAT_GUN` is DERIVED from the two Watchtower branches at their top level added
+      together — retune a branch and the Seat follows — and it alone is not stopped by stone,
+      because a tower shut in by a curtain can be rebuilt on the curtain and the Seat cannot
+      move. Left blockable, the cheapest work in the game would switch the throne's guns off.
+- [x] **A tower is a room, and the stone is the shield.** Three men on a crown, exposed, was a
+      garrison worth neither the walk nor the risk — one burst took all three. Ten go INSIDE
+      now and nothing can touch them (`hurt` refuses the blow, `acquire` will not aim, the
+      renderer does not draw them); the only way to them is to bring the tower down, and
+      `hurtBuilding` puts them back in the field on that tick, where it stood. It is still one
+      work with one bar, so a siege that concentrates on it gets the whole garrison at once.
+- [x] **A bastion is part of its run.** A company told to hold a curtain lined the parapet and
+      left the towers standing in that curtain empty. `postWalls` now deals the roster round the
+      parapet and every tower on the run together. The two posting passes each used to clear
+      `u.tow` at their own start, so whichever ran second wiped the other's answer; `postAll`
+      clears once and runs them in order.
+- [x] **A wall can be turned about.** `station` guesses the sheltered face from where the
+      owner's Seat lies — right for the one curtain across the road home, wrong for a run
+      around a forward spring or along a flank, where it put the whole reserve in the open.
+      `{c:'flip', id, on}` overrules it: no crew, no stone, allowed while the masons are still
+      on it, and a STATE rather than a toggle so two seats cannot cancel each other out.
+      Found on the way and fixed with it: a man whose place lay across his own run **beelined
+      into the stone** — the `NAV.arrive` shortcut ignores walls — so the march walked him in,
+      the end-of-tick `stand` walked him out, and he spent the match pressed against his own
+      curtain a stride from where he was going. He takes the gateway now. A man who holds a
+      BERTH is exempt: he is climbing onto the stone, not walking through it.
+- [x] **Every branch of a work looks like itself.** Nine branch arms had been written into
+      `buildingModel` and eight of them were unreachable: the frame's cache key carried the
+      branch, the model key beside it did not, so three Barracks that had chosen three different
+      soldieries were the same building on the board — and the garrison badge never drew at all
+      while its count thrashed the cache. `R.modelKey` is now the ONLY place that key is
+      written and the cache key is built from it, so the two cannot drift again.
 
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map

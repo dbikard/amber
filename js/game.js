@@ -968,6 +968,13 @@
         issue({ c: 'pause', on: !on });
       },
       onFix: (id) => issue({ c: 'fix', id }),
+      /* the run's sheltered face, turned over. It asks for a STATE rather than a toggle for the
+       * same reason the halt does: two seats tapping it at once must not cancel each other. */
+      onFlip: (id) => {
+        const view = game.mode === 'guest' ? snapCur : game.world;
+        const b = view && (view.players[game.viewer].buildings || []).find((q) => q.id === id);
+        issue({ c: 'flip', id, on: !(b && b.flip) });
+      },
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
       onBuildMenu: () => {
         if (game.over) return;

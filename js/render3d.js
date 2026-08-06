@@ -263,6 +263,18 @@
   /* key is 'bt', a forked Watchtower 'tower:bolt', and always a LEVEL after it: 'barracks@2'.
    * A level you paid for and cannot see is a level you will forget you bought — so every
    * work grows with its rank, in the silhouette rather than the paint. */
+  /* ...and this is the only place a key is WRITTEN, so that what the frame asks for and what
+   * the parser below understands cannot come apart. Everything a work's shape depends on goes
+   * in here; anything that changes only its materials (scaffolding, a ghost, a breach) is the
+   * caller's to add to its cache key afterwards. `R.modelKey` is exported for the suite, which
+   * asserts the fact this exists to guarantee: two halls of the same type on the same level
+   * that took different branches are different models. */
+  function modelKey(b, gar, hurt) {
+    return (b.br ? b.bt + ':' + b.br : b.bt)
+      + '@' + (b.level || 1)
+      + (gar ? '+' + gar : '')
+      + (hurt ? '%' + hurt : '');
+  }
   function buildingModel(key) {
     /* ...and a DAMAGE step after that: 'barracks@2%1'. It is part of the key so that a work
      * being broken rebuilds its stone, exactly as a level does. */
@@ -365,12 +377,20 @@
       } else {
         p.push(part(cone(12, 16, 8), 0x5a4a68, 0, 62, 0));
       }
-      /* THE GARRISON'S MARK. One shield hung on the crown per man up the tower — a filled
-       * tower shoots further and holds ground the empty one beside it does not, and that has
-       * to be readable without tapping it. Deliberately NOT a second tower model: the
-       * silhouette is the tower's identity, and a garrison comes and goes. */
+      /* THE GARRISON'S MARK. One shield hung on the crown per man inside — and since the men
+       * themselves are not drawn while they are in there, this is the ONLY sign that ten
+       * archers are in this tower rather than none. A filled tower shoots further and holds
+       * ground the empty one beside it does not, and that has to be readable without tapping
+       * it. Deliberately NOT a second tower model: the silhouette is the tower's identity, and
+       * a garrison comes and goes.
+       *
+       * Hung round the crown at a fixed pitch rather than spread over the whole circle, so the
+       * ring FILLS as the men arrive — spread evenly, three men and ten men both make a
+       * complete ring and the count is the one thing the mark exists to show. Ten closes the
+       * circle exactly at this shield width; the floor keeps a wider table from overlapping
+       * them into an unreadable band. */
       for (let i = 0; i < gar; i++) {
-        const a = (i + 0.5) / C.TOWER.berths * Math.PI * 2;
+        const a = i / Math.max(10, C.TOWER.berths) * Math.PI * 2;
         p.push(part(box(5, 6.5, 1.4), 0xffe9a8, Math.cos(a) * 13.5, sh + 2, Math.sin(a) * 13.5));
       }
     } else if (bt === 'siege') {
@@ -992,6 +1012,10 @@
   }
   /* world (ground) → screen: the inverse of toWorld, same 2-arg shape in both renderers */
   R.project = (x, y) => proj(x, groundH(x, y) + 2, y);
+  /* what a work is drawn as, and how it is drawn — the suite's way of asking whether two works
+   * look the same without reaching into the scene graph */
+  R.modelKey = modelKey;
+  R.model = buildingModel;
 
   /* ---------------- world (re)build ---------------- */
   const mapKey = (view, viewer) => (view.mapSeed || 0) + ':' + viewer;
@@ -1163,8 +1187,12 @@
     worldG.add(m);
     fx.push({ k: 'ring', obj: m, ttl, max: ttl, big: big || 40, x, z, ping });
   }
-  function boltFx(x1, z1, x2, z2, color, ttl) {
-    const gline = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, groundH(x1, z1) + 16, z1), new THREE.Vector3(x2, groundH(x2, z2) + 12, z2)]);
+  /* `h` is how high the shot LEAVES. Every gun on the board is a tower of some height and 16
+   * was near enough for all of them until the Seat started shooting: the throne stands a
+   * hundred feet over its own city, and a bolt leaving the middle of the city at knee height
+   * read as a man in the streets rather than the castle answering. */
+  function boltFx(x1, z1, x2, z2, color, ttl, h) {
+    const gline = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, groundH(x1, z1) + (h || 16), z1), new THREE.Vector3(x2, groundH(x2, z2) + 12, z2)]);
     const m = new THREE.Line(gline, new THREE.LineBasicMaterial({ color, transparent: true }));
     worldG.add(m);
     fx.push({ k: 'bolt', obj: m, ttl, max: ttl, x: x1, z: z1 });
@@ -1174,7 +1202,10 @@
     if (!R.ready) return;
     for (const ev of events) {
       if (ev.e === 'shot' && ev.pi === viewer) {
-        boltFx(ev.x, ev.y, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22);
+        /* the Seat's own gun carries no work id — it is the castle firing, and it fires from
+         * the top of it */
+        boltFx(ev.x, ev.y, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22,
+               ev.id ? 16 : 74);
         if (ev.splash > 0) ringFx(ev.to.x, ev.to.y, 0xffb070, 0.32, ev.splash * 0.9);   // the burst
       } else if (ev.e === 'wshot') boltFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
       else if (ev.e === 'bolt') boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, tintOf(ev.from.owner, viewer), 0.3);
@@ -1271,13 +1302,18 @@
     const cid = view.map.cities[u.owner];
     const c = cid != null ? view.map.sites[cid] : null;
     if (c && nx * (c.x - b.x) + ny * (c.y - b.y) > 0) { nx = -nx; ny = -ny; }
+    /* ...and a run its heir has TURNED ABOUT faces the other way, or the line on the parapet
+     * would be facing its own reserve while the reserve took cover on the far side */
+    if (b.flip) { nx = -nx; ny = -ny; }
     const nL = Math.hypot(nx, ny) || 1;
     return { x: ax + vx * t, y: ay + vy * t, h: 27, ang: Math.atan2(nx / nL, ny / nL) };
   }
-  /* A GARRISON IS A BADGE, NOT A NEW TOWER. The men are drawn where they stand, at the
-   * tower's foot; what the tower gains is a mark per man on its crown, so a filled tower can
-   * be told from an empty one at a glance without rebuilding the silhouette for it. Counted
-   * off the units in the VIEW, so a rival's garrison shows only what you can actually see. */
+  /* A GARRISON IS A BADGE, NOT A NEW TOWER. The men are INSIDE — nothing can touch them until
+   * the stone comes down — so they are not drawn on the board at all (see the army pass, which
+   * skips a man with `tow`); what the tower gains is a mark per man on its crown, so a filled
+   * tower can be told from an empty one at a glance without rebuilding its silhouette. That is
+   * the whole reason the badge has to be right: it is the ONLY sign of ten archers. Counted off
+   * the units in the VIEW, so a rival's garrison shows only what you can actually see. */
   function garrisons(view) {
     let g = null;
     for (const u of view.units) {
@@ -1346,6 +1382,11 @@
     const byKind = {};
     for (const k of KINDS) byKind[k] = [];
     for (const u of view.units) {
+      /* A MAN INSIDE A TOWER IS INSIDE IT. Nothing can reach him and he is not standing in the
+       * grass, so drawing him there would be a picture of a rule the sim no longer plays — the
+       * tower wears one mark per man instead (see `garrisons`). He comes back the tick the
+       * stone does, which is the moment the badge is worth having watched. */
+      if (u.tow) continue;
       const key = u.kind + '#' + rankOf(u);
       if (byKind[key]) byKind[key].push(u);
     }
@@ -1463,14 +1504,17 @@
         /* ...and its DAMAGE step, so a work being taken apart is taken apart on the board and
          * not only in a number. A ghost has no hp on the wire, so it is never hurt. */
         const hurt = ghost ? 0 : hurtOf(b);
-        /* any work may carry a branch now, not only the tower — a Barracks that chose the
-         * Shieldwall is a different building on the board, and the key is what says so */
-        const key = (b.br ? b.bt + ':' + b.br : b.bt)
+        /* THE MODEL KEY IS PART OF THE CACHE KEY, not a second spelling of it. These were two
+         * separate expressions and they drifted: the cache key learned the branch and the
+         * garrison, the model key did not, so a Barracks that chose the Shieldwall was rebuilt
+         * as the same plain hall as one that chose the Outriders and every branch arm in
+         * `buildingModel` below the tower's was unreachable. Written this way the model asked
+         * for is by construction the model the cache is keyed on. */
+        const mkey = modelKey(b, gar && gar.get(id), hurt);
+        const key = mkey
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
-          + '@' + (b.level || 1) + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
-          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '')
-          + (gar && gar.get(id) ? '+' + gar.get(id) : '')
-          + (hurt ? '%' + hurt : '');
+          + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
+          + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
@@ -1487,9 +1531,7 @@
             : new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
                 new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
           pad.position.y = -0.4;
-          grp.add(pad, isW ? wallModel(b, hurt)
-            : buildingModel((b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
-                            + '@' + (b.level || 1) + (hurt ? '%' + hurt : '')));
+          grp.add(pad, isW ? wallModel(b, hurt) : buildingModel(mkey));
           /* a work about to go leans. It is a small angle on purpose — enough that a ruinous
            * hall reads as one out of the corner of the eye, not so much that the board looks
            * broken — and a curtain is spared it, since a whole run tipping together would

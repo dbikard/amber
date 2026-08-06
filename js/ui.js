@@ -473,6 +473,29 @@
       'It stands and it can be broken, but it does its job for nobody until they are out of it.'
     : `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
       'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.');
+  /* WHICH SIDE OF THE STONE IS THE SHELTERED ONE. A run works its own sheltered face out from
+   * where the owner's Seat lies, which is right for a curtain drawn across the approach to it
+   * and wrong for every other one — a wall thrown up around a forward spring, or along a flank,
+   * put the whole reserve in the open on the far side and left the cover empty. The sim cannot
+   * know which way the war is coming from; the player looking at the board can. So this is a
+   * SWITCH and not a cleverer guess: one tap turns the run's shelter over and the men walk
+   * round on the next tick.
+   *
+   * It is offered on a rising run as well, which is why it is a function and not a line at the
+   * bottom of the sheet — the sheet returns early for scaffolding, and which way a wall faces
+   * is exactly the thing worth settling before it is finished. A breach shelters nobody, so it
+   * is the one state with nothing to turn about. */
+  function flipCard(el, s) {
+    if (s.x2 == null || s.breach) return;
+    const b = document.createElement('button');
+    b.className = 'card';
+    b.id = 'wall-flip';
+    b.innerHTML = '<span class="c-ico">⇄</span><span class="c-name">Turn the wall about</span>' +
+                  '<span class="c-blurb">The far side becomes the sheltered one. Your men fall back ' +
+                  'through it and take cover on the other face.</span>';
+    b.addEventListener('click', () => { H.onFlip(s.id); UI.closeSheet(); });
+    el.appendChild(b);
+  }
   UI.upSheet = function (s, essence, walking, me) {
     const d = C.BUILDINGS[s.bt], face = workFace(s);
     const el = freshSheet();
@@ -488,6 +511,7 @@
       el._raising = s;   // counted down live by UI.tick, rather than frozen at the moment it opened
       w.innerHTML = raiseLine(s);
       el.appendChild(w);
+      flipCard(el, s);
       addCancel(el);
       el._openedAt = performance.now();
       el.classList.remove('hidden');
@@ -595,6 +619,7 @@
       });
       el.appendChild(change);
     }
+    flipCard(el, s);
     if (s.bt === 'shrine') {
       const b = document.createElement('button');
       b.className = 'card walkbtn';
@@ -633,6 +658,15 @@
         stat.className = 'sheet-blurb';
         stat.innerHTML = `🗼 Seat ${Math.round(p2.castleHp)}/${C.CASTLE_HP}`;
         el.appendChild(stat);
+        /* A SEAT SHOOTS, AND NOBODY WOULD GUESS IT FROM A HIT-POINT BAR. It is the hardest gun
+         * on the board and the only one no curtain shades — an heir planning an assault is
+         * entitled to read that here rather than discover it under fire. Derived from the
+         * table, so it can never quote a figure the sim has stopped using. */
+        const gun = document.createElement('div');
+        gun.className = 'sheet-blurb';
+        gun.textContent = `🎯 The throne's own guns: ${Math.round(C.SEAT_GUN.dmg / C.SEAT_GUN.atk)}/s ` +
+                          `out to ${C.SEAT_GUN.range}, and no wall shades them.`;
+        el.appendChild(gun);
       }
       if (!foeCity && pinfo) {
         const shrine = (pinfo.buildings || []).find((q) => q.bt === 'shrine');
@@ -809,7 +843,7 @@
     const tags = [];
     if (u.siege) tags.push(`×${u.siege} vs stone`);
     if (u.menOnly) tags.push('besieges nothing · but strikes a Shrine');
-    if (u.mans) tags.push('holds walls and towers');
+    if (u.mans) tags.push(`holds a parapet, and shelters inside a tower (${C.TOWER.berths} to a tower)`);
     if (u.mend) tags.push(`mends ${u.mend}/s`);
     if (u.bind) tags.push('binds fiends');
     if (u.splash) tags.push(`splash ${u.splash}`);
