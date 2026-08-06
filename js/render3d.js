@@ -269,6 +269,12 @@
     const pc = key.indexOf('%');
     const hurt = pc < 0 ? 0 : Math.max(0, Math.min(2, +key.slice(pc + 1) || 0));
     key = pc < 0 ? key : key.slice(0, pc);
+    /* ...and how many men are up it: 'tower@2+3'. A garrison does not rebuild the tower — it
+     * hangs a mark per man on the crown, which is enough to tell a filled tower from an empty
+     * one across the board without a second silhouette to learn. */
+    const gp = key.indexOf('+');
+    const gar = gp < 0 ? 0 : Math.max(0, Math.min(C.TOWER.berths, +key.slice(gp + 1) || 0));
+    key = gp < 0 ? key : key.slice(0, gp);
     const at = key.indexOf('@');
     const lv = at < 0 ? 1 : Math.max(1, Math.min(3, +key.slice(at + 1) || 1));
     const head = at < 0 ? key : key.slice(0, at);
@@ -307,6 +313,27 @@
         p.push(part(cyl(0.7, 0.7, 26, 5), stL, -20, 35, 12));
         p.push(part(box(10, 6, 0.6), 0xffe9a8, -25, 43, 12));              // a second standard
       }
+      /* WHAT THE YARD IS FOR. A forked hall must be tellable from the other two across the
+       * board without reading a label — the yard is where a Barracks says which soldiery it
+       * raises, so each branch dresses the ground in front of the hall differently. */
+      if (br === 'line') {                       // the Shieldwall: a shield rack and a drill wall
+        p.push(part(box(34, 11, 3), stD, 0, 5.5, 24));
+        for (let i = -1; i <= 1; i++) p.push(part(box(9, 12, 1.6), i ? 0x8a8f9c : gild, i * 12, 12, 24));
+        p.push(part(box(3, 14, 3), woodR, -18, 7, 24));
+        p.push(part(box(3, 14, 3), woodR, 18, 7, 24));
+      } else if (br === 'raid') {                // the Outriders: a stable block and a rail
+        p.push(part(box(30, 15, 14), woodR, 0, 7.5, 26));
+        p.push(part(cyl(0.1, 18, 12, 4), stD, 0, 20, 26, Math.PI / 4));    // its low roof
+        for (let i = -1; i <= 1; i += 2) p.push(part(box(2.4, 11, 2.4), woodR, i * 22, 5.5, 26));
+        p.push(part(box(46, 2, 2), woodR, 0, 10, 26));                     // the tying rail
+      } else if (br === 'archer') {              // the Butts: targets, and a fletcher's shed
+        for (let i = -1; i <= 1; i += 2) {
+          p.push(part(box(2.6, 16, 2.6), woodR, i * 15, 8, 27));
+          p.push(part(cyl(6, 6, 1.4, 9), i > 0 ? gild : 0xd8d8dc, i * 15, 15, 27));   // a straw butt
+          p.push(part(cyl(2.4, 2.4, 1.6, 7), 0xe0566a, i * 15, 15, 27.6));            // its mark
+        }
+        p.push(part(box(16, 10, 9), woodR, 0, 5, 28));                     // the fletcher's shed
+      }
     } else if (bt === 'tower' || bt === 'watch') {
       /* a Watchtower GROWS with its level — the shaft lengthens and the crown widens, which
        * is what makes a level-3 gun read as one across the board */
@@ -338,6 +365,14 @@
       } else {
         p.push(part(cone(12, 16, 8), 0x5a4a68, 0, 62, 0));
       }
+      /* THE GARRISON'S MARK. One shield hung on the crown per man up the tower — a filled
+       * tower shoots further and holds ground the empty one beside it does not, and that has
+       * to be readable without tapping it. Deliberately NOT a second tower model: the
+       * silhouette is the tower's identity, and a garrison comes and goes. */
+      for (let i = 0; i < gar; i++) {
+        const a = (i + 0.5) / C.TOWER.berths * Math.PI * 2;
+        p.push(part(box(5, 6.5, 1.4), 0xffe9a8, Math.cos(a) * 13.5, sh + 2, Math.sin(a) * 13.5));
+      }
     } else if (bt === 'siege') {
       if (lv > 1) p.push(part(box(50, 3, 36), gild, 0, 17, 0));           // a banded deck
       if (lv > 2) {
@@ -353,6 +388,20 @@
       p.push(part(box(40, 4, 4), 0xa08050, -1, 36, -8));
       p.push(part(box(10, 10, 10), 0x6a6270, 16, 38, -8));
       for (let i = 0; i < 3; i++) p.push(part(cyl(2.4, 2.4, 26, 6), 0x7a5c3c, 16, 18 + i * 5, 12, Math.PI / 2));
+      /* WHICH ENGINE THIS YARD BUILDS. A ram shed is a roofed cradle with a capped beam in it;
+       * a gun pit is a bank of earth with a barrel over it and a rack of shot. */
+      if (br === 'ram') {
+        p.push(part(box(38, 5, 16), 0x4a3a26, -2, 20, 16));                // the cradle
+        p.push(part(box(34, 6, 6), 0x8a6c46, -2, 26, 16));                 // a beam on it
+        p.push(part(box(6, 8, 8), 0x9aa0aa, 17, 26, 16));                  // its iron cap
+        p.push(part(box(40, 3, 20), woodR, -2, 33, 16));                   // the shed roof
+      } else if (br === 'bombard') {
+        p.push(part(box(34, 10, 16), 0x54452e, -2, 5, 18));                // the earth bank
+        p.push(part(box(9, 7, 7), 0xb08a44, -12, 14, 18));                 // the breech
+        p.push(part(box(9, 6.4, 6.4), 0x9a7a3a, -3, 17, 18));
+        p.push(part(box(9, 5.8, 5.8), 0x9a7a3a, 6, 20, 18));               // the barrel, climbing
+        for (let i = 0; i < 3; i++) p.push(part(sph(3.2), 0x3e3a44, 16 + (i % 2) * 6, 3, 12 + i * 5));  // shot
+      }
     } else if (bt === 'spire') {
       /* the shaft rises and the light at its head swells — a Spire is read by its silhouette
        * against the sky more than any other work */
@@ -363,6 +412,26 @@
       if (lv > 2) {
         p.push(part(cyl(2.4, 3.4, 26, 6), 0x6a5a8a, 10, 13, 0));          // a lesser spire
         p.push(part(sph(3), 0xc48eff, 10, 28, 0));
+      }
+      /* WHICH ART THE SPIRE TURNED TO. The Warden's is pale and open — a ring of standing
+       * lights around the foot; the Binding is hooked and dark, a cage of arms over a hollow.
+       * The colours are the law's: the mending light is Chaos-green's kinder cousin, the
+       * binding is the Trump's violet, and neither is gold or crimson, which are seats. */
+      if (br === 'warden') {
+        for (let i = 0; i < 5; i++) {
+          const a = i / 5 * Math.PI * 2;
+          p.push(part(cyl(1.4, 1.8, 16, 5), 0xd8d4e0, Math.cos(a) * 22, 8, Math.sin(a) * 22));
+          p.push(part(sph(2.6), 0xa8f0c0, Math.cos(a) * 22, 18, Math.sin(a) * 22));
+        }
+        p.push(part(cyl(26, 26, 1.4, 12), 0xdcf0e0, 0, 1, 0));            // a pale floor-ring
+      } else if (br === 'binder') {
+        for (let i = 0; i < 4; i++) {
+          const a = i / 4 * Math.PI * 2 + 0.4;
+          p.push(part(cyl(1.6, 2.4, 26, 4), 0x2e2838, Math.cos(a) * 17, 13, Math.sin(a) * 17));
+          p.push(part(box(7, 2.4, 2.4), 0x4a4258, Math.cos(a) * 12, 25, Math.sin(a) * 12));
+        }
+        p.push(part(cyl(15, 15, 1.2, 10), 0xc48eff, 0, 1, 0));            // the binding circle
+        p.push(part(sph(4), 0x18101f, 0, 6, 0));                          // ...and its hollow
       }
     } else if (bt === 'shrine') {
       p.push(part(cyl(24, 27, 6, 10), stD, 0, 3, 0));
@@ -516,6 +585,90 @@
         p.push(part(sph(1.3), crest, -4.5, 20, 0));
         p.push(part(sph(1.1), crest, 3.5, 27, 0));                   // motes at his shoulder
       }
+    } else if (kind === 'shieldman') {
+      /* A WALL OF MEN. He is read by his width and by the slab he carries: at the zoom this is
+       * played at, a shieldman must be a different SHAPE from a soldier, not a soldier with a
+       * bigger number. Squat, broad, and a shield taller than his head. */
+      const w = 1.25 + (t - 1) * 0.12;
+      p.push(part(cyl(4.0 * w, 5.0 * w, 12, 6), t > 1 ? 0xb8bcc8 : 0xa8acb4, 0, 8, 0));
+      p.push(part(sph(3.6), 0xd8d8dc, 0, 17, 0));
+      p.push(part(box(1.6, 17, 11), t > 2 ? 0xd8c078 : 0x8a8f9c, 6.5, 11, 0));   // the shield
+      p.push(part(box(1.2, 3, 9), crest, 7.3, 11, 0));                            // its boss-line
+      p.push(part(cyl(0.7, 0.7, 14, 4), 0xeeeeee, -5, 12, 0));                    // a short spear
+      if (t > 1) p.push(part(box(1.6, 3.5, 8), crest, 0, 21, 0));
+      if (t > 2) p.push(part(cyl(4.2 * w, 4.2 * w, 1.6, 7), 0xd8c078, 0, 10, 0));
+    } else if (kind === 'outrider') {
+      /* LEANING FORWARD. Everything about him says speed: a thin body pitched off vertical, a
+       * long trailing cloak, and no shield at all. */
+      p.push(part(cyl(2.4, 3.0, 13, 5), t > 1 ? 0xc4b898 : 0xb0a888, 0, 8, 0));
+      p.push(part(sph(2.9), 0xd8d0b8, 1.5, 16.5, 0));
+      p.push(part(cone(4.5, 12, 5), 0x6a5a3a, -3, 9, 0));            // the cloak, streaming back
+      p.push(part(cyl(0.6, 0.6, 17, 4), 0xdddddd, 4.5, 11, 0));       // a light lance
+      if (t > 1) p.push(part(cone(1.4, 4.5, 5), crest, 1.5, 20, 0));
+      if (t > 2) p.push(part(box(5, 3, 0.5), crest, -6, 20, 0));
+    } else if (kind === 'archer') {
+      /* THE BOW IS THE WHOLE SILHOUETTE — a tall arc across the body, which nothing else on
+       * the board has, plus the quiver behind the shoulder. */
+      p.push(part(cyl(2.8, 3.6, 12, 5), t > 1 ? 0x9aa88c : 0x8a9880, 0, 8, 0));
+      p.push(part(sph(3.0), 0xc8ccc0, 0, 16.5, 0));
+      p.push(part(cyl(0.55, 0.55, 20, 4), 0xc8b088, 4.5, 12, 0.5));   // the bow stave
+      p.push(part(cyl(0.3, 0.3, 19, 3), 0xeeeeee, 5.4, 12, 0.5));      // its string
+      p.push(part(box(2, 8, 2), 0x6a5230, -4.5, 14, 0));               // the quiver
+      if (t > 1) p.push(part(box(1.4, 4, 6.5), crest, 0, 20.5, 0));
+      if (t > 2) p.push(part(cyl(0.5, 0.5, 7, 4), crest, -4.5, 20, 0));
+    } else if (kind === 'warden') {
+      /* PALE, AND CARRYING A LIGHT. The cross of light over the staff is the read: it is the
+       * one unit on the board whose business is not killing, and it must not look like a
+       * sorcerer with a different hat. */
+      p.push(part(cone(4.2, 15, 6), 0xe8e4ee, 0, 7.5, 0));
+      p.push(part(sph(2.9), 0xf0eef6, 0, 16, 0));
+      p.push(part(cyl(0.7, 0.7, 24, 4), 0xd8d0c0, 5, 13, 0));          // the staff
+      p.push(part(box(1.6, 7, 1.6), 0xdcf0e0, 5, 26, 0));              // ...and its cross,
+      p.push(part(box(6, 1.6, 1.6), 0xdcf0e0, 5, 24.5, 0));            //    a pale green light
+      if (t > 1) p.push(part(sph(1.5 + (t - 1) * 0.5), 0xa8f0c0, 5, 29, 0));
+      if (t > 2) { p.push(part(sph(1.1), 0xa8f0c0, -4, 20, 0)); p.push(part(sph(1.0), 0xa8f0c0, 3, 28, 2)); }
+    } else if (kind === 'binder') {
+      /* HOOKED AND DARK, and carrying a ring rather than a blade — the thing he throws is a
+       * loop of Shadow, so the loop is the silhouette. */
+      p.push(part(cone(4.4, 14, 6), 0x4a4258, 0, 7, 0));
+      p.push(part(sph(2.8), 0x6a6078, 0, 15.5, 0));
+      p.push(part(cone(2.4, 7, 5), 0x2e2838, 0, 19, 0));               // a deep hood
+      p.push(part(cyl(0.7, 0.7, 20, 4), 0x8a7ca8, 5, 12, 0));          // a crooked rod
+      p.push(part(cyl(4.5, 4.5, 0.7, 9), 0xc48eff, 5, 23, 0));         // the binding ring
+      if (t > 1) p.push(part(cyl(3.0, 3.0, 0.6, 8), 0xc48eff, 5, 26, 0));
+      if (t > 2) p.push(part(sph(1.4), 0xc48eff, -4.5, 19, 0));
+    } else if (kind === 'ram') {
+      /* A SHED ON ROLLERS with a great capped beam slung under it. Low, long and roofed —
+       * nothing else on the board has a roof, which is what tells it from an Engine. */
+      p.push(part(box(20, 4, 11), 0x5a4630, 0, 3, 0));                 // the sledge
+      p.push(part(cyl(3.4, 3.4, 3, 8), 0x3e3222, -6, 3, 0));
+      p.push(part(cyl(3.4, 3.4, 3, 8), 0x3e3222, 6, 3, 0));
+      /* the beam lies ALONG the sledge — `part` only yaws, so a long box is the horizontal
+       * timber a cylinder cannot be here */
+      p.push(part(box(24, 4.4, 4.4), 0x8a6c46, 0, 10, 0));             // the beam
+      p.push(part(box(5, 5.6, 5.6), 0x9aa0aa, 13, 10, 0));             // its iron cap
+      p.push(part(box(21, 2.4, 13), 0x6b5236, 0, 17, 0));              // the roof
+      p.push(part(box(1.8, 8, 1.8), 0x4a3a26, -8, 13, 0));
+      p.push(part(box(1.8, 8, 1.8), 0x4a3a26, 8, 13, 0));
+      if (t > 1) p.push(part(box(21, 1.4, 13.6), crest, 0, 19, 0));    // banded, plated
+      if (t > 2) { p.push(part(cyl(3.0, 3.0, 2.6, 8), 0x3e3222, 0, 3, 5)); p.push(part(box(5, 4, 0.5), crest, 0, 22, 0)); }
+    } else if (kind === 'bombard') {
+      /* THE BARREL IS THE UNIT. Pitched up at the sky on a squat carriage, which reads as
+       * 'this shoots further than you' from any zoom — and it is the same shadow-rouge trick
+       * the Cannon Tower runs, so it wears the same warm brass. */
+      p.push(part(box(13, 5, 11), 0x5a4a3a, 0, 4, 0));
+      p.push(part(cyl(3.4, 3.4, 3, 8), 0x3e3222, -3.5, 3, 0));
+      p.push(part(cyl(3.4, 3.4, 3, 8), 0x3e3222, 3.5, 3, 0));
+      p.push(part(box(7, 7, 7), 0x6b5236, -3, 9, 0));                  // the bed
+      /* THE BARREL CLIMBS. `part` yaws and cannot pitch, so the elevation is built as three
+       * stepped blocks rather than one tilted tube — at this zoom the staircase reads as a
+       * gun pointed at the sky, which is the whole silhouette. */
+      p.push(part(box(7, 5.5, 5.5), 0x9a7a3a, 0, 12, 0));
+      p.push(part(box(7, 5.0, 5.0), 0x9a7a3a, 6, 15, 0));
+      p.push(part(box(6, 4.5, 4.5), 0x9a7a3a, 11.5, 18, 0));           // the muzzle, highest
+      p.push(part(box(5.5, 6.5, 6.5), 0xb08a44, -5, 11, 0));           // its breech
+      if (t > 1) p.push(part(box(1.6, 5.4, 5.4), crest, 14, 18.5, 0)); // a heavier muzzle band
+      if (t > 2) { p.push(part(box(9, 1.6, 9), crest, -3, 13, 0)); p.push(part(sph(2.2), 0xb08a44, -8, 12, 0)); }
     } else if (kind === 'champion') {
       /* AN AMBERITE, NOT A BIGGER SOLDIER. He was a recruit at 1.25 scale with a red comb,
        * which at the zoom this is played at is a soldier you squint at. He is built to be
@@ -1114,6 +1267,19 @@
     const nL = Math.hypot(nx, ny) || 1;
     return { x: ax + vx * t, y: ay + vy * t, h: 27, ang: Math.atan2(nx / nL, ny / nL) };
   }
+  /* A GARRISON IS A BADGE, NOT A NEW TOWER. The men are drawn where they stand, at the
+   * tower's foot; what the tower gains is a mark per man on its crown, so a filled tower can
+   * be told from an empty one at a glance without rebuilding the silhouette for it. Counted
+   * off the units in the VIEW, so a rival's garrison shows only what you can actually see. */
+  function garrisons(view) {
+    let g = null;
+    for (const u of view.units) {
+      if (!u.tow) continue;
+      if (!g) g = new Map();
+      g.set(u.tow, (g.get(u.tow) || 0) + 1);
+    }
+    return g;
+  }
 
   /* WHICH MEN THE NEXT TAP MOVES. Arming a standard is a question the board has to answer:
    * before this, a tray chip lit up and nothing on the ground did, so on a field with three
@@ -1267,6 +1433,8 @@
   }
 
   function updateCities(view, viewer) {
+    /* one pass for the whole board rather than one per tower: who is up which tower */
+    const gar = garrisons(view);
     for (let pi = 0; pi < cityObjs.length; pi++) {
       const g = cityObjs[pi];
       const pl = view.players[pi];
@@ -1294,6 +1462,7 @@
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
           + '@' + (b.level || 1) + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
           + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '')
+          + (gar && gar.get(id) ? '+' + gar.get(id) : '')
           + (hurt ? '%' + hurt : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {

@@ -203,6 +203,279 @@ suite('command grammar');
   eq('an unknown work id is refused', World.applyCommand(w, 0, { c: 'up', id: 999999 }).err, 'id');
 }
 
+/* ---------------- THE FORK IS A PROPERTY OF THE TABLE ----------------
+ * The Watchtower was the only branching work for a long time and the rule was written into six
+ * places as the word 'tower'. Every one of those places asks the table now, which is what let
+ * three troop halls fork for the price of a table entry — so the thing to hold is that the
+ * mechanism is GENERIC, not that any particular building has it. */
+suite('the halls fork')
+{
+  const forking = Object.keys(C.BUILDINGS).filter((bt) => C.BUILDINGS[bt].branches);
+  ok('more than the tower branches now', forking.length >= 4, forking.join(','));
+  for (const bt of forking) {
+    const d = C.BUILDINGS[bt];
+    ok(`${bt}: its fork is a real level`, d.fork >= 2 && d.fork <= C.MAX_LEVEL, String(d.fork));
+    ok(`${bt}: every branch it offers exists`, d.branchUI.length >= 2 && d.branchUI.every((k) => d.branches[k]),
+       d.branchUI.join(','));
+    for (const k of d.branchUI) {
+      const b2 = d.branches[k];
+      ok(`${bt}/${k}: has a face and a price`, !!b2.name && !!b2.icon && !!b2.blurb && b2.cost > 0);
+      /* per-branch arrays are indexed by (level - fork), so they run to MAX_LEVEL and no further */
+      eq(`${bt}/${k}: prices every level above the fork`, b2.up.length, C.MAX_LEVEL - d.fork);
+      if (b2.spawns) {
+        ok(`${bt}/${k}: musters a man the table knows`, !!C.UNITS[b2.spawns], b2.spawns);
+        if (b2.period) eq(`${bt}/${k}: an interval per level above the fork`, b2.period.length, C.MAX_LEVEL - d.fork + 1);
+      }
+    }
+  }
+  /* the Barracks takes THREE. Nothing in the mechanism ever counted them, and this is the
+   * assertion that says so rather than trusting that a loop is a loop. */
+  eq('the Barracks offers three soldieries', C.BUILDINGS.barracks.branchUI.length, 3);
+
+  /* ...and the command grammar, on a hall rather than on the tower */
+  const w = World.createWorld(4242), pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 100000;
+  ok('a hall goes up', World.applyCommand(w, 0, { c: 'build', bt: 'barracks', x: c.x + 140, y: c.y + 20 }).ok);
+  const hall = pl.buildings.filter((b) => b.bt === 'barracks').pop();
+  for (let i = 0; i < 30 * 40 && hall.raise > 0; i++) World.update(w, C.SIM_DT);
+  w.events.length = 0;
+  eq('the hall fork demands a branch', World.applyCommand(w, 0, { c: 'up', id: hall.id }).err, 'branch');
+  eq('an unknown one is refused', World.applyCommand(w, 0, { c: 'up', id: hall.id, br: 'cannon' }).err, 'branch');
+  ok('a real one is taken', World.applyCommand(w, 0, { c: 'up', id: hall.id, br: 'archer' }).ok);
+  World.applyCommand(w, 0, { c: 'up', id: hall.id, br: 'line' });
+  eq('and it is permanent, exactly as the tower\'s is', hall.br, 'archer');
+
+  /* THE PRICE COMES OFF THE BRANCH. Each branch is its own rebuild at its own cost, and a
+   * later upgrade is priced by the branch the work already holds, not by the base table. */
+  eq('the fork is priced by the branch', World.upgradeCost('barracks', 1, 'raid'), C.BUILDINGS.barracks.branches.raid.cost);
+  ok('...and the branches do not all cost the same',
+     new Set(C.BUILDINGS.barracks.branchUI.map((k) => World.upgradeCost('barracks', 1, k))).size > 1);
+  eq('above the fork the branch prices it too', World.upgradeCost('barracks', 2, 'raid'), C.BUILDINGS.barracks.branches.raid.up[0]);
+  /* the works that do NOT branch are untouched by any of it */
+  eq('a Gate is still priced by its own table', World.upgradeCost('gate', 1), C.BUILDINGS.gate.up[0]);
+  eq('and the Shrine still does not upgrade at all', World.upgradeCost('shrine', 1), Infinity);
+
+  /* WHAT THE HALL RAISES is the one question everything downstream asks */
+  eq('before the fork, the hall\'s own recruit', World.mustersOf({ bt: 'barracks', level: 1 }).kind, 'soldier');
+  eq('after it, the branch\'s', World.mustersOf({ bt: 'barracks', level: 2, br: 'archer' }).kind, 'archer');
+  eq('...at the branch\'s own interval', World.mustersOf({ bt: 'barracks', level: 2, br: 'raid' }).period,
+     C.BUILDINGS.barracks.branches.raid.period[0]);
+  ok('a branch named but not yet reached does not count',
+     World.mustersOf({ bt: 'barracks', level: 1, br: 'archer' }).kind === 'soldier');
+  eq('a work that musters nothing answers nothing', World.mustersOf({ bt: 'tower', level: 1 }), null);
+
+  /* A HALL THAT FORKS DOES NOT KEEP THE CHANGE. Recruits are paid for continuously, so a hall
+   * part-way through a dear man that becomes a cheap one would hand out several at once. */
+  const w2 = World.createWorld(99), p2 = w2.players[0], c2 = World.cityOf(w2, 0);
+  w2.chaosNext = 1e9; p2.essence = 100000;
+  World.applyCommand(w2, 0, { c: 'build', bt: 'spire', x: c2.x + 150, y: c2.y - 40 });
+  const spire = p2.buildings.filter((b) => b.bt === 'spire').pop();
+  for (let i = 0; i < 30 * 60 && spire.raise > 0; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  for (let i = 0; i < 30 * 8; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  ok('the hall has banked part of a recruit', spire.paid > 0, String(Math.round(spire.paid)));
+  World.applyCommand(w2, 0, { c: 'up', id: spire.id, br: 'binder' });
+  const dear = C.UNITS[World.mustersOf(spire).kind].cost * C.TIER[spire.level - 1];
+  ok('and the fork clamps it to what the new man costs', spire.paid <= dear + 1e-6,
+     `${Math.round(spire.paid)} banked against a price of ${Math.round(dear)}`);
+}
+
+/* ---------------- SHOOTERS, STONE, AND THE TWO NEW ARTS ----------------
+ * Three rules that are easy to lose to a refactor and expensive to lose quietly, so each is
+ * held by an assertion that fails loudly rather than by a comment. */
+suite('shooters, stone, and the arts')
+{
+  const w = World.createWorld(31337, 2);
+  w.chaosNext = 1e9;
+  const c0 = World.cityOf(w, 0), c1 = World.cityOf(w, 1);
+  const p0 = w.players[0], p1 = w.players[1];
+  p0.essence = p1.essence = 100000;
+  const put = (owner, kind, x, y, hpFrac) => {
+    const d = C.UNITS[kind];
+    const u = { id: w.nextId++, owner, kind, x, y, ox: 0, oy: 0,
+                hp: d.hp * (hpFrac == null ? 1 : hpFrac), maxHp: d.hp, dmg: d.dmg,
+                cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+    w.units.push(u); return u;
+  };
+  const pin = (pi, x, y) => { w.players[pi].banner = { x, y, site: -1 }; };
+  const run = (secs) => { for (let i = 0; i < 30 * secs; i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+
+  /* ---- a shooter has no target among works ---- */
+  World.applyCommand(w, 1, { c: 'build', bt: 'barracks', x: c1.x + 120, y: c1.y });
+  const mark = p1.buildings.filter((b) => b.bt === 'barracks').pop();
+  for (let i = 0; i < 30 * 40 && mark.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  mark.hp = mark.maxHp;
+
+  w.units.length = 0;
+  pin(0, mark.x, mark.y - 30);
+  put(0, 'archer', mark.x, mark.y - 30);
+  run(6);
+  eq('an archer beside a rival hall does not touch it', mark.hp, mark.maxHp);
+
+  w.units.length = 0; mark.hp = mark.maxHp;
+  put(0, 'sorcerer', mark.x, mark.y - 30);
+  run(6);
+  eq('...and neither does a sorcerer', mark.hp, mark.maxHp);
+
+  w.units.length = 0; mark.hp = mark.maxHp;
+  put(0, 'soldier', mark.x, mark.y - 30);
+  run(6);
+  ok('a soldier in the same spot breaks it', mark.hp < mark.maxHp,
+     `${Math.round(mark.hp)}/${Math.round(mark.maxHp)}`);
+
+  /* ...AND HE STILL SHOOTS MEN. "No target among works" must not read as "no target": an
+   * archer who walked past an enemy soldier to look for one would be a different bug. */
+  w.units.length = 0; mark.hp = mark.maxHp;
+  const prey = put(1, 'soldier', mark.x + 40, mark.y - 30);
+  put(0, 'archer', mark.x, mark.y - 30);
+  run(4);
+  ok('an archer standing at a work still shoots the man beside it', prey.hp < prey.maxHp,
+     `${Math.round(prey.hp)}/${Math.round(prey.maxHp)}`);
+  eq('...and the work is STILL untouched', mark.hp, mark.maxHp);
+
+  /* A SEAT IS A WORK TOO, and it is the one that ends matches */
+  w.units.length = 0;
+  const seatHp = p1.castleHp;
+  pin(0, c1.x, c1.y);
+  for (let i = 0; i < 4; i++) put(0, 'archer', c1.x + i * 12 - 18, c1.y + 20);
+  run(8);
+  eq('four archers at a Seat cannot take it', p1.castleHp, seatHp);
+  w.units.length = 0;
+  put(0, 'ram', c1.x, c1.y + 20);
+  run(8);
+  ok('one Ram can', p1.castleHp < seatHp, `${Math.round(p1.castleHp)} of ${seatHp}`);
+  p1.castleHp = seatHp;
+
+  /* ---- the Warden mends ---- */
+  w.units.length = 0;
+  pin(0, c0.x, c0.y + 40);
+  const wd = put(0, 'warden', c0.x, c0.y + 40, 0.5);
+  const hurtMan = put(0, 'soldier', c0.x + 26, c0.y + 40, 0.3);
+  const wholeMan = put(0, 'soldier', c0.x - 26, c0.y + 40, 1);
+  const was = hurtMan.hp, wardenWas = wd.hp;
+  run(2);
+  ok('a Warden mends the man beside him', hurtMan.hp > was,
+     `${was.toFixed(1)} -> ${hurtMan.hp.toFixed(1)}`);
+  eq('...never past whole', wholeMan.hp, wholeMan.maxHp);
+  eq('...and never himself, or a pair of them would not die', wd.hp, wardenWas);
+  ok('nobody else in Amber heals', (() => {
+    const w3 = World.createWorld(5, 2); w3.chaosNext = 1e9;
+    const c3 = World.cityOf(w3, 0);
+    const d = C.UNITS.soldier;
+    const a = { id: 1, owner: 0, kind: 'soldier', x: c3.x, y: c3.y + 40, ox: 0, oy: 0,
+                hp: 20, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+    w3.units.push(a);
+    for (let i = 0; i < 30 * 5; i++) { World.update(w3, C.SIM_DT); w3.events.length = 0; }
+    return a.hp === 20;
+  })());
+
+  /* ---- the Binding ---- */
+  w.units.length = 0;
+  pin(0, c0.x, c0.y + 40);
+  const bind = put(0, 'binder', c0.x, c0.y + 40);
+  const beaten = put(C.CHAOS_ID, 'fiend', c0.x + 50, c0.y + 40, 0.3);
+  const hale = put(C.CHAOS_ID, 'fiend', c0.x - 50, c0.y + 40, 1);
+  const rival = put(1, 'soldier', c0.x, c0.y + 76, 0.2);
+  run(2);
+  eq('a beaten fiend is bound', beaten.owner, 0);
+  eq('a hale one is not — you fight for it first', hale.owner, C.CHAOS_ID);
+  eq('a rival\'s beaten man is NEVER taken', rival.owner, 1);
+  eq('...and the bound fiend marches under the standard that took it', beaten.co, bind.co);
+  ok('it serves for a while and no longer', beaten.bound > w.t && beaten.bound <= w.t + C.BIND_LIFE + 1,
+     `${Math.round(beaten.bound - w.t)}s left of ${C.BIND_LIFE}`);
+  /* AND SHADOW LETS IT GO. Every fiend bound frees a Chaos slot, so a permanent bind is a
+   * binder host farming the black road into a private army. */
+  beaten.bound = w.t + 0.1;
+  run(1);
+  ok('and then Shadow will not hold it', beaten.hp <= 0, `${Math.round(beaten.hp)} hp`);
+}
+
+/* ---------------- STONE IS FOR SHOOTERS ----------------
+ * A parapet is a shooting platform. A swordsman on one was a man in the open with further to
+ * fall, holding a berth an archer needed — so the roster ranks shooters first and only they
+ * take a place, while everyone else still stations at the foot, in cover. */
+suite('stone is for shooters')
+{
+  eq('the men who may hold stone are the shooters',
+     Object.keys(C.UNITS).filter((k) => C.UNITS[k].mans).sort().join(','), 'archer,sorcerer');
+  const w = World.createWorld(20250806, 2);
+  w.chaosNext = 1e9;
+  const pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 100000;
+  /* A RUN ONE CREW LONG. A heir opens with one Gate and so one mason, and `WALL.unit` is what
+   * a crew covers — a longer run is refused for 'crews', which is a different test. */
+  let b = null, why = '';
+  for (let a = 0; a < 24 && !b; a++) {
+    const th = a / 24 * Math.PI * 2;
+    const x = c.x + Math.cos(th) * 230, y = c.y + Math.sin(th) * 230;
+    const x2 = x + Math.cos(th + Math.PI / 2) * 120, y2 = y + Math.sin(th + Math.PI / 2) * 120;
+    const r = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x, y, x2, y2 });
+    if (r.ok) b = pl.buildings.filter((q) => q.bt === 'wall').pop(); else why = r.err;
+  }
+  ok('a curtain was raised to hold', !!b, why);
+  if (b) {
+    for (let i = 0; i < 30 * 90 && b.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    eq('the masons finish it', b.raise, 0);
+    /* A MIXED COMPANY, and the swordsmen made FIRST so their ids are lowest — the roster used
+     * to be id order alone, so this is exactly the case the old rule got wrong. */
+    w.units.length = 0;
+    pl.banner = { x: b.x, y: b.y, site: -1 };
+    const mk = (kind) => {
+      const d = C.UNITS[kind];
+      const u = { id: w.nextId++, owner: 0, kind, x: b.x, y: b.y, ox: 0, oy: 0,
+                  hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+      w.units.push(u); return u;
+    };
+    const swords = [mk('soldier'), mk('soldier'), mk('shieldman')];
+    const shots = [mk('archer'), mk('sorcerer')];
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    ok('every shooter takes a berth, though he was mustered last',
+       shots.every((u) => u.man === b.id), shots.map((u) => u.kind + ':' + (u.man || 0)).join(' '));
+    ok('and no swordsman takes one, though his id is lower',
+       swords.every((u) => !u.man), swords.map((u) => u.kind + ':' + (u.man || 0)).join(' '));
+    ok('...but they are still posted, so they stand at the foot in cover',
+       swords.every((u) => u.post === b.id));
+    /* an all-melee company mans nothing at all: the wall bars the ground and kills nobody */
+    w.units.length = 0;
+    const only = [mk('soldier'), mk('shieldman')];
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    ok('a company with no shooters in it mans nothing', only.every((u) => !u.man));
+  }
+
+  /* ---- and a tower holds a few ---- */
+  const w2 = World.createWorld(777, 2);
+  w2.chaosNext = 1e9;
+  const p2 = w2.players[0], c2 = World.cityOf(w2, 0);
+  p2.essence = 100000;
+  let tw = null;
+  for (let a = 0; a < 24 && !tw; a++) {
+    const th = a / 24 * Math.PI * 2;
+    if (World.applyCommand(w2, 0, { c: 'build', bt: 'tower', x: c2.x + Math.cos(th) * 200, y: c2.y + Math.sin(th) * 200 }).ok)
+      tw = p2.buildings.filter((q) => q.bt === 'tower').pop();
+  }
+  ok('a tower was raised', !!tw);
+  if (tw) {
+    for (let i = 0; i < 30 * 40 && tw.raise > 0; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+    w2.units.length = 0;
+    p2.banner = { x: tw.x, y: tw.y, site: -1 };
+    const mk2 = (kind) => {
+      const d = C.UNITS[kind];
+      const u = { id: w2.nextId++, owner: 0, kind, x: tw.x, y: tw.y + 20, ox: 0, oy: 0,
+                  hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+      w2.units.push(u); return u;
+    };
+    const crowd = [];
+    for (let i = 0; i < C.TOWER.berths + 3; i++) crowd.push(mk2('archer'));
+    const sword = mk2('soldier');
+    World.update(w2, C.SIM_DT); w2.events.length = 0;
+    eq('a tower is a room, not a field', crowd.filter((u) => u.tow === tw.id).length, C.TOWER.berths);
+    ok('and the rest stay outside', crowd.filter((u) => !u.tow).length === 3);
+    ok('a swordsman never goes up one', !sword.tow);
+    ok('every man up it has his own place', new Set(crowd.filter((u) => u.tow).map((u) => u.towSlot)).size === C.TOWER.berths);
+    ok('a man in a tower throws further than he could on the ground',
+       C.TOWER.over > C.UNITS.archer.range, `${C.TOWER.over} vs ${C.UNITS.archer.range}`);
+  }
+}
+
 suite('a Gate stands on a spring')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);

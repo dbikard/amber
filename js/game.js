@@ -106,13 +106,18 @@
    * match, and only then the game. ONE history entry is held while a match runs; each back
    * consumes it, we handle a layer, and we re-arm for the next one. */
   let backArmed = false;
-  function armBack() {
-    if (backArmed || !game.mode) return;
+  /* `force` is for a layer that opens while there is no match — the Muster Roll sits over the
+   * MENU, where `game.mode` is null and the ordinary arming deliberately does nothing. Without
+   * it the first back press out of the codex leaves the site. */
+  function armBack(force) {
+    if (backArmed || (!game.mode && !force)) return;
     backArmed = true;
     try { history.pushState({ amber: 1 }, ''); } catch (e) { backArmed = false; }
   }
   function onPopState() {
     backArmed = false;
+    /* the codex is a layer over the menu, so it is peeled before the menu's own answer */
+    if (UI.rollOpen && UI.rollOpen()) { UI.rollClose(); return; }
     if (!game.mode) return;                       // at the menu: let the browser have it
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
     const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
@@ -1007,7 +1012,9 @@
         else if (game.mode === 'guest') callAgain();
         else toMenu();
       },
-      onEndMenu: toMenu
+      onEndMenu: toMenu,
+      /* the codex opens over the menu, where nothing has armed the back button */
+      onRollOpen: () => armBack(true)
     });
     const cvs = $('game');
     cvs.addEventListener('pointerdown', onDown);

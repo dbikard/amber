@@ -77,6 +77,11 @@
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
       visHostiles, threats, push, enemyArmy, mySprings, atGate,
+      /* WHO CAN ACTUALLY BREAK A SEAT. Shooters have no target among works at all, so a host
+       * of archers, sorcerers, wardens and binders can march to a rival's gate and stand there
+       * for the rest of the match. An heir has to know the difference between an army and an
+       * army that can finish, or the referee reads it as "matches stopped ending". */
+      breakers: myUnits.filter((u) => !C.UNITS[u.kind].menOnly).length,
       /* CHAOS IS THE WEATHER, NOT THE OPPONENT (DESIGN_PRINCIPLES). `threats` is everything
        * hostile near the Seat and fiends are most of it, so a doctrine that calls off the walk
        * on `threats` calls it off for the weather — and the black road is capped precisely so
@@ -248,8 +253,12 @@
   /* Where to march when you do not know where the enemy IS. Scout the nearest unseen place;
    * failing that, hold the nearest ground worth holding. */
   const seek = (v) => (v.frontier ? v.frontier.id : ownChoke(v).id);
-  /* the assault, but only against a Seat that has been found */
-  const strike = (v) => (v.enCity ? v.enCityId : seek(v));
+  /* THE ASSAULT — against a Seat that has been found, and only with men who can break it.
+   * Sending shooters at a Seat is not a weak attack, it is no attack: they will stand in front
+   * of the walls with nothing to shoot until somebody comes out. An heir who cannot finish
+   * holds his ground instead, and the want below raises him something that can. */
+  const BREAKERS = 3;
+  const strike = (v) => (v.enCity && v.breakers >= BREAKERS ? v.enCityId : seek(v));
   /* what an assault costs to be worth making: a real army, and more of it than he can see of
    * the other man's. Both are read fresh every time the heir thinks, so the march is a
    * standing decision rather than a one-way door. */
@@ -593,6 +602,22 @@
             const at = spotFor(v, 'barracks');
             if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks' });
             else handled = false;   // nowhere to put it: the plan is still the plan
+          }
+        }
+      }
+      /* SOMETHING THAT BREAKS STONE. An heir who forked every hall to shooters has an army
+       * that cannot end a match — it can win every field and never touch a Seat. A Works is
+       * the answer he can always reach: its Rams and Bombards are made for stone, and unlike a
+       * Barracks it does not have to be re-forked to get there. Standing want, above the plan,
+       * because no plan can know which way its own forks went. */
+      if (!handled && v.breakers < BREAKERS && v.army >= 5 && !(v.have.siege > 0)) {
+        handled = true;
+        if (v.free > 0) {
+          if (v.essence < C.BUILDINGS.siege.cost) saving = true;
+          else {
+            const at = spotFor(v, 'siege');
+            if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'siege' });
+            else handled = false;
           }
         }
       }

@@ -8,11 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.8.50';</script>
-<link rel="manifest" href="manifest.json?v=0.8.50">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.8.50">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.8.50">
-<link rel="stylesheet" href="styles.css?v=0.8.50">
+<script>window.GAME_VERSION = '0.8.51';</script>
+<link rel="manifest" href="manifest.json?v=0.8.51">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.8.51">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.8.51">
+<link rel="stylesheet" href="styles.css?v=0.8.51">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -94,8 +94,17 @@
     </div>
     <pre id="lan-diag" class="hidden"></pre>
   </div>
+  <button id="btn-roll" class="mbtn">⚔ THE MUSTER ROLL</button>
   <button id="menu-record" class="mbtn small hidden">📜 CHRONICLE OF THE LAST MATCH</button>
   <div id="version"></div>
+</div>
+
+<!-- THE MUSTER ROLL: every hall that forks, every branch it may take, and every man in Amber
+     with his numbers. Built from CONST at open time, so it cannot drift from the game. -->
+<div id="roll" class="hidden">
+  <h2>THE MUSTER ROLL</h2>
+  <div id="roll-body"></div>
+  <button id="roll-close" class="mbtn">CLOSE</button>
 </div>
 
 <div id="end" class="hidden">
@@ -124,20 +133,20 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.8.50"></script>
-<script src="js/rng.js?v=0.8.50"></script>
-<script src="js/const.js?v=0.8.50"></script>
-<script src="js/worldgen.js?v=0.8.50"></script>
-<script src="js/nav.js?v=0.8.50"></script>
-<script src="js/world.js?v=0.8.50"></script>
-<script src="js/ai.js?v=0.8.50"></script>
-<script src="js/terrain.js?v=0.8.50"></script>
-<script src="js/render3d.js?v=0.8.50"></script>
-<script src="js/render_select.js?v=0.8.50"></script>
-<script src="js/qrcode.js?v=0.8.50"></script>
-<script src="js/net.js?v=0.8.50"></script>
-<script src="js/record.js?v=0.8.50"></script>
-<script src="js/ui.js?v=0.8.50"></script>
-<script src="js/game.js?v=0.8.50"></script>
+<script src="js/vendor/three.min.js?v=0.8.51"></script>
+<script src="js/rng.js?v=0.8.51"></script>
+<script src="js/const.js?v=0.8.51"></script>
+<script src="js/worldgen.js?v=0.8.51"></script>
+<script src="js/nav.js?v=0.8.51"></script>
+<script src="js/world.js?v=0.8.51"></script>
+<script src="js/ai.js?v=0.8.51"></script>
+<script src="js/terrain.js?v=0.8.51"></script>
+<script src="js/render3d.js?v=0.8.51"></script>
+<script src="js/render_select.js?v=0.8.51"></script>
+<script src="js/qrcode.js?v=0.8.51"></script>
+<script src="js/net.js?v=0.8.51"></script>
+<script src="js/record.js?v=0.8.51"></script>
+<script src="js/ui.js?v=0.8.51"></script>
+<script src="js/game.js?v=0.8.51"></script>
 </body>
 </html>

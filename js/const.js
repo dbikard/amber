@@ -148,6 +148,12 @@
   };
 
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
+  /* HOW LONG SHADOW HOLDS A BOUND FIEND. It has to end: the Chaos cap counts fiends by owner,
+   * so every one taken frees a slot for the road to tear open another, and a permanent bind
+   * would let a binder host farm the black road into a private army — the very failure that
+   * capping Chaos was meant to end. Ninety seconds is long enough to win a fight with and far
+   * too short to build an army out of. */
+  CONST.BIND_LIFE = 90;
   CONST.VISION = { city: 420, unit: 260, build: 240,
     /* A walk on the Pattern is a beacon. The blazing lines light the Shrine and the ground
      * around it for EVERYONE — you cannot reach for the throne in secret, and your rivals
@@ -195,7 +201,7 @@
                 blurb: 'Raised ON a spring of Shadow, and only there. It draws deep, and your writ runs where your Gates stand.' },
     barracks: { name: 'Barracks',      icon: '⚔', cost: 150, up: [120, 200], hp: 720, raise: 27,
                 spawns: 'soldier', period: [8, 8, 8],
-                blurb: 'Musters Soldiers who march the black road. Raise its level and it musters VETERANS — the same men, better armed.' },
+                blurb: 'Musters Soldiers who march the black road. At level 2 the hall is RE-RAISED around one soldiery — shieldwall, outriders or bowmen — and there is no going back.' },
     /* A WALL IS A FIGHTING POSITION, NOT A SHELL. It bars the ground and it stops shots
      * crossing it — so men behind one are safe — but a wall alone kills nobody. Come UP to
      * it and you are MANNING it: you shoot over the parapet, and everything below can shoot
@@ -225,10 +231,10 @@
      * to be escorted, which is the point: the Works turn a war chest into a threat. */
     siege:    { name: 'Siege Works',   icon: '⚒', cost: 300, up: [230, 360], hp: 760, raise: 42,
                 spawns: 'engine', period: [24, 24, 24],
-                blurb: 'Builds Engines: slow, and made for breaking works and Seats rather than men. They need an escort.' },
+                blurb: 'Builds Engines — slow, and made for stone rather than men. At level 2 the yard is RE-TOOLED for rams or for bombards, and there is no going back.' },
     spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 36,
                 spawns: 'sorcerer', period: [11, 11, 11],
-                blurb: 'Sends Sorcerers — fragile, deadly at range' },
+                blurb: 'Sends Sorcerers — fragile, deadly at range, and no use at all against stone. At level 2 the Spire turns to ONE art, mending or binding, and there is no going back.' },
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 22,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 forkHint: 'Rebuild the tower.',

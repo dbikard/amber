@@ -188,6 +188,65 @@ async function match(browser, base, renderer) {
       window.Game.toMenu();
     });
     await pg.waitForTimeout(400);
+
+    /* ---------------- THE MUSTER ROLL ----------------
+     * A fork is permanent, made mid-match, from a card the size of a thumb — so the place to
+     * learn what the choice MEANS is a screen you read before the match. Its whole value is
+     * that it comes out of CONST, so every count here is derived the same way: a codex with
+     * its own copy of the numbers is worse than no codex. */
+    suite('the muster roll');
+    /* clicked through the DOM rather than by Playwright's pointer: the menu is a scrolling
+     * column and by this point in the suite the button is below the fold, which is a fact
+     * about the viewport rather than about the screen under test */
+    const tapRoll = () => pg.evaluate(() => document.getElementById('btn-roll').click());
+    await tapRoll();
+    await until(pg, () => !document.getElementById('roll').classList.contains('hidden'));
+    const roll = await pg.evaluate(() => {
+      const C = window.CONST;
+      const forking = Object.keys(C.BUILDINGS).filter((bt) => C.BUILDINGS[bt].branches);
+      const body = document.getElementById('roll-body');
+      const txt = body.textContent;
+      return {
+        open: !document.getElementById('roll').classList.contains('hidden'),
+        menuHidden: document.getElementById('menu').classList.contains('hidden'),
+        halls: body.querySelectorAll('.roll-hall').length,
+        wantHalls: forking.length + 1,                       // ...plus 'every man in Amber'
+        branches: body.querySelectorAll('.roll-branch').length,
+        wantBranches: forking.reduce((n, bt) => n + C.BUILDINGS[bt].branchUI.length, 0),
+        units: body.querySelectorAll('.roll-unit').length,
+        wantUnits: Object.keys(C.UNITS).length,
+        /* every branch and every man must be NAMED — an entry whose name came out of a key
+         * would read as 'Shieldman' either way, so check the table's own words are present */
+        named: forking.every((bt) => C.BUILDINGS[bt].branchUI.every((k) => txt.indexOf(C.BUILDINGS[bt].branches[k].name) >= 0)),
+        manned: Object.keys(C.UNITS).every((k) => txt.indexOf(C.UNITS[k].name) >= 0),
+        /* the three flags are what a branch is FOR, and they must be said in words */
+        saysStone: /cannot touch stone/.test(txt),
+        saysWalls: /holds walls and towers/.test(txt),
+        saysMend: /mends/.test(txt)
+      };
+    });
+    ok('the roll opens over the menu', roll.open && roll.menuHidden);
+    ok('every forking work is in it, and nothing is hard-coded', roll.halls === roll.wantHalls,
+       `${roll.halls} sections, wanted ${roll.wantHalls}`);
+    ok('...with every branch it offers', roll.branches === roll.wantBranches,
+       `${roll.branches} branches, wanted ${roll.wantBranches}`);
+    ok('...and every man in Amber, not only the ones a hall raises',
+       roll.units >= roll.wantUnits, `${roll.units} listed, ${roll.wantUnits} kinds`);
+    ok('each one called what the table calls it', roll.named && roll.manned);
+    ok('and what a shooter cannot do is said in words', roll.saysStone && roll.saysWalls && roll.saysMend);
+
+    /* it must be dismissable BOTH ways: the button, and the phone's back gesture — which at
+     * the menu is a layer nothing had armed before this screen existed */
+    await pg.evaluate(() => document.getElementById('roll-close').click());
+    await until(pg, () => document.getElementById('roll').classList.contains('hidden'));
+    ok('CLOSE puts the menu back', await hidden('roll') && !(await hidden('menu')));
+    await tapRoll();
+    await until(pg, () => !document.getElementById('roll').classList.contains('hidden'));
+    await pg.goBack(); await pg.waitForTimeout(300);
+    ok('and so does the back button, without leaving the game',
+       (await hidden('roll')) && !(await hidden('menu')) &&
+       (await pg.evaluate(() => !!window.UI)), 'the page survived');
+
     await pg.close();
   }
 
@@ -619,8 +678,9 @@ async function match(browser, base, renderer) {
       hall.raise = 0; hall.hp = hall.maxHp;
       await paint();
       const keyAt1 = [...R.debugWorks().values()].find((wk) => wk.id === hall.id);
-      /* raise it, and catch it mid-masonry */
-      const up = W.applyCommand(g.world, 0, { c: 'up', id: hall.id });
+      /* raise it, and catch it mid-masonry. A hall's level-2 upgrade IS its fork, so the
+       * order must name a branch — and the branch is what the new model is keyed by. */
+      const up = W.applyCommand(g.world, 0, { c: 'up', id: hall.id, br: 'line' });
       await paint();
       const mid = [...R.debugWorks().values()].find((wk) => wk.id === hall.id);
       /* let the masons out and muster a veteran */
@@ -996,10 +1056,12 @@ async function match(browser, base, renderer) {
          * last in the queue and waits at the foot. That is the cap doing its job; it just
          * makes for a test about the wrong thing. */
         g.world.units.length = 0;
-        /* one man right against the wall, one well behind it */
+        /* one man right against the wall, one well behind it. ARCHERS: stone is for shooters
+         * now, and a swordsman ordered to a curtain stations at its FOOT however close he
+         * stands — which is a different test, one suite along. */
         const mk = (off) => {
-          const d = C2.UNITS.soldier;
-          const u = { id: g.world.nextId++, owner: 0, kind: 'soldier',
+          const d = C2.UNITS.archer;
+          const u = { id: g.world.nextId++, owner: 0, kind: 'archer',
                       x: b.x + (nx / nL) * off, y: b.y + (ny / nL) * off, ox: 0, oy: 0,
                       hp: 100, maxHp: 100, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
           g.world.units.push(u); return u;
@@ -1019,7 +1081,7 @@ async function match(browser, base, renderer) {
         /* the lift itself, read off the renderer's own instance matrices rather than
          * re-derived — and read in the SAME step, because the man is under his banner's
          * orders and walks off the wall a second later */
-        const im = R.debugUnitMeshes()['soldier#1'];
+        const im = R.debugUnitMeshes()['archer#1'];
         const m = new window.THREE.Matrix4(), v3 = new window.THREE.Vector3();
         const heightNear = (u) => {
           const gy = R.groundH(u.x, u.y);

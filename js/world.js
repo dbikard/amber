@@ -1375,6 +1375,70 @@
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
 
+  /* ---------------- the Warden mends ----------------
+   * NOTHING ELSE IN AMBER HEALS A WOUND. Works self-mend when nobody is hitting them; a man
+   * who walks out of a fight on twenty hit points carries them to the end of the match. That
+   * is what makes a Warden worth more than the soldier he saves, and it is also why he must
+   * not be a wall against attrition: he mends ONE man at a time, the worst hurt within reach,
+   * and never himself — two Wardens standing together would otherwise be unkillable by
+   * anything that cannot out-damage them both at once.
+   * He does not mend works: stone has `STRUCT_REGEN` and does not need a man. */
+  function mendNear(world, u, def, dt) {
+    /* the same stagger `acquire` uses: the worst-hurt man is re-chosen a few times a second
+     * rather than every tick, and no two Wardens scan on the same one */
+    if ((world.tick + u.id) % RETARGET === 0 || !u._m || u._m.hp <= 0 ||
+        u._m.hp >= u._m.maxHp || d2(u.x, u.y, u._m.x, u._m.y) > def.mendR * def.mendR) {
+      let worst = null, gap = 0;
+      forNear(world, u.x, u.y, def.mendR, (v) => {
+        if (v.owner !== u.owner || v === u || v.hp >= v.maxHp) return;
+        if (d2(u.x, u.y, v.x, v.y) > def.mendR * def.mendR) return;
+        const g = v.maxHp - v.hp;
+        if (g > gap) { gap = g; worst = v; }
+      });
+      u._m = worst;
+    }
+    const m = u._m;
+    if (!m || m.hp <= 0 || m.hp >= m.maxHp) return;
+    m.hp = Math.min(m.maxHp, m.hp + def.mend * dt);
+    /* a thread of light, for the renderer — and it carries a position, so the fog filter
+     * hides it from anyone who cannot see it without another rule */
+    if (world.tick % 6 === 0) emit(world, { e: 'mend', pi: u.owner, x: u.x, y: u.y, to: { x: m.x, y: m.y } });
+  }
+  /* ---------------- the Binding ----------------
+   * ONLY CHAOS, AND ONLY WHEN IT IS ALREADY BEATEN. A binder turns a fiend that has been
+   * fought down below `bindHp` — you pay for it in the fight first, so it is a reward for
+   * holding the black road rather than a way of skipping it. It never takes a rival's troops:
+   * the test is `owner === CHAOS_ID` and nothing looser, because "not mine" would quietly
+   * become "anyone's" the first time somebody refactored it.
+   *
+   * AND SHADOW WILL NOT HOLD IT. `CAP.chaos` counts fiends by owner, so every one bound frees
+   * a slot for the road to tear open another — left permanent, a binder host would farm Chaos
+   * into a private army and the match would be about the weather again, which is the exact
+   * failure capping the black road was meant to end. A bound fiend serves for `BIND_LIFE` and
+   * then dissolves. */
+  function bindNear(world, u, def) {
+    let best = null, bd = def.bindR * def.bindR;
+    forNear(world, u.x, u.y, def.bindR, (v) => {
+      if (v.owner !== C.CHAOS_ID || v.hp > v.maxHp * def.bindHp) return;
+      const d = d2(u.x, u.y, v.x, v.y);
+      if (d < bd) { bd = d; best = v; }
+    });
+    if (!best) return false;
+    const pl = world.players[u.owner];
+    best.owner = u.owner;
+    best.co = u.co;                  // it marches under the standard that took it
+    best.from = -1;
+    best.tier = 1;
+    best.goal = pl.banner;
+    best._t = null;                  // it was hunting everyone; it is not any more
+    best.bound = world.t + C.BIND_LIFE;
+    /* a place in the line rather than the Chaos-random offset it spawned with, or a bound
+     * fiend stands apart from the company it just joined */
+    Object.assign(best, formationPlace(world, u.owner));
+    emit(world, { e: 'bind', pi: u.owner, x: best.x, y: best.y });
+    return true;
+  }
+
   function hurtBuilding(world, pi, id, dmg, by) {
     const pl = world.players[pi], i = pl.buildings.findIndex((b2) => b2.id === id);
     if (i < 0) return;
@@ -1653,6 +1717,13 @@
       const u = world.units[fwd ? ii : n - 1 - ii];
       if (u.hp <= 0) continue;
       const def = C.UNITS[u.kind];
+      /* SHADOW WILL NOT HOLD IT. A bound fiend serves its time and goes back to whatever it
+       * came out of — see bindNear for why it cannot be allowed to stay. */
+      if (u.bound && world.t >= u.bound) {
+        u.hp = 0; u.dead = 1;
+        emit(world, { e: 'unbind', pi: u.owner, x: u.x, y: u.y });
+        continue;
+      }
       u.cd -= dt;
       /* the banner moves the army */
       if (u.owner !== C.CHAOS_ID) {
@@ -1672,6 +1743,13 @@
        * nothing to see: a man on the wall fought from the wall and was drawn in the grass
        * beside it, so the one bargain the whole design rests on was invisible. The renderer
        * lifts him onto the stone from this, and it rides the wire so a guest sees it too. */
+      /* ---------------- the Warden's art, and the Binding ----------------
+       * Both run BEFORE the fight, and both run whether or not the man has a foe: a Warden who
+       * stopped mending because something walked into his range would mend nobody in the only
+       * place mending matters. Neither uses `u.cd` — that is his weapon's swing, and a Warden
+       * who had to choose between shooting and mending would do neither well. */
+      if (def.mend) mendNear(world, u, def, dt);
+      if (def.bind && u.cd <= 0 && bindNear(world, u, def)) u.cd = def.atk;
       /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
        * than he ever could on the ground, and everything that can see the tower can see him. */
       const gar = u.tow ? C.TOWER.over : 0;

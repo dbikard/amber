@@ -198,7 +198,7 @@ body {
 .c-blurb:empty { display: none; }
 
 /* ---------------- menu ---------------- */
-#menu, #end {
+#menu, #end, #roll {
   position: fixed; inset: 0; z-index: 40;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 20px; text-align: center;
@@ -306,6 +306,31 @@ body {
   max-width: none !important; margin-top: 8px;
 }
 @media (min-width: 620px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* ---------------- the Muster Roll ----------------
+ * A long read rather than a screen of buttons, so it packs from the top and scrolls, and the
+ * CLOSE button sits at the end of the scroll where a thumb arrives having finished reading. */
+#roll { justify-content: flex-start; padding-top: 22px; }
+#roll h2 { font-size: 24px; letter-spacing: 5px; color: #ffe9a8; margin-bottom: 10px; }
+#roll-body { width: min(96vw, 560px); }
+.roll-hall { margin-bottom: 18px; }
+.roll-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 15px; letter-spacing: 2px; color: #ffe9a8;
+  border-bottom: 1px solid #c9a44f55; padding-bottom: 4px;
+}
+.roll-head b { font-size: 12px; color: #c9a44f; font-weight: normal; }
+.roll-blurb { font-size: 12px; font-style: italic; color: #b8a878; line-height: 1.5; margin: 5px 0 8px; }
+/* the rung a choice is made on — a label across the column, not another card */
+.roll-lv {
+  font-size: 9px; letter-spacing: 2px; color: #8a7ca8;
+  margin: 10px 0 5px; text-transform: uppercase;
+}
+/* the codex reuses .card wholesale; these two only stop it looking like something to tap */
+.roll-branch, .roll-unit { cursor: default; }
+.roll-branch { border-color: #c9a44f88; }
+.roll-unit { background: linear-gradient(#1d1728, #150f1d); }
+#roll .mbtn { margin: 6px 0 24px; }
 /* the chronicle's last resort: a browser that will not reach the clipboard still has to let
  * you get the text out, so it goes somewhere you can select it by hand */
 #record-box {

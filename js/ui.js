@@ -23,7 +23,7 @@
        * The host came back from scanning the reply to a bare title screen, with the status
        * line, the diagnostics and the BEGIN button all hidden behind a panel it had no reason
        * to think had closed. Reported from play as "LAN is broken". */
-      if (e.target && e.target.closest && e.target.closest('#scanner, #record-box, #sheet')) return;
+      if (e.target && e.target.closest && e.target.closest('#scanner, #record-box, #sheet, #roll')) return;
       const closeIfAway = (panelId, btnId) => {
         const panel = $(panelId), btn = $(btnId);
         if (!panel || panel.classList.contains('hidden')) return;
@@ -46,6 +46,8 @@
     $('end-copy').addEventListener('click', () => UI.copyRecord($('end-copy')));
     $('end-save').addEventListener('click', () => UI.saveRecord());
     $('menu-record').addEventListener('click', () => UI.copyRecord($('menu-record')));
+    $('btn-roll').addEventListener('click', () => UI.roll());
+    $('roll-close').addEventListener('click', () => UI.rollClose());
     $('record-close').addEventListener('click', () => $('record-box').classList.add('hidden'));
 
     /* THE FOOTING GOVERNS BOTH. It used to live inside the skirmish fold-out, which said —
@@ -785,6 +787,79 @@
     const R = global.Rec;
     UI.stats(R && R.curves ? R.curves() : null, R && R.summary ? R.summary() : null);
   };
+
+  /* ---------------- THE MUSTER ROLL ----------------
+   * WHAT MAY BE RAISED, AND WHO IT RAISES. A fork is a permanent choice made mid-match, under
+   * pressure, from a card the size of a thumb — so the place to learn what the choice MEANS is
+   * not that card. This is the whole tree in one screen, read before the match rather than
+   * during it.
+   *
+   * EVERY LINE OF IT COMES OUT OF `CONST`. The halls are whichever buildings carry a branch
+   * table, the branches are whatever is in it, the men are `CONST.UNITS` entire — so a branch
+   * added later appears here by itself, and one whose numbers move is never described wrongly.
+   * A codex with its own copy of the numbers is worse than no codex. */
+  const rollStat = (kind) => {
+    const u = C.UNITS[kind];
+    if (!u) return '';
+    const dps = (u.dmg / u.atk).toFixed(1);
+    const bits = [`${u.hp} hp`, `${u.dmg} blow · ${dps}/s`, `${u.range} reach`, `${u.speed} pace`];
+    if (u.cost) bits.push(`◆ ${u.cost}`);
+    /* the three flags decide what a man is FOR, so they are said in words rather than left
+     * for a player to infer from a reach of 105 */
+    const tags = [];
+    if (u.siege) tags.push(`×${u.siege} vs stone`);
+    if (u.menOnly) tags.push('cannot touch stone');
+    if (u.mans) tags.push('holds walls and towers');
+    if (u.mend) tags.push(`mends ${u.mend}/s`);
+    if (u.bind) tags.push('binds fiends');
+    if (u.splash) tags.push(`splash ${u.splash}`);
+    return `<span class="c-rate wide">${bits.join(' · ')}</span>` +
+           (tags.length ? `<span class="c-rate up">${tags.join(' · ')}</span>` : '');
+  };
+  function unitRow(kind) {
+    const u = C.UNITS[kind];
+    return `<div class="card roll-unit"><span class="c-ico">${u.icon || '•'}</span>` +
+           `<span class="c-name">${u.name || cap(kind)}</span>` +
+           `<span class="c-cost">${u.cost ? '◆ ' + u.cost : ''}</span>` +
+           `<span class="c-blurb">${u.blurb || ''}</span>${rollStat(kind)}</div>`;
+  }
+  UI.roll = function () {
+    const body = $('roll-body');
+    let h = '';
+    /* the forking works, in the order the build sheet offers them */
+    for (const bt of C.BUILD_ORDER_UI) {
+      const d = C.BUILDINGS[bt];
+      if (!d.branches) continue;
+      h += `<div class="roll-hall"><div class="roll-head">${d.icon} ${d.name}` +
+           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${d.blurb}</div>`;
+      if (d.spawns) h += `<div class="roll-lv">Level 1 — ${C.UNITS[d.spawns].name}</div>` + unitRow(d.spawns);
+      h += `<div class="roll-lv">Level ${d.fork} — choose once, and forever</div>`;
+      for (const key of d.branchUI) {
+        const b2 = d.branches[key];
+        h += `<div class="card roll-branch"><span class="c-ico">${b2.icon}</span>` +
+             `<span class="c-name">${b2.name}</span><span class="c-cost">◆ ${b2.cost}</span>` +
+             `<span class="c-blurb">${b2.blurb}</span>` +
+             (b2.spawns ? rollStat(b2.spawns) : branchStatLine(bt, key, d.fork)) + '</div>';
+      }
+      h += '</div>';
+    }
+    /* ...and everyone else you meet. The Champion comes off a Trump and the Fiend out of a
+     * rift, so neither is under a hall — and a roll that left them out would be a roll of
+     * what you can BUY rather than of what is on the board. */
+    h += '<div class="roll-hall"><div class="roll-head">⚑ Every man in Amber</div>';
+    for (const kind of Object.keys(C.UNITS)) h += unitRow(kind);
+    h += '</div>';
+    body.innerHTML = h;
+    $('menu').classList.add('hidden');
+    $('roll').classList.remove('hidden');
+    body.scrollTop = 0;
+    if (H.onRollOpen) H.onRollOpen();
+  };
+  UI.rollClose = function () {
+    $('roll').classList.add('hidden');
+    $('menu').classList.remove('hidden');
+  };
+  UI.rollOpen = () => !$('roll').classList.contains('hidden');
 
   /* ---------------- the match in curves ----------------
    * WHY THIS EXISTS. The chronicle answers "what happened" to anyone willing to read a table of
