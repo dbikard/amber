@@ -2301,10 +2301,19 @@ suite('a tower shelters its garrison');
    * made their point above. Left standing they answer the question for the tower: the rams
    * went for the men outside it (men before stone is the right aggro, and `acquire` skips the
    * ones inside), so the tower took nothing and the line below would have reported an empty
-   * field as a shelter. What is left on this ground is a garrison and an assault. */
+   * field as a shelter. What is left on this ground is a garrison and an assault.
+   *
+   * ...AND THE HALL THAT KEEPS SENDING MORE. Clearing the men by NAME left the barracks 188
+   * away mustering fresh soldiers to a banner planted on the tower, so the ground the rams
+   * stood on was never empty: measured, the assault spent ten seconds on the men and put ONE
+   * blow into the stone in the first tick, before the newcomers closed — and whether that blow
+   * happened at all came down to which of a soldier and a tower was the nearer target on tick
+   * zero. A coin toss dressed as an assertion, and it duly came up tails the first time the
+   * men stood a few units further out. The muster is stopped and every man of the defender's
+   * that is not INSIDE is cleared, which is what the paragraph above already said. */
   for (const p of w.players) p.seatCd = 1e9;
-  w.units = w.units.filter((u) => swords.indexOf(u) < 0 &&
-                                  (shooters.indexOf(u) < 0 || inside.indexOf(u) >= 0));
+  w.units = w.units.filter((u) => u.owner !== 0 || inside.indexOf(u) >= 0);
+  pl.buildings = pl.buildings.filter((b) => b.bt !== 'barracks');
   const raiders = [];
   for (let i = 0; i < 2; i++) raiders.push(manAt(w, 1, 'ram', tower.x + 26 + i * 6, tower.y + 8));
   foe.banner = { x: tower.x, y: tower.y };
@@ -2451,6 +2460,109 @@ suite('men have width');
   eq('the same board musters the same army', pa.length, pb.length);
   ok('...and puts every man in the same place',
      pa.every((u, i) => Math.abs(u.x - pb[i].x) < 1e-6 && Math.abs(u.y - pb[i].y) < 1e-6));
+}
+
+/* A COMPANY IS A BODY OF MEN, and it stays one. Three faults reported from play, all of them
+ * the same fault underneath: a place in the line was PROPERTY, dealt once off a counter that
+ * only ever climbed, and dealt without asking whether the ground under it exists.
+ *   It read as a RING with a gap in it, because the fallen never gave their places back and
+ * because a place too far from the flag cannot be reached at all (see below).
+ *   Men stood in the DARK BEYOND THE MAP, because the place is the order's point plus an offset
+ * and nothing said the sum had to be on the board.
+ *   And the holes never closed, because nothing in the sim ever drew two men together.
+ * The rigs below are the reports, made countable. */
+suite('a company stands as a body');
+{
+  /* a realm of four halls under one standard, gathered at a flag in open country */
+  const flagOf = (c) => ({ x: c.x + 380, y: c.y + 380, site: -1 });
+  const realm = (seed, flag) => {
+    const w = World.createWorld(seed, 2), pl = w.players[0], c = World.cityOf(w, 0);
+    w.chaosNext = 1e9;
+    for (let a = 0; a < 40 && pl.buildings.filter((b) => b.bt === 'barracks').length < 3; a++) {
+      const th = a / 40 * Math.PI * 2;
+      pl.essence = 1e6;
+      World.applyCommand(w, 0, { c: 'build', x: c.x + Math.cos(th) * 200, y: c.y + Math.sin(th) * 200, bt: 'barracks' });
+    }
+    pl.banner = flag;
+    /* `poor` starves the halls instead of pulling them down: a company that is losing men with
+     * no replacements coming is the case the closing of ranks is about, and the halls have to
+     * survive it because the war of attrition below needs them back */
+    const step = (s, poor) => {
+      for (let i = 0; i < Math.round(s / C.SIM_DT); i++) {
+        pl.essence = poor ? 0 : 1e6;
+        World.update(w, C.SIM_DT); w.events.length = 0;
+      }
+    };
+    return { w, pl, c, step };
+  };
+  const look = (w, flag) => {
+    const us = w.units.filter((u) => u.owner === 0 && u.hp > 0);
+    const rs = us.map((u) => Math.hypot(u.x - flag.x, u.y - flag.y)).sort((a, b) => a - b);
+    const nn = [];
+    for (const a of us) {
+      let m = 1e9;
+      for (const b of us) if (a !== b) m = Math.min(m, Math.hypot(a.x - b.x, a.y - b.y));
+      nn.push(m);
+    }
+    nn.sort((a, b) => a - b);
+    return { n: us.length, us, rmed: rs[rs.length >> 1], rmax: rs[rs.length - 1],
+             mid: rs.filter((q) => q < C.CROWD.space * 2).length, nn: nn[nn.length >> 1] };
+  };
+
+  const c0 = World.cityOf(World.createWorld(31337, 2), 0), flag = flagOf(c0);
+  const r = realm(31337, flag);
+  r.step(420);
+  const s = look(r.w, flag);
+  ok('a company was gathered', s.n > 40, `${s.n} men`);
+  ok('...and no man is standing inside another', s.nn > C.CROWD.space * 0.7,
+     `${s.nn.toFixed(1)} to his nearest fellow against a berth of ${C.CROWD.space}`);
+
+  /* IT CLOSES ITS RANKS. A third fall with no replacements coming: the survivors must draw in,
+   * not stand around the holes they left. Old: 75 -> 71 from the flag, which is the body not
+   * moving at all. New: 71 -> 56, at the same spacing, which is the men closing up. */
+  r.w.units.filter((u) => u.owner === 0).forEach((u, i) => { if (i % 3 === 1) u.hp = 0; });
+  r.step(45, true);
+  const after = look(r.w, flag);
+  ok('the ranks close when men fall', after.rmed < s.rmed - C.CROWD.space * 0.5,
+     `${s.rmed.toFixed(0)} -> ${after.rmed.toFixed(0)} from the flag, ${s.n} -> ${after.n} men`);
+  ok('...and they still do not stand inside each other doing it',
+     after.nn > C.CROWD.space * 0.6, `${after.nn.toFixed(1)}`);
+
+  /* AND A WAR OF ATTRITION IS WHERE THE RING CAME FROM. Six rounds of losing a third of the
+   * company and replacing it — an ordinary twenty minutes of war — and the old formation had
+   * hollowed out completely: the men within two berths of the flag went from 11 to ONE and the
+   * body crept out from 120 across to 191, because every replacement was handed a place further
+   * out than the last and the fallen kept theirs for ever. That is the C-shaped arc with a gap
+   * in it, reported from play. Places go by rank among the living now, so the same war leaves
+   * the same body: 10 in the middle before, 19 after, and the outer edge where it was. */
+  for (let round = 0; round < 6; round++) {
+    r.w.units.filter((u) => u.owner === 0).forEach((u, i) => { if (i % 3 === 1) u.hp = 0; });
+    r.step(120);
+  }
+  const s6 = look(r.w, flag);
+  ok('a body that has fought still has a middle', s6.mid >= 8,
+     `${s.mid} men within two berths of the flag before the war, ${s6.mid} after`);
+  ok('...and has not crept outward as its men were replaced', s6.rmax < s.rmax + C.CROWD.space,
+     `${s.rmax.toFixed(0)} -> ${s6.rmax.toFixed(0)} across`);
+  ok('...and is not standing looser for it', s6.nn > C.CROWD.space * 0.7, `${s6.nn.toFixed(1)}`);
+
+  /* NOBODY IS ORDERED OFF THE EDGE OF THE WORLD. An order may legally be given at the very edge
+   * — `applyCommand` clamps a tap to the board and that is a legal tap — and the body behind it
+   * is a hundred units deep, so a third of the company was handed ground that does not exist.
+   * There is nothing out there to stop them either: the flow field only steers inside its grid
+   * and within `NAV.arrive` a man walks at his place in a straight line regardless. Measured on
+   * the old rule: 28 men of 96 standing up to 88 units out in the dark. */
+  for (const seed of [1000, 4242]) {
+    const cc = World.cityOf(World.createWorld(seed, 2), 0);
+    const edge = { x: cc.x < C.MAP.W / 2 ? 1 : C.MAP.W - 1, y: cc.y, site: -1 };
+    const q = realm(seed, edge);
+    q.step(420);
+    const live = q.w.units.filter((u) => u.hp > 0);
+    const out = live.filter((u) => u.x < 0 || u.y < 0 || u.x > C.MAP.W || u.y > C.MAP.H);
+    const worst = out.reduce((m, u) => Math.max(m, -u.x, -u.y, u.x - C.MAP.W, u.y - C.MAP.H), 0);
+    eq(`a flag on the edge of the world (seed ${seed}) leaves nobody outside it`, out.length, 0,
+       `${out.length} of ${live.length}, worst ${worst.toFixed(0)} past the edge`);
+  }
 }
 
 /* A COMPANY MAY GO QUIET WITHOUT THE REALM GOING QUIET. The muster valve was the Seat's alone,

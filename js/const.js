@@ -90,20 +90,34 @@
    * gives you. Men posted on a parapet are exempt: they have assigned berths WALL.berth apart
    * and a separation wider than the berth would fight the roster for the same stretch.
    *
-   * `ring` DOES NOT BREAK SIEGES, though it looks exactly as though it must. Every man carries
-   * a place in the line up to `ring` from his order, so a host sent at a Seat appears to form a
-   * circle AROUND it with everyone parked outside his own aggro — and the symptom fits: bleys
-   * held his banner on brand's Seat for 62% of a match, not one of his men came inside the
-   * enemy city ring, the closest got 367 from something you must be within CASTLE_ZONE to
-   * strike, and it ended at full health. Measured against an UNDEFENDED Seat instead: twenty
-   * men close to 18 and a hundred and twenty close to 7, and both take it to zero inside four
-   * minutes. The geometry is fine. An assault that does nothing is being stopped in the FIELD,
-   * which is turtle beating rush and is what pillar 2 asks for — do not damp this. */
-  /* `look` is how many seconds ahead a man watches for stone he would walk into. It is the one
+   * `pull` and `knit` are the OTHER half of the rule — cohesion, the second of Reynolds'
+   * three. Separation is the only thing in here with an opinion about how far apart two men
+   * should stand and every opinion it has is "further", so a man knocked out of his place
+   * stayed out of it and a company dispersed into debris. A man is drawn to his own company's
+   * men out to `pull`, by `knit` of the distance PAST the room he is owed — so the equilibrium
+   * of a pair is exactly `space`, and the body closes the holes the fallen leave rather than
+   * standing round them. Keep `pull` near two berths: it is the crowd grid's cell as well, and
+   * a wider one puts a hundred men in one cell and the pass back in the quadratic trap.
+   * Alignment stays out — the order is the alignment.
+   *
+   * THE BODY DOES NOT BREAK SIEGES, though a wide muster looks exactly as though it must. A
+   * host sent at a Seat forms up AROUND it, so it appears everyone is parked outside his own
+   * aggro — and the symptom fits: bleys held his banner on brand's Seat for 62% of a match, not
+   * one of his men came inside the enemy city ring, the closest got 367 from something you must
+   * be within CASTLE_ZONE to strike, and it ended at full health. Measured against an UNDEFENDED
+   * Seat instead: twenty men close to 18 and a hundred and twenty close to 7, and both take it
+   * to zero inside four minutes. The geometry is fine. An assault that does nothing is being
+   * stopped in the FIELD, which is turtle beating rush and is what pillar 2 asks for — do not
+   * damp this. (There WAS a number here — `ring`, a 300-unit cap on how far a man's place could
+   * fall from his order — and it was the thing that made a late-match company stand in a circle:
+   * past the 516th recruit every place came out at exactly 300. Places are dealt by rank now and
+   * a body is as wide as it has men. See World.bodyPlace.)
+   *
+   * `look` is how many seconds ahead a man watches for stone he would walk into. It is the one
    * number the anticipatory steering has: turn early enough and he never touches a work, so
    * nothing has to push him off one and nothing can oscillate. At a soldier's pace this is
    * about sixty units of warning — a couple of strides more than the work is wide. */
-  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, ring: 300, dead: 0.35, look: 1.2 };
+  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, pull: 44, knit: 0.04, dead: 0.35, look: 1.2 };
 
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle

@@ -653,18 +653,27 @@
 
   /* MEN HAVE WIDTH. Nothing kept one soldier off another, so a column arrived stacked and a
    * melee was a single point with a hundred sprites in it — an army of twenty and an army of
-   * two hundred looked the same. This is the separation rule out of flocking, and nothing
-   * else from it: no cohesion (the flow field is the cohesion) and no alignment (the order is
-   * the alignment), because both would fight the pathing that already works.
+   * two hundred looked the same. This is the separation rule out of flocking.
    * ON ITS OWN GRID. The bins the sim already keeps are 280 wide, which is right for "who can
    * I shoot" and useless here: at melee density one bin holds hundreds and checking them all
-   * is the quadratic trap again. A cell the width of the separation itself means the nine
+   * is the quadratic trap again. A cell the width of the rule itself means the nine
    * cells around a man hold a handful, so the pass is linear in the army.
    * Each PAIR is resolved once — a half-neighbourhood, and by index within the shared cell —
    * and both men give way by half the overlap, which converges in two or three ticks without
-   * the jitter a spring force produces. */
+   * the jitter a spring force produces.
+   *
+   * ...AND MEN HAVE FELLOWS. Separation on its own is half of a rule: it is the only thing in
+   * here with an opinion about how far apart two men should stand, and every opinion it has is
+   * "further". Nothing ever drew a company back together, so any man knocked out of his place —
+   * by stone, by a chase, by the neighbour he was giving way to — stayed out of it, and a
+   * company read as debris rather than as a body of men. Reported from play as exactly that,
+   * and measured: 26% of the men standing at a flag had no fellow within two paces.
+   * So the second of Reynolds' rules, kept deliberately weak and kept SHORT: only his own
+   * company, only out to `pull`, and only the part of the distance past the room he is owed —
+   * so two men at a berth apart pull on each other not at all and the equilibrium of the pair
+   * is exactly `space`. Alignment is still the order's business and is not in here. */
   function jostle(world) {
-    const R = C.CROWD.space, R2 = R * R, cw = R;
+    const R = C.CROWD.space, P = C.CROWD.pull, P2 = P * P, cw = P;
     const grid = new Map();
     for (const u of world.units) {
       if (u.hp <= 0 || u.man || u.tow) continue;   // a berth on a parapet, or a room in a tower, is not a crowd
@@ -687,15 +696,21 @@
     const part = (a, b) => {
       const dx = b.x - a.x, dy = b.y - a.y;
       let dd = dx * dx + dy * dy;
-      if (dd >= R2) return;
+      if (dd >= P2) return;
       let nx, ny;
       if (dd < 1e-6) {                          // exactly together: part them along their ids
         const ang = ((a.id * 2654435761) % 6283) / 1000;
         nx = Math.cos(ang); ny = Math.sin(ang); dd = 0;
       } else { const L = Math.sqrt(dd); nx = dx / L; ny = dy / L; dd = L; }
-      const give = (R - dd) * 0.5 * C.CROWD.push;
-      a._cx -= nx * give; a._cy -= ny * give; a._cn++;
-      b._cx += nx * give; b._cy += ny * give; b._cn++;
+      if (dd < R) {                             // SEPARATION: he is standing in me
+        const give = (R - dd) * 0.5 * C.CROWD.push;
+        a._cx -= nx * give; a._cy -= ny * give; a._cn++;
+        b._cx += nx * give; b._cy += ny * give; b._cn++;
+      } else if (a.owner === b.owner && a.co === b.co) {   // COHESION: my own company, and no one else's
+        const give = (dd - R) * 0.5 * C.CROWD.knit;
+        a._cx += nx * give; a._cy += ny * give; a._cn++;
+        b._cx -= nx * give; b._cy -= ny * give; b._cn++;
+      }
     };
     for (const cell of grid.values()) for (const u of cell) { u._cx = 0; u._cy = 0; u._cn = 0; }
     for (const [k, cell] of grid) {
@@ -1384,15 +1399,9 @@
       id: world.nextId++, owner, kind,
       x: (atX != null ? atX : home.x) + world.rng.range(-26, 26),
       y: (atY != null ? atY : home.y + (owner === 0 ? -60 : 60)) + world.rng.range(-16, 16),
-      /* HIS PLACE IN THE LINE, and it is a place rather than a jitter. This was a random point
-       * in a 48-by-48 square, which for a company of a hundred is four units a man — packed
-       * far tighter than a man's own width, so an army arrived as a blob and the separation
-       * rule spent the rest of the match fighting the formation for the same ground.
-       * A phyllotaxis spiral instead: the k-th man stands at r = k^0.5 scaled so the DENSITY
-       * comes out at one man per CROWD.space, which is exactly the room the crowd rule wants
-       * him to have. The formation and the separation then agree, and a settled army stands
-       * still. Capped, because an army of six hundred should be a host and not a continent. */
-      ...formationPlace(world, owner),
+      /* he carries no place in the line: a place is dealt to him every tick from his RANK
+       * among the men standing at the same flag — see musterAll and bodyPlace */
+      rank: 0,
       hp: def.hp * scale, maxHp: def.hp * scale,
       dmg: def.dmg * (owner === C.CHAOS_ID ? C.CHAOS.dmgScale(world.t) : 1) * vet,
       tier: lv,
@@ -1405,16 +1414,126 @@
     return u.id;
   }
 
-  /* r = space * 0.6 * sqrt(k) puts one man per `space` of area, which is the same room the
-   * separation pass keeps; the golden angle keeps the ring even at every size. The counter is
-   * per heir and never reused, so a company that loses men keeps its shape rather than
-   * re-packing everyone the moment somebody falls. */
-  function formationPlace(world, owner) {
-    const pl = owner === C.CHAOS_ID ? null : world.players[owner];
-    const k = pl ? (pl.nextSeat = (pl.nextSeat || 0) + 1) : Math.floor(world.rng.next() * 400);
-    const r = Math.min(C.CROWD.ring, C.CROWD.space * 0.6 * Math.sqrt(k));
-    const a = k * 2.39996323;
-    return { ox: Math.cos(a) * r, oy: Math.sin(a) * r };
+  /* ---------------- THE MUSTER IS A BODY OF MEN ----------------
+   * A place in the line used to be PROPERTY: dealt to a man once, at muster, off a per-heir
+   * counter that only ever went up — `r = space * 0.6 * sqrt(k)` on a phyllotaxis spiral,
+   * capped at 300. Three faults, all of them reported from play and all of them the same fault.
+   *   The RING. Past the 516th recruit of a match the cap binds and every further man is handed
+   * r = 300 EXACTLY, so a late-match company stands on one circle six hundred units across.
+   * (Measured: the counter reaches 433 by fifteen minutes of bot play, so the second half of a
+   * long match is all ring.)
+   *   The HOLES. The counter is never reused, so the men who fall leave their places empty for
+   * the rest of the match and the survivors are a scatter of singles. Measured: 26% of the men
+   * standing at a flag had no fellow within two paces of them.
+   *   The SPREAD. Places are dealt per HEIR and men gather per FLAG, so an army split between
+   * two standards gives each of them every other place of a disc sized for both — half density,
+   * twice the ground, for nothing.
+   *
+   * So a place is not property. It is dealt afresh every tick from the man's RANK among the
+   * living men standing at the same flag: rank 0 in the middle, and each shell out one berth
+   * wider, holding as many men as fit round it a berth apart. The body is then sized to the
+   * company that is actually there — it is a disc at every size and never a ring — and when a
+   * man falls every man behind him steps up one place, which is what closing ranks IS.
+   * Consecutive ranks are NEIGHBOURS on purpose. The spiral this replaces turns 137° per step,
+   * so re-dealing its places after a death would have sent half the company marching across
+   * the disc to swap ends; here a death moves a man one berth. */
+  /* MEMOISED, because this is once per man per tick and the answer never changes: the place of
+   * the k-th man of a body is a constant of the shape, not of the match. Two shapes are asked
+   * for today (the field's, from a point, and the Seat's, from the tower's ground), so the
+   * table is keyed by the pair that defines one. */
+  const bodyTab = new Map();
+  function bodyPlace(k, r0, berth) {
+    const key = r0 * 4096 + berth;
+    let tab = bodyTab.get(key);
+    if (!tab) bodyTab.set(key, tab = []);
+    let p = tab[k];
+    if (p) return p;
+    let i = 0, base = 0;
+    for (;;) {
+      const r = r0 + i * berth;
+      const n = r < berth * 0.5 ? 1 : Math.max(1, Math.round(2 * Math.PI * r / berth));
+      if (k < base + n) {
+        /* half a berth of stagger between shells: without it the men line up in spokes and
+         * the gaps between the spokes read as a hole in the body */
+        const a = (k - base + (i % 2) * 0.5) * (Math.PI * 2 / n);
+        return (tab[k] = { x: Math.cos(a) * r, y: Math.sin(a) * r, r });
+      }
+      base += n; i++;
+    }
+  }
+  /* ...AND NOBODY IS SENT OFF THE BOARD. A place is an order's point plus an offset, and an
+   * order given near the edge of the world hands the back ranks ground that does not exist:
+   * nothing out there stops them, because the flow field only steers INSIDE its grid and within
+   * `NAV.arrive` of his order a man walks at his place in a straight line regardless. Measured
+   * before this: 0.74% of all places lay off the map, and men stood as much as 94 units beyond
+   * the edge of the world, in the dark. Water does the same thing in the middle of the board.
+   * Refused at the SOURCE rather than clamped after the fact — the man is never GIVEN a place he
+   * has no business standing on. It is folded back toward the flag until it is ground. */
+  function standable(world, x, y) {
+    const m = C.CROWD.space;
+    if (x < m || y < m || x > C.MAP.W - m || y > C.MAP.H - m) return false;
+    const c = NAV.cellOf(world.nav, x, y);
+    return c >= 0 && world.nav.cost[c] > 0;
+  }
+  function placeAt(world, cx, cy, off) {
+    if (standable(world, cx + off.x, cy + off.y)) return { x: cx + off.x, y: cy + off.y };
+    /* ALONG HIS OWN BEARING, and not onto the flag. Folding a bad place all the way back to the
+     * order's point puts every man it happens to whose place is over water on the same foot of
+     * ground: measured on a banner planted off the board, the whole company stacked at an
+     * average of six units apart and never came to rest. He takes the nearest ground on the
+     * line he was given, which keeps the men who fold apart from each other. */
+    for (let i = 0; i < 3; i++) {
+      const f = 0.75 - i * 0.25;
+      if (standable(world, cx + off.x * f, cy + off.y * f)) return { x: cx + off.x * f, y: cy + off.y * f };
+    }
+    /* No ground anywhere on the bearing: the order is on a crag, in the sea, or hard against the
+     * edge of the world. THE BOARD IS NOT NEGOTIABLE, though. An order may legally be given at
+     * x=0 — `applyCommand` clamps a tap to the board and that IS the clamp — and a body a
+     * hundred deep behind a flag on the shoreline was handing a third of its men ground beyond
+     * the world's edge, where there is nothing to stop them: measured at 28 men of 96 standing
+     * up to 88 units out in the dark. Each axis is held separately so he keeps the other one:
+     * fold both together on a single scale and the whole flank lands on one foot of ground.
+     * A berth of margin, and a company ordered to the very edge forms up just inland of its own
+     * standard — which is the truth of it: there is nothing to stand on out there. The margin is
+     * what the CROWD needs, too. Held exactly at the boundary instead, the men pressed against
+     * it were still shoved over it by the separation pass, which knows nothing about the world's
+     * edge: 8 of 96 a few units out in the dark.
+     * An order that is off the board ENTIRELY is a different thing and is left alone: a standard
+     * planted where nobody can stand is an order to TRY (see the march), the men keep their
+     * places in the line and try, and the alternative is a company that stacks on the boundary
+     * — measured, an army marched at a point past the east edge closed to 11.8 apart. */
+    if (cx < 0 || cy < 0 || cx > C.MAP.W || cy > C.MAP.H) return { x: cx + off.x, y: cy + off.y };
+    const m = C.CROWD.space;
+    const hold = (p, hi) => Math.max(m, Math.min(hi - m, p));
+    return { x: hold(cx + off.x, C.MAP.W), y: hold(cy + off.y, C.MAP.H) };
+  }
+  /* WHO IS STANDING AT WHICH FLAG, counted once a tick, before anyone moves. The key is the
+   * ORDER'S POINT and not the company: every company without a rally of its own follows the War
+   * Banner, so it is the point that gathers men and not the standard, and Chaos — which has no
+   * companies at all — is dealt into the same line by the site it was sent to.
+   * The goal is settled here too, because the rank cannot be counted until it is known. */
+  function musterAll(world) {
+    const at = world._muster || (world._muster = new Map());
+    at.clear();
+    for (const u of world.units) {
+      if (u.hp <= 0) continue;
+      if (u.owner !== C.CHAOS_ID) {
+        const pl = world.players[u.owner];
+        const co = u.co ? coOf(world, u.owner, u.co) : null;   // its company, if it still exists
+        const want = co && co.rally ? co.rally : pl.banner;
+        if (u.goal !== want) u.goal = want;
+      }
+      /* a berth on a parapet and a room in a tower are STATIONS, and a station is exact. Neither
+       * takes a place in the body, and neither is counted for one — a tower's garrison holding
+       * ranks 3 to 12 would leave ten empty places in the middle of the company outside. */
+      if (u.man || u.tow || !u.goal) { u.rank = 0; continue; }
+      /* a NUMBER for a key, not a string: this runs for every man every tick and building
+       * "0:1234:567" thirty times a second for an army is a measurable share of the sim */
+      const k = (u.owner + 2) * 33554432 + Math.round(u.goal.y) * 4096 + Math.round(u.goal.x);
+      const n = at.get(k) || 0;
+      at.set(k, n + 1);
+      u.rank = n;
+    }
   }
   const tierOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
   function hurt(world, victim, dmg, byOwner) {
@@ -1635,9 +1754,8 @@
     best.goal = pl.banner;
     best._t = null;                  // it was hunting everyone; it is not any more
     best.bound = world.t + C.BIND_LIFE;
-    /* a place in the line rather than the Chaos-random offset it spawned with, or a bound
-     * fiend stands apart from the company it just joined */
-    Object.assign(best, formationPlace(world, u.owner));
+    /* it takes its place in the line at the next muster, like any other man: the ranks are
+     * dealt by who is standing at the flag, so joining the company IS joining the body */
     emit(world, { e: 'bind', pi: u.owner, x: best.x, y: best.y });
     return true;
   }
@@ -1979,6 +2097,10 @@
     /* the parapet roster, before anyone moves or shoots: who is ON the wall this tick decides
      * both where he walks and whether he can shoot over it */
     postAll(world);
+    /* ...and then the ranks: whose order is where, and who is standing where in the body it
+     * gathers. Both are settled before a man moves, so every place in a company is dealt
+     * against the same picture of who is alive. */
+    musterAll(world);
     /* WHERE EVERY MAN STOOD BEFORE THIS TICK TOUCHED HIM. The last `stand` of the tick runs
      * after the crowd pass, where there is no single step to slide along — and without one it
      * can only REPEL, which snapped a man back onto the rim of a work every tick and undid the
@@ -1999,13 +2121,7 @@
         continue;
       }
       u.cd -= dt;
-      /* the banner moves the army */
-      if (u.owner !== C.CHAOS_ID) {
-        const pl2 = world.players[u.owner];
-        const co = u.co ? coOf(world, u.owner, u.co) : null;   // its company, if it still exists
-        const want = co && co.rally ? co.rally : pl2.banner;
-        if (u.goal !== want) u.goal = want;
-      }
+      /* the banner moves the army — see musterAll, which set every goal before this loop */
       /* garrisons of an open city still see farther out */
       const home = u.owner !== C.CHAOS_ID && d2(u.x, u.y, cityOf(world, u.owner).x, cityOf(world, u.owner).y) < C.CITY.r * C.CITY.r;
       /* ON THE PARAPET. A man up against his own curtain fights from the top of it: he
@@ -2062,12 +2178,8 @@
        * peels off to his own place in the line, so an army arrives spread, not stacked */
       const gs = u.goal;
       if (gs) {
-        let gx = gs.x + u.ox, gy = gs.y + u.oy;
-        /* Troops ordered home muster in the COURT, not on the tower's own ground. The Seat
-         * stands on that ground and an army standing with it simply vanishes under the
-         * castle — which is what happened when the walls went and took the garrison's ring
-         * with them. A stable per-soldier angle keeps the ring even instead of jostling. */
-        let muster = 0;   // >0 once the goal is a place in the ring: how far the ground reaches
+        let gx = gs.x, gy = gs.y;
+        let muster = 0;   // >0 once the goal is a place in the body: how far the ground reaches
         /* A PARAPET IS A LINE, AND MEN ON IT SHOULD STAND ALONG IT. An order given at a wall
          * is one point, so every man sent to hold a curtain walked to the same stride of it
          * and the rest of the run stood empty — a hundred feet of stone defended by a scrum.
@@ -2130,27 +2242,35 @@
             continue;
           }
         }
-        if (u.owner !== C.CHAOS_ID) {
-          const cs = cityOf(world, u.owner);
-          if (d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR) {
-            const ang = (u.id * 2.39996) % (Math.PI * 2);          // golden angle: no clumps
-            /* AND THE MUSTER SPREADS WITH THE ARMY. Four fixed rings held a hundred and
-             * thirty men in the same ground twenty stood in, which is a single storm's disc
-             * over a quarter of your force — reported from play, and measured at 31 dead in
-             * one cast. The ring count follows the host, so a bigger army is a wider one and
-             * a blow that lands on it costs proportionally less. */
-            const host = (world.host && world.host[u.owner]) || 1;
-            const rings = Math.max(4, Math.min(14, Math.ceil(host / 22)));
-            const rr = C.CITY.seatR + 24 + (u.id % rings) * 17;
-            gx = cs.x + Math.cos(ang) * rr; gy = cs.y + Math.sin(ang) * rr;
-            /* The whole ring is muster ground, not just the last few strides. Judging it by
-             * NAV.arrive around the Seat CENTRE instead put every soldier in a 30 Hz loop:
-             * step outward toward his own place, cross out of the field's arrival circle,
-             * get dragged back to the middle, repeat — which is what the shivering ranks
-             * under the tower were. Reach past the outermost place and the handover happens
-             * once. */
-            muster = rr + C.NAV.arrive;
-          }
+        /* HIS PLACE IN THE BODY — see bodyPlace and musterAll.
+         * Troops ordered home muster in the COURT, not on the tower's own ground: the Seat
+         * stands on that ground and an army standing with it simply vanishes under the castle,
+         * which is what happened when the walls went and took the garrison's ring with them.
+         * So at home the body opens out AROUND the tower's ground rather than starting at a
+         * point, and it is the same rule everywhere else.
+         * AND THE MUSTER SPREADS WITH THE ARMY. Four fixed rings held a hundred and thirty men
+         * in the same ground twenty stood in, which is a single storm's disc over a quarter of
+         * your force — reported from play, and measured at 31 dead in one cast. A body grows a
+         * shell at a time as men join it, so a bigger army is a wider one for free. */
+        {
+          const cs = u.owner !== C.CHAOS_ID ? cityOf(world, u.owner) : null;
+          const home = cs && d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR;
+          const off = bodyPlace(u.rank || 0, home ? C.CITY.seatR + 24 : 0, C.CROWD.space);
+          const pt = placeAt(world, home ? cs.x : gs.x, home ? cs.y : gs.y, off);
+          gx = pt.x; gy = pt.y;
+          /* THE WHOLE BODY IS MUSTER GROUND, not just the last few strides — and this is the
+           * rule that actually drew the circle. The handover from the flow field to a man's own
+           * place happened within `NAV.arrive` (72) of the ORDER, so a place further out than
+           * that could not be reached at all: he steps outward toward it, crosses the arrival
+           * circle, the field drags him back to the flag, repeat, thirty times a second. Every
+           * man whose place lay past 72 therefore stood ON that circle, shoulder to shoulder
+           * with everyone else in the same case — the C-shaped arc reported from play, measured
+           * here at 32 men on a ring of radius 73 with a nearest-neighbour spacing of 15.
+           * It was known and it was fixed for the Seat alone, where the ring was wide enough
+           * that somebody noticed ("the shivering ranks under the tower"); in the field a
+           * company only had to grow past thirty men to hit it. Reach past his own place and the
+           * handover happens once, wherever the flag is. */
+          muster = off.r + C.NAV.arrive;
         }
         const dgoal = Math.sqrt(d2(u.x, u.y, gx, gy));
         /* the flow field is drawn to the ORDER's point; a soldier's own place in the line is
