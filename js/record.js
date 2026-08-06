@@ -50,6 +50,7 @@
         ess: pl.essence, income: pl.incomeRate || 0, drain: pl.drainRate || 0,
         works: pl.buildings.filter((b) => !b.raise).length,
         rising: pl.buildings.filter((b) => b.raise > 0).length,
+        gates: pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length,
         army: world.units.reduce((n, u) => n + (u.owner === pi ? 1 : 0), 0),
         pattern: pl.pattern, hp: pl.castleHp, walking: !!pl.walking, out: !!pl.out
       }))
@@ -66,6 +67,9 @@
         ess: pl.essence || 0, income: pl.incomeRate || 0, drain: pl.drainRate || 0,
         works: pl.buildings.filter((b) => !b.raise).length,
         rising: pl.buildings.filter((b) => b.raise > 0).length,
+        /* a rival's building TYPE is veiled, so a guest can only count the Gates it can name.
+         * Undercounting a rival is the honest failure here; the header says the record is partial. */
+        gates: pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length,
         army: snap.units.reduce((n, u) => n + (u.owner === pi ? 1 : 0), 0),
         pattern: pl.pattern || 0, hp: pl.castleHp, walking: !!pl.walking, out: false
       }))
@@ -174,6 +178,70 @@
     head.at = reading ? reading.t : (rows.length ? rows[rows.length - 1].t : 0);
     head.winner = winner; head.reason = reason;
   };
+
+  /* ---------------- the match as curves ----------------
+   * The same rows the table is printed from, handed over as series a chart can draw. This
+   * lives HERE rather than in ui.js on purpose: which numbers tell the story of a match is a
+   * question about the game, not about the DOM, and keeping it headless is what lets a test
+   * assert the shape of the answer without a browser.
+   *
+   * `max` fixes a chart's ceiling where the number has a meaning at 100 (the Pattern, the
+   * Seat's walls); the rest are scaled to what actually happened, because an army chart with a
+   * ceiling of "whatever is possible" is a flat line along the bottom of every match. */
+  Rec.SERIES = [
+    { key: 'ess',     label: 'ESSENCE',      pick: (p) => p.ess },
+    { key: 'income',  label: 'INCOME',       pick: (p) => p.income },
+    { key: 'works',   label: 'WORKS',        pick: (p) => p.works },
+    { key: 'gates',   label: 'SHADOW GATES', pick: (p) => p.gates || 0 },
+    { key: 'army',    label: 'ARMY',         pick: (p) => p.army },
+    { key: 'pattern', label: 'THE PATTERN',  pick: (p) => p.pattern, max: 100 },
+    { key: 'hp',      label: 'THE SEAT',     pick: (p) => p.hp / C.CASTLE_HP * 100, max: 100 }
+  ];
+
+  Rec.curves = function () {
+    if (!head || rows.length < 2) return null;
+    const n = rows[0].players.length;
+    const seats = [];
+    for (let i = 0; i < n; i++) {
+      seats.push({ i, name: head.names[i] || 'seat ' + i, you: i === head.viewer,
+                   won: head.winner === i });
+    }
+    return {
+      names: head.names.slice(), viewer: head.viewer, partial: !!head.partial,
+      winner: head.winner, reason: head.reason || null, at: head.at || 0, seats,
+      t: rows.map((r) => r.t),
+      series: Rec.SERIES.map((s) => ({
+        key: s.key, label: s.label, max: s.max || 0,
+        /* A TOPPLED HEIR'S LINE STOPS — but not before the fall. Nulling every `out` sample
+         * hides the one moment the chart exists to show: a Seat's walls plunging to nothing is
+         * the end of the match, and the first version drew it as a line that had always been
+         * flat at a hundred. So the sample he goes out on is drawn, and everything after it is
+         * null — the curve dives and then ends, which is what happened. */
+        lines: seats.map((st) => {
+          let gone = false;
+          return rows.map((r) => {
+            const p = r.players[st.i];
+            if (!p || gone) return null;
+            if (p.out) gone = true;
+            return s.pick(p);
+          });
+        })
+      }))
+    };
+  };
+
+  /* the facts that are not a curve: what the match cost you, and who took it */
+  Rec.summary = function () {
+    if (!head || !tally) return null;
+    return { at: head.at || 0, winner: head.winner, reason: head.reason || null,
+             viewer: head.viewer, names: head.names.slice(), partial: !!head.partial,
+             peakArmy: tally.peakArmy, peakWorks: tally.peakWorks,
+             lost: tally.lost, razed: tally.razed, torn: tally.torn,
+             deadFoe: tally.deadFoe, deadChaos: tally.deadChaos,
+             walkStarted: tally.walkStarted };
+  };
+
+  Rec.clock = clock;
 
   /* ---------------- the artefact ---------------- */
   /* a column heading has to fit: "Benedict, Master of Arms" is a title, not a label */

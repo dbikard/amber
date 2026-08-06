@@ -765,6 +765,149 @@
     $('end-copy').textContent = '📜 COPY THE CHRONICLE';
     $('end-save').textContent = 'SAVE';
     $('record-box').classList.add('hidden');
+    const R = global.Rec;
+    UI.stats(R && R.curves ? R.curves() : null, R && R.summary ? R.summary() : null);
+  };
+
+  /* ---------------- the match in curves ----------------
+   * WHY THIS EXISTS. The chronicle answers "what happened" to anyone willing to read a table of
+   * numbers; nobody reads a table of numbers on a phone the moment a match ends. The shapes do
+   * the same work at a glance — an army that never recovered from one battle, an essence line
+   * that flatlined at zero for four minutes, a rival's Gates outnumbering yours from 2:00 on.
+   *
+   * The SERIES are chosen in record.js because which numbers tell a match's story is a question
+   * about the game. What is here is only the drawing: SVG rather than canvas because the end
+   * screen is a DOM overlay, because it scales to any phone without a resize dance, and because
+   * a test can then assert what was drawn instead of sampling pixels. */
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const svgEl = (n, at) => {
+    const e = document.createElementNS(SVGNS, n);
+    for (const k in at) e.setAttribute(k, at[k]);
+    return e;
+  };
+  /* an axis label wants to read as a quantity, not as a float: 1247 → 1.2k */
+  const brief = (v) => (v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k'
+    : v >= 10 ? String(Math.round(v)) : String(Math.round(v * 10) / 10));
+
+  const CH_W = 100, CH_H = 36, PAD_T = 3, PAD_B = 3;
+
+  const peakOf = (s) => {
+    let peak = 0;
+    for (const line of s.lines) for (const v of line) if (v != null && v > peak) peak = v;
+    return peak;
+  };
+
+  function chart(s, data, peak) {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    /* the ceiling of the chart, and it must be SHOWN: two charts of different heights side by
+     * side are read as the same height unless the number says otherwise */
+    const top = s.max || peak || 1;
+    const head = document.createElement('div');
+    head.className = 'stat-head';
+    head.innerHTML = '<span>' + s.label + '</span><b>' + brief(top) + '</b>';
+    card.appendChild(head);
+
+    const svg = svgEl('svg', { viewBox: '0 0 ' + CH_W + ' ' + CH_H, preserveAspectRatio: 'none',
+                               class: 'stat-svg', 'data-key': s.key });
+    const n = data.t.length;
+    const span = data.t[n - 1] - data.t[0] || 1;
+    const X = (i) => (data.t[i] - data.t[0]) / span * CH_W;
+    const Y = (v) => CH_H - PAD_B - Math.max(0, Math.min(1, v / top)) * (CH_H - PAD_T - PAD_B);
+    svg.appendChild(svgEl('line', { x1: 0, y1: CH_H - PAD_B, x2: CH_W, y2: CH_H - PAD_B,
+                                    class: 'stat-floor' }));
+    data.seats.forEach((st, si) => {
+      const line = s.lines[si];
+      /* a toppled heir's values go null — draw each unbroken RUN as its own polyline so the
+       * curve simply stops rather than diving to the floor and back */
+      let run = [];
+      const flush = () => {
+        if (run.length > 1) {
+          svg.appendChild(svgEl('polyline', {
+            points: run.join(' '), fill: 'none', 'vector-effect': 'non-scaling-stroke',
+            stroke: UI.seatColor(st.i, data.viewer), class: 'stat-line' + (st.you ? ' you' : ''),
+            'data-seat': st.i
+          }));
+        } else if (run.length === 1) {   /* one lonely sample still deserves to be visible */
+          const [x, y] = run[0].split(',');
+          svg.appendChild(svgEl('circle', { cx: x, cy: y, r: 0.9, 'data-seat': st.i,
+                                            fill: UI.seatColor(st.i, data.viewer) }));
+        }
+        run = [];
+      };
+      for (let i = 0; i < n; i++) {
+        const v = line[i];
+        if (v == null) { flush(); continue; }
+        run.push(X(i).toFixed(2) + ',' + Y(v).toFixed(2));
+      }
+      flush();
+    });
+    card.appendChild(svg);
+    return card;
+  }
+
+  UI.stats = function (data, sum) {
+    const box = $('end-stats');
+    box.textContent = '';
+    box.classList.toggle('hidden', !data);
+    $('end').classList.toggle('with-stats', !!data);
+    if (!data) return;
+
+    if (sum) {
+      const dead = sum.deadFoe + sum.deadChaos;
+      const facts = [
+        ['LASTED', global.Rec.clock(sum.at)],
+        ['PEAK ARMY', String(sum.peakArmy)],
+        ['PEAK WORKS', String(sum.peakWorks)],
+        ['YOUR DEAD', dead + (dead ? ' (' + Math.round(sum.deadChaos / dead * 100) + '% Chaos)' : '')],
+        ['WORKS LOST', sum.lost + ' · razed ' + sum.razed],
+        ['THE WALK', sum.walkStarted != null ? 'begun ' + global.Rec.clock(sum.walkStarted) : 'never']
+      ];
+      const strip = document.createElement('div');
+      strip.className = 'stat-facts';
+      strip.innerHTML = facts.map(([k, v]) => '<div><span>' + k + '</span><b>' + v + '</b></div>').join('');
+      box.appendChild(strip);
+    }
+
+    const key = document.createElement('div');
+    key.className = 'stat-key';
+    for (const st of data.seats) {
+      const chip = document.createElement('span');
+      chip.style.color = UI.seatColor(st.i, data.viewer);
+      chip.textContent = (st.won ? '♔ ' : '') + (st.you ? 'YOU' : String(st.name).split(',')[0]);
+      key.appendChild(chip);
+    }
+    box.appendChild(key);
+
+    const grid = document.createElement('div');
+    grid.className = 'stat-grid';
+    for (const s of data.series) {
+      const peak = peakOf(s);
+      /* a chart that is a flat zero for every seat is a chart about nothing — a match where
+       * nobody walked should not spend a sixth of the panel saying so. And on a chart with a
+       * FIXED ceiling the same is true a little above zero: an heir who brushed the Pattern
+       * for three seconds draws a line indistinguishable from the floor, in a card the size of
+       * the one showing the army. */
+      if (peak <= 0 || (s.max && peak < s.max * 0.02)) continue;
+      grid.appendChild(chart(s, data, peak));
+    }
+    box.appendChild(grid);
+
+    /* every chart shares one x axis, so it is labelled once at the foot rather than seven
+     * times — without it the shapes have no sense of WHEN, which is half of what they say */
+    const span = document.createElement('div');
+    span.className = 'stat-span';
+    span.innerHTML = '<span>' + global.Rec.clock(data.t[0]) + '</span>' +
+                     '<span>' + global.Rec.clock(data.t[data.t.length - 1]) + '</span>';
+    box.appendChild(span);
+
+    if (data.partial) {
+      const note = document.createElement('p');
+      note.className = 'stat-note';
+      note.textContent = 'From your own snapshots: a rival\'s essence never crosses the wire, ' +
+                         'and veiled works are not counted.';
+      box.appendChild(note);
+    }
   };
 
   /* ---------------- the chronicle ----------------

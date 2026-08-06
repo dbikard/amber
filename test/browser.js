@@ -2188,6 +2188,30 @@ async function match(browser, base, renderer) {
       out.fellBack = !document.getElementById('record-box').classList.contains('hidden') && ta.value.length > 200;
       document.getElementById('record-close').click();
       out.closed = document.getElementById('record-box').classList.contains('hidden');
+      /* THE MATCH IN CURVES, read off the same end screen while it is still up. It shares this
+       * match rather than playing its own: most of this suite's cost is FRAME time, and a
+       * second eight-chunk match to look at an SVG would double it for nothing. */
+      const box = document.getElementById('end-stats');
+      const cards = [...box.querySelectorAll('.stat-card')];
+      const pts = (el) => [...el.querySelectorAll('polyline')]
+        .flatMap((p) => p.getAttribute('points').split(' ').map((s) => s.split(',').map(Number)));
+      out.stats = {
+        shown: !box.classList.contains('hidden') &&
+               document.getElementById('end').classList.contains('with-stats'),
+        cards: cards.length,
+        keys: cards.map((c) => c.querySelector('svg').getAttribute('data-key')),
+        seats: new Set(cards.flatMap((c) => [...c.querySelectorAll('[data-seat]')]
+          .map((p) => p.getAttribute('data-seat')))).size,
+        facts: box.querySelectorAll('.stat-facts div').length,
+        legend: box.querySelectorAll('.stat-key span').length,
+        /* the projection must land inside the viewBox — a curve drawn off the card is a curve
+         * nobody sees, and it looks exactly like a curve that is flat along the top */
+        outside: cards.flatMap(pts).filter(([x, y]) => !(x >= -0.01 && x <= 100.01 && y >= 0 && y <= 36)).length,
+        /* every card drawn must SAY something: the all-zero ones are dropped, so a card whose
+         * every point sits on the floor means the rule stopped working */
+        flat: cards.filter((c) => !pts(c).some(([, y]) => y < 32.9)).length,
+        labels: cards.map((c) => c.querySelector('.stat-head span').textContent)
+      };
       /* and a match walked out of is still offered, because that is often the telling one */
       document.getElementById('end-menu').click();
       await new Promise((res) => setTimeout(res, 150));
@@ -2206,6 +2230,21 @@ async function match(browser, base, renderer) {
     ok('...which closes again', chron.closed);
     ok('and the menu still offers the last match', chron.menuOffers);
     ok('the chronicle raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+
+    /* THE MATCH IN CURVES. The chronicle answers "what happened" to anyone who will read a
+     * table of numbers; nobody does that on a phone the second a match ends. The shapes say
+     * the same thing at a glance, so they have to actually be on the screen and in the box. */
+    suite(`${r} · the match in curves`);
+    const st = chron.stats || {};
+    ok('the end screen shows the match as curves', st.shown);
+    ok('...one chart per thing worth watching', st.cards >= 4, `${st.cards} charts: ${(st.labels || []).join(', ')}`);
+    ok('...including the Shadow Gates', (st.keys || []).indexOf('gates') >= 0, (st.keys || []).join(','));
+    ok('...and the army', (st.keys || []).indexOf('army') >= 0, (st.keys || []).join(','));
+    ok('both heirs are drawn, in their own colours', st.seats === 2, `${st.seats} seats`);
+    ok('the legend names them', st.legend === 2, `${st.legend} chips`);
+    ok('the facts that are not a curve are there too', st.facts === 6, `${st.facts} facts`);
+    ok('every curve lands inside its card', st.outside === 0, `${st.outside} points outside`);
+    ok('a chart that would say nothing is not drawn', st.flat === 0, `${st.flat} flat charts`);
 
     suite(`${r} · console`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));

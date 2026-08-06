@@ -266,6 +266,46 @@ body {
 #end h2.won { color: #ffe9a8; text-shadow: 0 0 24px rgba(255, 220, 150, 0.6); }
 #end h2.lost { color: #e08a96; text-shadow: 0 0 24px rgba(220, 90, 110, 0.4); }
 #end p { font-size: 14px; font-style: italic; color: #b8a878; max-width: 320px; line-height: 1.6; }
+
+/* ---------------- the match in curves ----------------
+ * The end screen centres its contents, which is right for a title and two buttons and wrong
+ * the moment the panel is taller than the phone: centring then hangs the TITLE off the top of
+ * the scroll box where it cannot be scrolled back to. With the panel present the screen packs
+ * from the top instead. */
+#end.with-stats { justify-content: flex-start; padding-top: 26px; }
+#end-stats { width: min(96vw, 560px); margin-top: 6px; }
+.stat-facts {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 8px;
+}
+.stat-facts div {
+  background: #170f22cc; border: 1px solid #3b2f4e; border-radius: 6px; padding: 5px 4px;
+}
+.stat-facts span { display: block; font-size: 8px; letter-spacing: 1.5px; color: #8a7ca8; }
+.stat-facts b { font-size: 13px; color: #ffe9a8; font-weight: normal; }
+.stat-key { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 6px; }
+.stat-key span { font-size: 10px; letter-spacing: 2px; }
+.stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.stat-card {
+  background: #140d1fcc; border: 1px solid #33284a; border-radius: 6px; padding: 5px 6px 3px;
+}
+.stat-head { display: flex; justify-content: space-between; align-items: baseline; }
+.stat-head span { font-size: 8px; letter-spacing: 1.5px; color: #8a7ca8; }
+.stat-head b { font-size: 10px; color: #c9a44f; font-weight: normal; }
+/* preserveAspectRatio is none, so the viewBox stretches — the stroke has to opt OUT of being
+ * stretched with it or a wide chart draws hairlines across and fat lines up. */
+.stat-svg { display: block; width: 100%; height: 46px; margin-top: 2px; }
+.stat-span {
+  display: flex; justify-content: space-between; margin-top: 4px;
+  font-size: 9px; letter-spacing: 1.5px; color: #8a7ca8;
+}
+.stat-line { stroke-width: 1.4px; stroke-linejoin: round; stroke-linecap: round; opacity: 0.8; }
+.stat-line.you { stroke-width: 2px; opacity: 1; }
+.stat-floor { stroke: #3b2f4e; stroke-width: 0.4; }
+.stat-note {
+  font-size: 10px !important; font-style: italic; color: #8a7ca8 !important;
+  max-width: none !important; margin-top: 8px;
+}
+@media (min-width: 620px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
 /* the chronicle's last resort: a browser that will not reach the clipboard still has to let
  * you get the text out, so it goes somewhere you can select it by hand */
 #record-box {

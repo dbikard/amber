@@ -2985,6 +2985,48 @@ suite('the chronicle')
   eq('recording changes nothing about the world it read', typeof w.t, 'number');
   ok('and the sim ran normally under it', w.t > 60, `${Math.round(w.t)}s`, before);
 
+  /* THE SAME ROWS, AS CURVES. Nobody reads a table of numbers on a phone the moment a match
+   * ends, so the end screen draws these — but WHICH numbers tell the story of a match is a
+   * question about the game, which is why the series live here and not in the DOM. */
+  const cv = Rec.curves();
+  ok('the match comes back as curves', !!cv && cv.t.length > 8, cv ? cv.t.length + ' samples' : 'null');
+  ok('...over the same hours the table covers', cv.t[0] < cv.t[cv.t.length - 1]);
+  eq('one seat per player', cv.seats.length, 2);
+  ok('and it knows which seat you are', cv.seats[0].you && !cv.seats[1].you);
+  const byKey = {};
+  for (const s of cv.series) byKey[s.key] = s;
+  for (const k of ['ess', 'income', 'works', 'gates', 'army', 'pattern', 'hp']) {
+    ok('the ' + k + ' curve is drawn for every seat',
+       byKey[k] && byKey[k].lines.length === 2 &&
+       byKey[k].lines.every((l) => l.length === cv.t.length));
+  }
+  /* every heir opens with a finished Gate, so a Gate count that starts at zero means the
+   * series is reading the wrong thing rather than that the match started poor */
+  ok('the Gates are counted from the opening one', byKey.gates.lines[0][0] >= 1,
+     'seat 0 opened with ' + byKey.gates.lines[0][0]);
+  ok('the Pattern is measured out of a hundred', byKey.pattern.max === 100 && byKey.hp.max === 100);
+  const sum = Rec.summary();
+  ok('and the facts that are not a curve come with it',
+     sum && sum.peakArmy >= 1 && typeof sum.deadChaos === 'number',
+     sum ? 'peak ' + sum.peakArmy + ', ' + sum.deadFoe + '/' + sum.deadChaos + ' dead' : 'null');
+
+  /* A TOPPLED HEIR'S LINE STOPS — but not before the fall. Nulling every `out` sample hides
+   * the one moment the chart exists to show: a Seat's walls going to nothing IS the end of the
+   * match, and drawing it as a line that was always flat at a hundred says the opposite. */
+  Rec.begin({ version: 'test', seed: 2, viewer: 0, names: ['A', 'B'], mode: 'test' });
+  const seat = (out) => ({ ess: 100, income: 5, works: 2, rising: 0, gates: 1,
+                           army: out ? 0 : 3, pattern: 0, hp: out ? 0 : C.CASTLE_HP,
+                           walking: false, out: !!out });
+  const mk = (t, out) => ({ t, tick: 0, chaos: 0, players: [seat(false), seat(out)] });
+  Rec.sample(mk(0)); Rec.sample(mk(20)); Rec.sample(mk(40, true)); Rec.sample(mk(60, true));
+  const cv2 = Rec.curves();
+  const army = cv2.series.find((s) => s.key === 'army').lines;
+  const walls = cv2.series.find((s) => s.key === 'hp').lines;
+  eq('a seat still in it is drawn to the end', army[0].filter((v) => v == null).length, 0);
+  eq('the fall itself is drawn', walls[1][2], 0, JSON.stringify(walls[1]));
+  eq('...and the line stops after it rather than crawling along the floor', army[1][3], null,
+     JSON.stringify(army[1]));
+
   /* consecutive repeats collapse — eleven upgrades in a row is one fact, not eleven */
   Rec.begin({ version: 'test', seed: 1, viewer: 0, names: ['Corwin', 'Eric'], mode: 'test' });
   const w2 = World.createWorld(1, 2);
