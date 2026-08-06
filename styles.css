@@ -328,6 +328,10 @@ body {
 }
 /* the codex reuses .card wholesale; these two only stop it looking like something to tap */
 .roll-branch, .roll-unit { cursor: default; }
+/* ...and every stat line takes the whole width. Left in the card's `auto` cost column they
+   compete with the price for it, and an entry with two of them squeezes its own NAME into a
+   wrap — "The Butts" broke across two lines beside a one-line neighbour. */
+.roll-branch .c-rate, .roll-unit .c-rate { grid-column: 2 / 4; }
 .roll-branch { border-color: #c9a44f88; }
 .roll-unit { background: linear-gradient(#1d1728, #150f1d); }
 #roll .mbtn { margin: 6px 0 24px; }
