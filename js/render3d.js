@@ -1745,7 +1745,14 @@
     /* remembered ground: a lighter veil over country you have had eyes on, so a map you have
      * walked stays a map. Cut at partial strength FIRST; the sight holes below then clear
      * whatever you can actually see right now. Only the cells on screen are touched. */
-    const sm = view.seen;
+    /* THE VEIL IS THREE PASSES AND A BUG IN IT LOOKS THE SAME WHICHEVER ONE IS AT FAULT — a
+     * dark shape where lit ground should be. `R.debugFog` turns each off so the guilty one
+     * names itself, the same way `debugWorks` answers questions about a work. Poking the world
+     * from outside does NOT do this job: the view is rebuilt from the world every frame, so a
+     * field nulled between frames is simply refilled, and the measurement comes back identical
+     * and reads as "this pass is innocent" when it means "the switch was never thrown". */
+    const dbg = R.debugFog || null;
+    const sm = (dbg && dbg.mem === false) ? null : view.seen;
     if (sm) {
       const mc = memCtx();
       if (mc) {
@@ -1788,7 +1795,7 @@
       }
     }
     g.globalCompositeOperation = 'destination-out';
-    for (const [cx2, cy2, rx, ry] of discs) {
+    for (const [cx2, cy2, rx, ry] of (dbg && dbg.discs === false ? [] : discs)) {
       g.save();
       g.translate(cx2, cy2); g.scale(1, ry / rx);
       /* a tight falloff: the edge of sight should read as an edge, not a smear */
@@ -1805,7 +1812,7 @@
      * Fill the union of the discs into a scratch, cut a slightly smaller union back out, and
      * what survives is exactly the outer boundary — one pass, no outline geometry. */
     const rc = rimCtx();
-    if (rc && discs.length) {
+    if (rc && discs.length && !(dbg && dbg.rim === false)) {
       rc.clearRect(0, 0, W, H);
       rc.fillStyle = 'rgba(255,233,168,0.34)';
       rc.beginPath();
