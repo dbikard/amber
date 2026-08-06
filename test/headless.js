@@ -2376,10 +2376,13 @@ suite('the muster answers the muster');
     const pl = w.players[0];
     const n = pl.buildings.filter((b) => b.bt === 'barracks').length;
     halls.push(n);
+    /* what the halls can DRINK, asked the way the sim and the heir ask it: a forked hall
+     * raises the branch's man at the branch's interval, and reading `def.spawns` here would
+     * price every hall as though it still mustered soldiers */
     const cap = pl.buildings.reduce((s, b) => {
-      const bd = C.BUILDINGS[b.bt];
-      return bd.spawns && !b.raise && !b.work
-        ? s + C.UNITS[bd.spawns].cost * C.TIER[b.level - 1] / bd.period[b.level - 1] : s;
+      if (b.raise || b.work) return s;
+      const mus = World.mustersOf(b);
+      return mus ? s + C.UNITS[mus.kind].cost * C.TIER[b.level - 1] / mus.period : s;
     }, 0);
     spare.push(+cap.toFixed(1));
   }

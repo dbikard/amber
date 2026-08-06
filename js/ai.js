@@ -300,6 +300,16 @@
     const pick = P.branch && P.branch[bt] ? P.branch[bt](v) : null;
     return pick && d.branches[pick] ? pick : d.branchUI[0];
   }
+  /* is there a work standing at the rung below its fork, and the essence to take it? Only
+   * asked to let the fork jump the saving queue — see the note at the upgrade scan. */
+  function canFork(v) {
+    return v.pl.buildings.some((b) => {
+      const d = C.BUILDINGS[b.bt];
+      if (!d.branches || b.br || b.raise > 0 || b.work > 0) return false;
+      if (b.level + 1 !== (d.fork || 0)) return false;
+      return v.essence >= Math.min.apply(null, d.branchUI.map((k) => d.branches[k].cost));
+    });
+  }
 
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
@@ -746,8 +756,18 @@
       if (want !== v.banner) issue({ c: 'banner', site: want });
 
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.
-       * Gates drawing on a node come first — that is where the essence actually is. */
-      if (saving) return;
+       * Gates drawing on a node come first — that is where the essence actually is.
+       *
+       * EXCEPT THE FORK, WHICH IS NOT AN EXPANSION. Measured over six matches: 22 halls stood
+       * at level 1 against 5 forked, no Spire or Works ever forked at all, and the heirs
+       * fielded 238 soldiers to 21 branch men — the whole tree was very nearly invisible in
+       * AI play. The cause is this line. Plans are long, a heir is `saving` for the next want
+       * almost always, and so the upgrade scan below is reached only once a plan runs out.
+       * That is right for a LEVEL, which is a luxury bought after the realm. It is wrong for
+       * the fork: choosing a hall's soldiery is a decision about the army you already have,
+       * it costs less than the hall did, and putting it off means fighting the whole match
+       * with the recruit you were given rather than the one your doctrine wants. */
+      if (saving && !canFork(v)) return;
       /* AN UPGRADE IS MASONRY NOW: it takes a crew and silences the work while they are on
        * it. So an heir with no crew free must not try (the order is simply refused), and one
        * with a single hall should not shut it down under threat — an upgrade in the middle of
@@ -757,14 +777,28 @@
       for (const bt of P.upPref) {
         if (pressed && C.BUILDINGS[bt].spawns &&
             v.pl.buildings.filter((b) => b.bt === bt && !b.raise && !b.work).length < 2) continue;
+        /* ONE HALL OF A KIND RE-TOOLS AT A TIME. A hall with masons in it raises nobody, and
+         * once the fork was allowed to jump the saving queue a heir with four crews forked its
+         * whole barracks town at once and stood mustering nothing for half a minute — measured
+         * as a muster throat of 2 essence a second on maps that had been managing eight. */
+        if (C.BUILDINGS[bt].spawns && v.pl.buildings.some((b) => b.bt === bt && b.work > 0)) continue;
         const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise && !b.work)
                        .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
         for (const b of cands) {
+          /* ...and if the only reason we got past `saving` was the fork, then the fork is the
+           * only thing to spend on. A heir saving for a Gate must not buy a tower a level with
+           * the money on the way past. */
+          const atFork = !!C.BUILDINGS[bt].branches && !b.br && b.level + 1 === C.BUILDINGS[bt].fork;
+          if (saving && !atFork) continue;
           /* THE FORK: an heir's doctrine picks the branch, and keeps it after. Every branching
            * work asks the same question — a heir that has already forked a hall re-sends the
            * branch it holds so the PRICE comes off the branch table rather than the base one. */
           const br = C.BUILDINGS[bt].branches ? (b.br || branchFor(P, bt, v)) : undefined;
-          if (v.essence > global.World.upgradeCost(bt, b.level, br) + 130) {
+          /* the war chest a LEVEL is bought over and above. A fork keeps a thinner one: it is
+           * the cheapest lasting decision on the board and every match spent putting it off is
+           * a match fought with somebody else's army. */
+          const chest = atFork ? 40 : 130;
+          if (v.essence > global.World.upgradeCost(bt, b.level, br) + chest) {
             issue({ c: 'up', id: b.id, br });
             return;
           }
