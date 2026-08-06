@@ -364,7 +364,10 @@
                    'spire', 'barracks', 'siege', 'spire', 'barracks', 'tower'],
       upPref: ['barracks', 'siege', 'spire', 'gate', 'tower'],
       /* Bleys keeps few towers; they must hit hard and far. Everything else is the assault:
-       * outriders to arrive, a ram to get in, and Chaos turned on whoever is in the way */
+       * outriders to arrive, a ram to get in, and Chaos turned on whoever is in the way.
+       * THE SHIELDWALL WAS TRIED HERE AND MEASURED WORSE: a thirty-essence man on his tempo
+       * cut his host from 76 to 21 and he lost every game of four. Bleys wins by arriving
+       * first with more, not by arriving later with better. */
       branch: { tower: () => 'bolt', barracks: () => 'raid', spire: () => 'binder', siege: () => 'ram' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
       banner: (v) => v.army >= 6 ? strike(v) : seek(v),   // scout, stage, then storm the gates
