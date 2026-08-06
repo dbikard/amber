@@ -919,7 +919,11 @@
     return { x: C.MAP.W / 2, y: C.MAP.H / 2 };
   };
   /* the id of the viewer's own work under the finger, or -1 */
-  R.hitBuilding = function (px, py) {
+  /* `out`, if given, receives `d` — the squared distance from the finger to whatever was hit.
+   * The caller needs it to arbitrate between a work and a man standing on the same spot; the
+   * return value is unchanged, so everything that only asks "did I hit one" is untouched. */
+  R.hitBuilding = function (px, py, out) {
+    if (out) out.d = Infinity;
     if (!curView) return -1;
     const w2 = R.toWorld(px, py);
     /* A RUN IS THE LAST THING A TAP MEANS. A curtain answers along its WHOLE length — judging
@@ -947,12 +951,14 @@
         if (dd < r && dd < bd) { bd = dd; best = b.id; }
       }
     }
+    if (out) out.d = best >= 0 ? bd : wdd;
     return best >= 0 ? best : wall;
   };
   /* the COMPANY of the viewer's own man under the finger, or 0. Men are small and they move,
    * so the reach is generous — but it only ever answers with your own, and only when the tap
    * is closer to a man than to anything else the caller will try next. */
-  R.hitUnit = function (px, py, viewer) {
+  R.hitUnit = function (px, py, viewer, out) {
+    if (out) out.d = Infinity;
     if (!curView) return 0;
     const w2 = R.toWorld(px, py);
     /* a tight reach on purpose: this competes with the tap that opens a BUILD SHEET on bare
@@ -965,6 +971,7 @@
       const dd = (w2.x - u.x) * (w2.x - u.x) + (w2.y - u.y) * (w2.y - u.y);
       if (dd < bd) { bd = dd; best = u.co; }
     }
+    if (out && best) out.d = bd;
     return best;
   };
   R.hitSite = function (px, py, view, viewer, forFlag) {

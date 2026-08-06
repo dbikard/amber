@@ -616,16 +616,24 @@
     if (UI.sheetOpen()) { UI.closeSheet(); return; }
     /* A TROOP OF YOURS IS HIS COMPANY'S FLAG. Finding the right chip in the tray means
      * remembering which colour you gave which hall; pointing at the men themselves does not.
-     * Tapping one arms his standard, and the next tap is where they go. */
-    const uco = Render.hitUnit ? Render.hitUnit(x, y, game.viewer) : 0;
-    if (uco > 0) {
+     * Tapping one arms his standard, and the next tap is where they go.
+     *
+     * YOU GET WHAT YOU WERE POINTING AT. Men were asked FIRST and won outright, so a company
+     * standing on a hall made that hall unopenable — no upgrade, no fork, no way to see what it
+     * was — and the harder you pressed on the building the more certainly you armed the men.
+     * Both are asked now and the NEARER one answers, which is what `hitUnit` always claimed to
+     * do. A man at the door still gets you his standard; a finger on the roof gets you the
+     * work. */
+    const uAt = {}, bAt = {};
+    const uco = Render.hitUnit ? Render.hitUnit(x, y, game.viewer, uAt) : 0;
+    const bid = Render.hitBuilding(x, y, bAt);
+    if (uco > 0 && !(bid >= 0 && bAt.d <= uAt.d)) {
       game.armedFlag = game.armedFlag === uco ? null : uco;
       UI.banner(game.armedFlag ? '⚐ Standard ' + uco + ' — tap where they should stand' : 'Cancelled',
                 game.armedFlag ? 'alert' : 'warn');
       return;
     }
     /* one of your own works first (they overlap everything), then sites, then bare ground */
-    const bid = Render.hitBuilding(x, y);
     if (bid >= 0) {
       const me = view.players[game.viewer];
       const b = me.buildings.find((q) => q.id === bid);

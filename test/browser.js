@@ -1771,6 +1771,70 @@ async function match(browser, base, renderer) {
     /* ---------------- the back button ---------------- *
      * Start from a clean slate: the input suite deliberately leaves a sheet open, and a
      * tap on ground with a sheet already up DISMISSES rather than opens. */
+    /* YOU GET WHAT YOU WERE POINTING AT. Men used to be asked first and won outright, so a
+     * company standing on a hall made that hall unopenable — and the harder you pressed on the
+     * building the more certainly you armed the men instead. */
+    suite(`${r} · a work under the finger beats the men on it`);
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const onWork = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const pl = g.world.players[0];
+      const hall = pl.buildings.find((b) => b.bt === 'barracks' && b.x2 == null)
+                || pl.buildings.find((b) => b.x2 == null);
+      if (!hall) return { skip: 'no work to stand on' };
+      hall.raise = 0; hall.work = 0;
+      R.lookAt(hall.x, hall.y); R.setZoom(1.6);
+      await paint();
+      /* A COMPANY AT THE HALL'S DOOR. Not on top of it — `stand()` pushes men off a work at
+       * BUILD.pass, so nothing can occupy its centre — which is exactly the case that matters:
+       * the men ring the building just outside the push, and a tap on the stone falls inside
+       * BOTH their reach and the work's. */
+      const co = Math.max(0, ...pl.companies.map((q) => q.id)) + 1;
+      pl.companies.push({ id: co, rally: null });
+      const d = C.UNITS.soldier;
+      const ring = C.BUILD.pass + 2;
+      const men = [];
+      for (let i = 0; i < 8; i++) {
+        const th = i / 8 * Math.PI * 2;
+        const u = { id: g.world.nextId++, owner: 0, kind: 'soldier',
+          x: hall.x + Math.cos(th) * ring, y: hall.y + Math.sin(th) * ring, ox: 0, oy: 0,
+          hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co, from: -1, tier: 1 };
+        g.world.units.push(u); men.push(u);
+      }
+      await paint();
+      /* aim between the work's centre and one of them, but NEARER the work — the finger is on
+       * the stone with a man at its elbow, which is the tap that used to arm the standard */
+      const m = men[0];
+      const L = Math.hypot(m.x - hall.x, m.y - hall.y) || 1;
+      const t = 0.42;
+      const p = R.project(hall.x + (m.x - hall.x) / L * (L * t), hall.y + (m.y - hall.y) / L * (L * t), 0);
+      if (!p) return { skip: 'the hall did not project' };
+      const uAt = {}, bAt = {};
+      const hitU = R.hitUnit(p.x, p.y, 0, uAt), hitB = R.hitBuilding(p.x, p.y, bAt);
+      /* and now the tap itself, through the real handler */
+      window.UI.closeSheet(); g.armedFlag = null;
+      R.selected = -1;
+      const ev = (type) => new PointerEvent(type, { clientX: p.x, clientY: p.y, pointerId: 1,
+                                                    pointerType: 'touch', bubbles: true, isPrimary: true });
+      const cv = document.getElementById('game');
+      cv.dispatchEvent(ev('pointerdown')); cv.dispatchEvent(ev('pointerup'));
+      await new Promise((res) => setTimeout(res, 120));
+      return { hitU, hitB, hallId: hall.id, both: hitU > 0 && hitB >= 0,
+               armed: g.armedFlag, selected: R.selected,
+               sheet: !document.getElementById('sheet').classList.contains('hidden') };
+    });
+    if (onWork.skip) {
+      ok('a work under the finger beats the men on it (skipped)', true, onWork.skip);
+    } else {
+      ok('the tap really did land on both a work and a company', onWork.both,
+         `unit co ${onWork.hitU}, work ${onWork.hitB}`);
+      ok('...and it is the WORK that answers', onWork.hitB === onWork.hallId && onWork.selected === onWork.hallId,
+         `selected ${onWork.selected}, wanted ${onWork.hallId}`);
+      ok('...its sheet opens', onWork.sheet);
+      ok('...and no standard is armed by it', !onWork.armed, String(onWork.armed));
+    }
+
     suite(`${r} · back button`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
     await pg.waitForTimeout(200);
