@@ -472,9 +472,19 @@
      * or a bombard cannot sweep away. */
     shieldman:{ name: 'Shieldman', icon: '🛡', hp: 155, dmg: 13, atk: 1.0, range: 20,  speed: 44, aggro: 130, bounty: 12, size: 12, cost: 30,
                 blurb: 'The house guard. Two soldiers out-fight him and neither of them lives through a storm.' },
-    outrider: { name: 'Outrider',  icon: '🐎', hp: 48,  dmg: 8,  atk: 0.75, range: 18, speed: 76, aggro: 150, bounty: 5,  size: 9,  cost: 13,
+    /* PRICED AS FAST, NOT AS BEST. At 13 he was the finest damage-per-essence buy on the
+     * board — better than a soldier — AND half again as quick, which is not a trade, it is
+     * simply a better soldier. He costs a soldier's price now and keeps the speed; what he
+     * gives up for it is the hit points, which is the bargain the branch is meant to be. */
+    outrider: { name: 'Outrider',  icon: '🐎', hp: 48,  dmg: 8,  atk: 0.75, range: 18, speed: 76, aggro: 150, bounty: 6,  size: 9,  cost: 16,
                 blurb: 'Arden\'s rangers — half again as fast as anything on the board. They take springs and run down shooters.' },
-    archer:   { name: 'Archer',    icon: '🏹', hp: 45,  dmg: 6,  atk: 0.7, range: 105, speed: 50, aggro: 150, bounty: 7,  size: 9,  cost: 19,
+    /* REACH IS THE EXPENSIVE THING, and at 19 he was not paying for it: 87 further than a
+     * soldier throws, for three essence more, which meant an archer host killed melee for
+     * free. Measured with the heirs actually forking, julian went to all-archers and became
+     * the strongest heir on the ladder while being unable to end a match — the field was his
+     * and the Seats were untouchable. He is priced against the SORCERER now, who does the same
+     * job: cheaper and shorter-reaching than one, and no longer cheaper than the line. */
+    archer:   { name: 'Archer',    icon: '🏹', hp: 42,  dmg: 6,  atk: 0.78, range: 105, speed: 50, aggro: 150, bounty: 8,  size: 9,  cost: 23,
                 menOnly: true, mans: true,
                 blurb: 'The garrison you can afford. He lines a curtain and fills a tower — and an arrow has never brought down a wall.' },
     warden:   { name: 'Warden',    icon: '✚', hp: 55,  dmg: 5,  atk: 1.5, range: 90,  speed: 47, aggro: 120, bounty: 12, size: 9,  cost: 34,

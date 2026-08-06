@@ -336,8 +336,12 @@
       },
       upPref: ['tower', 'gate', 'barracks', 'siege'],
       /* the Warden holds a line: crowds break lines, so the cannon; and he is the one heir
-       * who raises the stone that archers are worth having */
-      branch: { tower: () => 'cannon', barracks: () => 'archer', spire: () => 'warden', siege: () => 'bombard' },
+       * who raises the stone that archers are worth having — but ONLY once it is standing.
+       * Forked to archers unconditionally he became a heir who won every field and could not
+       * take a Seat: strongest on the ladder, and unable to end a match. */
+      branch: { tower: () => 'cannon',
+                barracks: (v) => (v.have.wall || (v.have.tower || 0) >= 2 ? 'archer' : 'line'),
+                spire: () => 'warden', siege: () => 'bombard' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
       banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (v.unexplored > 2 && v.army >= 4 ? seek(v) : v.myCity.id),
@@ -620,7 +624,10 @@
        * the answer he can always reach: its Rams and Bombards are made for stone, and unlike a
        * Barracks it does not have to be re-forked to get there. Standing want, above the plan,
        * because no plan can know which way its own forks went. */
-      if (!handled && v.breakers < BREAKERS && v.army >= 5 && !(v.have.siege > 0)) {
+      /* ...and ONE Works may not be enough: an Engine every twenty-four seconds is a siege
+       * train that never forms if the first few die on the way. He wants a second before he
+       * gives up on the road by force. */
+      if (!handled && v.breakers < BREAKERS && v.army >= 5 && (v.have.siege || 0) < 2) {
         handled = true;
         if (v.free > 0) {
           if (v.essence < C.BUILDINGS.siege.cost) saving = true;
