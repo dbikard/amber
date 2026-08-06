@@ -1329,16 +1329,20 @@
       }
     }
     /* A SHOOTER DOES NOT TOUCH STONE. Archers, sorcerers, wardens and binders have no target
-     * among works or Seats at ALL — not a reduced blow, no target — so the search ends here and
-     * a shooter who can find nobody to shoot simply keeps marching past the wall. A zero siege
-     * multiplier would not have done it: `acquire` would still have handed him the nearest
-     * curtain and he would have stood in front of it swinging at nothing for the rest of the
-     * match. The consequence is deliberate and it is the point: a host of shooters cannot end a
-     * match, so a siege needs the Shieldwall, the Ram or the Bombard to go with it. */
-    if (C.UNITS[u.kind].menOnly) {
-      u._t = kind === 'unit' ? best : null;
-      return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
-    }
+     * among works or Seats at ALL — not a reduced blow, no target — so a shooter who can find
+     * nobody to shoot simply keeps marching past the wall. A zero siege multiplier would not
+     * have done it: `acquire` would still have handed him the nearest curtain and he would have
+     * stood in front of it swinging at nothing for the rest of the match. The consequence is
+     * deliberate and it is the point: a host of shooters cannot end a match, so a siege needs
+     * the Shieldwall, the Ram or the Bombard to go with it.
+     *
+     * THE SHRINE IS THE ONE EXCEPTION, and it is not a hack — pillar 3 requires it. "A walking
+     * player must be attackable" is the rule the whole Pattern rests on, and without this a
+     * walker was unattackable by half of every army on the board: measured, the Pattern decided
+     * 92% of contested matches and matchups ran to the twenty-minute cap because nobody could
+     * reach the man. What a shooter aims at here is not the stone, it is the WALKER standing in
+     * the lines — which is why this one work, and no other, is a target for him. */
+    const menOnly = !!C.UNITS[u.kind].menOnly;
     for (let ci = 0; ci < world.players.length; ci++) {
       if (ci === u.owner) continue;
       const tp = world.players[ci];
@@ -1346,6 +1350,8 @@
       const cs = world.map.sites[world.map.cities[ci]];
       const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
       for (const b of tp.buildings) {
+        /* a shooter looks past every work but the Shrine — see the note above the loop */
+        if (menOnly && b.bt !== 'shrine') continue;
         /* the stone you strike is the span in front of you, not the middle of the run — and
          * that is true of a run the masons are still on. Judged by its MIDPOINT, a curtain
          * going up was untouchable along nearly its whole length: a man standing at the end
@@ -1363,7 +1369,9 @@
         if (d < bestD && seen(aim.x, aim.y, ci))
           consider(d, { pi: ci, id: b.id }, 'work', aim.x, aim.y);
       }
-      if (dc > C.CITY.r + radius) continue;
+      /* and a Seat is stone like any other — the Shrine exception is the SHRINE, not "any
+       * work that matters". A shooter at a rival's gate still cannot take it. */
+      if (menOnly || dc > C.CITY.r + radius) continue;
       if (dc < bestD && seen(cs.x, cs.y, ci)) consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
     }
     if (!best && stone.length) {

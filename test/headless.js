@@ -332,6 +332,36 @@ suite('shooters, stone, and the arts')
      `${Math.round(prey.hp)}/${Math.round(prey.maxHp)}`);
   eq('...and the work is STILL untouched', mark.hp, mark.maxHp);
 
+  /* THE SHRINE IS THE ONE WORK A SHOOTER MAY STRIKE, because what he aims at is the WALKER
+   * standing in the lines. Pillar 3 requires it — "a walking player must be attackable" — and
+   * without it a walker was unattackable by half of every army: the Pattern decided 92% of
+   * contested matches and matchups ran to the cap because nobody could reach the man. */
+  w.units.length = 0;
+  p1.essence = 100000;
+  let shrErr = '';
+  for (let a = 0; a < 24 && !p1.buildings.some((b) => b.bt === 'shrine'); a++) {
+    const th = a / 24 * Math.PI * 2;
+    const r = World.applyCommand(w, 1, { c: 'build', bt: 'shrine', x: c1.x + Math.cos(th) * 170, y: c1.y + Math.sin(th) * 170 });
+    if (!r.ok) shrErr = r.err;
+  }
+  const shrine = p1.buildings.find((b) => b.bt === 'shrine');
+  ok('a Shrine was raised to shoot at', !!shrine, shrErr);
+  if (shrine) {
+    for (let i = 0; i < 30 * 80 && shrine.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    shrine.hp = shrine.maxHp;
+    pin(0, shrine.x, shrine.y - 40);
+    put(0, 'archer', shrine.x, shrine.y - 40);
+    run(6);
+    ok('an archer shoots the walker on the Pattern', shrine.hp < shrine.maxHp,
+       `${Math.round(shrine.hp)}/${Math.round(shrine.maxHp)}`);
+    /* ...and it really is only the Shrine: the same archer still ignores everything else */
+    w.units.length = 0; mark.hp = mark.maxHp;
+    pin(0, mark.x, mark.y - 30);
+    put(0, 'archer', mark.x, mark.y - 30);
+    run(6);
+    eq('and a hall in the same spot is still nothing to him', mark.hp, mark.maxHp);
+  }
+
   /* A SEAT IS A WORK TOO, and it is the one that ends matches */
   w.units.length = 0;
   const seatHp = p1.castleHp;
