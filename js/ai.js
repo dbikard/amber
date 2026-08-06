@@ -77,6 +77,12 @@
       essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
       myCity, enCity, myUnits, army: myUnits.length,
       visHostiles, threats, push, enemyArmy, mySprings, atGate,
+      /* CHAOS IS THE WEATHER, NOT THE OPPONENT (DESIGN_PRINCIPLES). `threats` is everything
+       * hostile near the Seat and fiends are most of it, so a doctrine that calls off the walk
+       * on `threats` calls it off for the weather — and the black road is capped precisely so
+       * that it can never take a Seat. What a walker is risking is a RIVAL at the door while
+       * his essence goes into the lines, so that is the number the walk is judged on. */
+      rivals: threats.filter((u) => u.owner !== C.CHAOS_ID).length,
       enCityId, frontier, unexplored: world.map.sites.filter((s) => !pl.explored[s.id]).length,
       nodes,
       /* what the realm EARNS and what it is already committed to — the two numbers a walk has
@@ -124,6 +130,21 @@
   const wantGates = (bucket, n) => ({ bt: 'gate', pick: (v) => nearestOf(v, v.nodes[bucket]).filter((s) => !held(v, s)).slice(0, n)[0] || null });
   const wantWatch = (n) => ({ bt: 'tower', pick: (v) => ownVantages(v).filter((s) => !worksNear(v, s.x, s.y, 'tower', 120)).slice(0, n)[0] || null });
 
+  /* NOTHING IS RAISED UNDER SWORDS. A work goes up as a SHELL — a quarter of its hit points,
+   * earning nothing, mustering nobody, shooting at nothing until the masons are done — so one
+   * begun inside a hostile crowd donates the stone, the crew and the time in one order.
+   * Measured on benedict against `greedy`: its home Gate, 204 from the Seat with the rival's
+   * column camped on the spring, was thrown down and raised again EIGHT times between minute
+   * three and minute twelve. About a thousand essence and eight crew-shifts on a work that
+   * never drew a drop, while the halls and men that would have lifted the siege went unbuilt —
+   * and the heir sat on income 2.5 for most of a match it lost. The board already refuses a
+   * CONTESTED spring beyond the writ; inside the writ nothing refused anything.
+   * The radius is generous on purpose — a soldier acquires at 140 — and the sweep simply
+   * swings round to the far side of the Seat, so being pressed changes WHERE an heir builds
+   * rather than whether he can build at all. */
+  const FOE_R = 130;
+  const clearOfFoes = (v, x, y) => !v.visHostiles.some((u) => d2(u.x, u.y, x, y) < FOE_R * FOE_R);
+
   /* ---------------- placement doctrine ----------------
    * Free ground means an heir must choose WHERE, not just what. The doctrine is the old
    * ring doctrine made continuous: soldiery and towers face the road the enemy will come
@@ -136,7 +157,7 @@
       for (let k = 0; k < 13; k++) {
         const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.40;
         const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
-        if (!W.placementError(v.world, v.me, x, y, bt)) return { x, y };
+        if (clearOfFoes(v, x, y) && !W.placementError(v.world, v.me, x, y, bt)) return { x, y };
       }
     }
     return null;
@@ -181,7 +202,7 @@
         if (wl.owner !== v.me) continue;
         for (const t of [0.22, 0.78, 0.35, 0.65]) {
           const x = wl.ax + (wl.bx - wl.ax) * t, y = wl.ay + (wl.by - wl.ay) * t;
-          if (!W2.placementError(v.world, v.me, x, y, 'tower')) return { x, y };
+          if (clearOfFoes(v, x, y) && !W2.placementError(v.world, v.me, x, y, 'tower')) return { x, y };
         }
       }
     }
@@ -205,10 +226,22 @@
     const rear = bt === 'gate' || bt === 'shrine' || bt === 'spire' || bt === 'siege';
     return sweep(v, bt, c.x, c.y, rear ? toFoe + Math.PI : toFoe, 86, 30, 5);
   }
-  /* a work raised out on the map, at the site the mission marched to */
+  /* a work raised out on the map, at the site the mission marched to.
+   * A GATE HAS EXACTLY ONE SPOT AND SWEEPING FOR IT IS A LIE. The build command snaps any
+   * `claim` work to the spring's exact centre (CLAUDE.md: "A Gate always lands on the spring's
+   * exact centre"), but this probe asked `placementError` about the point it had swept TO —
+   * and `placementError` reads the writ at the point it is handed. So a point 46 out from a
+   * spring that lay just inside the writ came back legal, the heir issued the order, and the
+   * command snapped it back onto the spring outside the writ and refused it as 'presence'.
+   * Measured on `greedy`, which wants four Gates: it issued that same doomed order five to
+   * eight times a MINUTE for the whole match, and because an order that is issued counts as
+   * the plan's business for this tick, the four halls behind the Gates in its own plan were
+   * never reached. Probe where the work will actually stand, or do not probe at all. */
   function spotAt(v, site, bt) {
     const W = global.World;
-    if (!W.placementError(v.world, v.me, site.x, site.y, bt)) return { x: site.x, y: site.y };
+    if (clearOfFoes(v, site.x, site.y) && !W.placementError(v.world, v.me, site.x, site.y, bt))
+      return { x: site.x, y: site.y };
+    if (C.BUILDINGS[bt].claim) return null;   // the spring's middle or nowhere
     return sweep(v, bt, site.x, site.y, Math.atan2(v.myCity.y - site.y, v.myCity.x - site.x), 46, 34, 3);
   }
 
@@ -220,7 +253,34 @@
   /* what an assault costs to be worth making: a real army, and more of it than he can see of
    * the other man's. Both are read fresh every time the heir thinks, so the march is a
    * standing decision rather than a one-way door. */
-  const COMMIT = +(typeof process !== 'undefined' && process.env && process.env.AMBER_COMMIT) || 14;
+  /* A SEAT IS TWENTY-FIVE HUNDRED HIT POINTS, and the floor was set at fourteen men in an era
+   * when this clause could not fire — every doctrine's assault was dead code, so the number
+   * was never tested against a real march. It fires now, and fourteen turned out to be the
+   * size of a column that can erase a Seat that has not had time to raise a tower: in the
+   * four-way smoke, an heir's Seat fell at 2 minutes 40 on two of five maps, from full to
+   * rubble in twenty-four seconds, before it had a realm to lose. Twenty-two is the smallest
+   * column that is still an army when it arrives at a Seat with something standing round it,
+   * and it costs the rusher nothing it was entitled to: `greedy` still takes `random` 40-2.
+   * What it stops is winning a match before either side has played one. */
+  const COMMIT = +(typeof process !== 'undefined' && process.env && process.env.AMBER_COMMIT) || 22;
+  /* how far behind in men an heir must SEE himself before he answers with another hall, and
+   * how many halls that answer may ever reach. See "the muster answers the muster" below. */
+  const OUTNUMBER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_OUTNUM) || 5;
+  const HALL_CAP = +(typeof process !== 'undefined' && process.env && process.env.AMBER_HALLS) || 4;
+  /* how much of the realm's earnings may sit past what the halls can drink before another
+   * hall is the obvious answer — an allowance for the stone every doctrine also wants */
+  const SPARE = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SPARE) || 3;
+  /* THE PURSE IS NOT THE TEST ANY MORE. Every doctrine's walk clause carried a cash threshold
+   * of its own — 200, 240, 260, 360 — written when an heir with nothing left to buy simply
+   * banked what it earned; they were standing in for "can my realm carry this". The shared
+   * gate in `decide` answers that properly and by INCOME, and the heirs now spend what they
+   * earn on halls and Gates, so a snapshot of the treasury refuses a walk the ground could
+   * comfortably pay for. Measured over six skilled matches: of the moments an heir held a
+   * Shrine and earned enough to walk, its own purse test refused five in seven, and the
+   * Pattern decided 12% of skilled matches against a 25-75 target.
+   * What is left is a WAR CHEST, and it is one number instead of four: do not set foot on the
+   * Pattern holding less than the shared rule will abandon it for (`broke`, 140). */
+  const CHEST = 150;
 
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
@@ -251,9 +311,14 @@
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
       banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (v.unexplored > 2 && v.army >= 4 ? seek(v) : v.myCity.id),
       /* the LAST resort, and it has to be genuinely last: at eight minutes he was simply
-       * out-walking Brand, which is greed's whole job. Matches run 14-20m now. */
-      walk: (v) => v.have.shrine && v.t > 900 && v.threats.length <= 2 && v.essence > 240,
-      pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 4,
+       * out-walking Brand, which is greed's whole job.
+       * BUT "LAST" IS AN HOUR OF THE MATCH, NOT A NUMBER. Fifteen minutes was late when the
+       * table ran 14-20; the heirs now find each other and fight, the medians are 6-16, and a
+       * Warden who first considers the throne at fifteen never considers it at all. Nine
+       * minutes is still after everyone else's opening move on it, which is the whole point of
+       * the clause. */
+      walk: (v) => v.have.shrine && v.t > 540 && v.rivals <= 2 && v.essence > CHEST,
+      pauseWalk: (v) => v.myPattern < 70 && v.rivals >= 4,
       storm: stormDefend(3),
       trump: (v) => v.threats.length >= 4 || v.myCastle < 500
     },
@@ -285,7 +350,7 @@
        * come from somewhere, and under the new economy that somewhere is the springs. */
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2)],
       banner: (v) => (v.unexplored > 3 && v.army >= 5 ? seek(v) : v.myCity.id),   // the army buys him time, but must still find the springs
-      walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > 360,
+      walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > CHEST,
       pauseWalk: () => false,
       storm: stormDefend(2),
       trump: (v) => v.threats.length >= 3
@@ -301,8 +366,11 @@
       banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
         ? v.enCityId
         : (v.unexplored > 2 ? seek(v) : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id),
-      walk: (v) => v.have.shrine && v.essence > 260 && (v.enemyCastle < v.myCastle || v.threats.length === 0),
-      pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 4,
+      /* "nobody at the door" was `rivals === 0`, and against an heir who now actually marches
+       * that is a condition that occurs between engagements and nowhere else. A scout or two
+       * in sight of the court is not a reason to give up the throne. */
+      walk: (v) => v.have.shrine && v.essence > CHEST && (v.enemyCastle < v.myCastle || v.rivals <= 1),
+      pauseWalk: (v) => v.myPattern < 70 && v.rivals >= 4,
       storm: stormPush(3),
       trump: (v) => v.push >= 2 || v.threats.length >= 4
     },
@@ -319,7 +387,9 @@
          * not being tested is essence that should have been men */
         if (v.threats.length >= 2 || v.enemyArmy >= 4) wants.push('wall');
         if (v.enemyWalking) wants.push(...(v.enemyArmy >= 2 ? ['shrine', 'barracks', 'spire'] : ['barracks', 'spire', 'barracks']));
-        else { if (v.t > 210 && v.threats.length <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
+        /* and the SHRINE is judged on rivals too — a fiend pack wandering past the court is
+         * not a reason to give up on the throne */
+        else { if (v.t > 210 && v.rivals <= 1) wants.push('shrine'); if (v.t > 230) wants.push('spire'); }
         /* a Seat is 2500 hit points behind towers, and men are a poor tool for stone. Once
          * the Master of Arms has a realm to pay for it he raises a train and means it. */
         if (v.t > 300 && v.army >= 8) wants.push('siege');
@@ -335,9 +405,11 @@
         if (v.enCity && v.army >= 6) return v.enCityId;
         return v.unexplored > 2 && v.army >= 4 ? seek(v) : ownChoke(v).id;
       },
-      walk: (v) => v.have.shrine && v.essence > 200 &&
-                   (v.threats.length <= 1 || (v.enemyWalking && v.enemyPattern > v.myPattern)),
-      pauseWalk: (v) => v.myPattern < 70 && v.threats.length >= 3,
+      /* and the same loosening: one rival in sight was the bar, which in a war that is now
+       * actually fought is almost never met */
+      walk: (v) => v.have.shrine && v.essence > CHEST &&
+                   (v.rivals <= 2 || (v.enemyWalking && v.enemyPattern > v.myPattern)),
+      pauseWalk: (v) => v.myPattern < 70 && v.rivals >= 3,
       storm: stormPush(3),
       trump: (v) => v.threats.length >= 3 || v.enemyWalking || v.push >= 3
     }
@@ -393,7 +465,11 @@
       /* the walk */
       /* The hour grows late. The Pattern is the game's absolute clock, and it only ticks if
        * someone actually sets foot on it — two defensive lines with no shrine-walker between
-       * them drew 15 of 30 at the cap. Past this hour, any heir holding a Shrine commits. */
+       * them drew 15 of 30 at the cap. Past this hour, any heir holding a Shrine commits.
+       * IT IS A STALL-BREAKER AND NOTHING ELSE, so it stays where it is. Pulled forward to ten
+       * minutes to buy the Pattern a larger share of the decisions it measured WORSE: brand
+       * against benedict went from 2-1 to three timeouts, because two heirs who both commit at
+       * the same hour and both then defend are the stall this clause exists to end. */
       const late = v.t > 1500;
       /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gates the walk on a
        * SNAPSHOT of the treasury — 'essence > 200' — which says nothing about whether the
@@ -407,6 +483,10 @@
        * the Shrine will take, and STOP if the treasury runs dry. Stopping costs the lines
        * their progress, which is exactly the trade — a walk resumed from 16% beats a realm
        * that starved to reach 21%. */
+      /* A WALK ALREADY PAID FOR AS ITS OWN REASON TO RESUME — "past 20% the shared rule alone
+       * decides" — reads well and MEASURED BADLY: heirs cling to a walk they cannot finish
+       * instead of fighting, and the timeouts trebled (julian and brand against benedict went
+       * from one draw each to three). The doctrine's own clause stays the door back in. */
       const shrineDrain = C.BUILDINGS.shrine.drain[0];
       const canAfford = v.income >= shrineDrain * 0.85;
       const broke = v.essence < 140;
@@ -416,18 +496,103 @@
         issue({ c: 'walk', on: false });
       }
 
-      /* city: first unmet want in the plan (save up for it) */
-      let saving = false;
-      const wants = P.plan(v), seenW = {};
+      /* THE CITY. Two standing wants that no plan lists come first — a spring under his feet
+       * and, when the muster is behind, one more hall — and then the plan itself.
+       *
+       * THE MUSTER ANSWERS THE MUSTER, AND A FINISHED PLAN IS NOT A FINISHED REALM. A plan is
+       * a fixed list, so an heir who reaches its end simply stops growing where it stopped.
+       * Benedict's names TWO mustering halls and no more; measured over eight matches against
+       * `greedy` — whose plan is four halls and a charge — benedict sat on 2.0 halls and income
+       * 11 from minute two to minute thirteen while the ruler sat on 4.0 halls and income 18,
+       * and lost 5-3 to a policy with no expansion, no powers, no walk and nothing to do with
+       * its money (greedy banked 500-1300 essence it could not spend). At minute three the rush
+       * arrived: greedy 26 men, benedict 11.
+       * Being out-mustered is a thing an heir may honestly SEE — `enemyArmy` is what is in his
+       * sight, nothing more — and the answer to it is another hall, not another tower. Three L1
+       * towers put out 27 damage a second; the column walking into them puts out 260, and a
+       * hall goes on paying in men for the rest of the match. So the standing want that no
+       * plan lists goes to the FRONT of the plan while it holds, and stands down the moment
+       * the muster is level again. `HALL_CAP` is what stops it becoming a doctrine of its own:
+       * an heir answers a rush, he does not turn into `greedy`.
+       *
+       * AND THE OTHER HALF OF THE SAME RULE: A HALL YOU CANNOT AFFORD TO RUN IS THE ONLY ONE
+       * YOU SHOULD NOT BUILD. Recruits are paid for continuously, so a hall can only absorb
+       * `price / period` essence a second — two a second at level one. An heir earning eleven
+       * with two halls is spending four of it on men and six of it on stone, and the stone
+       * does not shoot back at level one. Worse, a LEVEL is throughput-neutral by design
+       * (`CONST.TIER` multiplies the recruit's price by exactly what it multiplies his hit
+       * points and his blow), so pouring that six a second into upgrading the halls he has
+       * buys the same men in different packaging — which is what benedict was doing while
+       * bleys, whose plan simply names three halls, held 3.0 of them by minute two, 55 men by
+       * minute six and beat the same ruler 32-4. So: while the ground earns more than the
+       * muster can drink, the answer is another hall. It is fog-honest — every term is the
+       * heir's own realm — and it stands down by itself the moment the two are level. */
+      let saving = false, handled = false;
+      /* A SPRING UNDER HIS FEET IS A SPRING HE TAKES, whatever the plan says next. Every drop
+       * of essence past the base 2.5 comes out of the ground through a Shadow Gate; one costs
+       * 120, draws 4.5 a second, and has paid for itself before the masons are off the next
+       * job. Measured over eight skilled matches, twenty minutes each: TWELVE of the board's
+       * fourteen springs stood unclaimed for the whole of every one of them, both heirs sat on
+       * one or two Gates and income 7-13 all match, and the Pattern — which cannot be walked at
+       * a drain of 22 by a realm earning eleven — decided 12% of skilled matches against a
+       * 25-75 target. The plans are why: they name two or three Gates and stop. And the errand
+       * that would claim more cannot get the army, because the banner is at home or with the
+       * war 64% of the time and the errand gets 7%.
+       * So take what is already under the boots. This moves NOBODY: `spotFor('gate')` offers
+       * only a spring his own troops are standing on, unheld and uncontested — ground he was
+       * walking over on his way somewhere else. Expansion pays (DESIGN_PRINCIPLES §4); it was
+       * simply never being attempted. */
+      if (v.free > 0 && v.essence >= C.BUILDINGS.gate.cost) {
+        const spring = spotFor(v, 'gate');
+        if (spring) { issue({ c: 'build', x: spring.x, y: spring.y, bt: 'gate' }); handled = true; }
+      }
+      /* the second standing want is ONE MORE HALL THAN HE HOLDS — never a count of its own, or
+       * it double-counts against the halls the plan already names and the heir builds a barrack
+       * town. (It did: greedy, whose plan names four, ran to seven and a half.) */
+      const musterCap = v.pl.buildings.reduce((s, b) => {
+        const bd = C.BUILDINGS[b.bt];
+        if (!bd.spawns || b.raise > 0 || b.work > 0) return s;
+        return s + C.UNITS[bd.spawns].cost * C.TIER[b.level - 1] / bd.period[b.level - 1];
+      }, 0);
+      const walkDrain = v.walking ? C.BUILDINGS.shrine.drain[0] : 0;
+      const thirsty = v.income - walkDrain > musterCap + SPARE;
+      const oneMore = (v.have.barracks || 0) < HALL_CAP &&
+                      (v.enemyArmy >= v.army + OUTNUMBER || thirsty);
+      if (!handled && oneMore) {
+        handled = true;
+        if (v.free > 0) {
+          if (v.essence < C.BUILDINGS.barracks.cost) saving = true;
+          else {
+            const at = spotFor(v, 'barracks');
+            if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks' });
+            else handled = false;   // nowhere to put it: the plan is still the plan
+          }
+        }
+      }
+      /* ...and then the plan: the first unmet want in it, saving up for it if that is all that
+       * is missing.
+       * A WANT WITH NOWHERE TO GO DOES NOT STOP THE PLAN BEHIND IT. The loop used to break on
+       * the first unmet want whatever the reason, which is right when the reason is MONEY —
+       * that is what saving up means — and ruinous when the reason is GROUND. A Gate stands on
+       * a spring or nowhere, and a spring beyond the writ has to be taken by troops standing on
+       * it, so `spotFor('gate')` legitimately returns null for minutes at a time. Measured on
+       * `greedy`, whose plan opens with four Gates: it holds its one opening Gate, wants a
+       * second, can never place it, and therefore never reaches the four halls behind it in its
+       * own plan. One hall, eight men, dead at 3.4 minutes to a ghost that had blundered into
+       * three halls and twenty-two men — the ruler was measuring itself against a policy that
+       * had stopped playing.
+       * So: no crew is nothing to do, no essence is a reason to SAVE, and no ground is a reason
+       * to move on. The want keeps its place in the plan and is taken the moment the ground
+       * allows it. */
+      const wants = handled ? [] : P.plan(v), seenW = {};
       for (const bt of wants) {
         seenW[bt] = (seenW[bt] || 0) + 1;
-        if ((v.have[bt] || 0) < seenW[bt]) {
-          if (v.free > 0 && v.essence >= C.BUILDINGS[bt].cost) {
-            const at = spotFor(v, bt);
-            if (at) issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt });
-          } else saving = v.free > 0;
-          break;
-        }
+        if ((v.have[bt] || 0) >= seenW[bt]) continue;
+        if (v.free <= 0) break;                                           // no crew: nothing to raise
+        if (v.essence < C.BUILDINGS[bt].cost) { saving = true; break; }   // a purse problem: save for it
+        const at = spotFor(v, bt);
+        if (at) { issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt }); break; }
+        /* nowhere on the board will take it today — step past it, do not stop the realm */
       }
 
       /* expansion missions: pick one, march the banner there, build on arrival */
@@ -477,6 +642,25 @@
        * marching is the whole rule; whether it wins is what the fight is for. */
       const ready = v.army >= COMMIT;
       const striking = !homeThreat && wantsWar && ready;
+      /* THE SEARCH OUTRANKS THE ERRAND, because it is the war's first move. Every doctrine
+       * already says "go and look" — that is what `seek` is — and not one of them had ever
+       * ordered it, for exactly the reason the assault never fired: the errand owned the
+       * banner and there is always another spring to want. `wantGates` yields a site while ANY
+       * of the three nearest springs is unheld, which on a fourteen-spring board is forever.
+       * Measured over a full twenty minutes of benedict against the ghost, on a board whose
+       * Seats stand 1588 apart: benedict's unexplored sites never moved off 11 of 24, its
+       * furthest man never got past 800 from its own Seat, it never laid eyes on the rival's
+       * Seat and so `v.enCity` was null for the whole match and the assault clause could not
+       * even be asked. It ended the match with 279 men against 13 and could not use one of
+       * them. Meanwhile `random`, whose banner is a uniformly random site every couple of
+       * seconds, swept the board down to 1 unexplored and had found everything by minute six.
+       * The ghost out-scouted the heir, and that — not the fight — is what the gradient was
+       * measuring.
+       * So a heir whose own doctrine has told him to go looking goes, and the third spring
+       * waits. It ends of its own accord: the moment the Seat is found `hunting` is false and
+       * the errands have the banner back. Home still outranks it — a Seat under threat is not
+       * a choice — and so does an assault, which cannot be running while the Seat is unfound. */
+      const hunting = !homeThreat && !v.enCity && !!v.frontier && call0 === v.frontier.id;
       /* an assault he cannot afford is not an errand either — he holds his own choke */
       const call = wantsWar && !ready ? ownChoke(v).id : call0;
       if (!mission && !homeThreat) {
@@ -491,8 +675,9 @@
        * with the army away, since a spring needs troops standing on it, and that is the honest
        * price of marching. */
 
-      /* the banner: defend home under threat > the assault > mission site > personality call */
-      let want = homeThreat ? v.myCity.id : (striking ? call : (mission ? mission.site : call));
+      /* the banner: defend home > the assault > the search for the man > errand > the call */
+      let want = homeThreat ? v.myCity.id
+               : (striking || hunting ? call : (mission ? mission.site : call));
       /* AN EASIER FOOTING IS ALSO A LATER ONE. Income alone could not do this job: measured
        * against the weakest baseline we ship, an heir at eco 0.8 still had an army on the
        * player's ground at 5.3 minutes, and cutting income further only made it come sooner,
