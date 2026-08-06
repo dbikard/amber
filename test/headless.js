@@ -1995,6 +1995,21 @@ suite('the Seat of Power holds its own gun');
      C.SEAT_GUN.range < Math.max(bo.range[top], ca.range[top]),
      `${C.SEAT_GUN.range} vs the ballista's ${bo.range[top]}`);
 
+  /* EVERY DISTANCE IN THESE RIGS IS THE SEAT'S OWN REACH, never a literal. They were written
+   * as 300 and 80 and 150 against a reach of 350; the reach came down to 200 and the whole
+   * suite went dark at once — nought shots, nought damage, three failures that all said the
+   * gun was broken when what had happened was that the men were standing outside it. A rig
+   * that pins a tuned number is a rig that has to be re-tuned every time the number moves.
+   * `IN` is comfortably inside the arc; the far man is comfortably outside it. */
+  const IN = C.SEAT_GUN.range * 0.6;
+  /* ...and the stone rigs need one more thing derived rather than eyeballed. A tower within
+   * `WALL.man` of a curtain is MANNING it and shoots over it — that is the rule the whole
+   * parapet design rests on — so a rig meaning to put a tower BEHIND a wall has to clear that
+   * reach by a margin. Scaled naively off the Seat's new range it landed 27.6 from the wall
+   * against a `WALL.man` of 32, and the control quietly became a tower on a parapet: eight
+   * shots where the assertion wanted none. */
+  const WALL_AT = IN * 0.75, TOWER_AT = WALL_AT - (C.WALL.man + 24);
+
   /* A BARE BOARD. Both realms are stripped of works and essence and the black road is held off,
    * so the only thing that can hurt anybody in these rigs is the Seat. */
   const rig = () => {
@@ -2048,8 +2063,8 @@ suite('the Seat of Power holds its own gun');
   /* ---- it fires, and only at the other man ---- */
   {
     const r = rig();
-    const foe = r.man(1, 300, 0, 1e6);
-    const own = r.man(0, -240, 0, 1e6);
+    const foe = r.man(1, IN, 0, 1e6);
+    const own = r.man(0, -IN, 0, 1e6);
     const far = r.man(1, 0, C.SEAT_GUN.range + 80, 1e6);
     const shots = r.run(6);
     ok('the Seat fires on an enemy at its gate', foe.hp < 1e6 && shots.length > 0,
@@ -2064,7 +2079,7 @@ suite('the Seat of Power holds its own gun');
   /* ---- and it hits as hard as the two towers together ---- */
   {
     const r = rig();
-    const foe = r.man(1, 300, 0, 1e6);
+    const foe = r.man(1, IN, 0, 1e6);
     const secs = 60;
     r.run(secs);
     const dps = (1e6 - foe.hp) / secs;
@@ -2075,9 +2090,9 @@ suite('the Seat of Power holds its own gun');
   /* ---- STONE IS NO ANSWER TO IT ---- */
   {
     const r = rig();
-    const foe = r.man(1, 300, 0, 1e6);
-    const tower = towerAt(r, 80);
-    const wall = wallAcross(r, 150, 60);
+    const foe = r.man(1, IN, 0, 1e6);
+    const tower = towerAt(r, TOWER_AT);
+    const wall = wallAcross(r, WALL_AT, 60);
     const shots = r.run(10);
     eq('the curtain across the line is standing', wall.raise, 0, `anyWall ${r.w.anyWall}`);
     ok('a wall between the Seat and its target does not stop the shot',
@@ -2089,8 +2104,8 @@ suite('the Seat of Power holds its own gun');
     /* the control: the same tower with nothing in the way does shoot, so the line above is
      * measuring the stone and not a tower that was never in range */
     const r = rig();
-    r.man(1, 300, 0, 1e6);
-    const tower = towerAt(r, 80);
+    r.man(1, IN, 0, 1e6);
+    const tower = towerAt(r, TOWER_AT);
     const shots = r.run(10);
     ok('and with the curtain gone that tower shoots as usual',
        shots.filter((s) => s.id === tower.id).length > 0);
@@ -2099,7 +2114,7 @@ suite('the Seat of Power holds its own gun');
   /* ---- a ruin does not shoot ---- */
   {
     const r = rig();
-    const foe = r.man(1, 300, 0, 1e6);
+    const foe = r.man(1, IN, 0, 1e6);
     r.w.players[0].out = true; r.w.players[0].castleHp = 0;
     const shots = r.run(10);
     eq('a toppled heir\'s Seat is silent', shots.length, 0);
