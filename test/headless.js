@@ -1984,7 +1984,16 @@ suite('the Seat of Power holds its own gun');
   const want = bo.dmg[top] / bo.atk[top] + ca.dmg[top] / ca.atk[top];
   near('a Ballista and a Cannon, both fully upgraded, fired as one gun',
        C.SEAT_GUN.dmg / C.SEAT_GUN.atk, want, 0.01, `${(C.SEAT_GUN.dmg / C.SEAT_GUN.atk).toFixed(3)} vs ${want.toFixed(3)}`);
-  eq('and it reaches as far as the longer of the two', C.SEAT_GUN.range, Math.max(bo.range[top], ca.range[top]));
+  /* ...but its REACH is not the towers'. Strength is what the Seat is defined by and what the
+   * line above checks; reach decides something else — how far a column walks under fire with no
+   * way to answer — and taking the ballista's 350 with the rest made the throne an exclusion
+   * zone the length of a march. Measured: mirror 33% with matches unfinished at forty-five
+   * minutes, and `greedy` beating benedict. It covers its own city and the ground at its gate.
+   * Asserted against CITY.r rather than the literal, so moving the precinct moves the guns. */
+  eq('but it covers its own city and no further', C.SEAT_GUN.range, C.CITY.r + 50);
+  ok('...which is inside the reach of the towers it is made of',
+     C.SEAT_GUN.range < Math.max(bo.range[top], ca.range[top]),
+     `${C.SEAT_GUN.range} vs the ballista's ${bo.range[top]}`);
 
   /* A BARE BOARD. Both realms are stripped of works and essence and the black road is held off,
    * so the only thing that can hurt anybody in these rigs is the Seat. */

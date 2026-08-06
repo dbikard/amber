@@ -420,11 +420,27 @@
    *   cannon   L3   18 dmg / 2.1s =  8.57 dps
    *                                 --------
    *                                 24.89 dps, fired on the quicker of the two cadences (1.9s),
-   *                                 so one blow is 47.29 — at the ballista's reach, with the
-   *                                 cannon's burst.
+   *                                 so one blow is 47.29, with the cannon's burst.
    * The burst is the CANNON'S burst and no more: its splash damage per second carried over onto
    * the Seat's cadence, rather than a fraction of the (much larger) combined blow, which would
-   * have made the Seat better than the sum by a wide margin against a column. */
+   * have made the Seat better than the sum by a wide margin against a column.
+   *
+   * THE REACH IS NOT DERIVED, AND THAT IS THE POINT. Strength is what the Seat was asked for and
+   * strength is what is added up above; REACH is a different quantity and it decides something
+   * else entirely — how long a column walks under fire with no way to answer. Taking the
+   * ballista's 350 as well turned the throne into a exclusion zone the length of a march: the
+   * referee went red, and the ablation was unambiguous. At 350 with the burst, the benedict
+   * mirror ran 33% with matches unfinished at forty-five minutes and `greedy` — four Gates, four
+   * Barracks and march — beat benedict 11-7. The same tree with the Seat's gun switched off was
+   * clean, and the same tree with the tower garrison reverted was IDENTICAL to the red one, line
+   * for line, which is how we know it was this number and nothing else.
+   *
+   * 200 is the city's own ground (`CITY.r` is 150) and a bowshot past it. The throne covers its
+   * precinct and the approach to its gate; it does not shell the country. Measured at 24 games a
+   * side: mirror 58%, benedict over greedy 58%, medians 16.8m and 10.7m — a gradient the right
+   * way up and inside the band. The two rejected alternatives are worth recording because both
+   * sound reasonable: the cannon's 252 measured WORSE than doing nothing (greedy 17%), and
+   * keeping 350 while deleting the burst left no gradient at all (50%). */
   CONST.SEAT_GUN = (function () {
     const b = CONST.TOWER_BRANCHES.bolt, c = CONST.TOWER_BRANCHES.cannon;
     const bi = b.dmg.length - 1, ci = c.dmg.length - 1;          // the fully-upgraded entry
@@ -433,7 +449,7 @@
     return {
       atk,
       dmg: dps * atk,
-      range: Math.max(b.range[bi], c.range[ci]),
+      range: CONST.CITY.r + 50,
       splash: c.splash[ci],
       splashDmg: (c.dmg[ci] * (c.splashFrac || 0) / c.atk[ci]) * atk
     };
