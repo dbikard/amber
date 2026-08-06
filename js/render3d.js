@@ -1702,14 +1702,20 @@
   /* ---------------- overlay: bars, labels, minimap, targeting ---------------- */
   /* scratches the size of the overlay: one for the edge-of-sight band, one for the mask of
    * remembered ground. Both are composited whole, so neither can seam against itself. */
-  function scratch(store) {
+  /* `shrink` draws the scratch at a FRACTION of the overlay's size. Everything drawn into it is
+   * in overlay coordinates — the transform does the scaling — so a caller only has to say how
+   * coarse it wants to be, and composite the result back over the full rectangle. */
+  function scratch(store, shrink) {
     if (typeof document === 'undefined') return null;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) / (shrink || 1);
     if (!store.cv) { store.cv = document.createElement('canvas'); store.c2 = store.cv.getContext('2d'); }
-    if (store.cv.width !== W * dpr || store.cv.height !== H * dpr) {
-      store.cv.width = W * dpr; store.cv.height = H * dpr;
-      store.c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w2 = Math.max(1, Math.round(W * dpr)), h2 = Math.max(1, Math.round(H * dpr));
+    if (store.cv.width !== w2 || store.cv.height !== h2) {
+      store.cv.width = w2; store.cv.height = h2;
     }
+    /* the transform is reset by a resize and must be re-stated every frame anyway, since the
+     * shrink can change with the zoom */
+    store.c2.setTransform(w2 / W, 0, 0, h2 / H, 0, 0);
     return store.c2;
   }
   const rimStore = {}, memStore = {};
@@ -1754,7 +1760,12 @@
     const dbg = R.debugFog || null;
     const sm = (dbg && dbg.mem === false) ? null : view.seen;
     if (sm) {
-      const mc = memCtx();
+      /* HOW COARSE THE MASK IS DRAWN is how soft its edge comes out, and that is the whole
+       * softening now — see the note where it is composited. A cell of remembered ground should
+       * land on about two pixels of the scratch, so the upscale smears exactly across the
+       * staircase we are hiding and no further. */
+      const cellPx = Math.max(1, sm.cell * scaleOf());
+      const mc = memCtx(Math.max(1, Math.min(16, cellPx / 2)));
       if (mc) {
         mc.clearRect(0, 0, W, H);
         mc.fillStyle = '#fff';
@@ -1783,13 +1794,23 @@
         mc.fill();
         g.globalCompositeOperation = 'destination-out';
         g.globalAlpha = 1 - C.FOG.keep;
-        /* the memory is kept on a coarse grid, and its raw edge is a staircase of cells.
-         * Blur it on the way in: what the eye should read is "you have been here", not the
-         * resolution the sim files it at. */
-        const soft = Math.max(4, Math.min(26, sm.cell * scaleOf() * 0.55));
-        g.filter = 'blur(' + soft.toFixed(1) + 'px)';
+        /* THE SOFTENING IS THE UPSCALE, NOT A BLUR. The memory is kept on a coarse grid and its
+         * raw edge is a staircase of cells; what the eye should read is "you have been here",
+         * not the resolution the sim files it at. That used to be `ctx.filter = 'blur(26px)'`
+         * over the whole overlay — a fifty-device-pixel blur on a full-screen canvas, every
+         * frame — and it is the leading suspect for the hard-edged dark shapes reported from
+         * play on an Android GPU: a big canvas blur is tiled by the driver, it is exact in
+         * software (four reproduction attempts on SwiftShader came back clean, including one at
+         * 285 men and 65% of the board remembered), and the region it covers is the remembered
+         * ground, which grows through a match exactly as an army does — which is why it looked
+         * like a crowd bug.
+         * Drawing the mask small and letting the bilinear upscale spread it gives the same read
+         * with no filter, and it is far cheaper on a phone: the scratch is a sixteenth of the
+         * pixels at most, and the driver does the smoothing in the blit it was going to do
+         * anyway. If the artifact survives this, the filter was innocent and `debugFog` is
+         * still there to ask the next question. */
+        g.imageSmoothingEnabled = true;
         g.drawImage(memStore.cv, 0, 0, W, H);
-        g.filter = 'none';
         g.globalAlpha = 1;
         g.globalCompositeOperation = 'source-over';
       }
