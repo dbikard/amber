@@ -88,7 +88,17 @@
    * keeps, `push` is how much of an overlap is resolved per tick — half of it, split between
    * the two of them, which converges in two or three ticks without the jitter a spring force
    * gives you. Men posted on a parapet are exempt: they have assigned berths WALL.berth apart
-   * and a separation wider than the berth would fight the roster for the same stretch. */
+   * and a separation wider than the berth would fight the roster for the same stretch.
+   *
+   * `ring` DOES NOT BREAK SIEGES, though it looks exactly as though it must. Every man carries
+   * a place in the line up to `ring` from his order, so a host sent at a Seat appears to form a
+   * circle AROUND it with everyone parked outside his own aggro — and the symptom fits: bleys
+   * held his banner on brand's Seat for 62% of a match, not one of his men came inside the
+   * enemy city ring, the closest got 367 from something you must be within CASTLE_ZONE to
+   * strike, and it ended at full health. Measured against an UNDEFENDED Seat instead: twenty
+   * men close to 18 and a hundred and twenty close to 7, and both take it to zero inside four
+   * minutes. The geometry is fine. An assault that does nothing is being stopped in the FIELD,
+   * which is turtle beating rush and is what pillar 2 asks for — do not damp this. */
   CONST.CROWD = { space: 22, push: 1.0, step: 1.5, ring: 300, dead: 0.35 };
 
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
