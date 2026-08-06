@@ -67,10 +67,24 @@ Every balance question is answered with data:
 - **Two roads to the throne, and both must be real.** A game with a second win condition
   nobody takes has one win condition and a decoration. Across SKILLED play — the baselines are
   not evidence about what a good player would choose — the Pattern must decide between 25% and
-  75% of the matches that resolve, and force the rest. `node sim.js` prints the split as "the
-  two roads". It was 19% when a full walk cost nine and a half minutes of drain in plain sight:
-  longer than most matches had left by the time anyone could afford to start, so the Pattern
-  was the consolation for failing at the other road rather than a choice between two.
+  75% of matches, and force the rest. `node sim.js` prints two lines for this, and **only the
+  second is the target**:
+  - `the two roads` — the share across every skilled match. This is WEATHER. It averages over a
+    field of heirs that are deliberately not alike: bleys never walks, benedict hardly does,
+    brand always does. Measured per heir over twelve matches each: brand walked in 12/12 and
+    got 62% round on average; julian 7/12 at 38%; corwin 6/12 at 19%; bleys 0/12. So the field
+    share is mostly a count of how many doctrines currently fancy the walk, and dragging it to
+    25% by cheapening the Pattern would buy the number by making the walk tempting to heirs
+    whose whole point is that they want something else. Read it, do not tune it.
+  - `contested` — the share among matches where somebody actually got **half way round**. That
+    is "two skilled players, both roads open", which is what the band was always about: past
+    halfway a walk is a commitment rather than a probe he thought better of. **This** is the
+    25–75 band.
+  Why the distinction was worth writing down: the field share sat at 18% and three separate
+  content numbers were swept looking for it — shrine `rate` to 0.40, `drain` to 16,
+  `CASTLE_HP` to 3600 — and each moved it four points or less, because the matches were not
+  being lost by walkers, they were not being started by non-walkers. Walks began in 95% of
+  skilled matches and stalled at 50% on average: interrupted, not outpaced.
   Note what the mirrors cannot tell you here: a heir whose doctrine never walks will never end
   its own mirror by walking, so the round-robin is the measure and a 0% mirror is not a fault.
 - **Nothing but an heir may end a match.** Chaos is the weather, not the opponent. When the

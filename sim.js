@@ -35,6 +35,8 @@ const { CONST: C, World, AI } = globalThis;
  * third of the price: a run of timeouts says "this does not converge", and if you want to know
  * how long they REALLY take, that is what the full run is for. */
 const QUICK_T = 1200;
+/* Half way round the Pattern is where a walk stops being a probe. See the two-roads report. */
+const CONTEST = 50;
 let MAX_T = (workerData && workerData.maxT) || 2700;   // the main thread sets it from --cap
 const DT = C.SIM_DT;
 
@@ -44,6 +46,7 @@ function playMatch(aKind, bKind, seed, opts) {
   const bots = [AI.make(aKind, opts.aOpts), AI.make(bKind, opts.bOpts)];
   const issue = (pi) => (cmd) => World.applyCommand(world, pi, cmd);
   const issuers = [issue(0), issue(1)];
+  let peak = 0;              // furthest ANYONE got along the Pattern in this match
   while (world.winner === null && world.t < MAX_T) {
     /* alternate which bot is polled first. With free placement, acting first means
      * claiming the ground first — stepping seat 0 ahead of seat 1 every tick is a bias
@@ -53,12 +56,13 @@ function playMatch(aKind, bKind, seed, opts) {
     bots[1 - first].step(world, 1 - first, issuers[1 - first], DT);
     World.update(world, DT);
     world.events.length = 0;   // headless: nobody drains the render queue
+    for (const pl of world.players) if (pl.pattern > peak) peak = pl.pattern;
   }
-  return { winner: world.winner, t: world.t, reason: world.winReason || 'timeout' };
+  return { winner: world.winner, t: world.t, reason: world.winReason || 'timeout', peak };
 }
 
 function series(aKind, bKind, n, baseSeed, opts) {
-  const r = { a: 0, b: 0, draw: 0, times: [], reasons: {} };
+  const r = { a: 0, b: 0, draw: 0, times: [], reasons: {}, hot: {} };
   for (let i = 0; i < n; i++) {
     /* swap sides each game so any board bias cancels out */
     const swap = i % 2 === 1;
@@ -68,6 +72,9 @@ function series(aKind, bKind, n, baseSeed, opts) {
     if (w === 0) r.a++; else if (w === 1) r.b++; else r.draw++;
     r.times.push(m.t);
     r.reasons[m.reason] = (r.reasons[m.reason] || 0) + 1;
+    /* CONTESTED: somebody got half way round. Below that a "walk" is a probe the heir
+     * abandoned, and counting it says the Pattern was on the table when it never was. */
+    if (m.peak >= CONTEST) r.hot[m.reason] = (r.hot[m.reason] || 0) + 1;
   }
   r.times.sort((x, y) => x - y);
   r.median = r.times[Math.floor(n / 2)];
@@ -180,17 +187,37 @@ function flush() {
        * nobody takes has one win condition and a decoration. Counted over SKILLED play only —
        * the baselines are not evidence about what a good player would choose — and only over
        * matches that actually resolved. The band is the design's, not this runner's: see
-       * DESIGN_PRINCIPLES. */
-      let byForce = 0, byPattern = 0;
+       * DESIGN_PRINCIPLES.
+       *
+       * THE FIRST LINE IS NOT THE TARGET, and mistaking it for one cost a day of tuning. It
+       * averages over a FIELD, and the heirs are deliberately not alike: bleys never walks at
+       * all, benedict hardly does, brand always does. Push the field's share up to 25% by
+       * cheapening the Pattern and what you have really done is made it cheap enough that the
+       * heirs who were never interested take it anyway — the variety the doctrines exist for,
+       * spent to move an average. So the field share is reported as WEATHER: it says how many
+       * doctrines currently fancy the walk.
+       *
+       * The TARGET is the second line. "Two skilled players" in the design note means two
+       * players who both have both roads open, and the only matches that answer that question
+       * are the ones where somebody actually set out — half way round, past the point where a
+       * walk is a probe he thought better of. Among those, is the Pattern a real way to win or
+       * a trap? That is the 25-75 band, and it is the one to tune against. */
+      let byForce = 0, byPattern = 0, hotForce = 0, hotPattern = 0;
       for (let i = 0; i < rrEnd; i++) {
         if (!jobs[i].skilled || !done[i]) continue;
         byForce += done[i].reasons.castle || 0;
         byPattern += done[i].reasons.pattern || 0;
+        hotForce += (done[i].hot || {}).castle || 0;
+        hotPattern += (done[i].hot || {}).pattern || 0;
       }
-      const dec = byForce + byPattern;
+      const dec = byForce + byPattern, hot = hotForce + hotPattern;
       console.log('the two roads: ' + byForce + ' by force, ' + byPattern + ' by the Pattern' +
-                  (dec ? '  → Pattern decides ' + Math.round(byPattern / dec * 100) +
-                         '% of skilled matches (target 25-75)' : ''));
+                  (dec ? '  → the field walks in ' + Math.round(byPattern / dec * 100) +
+                         '% of skilled matches (weather, not a target)' : ''));
+      console.log('  contested   : ' + hotForce + ' by force, ' + hotPattern + ' by the Pattern' +
+                  (hot ? '  → Pattern decides ' + Math.round(hotPattern / hot * 100) +
+                         '% of matches somebody walked half way in (target 25-75)'
+                       : '  → nobody walked half way: the Pattern is a decoration'));
     }
   }
 }
