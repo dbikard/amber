@@ -668,6 +668,38 @@
    * otherwise spawn without limit, which is what a doomsday timer looks like. */
   CONST.CAP = { player: 0, chaos: 70 };   // 0 = no ceiling
 
+  /* ---------------- what one hall keeps in the field ----------------
+   * A CEILING ON THE REALM AND A CEILING ON A HALL ARE DIFFERENT ANIMALS, and the paragraph
+   * above is about the first. A per-PLAYER ceiling was removed because it left essence banked
+   * with nowhere to go and a treasury that had stopped being a decision. A per-HALL one has the
+   * opposite property: the surplus buys ANOTHER HALL, so it still has somewhere to go, and the
+   * size of an army becomes a question of what you built rather than of how long you waited.
+   *
+   * IT IS NOT FOR PERFORMANCE. That was the reason to fear it and it is measured: 1200 men cost
+   * 1.9 ms a tick, six per cent of realtime, and a fogged snapshot is 27 KB against a 120 KB
+   * budget. The real reason is the ECONOMY. There is no standing upkeep in this game — a
+   * recruit is paid for in instalments while he musters and costs nothing once he is out — so a
+   * hall draws `cost/period` for the whole match and the muster expands to swallow the entire
+   * income, permanently. Measured on a benedict mirror that ran to the 45-minute cap: both
+   * heirs finished on purses of 0 and 13, and NEITHER had set foot on the Pattern all match,
+   * because a walk costs about 6,900 essence and neither ever held any. A hall that fills stops
+   * drawing; income then exceeds drain; a treasury accumulates; and the Pattern becomes a road
+   * an heir can actually take. The anti-stall is the economy, exactly as pillar 4 says — this
+   * is what makes that true rather than aspirational.
+   *
+   * ONE NUMBER, NOT TWELVE. A hall keeps a fixed VALUE of men, so cheap men come in numbers and
+   * dear ones do not: a Barracks keeps 32 soldiers, a Ram Shed 5 rams. That falls out of the
+   * price rather than being written down per unit, so re-pricing a man re-sizes his company and
+   * the two can never drift apart — and a branch changes the number by changing who is mustered,
+   * with no entry of its own. The floor keeps the dearest engine a company rather than a pair. */
+  CONST.HALL_KEEP = 512;
+  for (const k of Object.keys(CONST.UNITS)) {
+    const u = CONST.UNITS[k];
+    /* the Champion and the fiend are free and no hall musters them — a cap on them would be a
+     * cap on a Trump and on the black road, which is `CAP.chaos`'s business and not this one */
+    if (u.cost > 0) u.keep = Math.max(3, Math.round(CONST.HALL_KEEP / u.cost));
+  }
+
   CONST.MAX_LEVEL = 3;
   CONST.EVENT_CAP = 160;   // renderer-queue safety cap
 

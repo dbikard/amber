@@ -3557,6 +3557,64 @@ suite('a razed realm can still build');
  * an army pinned there from minute six and twenty-two thousand essence banked with nowhere to
  * go. The economy is the brake now — and the ceiling was load-bearing for performance, so the
  * scan that made it necessary has to stay cheap. */
+/* A HALL KEEPS SO MANY AND NO MORE. Not a ceiling on the realm — that one was removed and
+ * stays removed, and the suite below still proves it — but a ceiling on a WORK, which is a
+ * different animal: a full hall stops drawing, so the answer to wanting a bigger army is
+ * another hall, and the surplus that appears when yours are full is what pays for the Pattern.
+ * There is no standing upkeep in this game, so without this a hall draws for the whole match
+ * and the muster swallows the income for as long as the match lasts. */
+suite('a hall keeps so many men and no more');
+{
+  const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
+  w.chaosNext = 1e9; pl.essence = 9e9;
+  const hall = pl.buildings.find((b) => b.bt === 'barracks');
+  ok('the opening hall is there to fill', !!hall && !hall.raise);
+  const keep = C.UNITS.soldier.keep;
+  ok('a soldier has a number and it came out of his price', keep > 0 &&
+     keep === Math.max(3, Math.round(C.HALL_KEEP / C.UNITS.soldier.cost)), `${keep}`);
+  /* long enough to overfill it several times over if nothing stopped it */
+  for (let i = 0; i < 30 * 60 * 12; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const mine = w.units.filter((u) => u.owner === 0 && u.hp > 0);
+  eq('it fills and then stops', mine.filter((u) => u.from === hall.id).length, keep);
+
+  /* A PLACE FREED IS A PLACE REFILLED — a standing support, not a lifetime quota, or an army
+   * ground down once could never be rebuilt and every hall would be a consumable. */
+  const doomed = mine.filter((u) => u.from === hall.id).slice(0, 5);
+  for (const u of doomed) { u.hp = 0; u.dead = true; }
+  for (let i = 0; i < 30 * 60 * 3; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('...and refills what it loses', w.units.filter((u) => u.owner === 0 && u.hp > 0 && u.from === hall.id).length, keep);
+
+  /* THE NUMBER IS THE MAN'S, NOT THE BUILDING'S, so a branch changes it by changing who is
+   * mustered and needs no entry of its own. A ram costs six times a soldier and comes six
+   * times fewer. */
+  ok('a dear man comes in smaller numbers than a cheap one',
+     C.UNITS.ram.keep < C.UNITS.soldier.keep && C.UNITS.outrider.keep > C.UNITS.ram.keep,
+     `ram ${C.UNITS.ram.keep}, soldier ${C.UNITS.soldier.keep}, outrider ${C.UNITS.outrider.keep}`);
+  ok('...and every hall keeps about the same VALUE of men',
+     Object.keys(C.UNITS).filter((k) => C.UNITS[k].keep)
+       .every((k) => Math.abs(C.UNITS[k].keep * C.UNITS[k].cost - C.HALL_KEEP) / C.HALL_KEEP < 0.12),
+     Object.keys(C.UNITS).filter((k) => C.UNITS[k].keep)
+       .map((k) => `${k} ${C.UNITS[k].keep * C.UNITS[k].cost}`).join(' '));
+
+  /* AND A FULL HALL STOPS DRAWING, which is the whole economic point: the treasury that turns
+   * up when your halls are full is what buys a walk. Measured against the walk's own price so
+   * it cannot quietly stop being enough. */
+  const w2 = World.createWorld(1000), p2 = w2.players[0], c2 = World.cityOf(w2, 0);
+  w2.chaosNext = 1e9; p2.essence = 4000;
+  let halls = 1;
+  for (let a = 0; a < 60 && halls < 3; a++) {
+    const th = a / 60 * Math.PI * 2, x = c2.x + Math.cos(th) * 200, y = c2.y + Math.sin(th) * 200;
+    if (World.applyCommand(w2, 0, { c: 'build', bt: 'barracks', x, y }).ok) halls++;
+  }
+  for (const b of p2.buildings) { b.raise = 0; b.hp = b.maxHp; }
+  p2.essence = 0;
+  for (let i = 0; i < 30 * 60 * 20; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  const walk = C.BUILDINGS.shrine.drain[0] * (100 / C.BUILDINGS.shrine.rate[0]);
+  ok('a realm whose halls are full can afford the Pattern', p2.essence > walk,
+     `${Math.round(p2.essence)} banked in 20 minutes against a walk costing ${Math.round(walk)}` +
+     ` (uncapped, the same rig banks 3600 and fields 298 men)`);
+}
+
 suite('no ceiling on the muster')
 {
   eq('an heir musters as many as it can pay for', C.CAP.player, 0);

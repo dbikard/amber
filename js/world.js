@@ -1355,6 +1355,23 @@
     for (const u of world.units) if (u.owner === owner) mine++;
     const cap = owner === C.CHAOS_ID ? C.CAP.chaos : C.CAP.player;
     if (cap > 0 && mine >= cap) return 0;
+    /* AND A HALL KEEPS ONLY SO MANY. This is the ceiling that is actually in force — `CAP.player`
+     * is off — and it is per WORK rather than per realm, which is what makes it a decision
+     * instead of a wall: a full hall stops drawing, the surplus accumulates, and the answer to
+     * wanting a bigger army is another hall. See `HALL_KEEP`.
+     *
+     * The living only. A man killed frees his place on the tick he is cleared, so a company
+     * ground down is a company the hall refills — which is what makes a hall a standing
+     * SUPPORT rather than a lifetime quota, and what makes attrition recoverable.
+     *
+     * `from` is the hall's id and ids are never reused, so a man outlives the hall that raised
+     * him without ever counting against a later one built on the same ground. */
+    const keep = from > 0 ? C.UNITS[kind].keep : 0;
+    if (keep > 0) {
+      let held = 0;
+      for (const u of world.units) if (u.from === from && u.hp > 0) held++;
+      if (held >= keep) return 0;
+    }
     const def = C.UNITS[kind];
     /* THE HALL'S LEVEL RIDES ON THE MAN. He carries it for life — a veteran mustered before
      * the hall fell is still a veteran — which is also what lets the renderer draw him as
