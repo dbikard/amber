@@ -201,7 +201,8 @@ function flush() {
        * players who both have both roads open, and the only matches that answer that question
        * are the ones where somebody actually set out — half way round, past the point where a
        * walk is a probe he thought better of. Among those, is the Pattern a real way to win or
-       * a trap? That is the 25-75 band, and it is the one to tune against. */
+       * a trap? Somebody who sets out should get there about HALF the time: aim at 50, and read
+       * 25-75 as the tolerance rather than the goal. This is the line to tune against. */
       let byForce = 0, byPattern = 0, hotForce = 0, hotPattern = 0;
       for (let i = 0; i < rrEnd; i++) {
         if (!jobs[i].skilled || !done[i]) continue;
@@ -216,7 +217,7 @@ function flush() {
                          '% of skilled matches (weather, not a target)' : ''));
       console.log('  contested   : ' + hotForce + ' by force, ' + hotPattern + ' by the Pattern' +
                   (hot ? '  → Pattern decides ' + Math.round(hotPattern / hot * 100) +
-                         '% of matches somebody walked half way in (target 25-75)'
+                         '% of matches somebody walked half way in (target 50, tolerate 25-75)'
                        : '  → nobody walked half way: the Pattern is a decoration'));
     }
   }

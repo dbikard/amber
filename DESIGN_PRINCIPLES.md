@@ -79,7 +79,11 @@ Every balance question is answered with data:
   - `contested` — the share among matches where somebody actually got **half way round**. That
     is "two skilled players, both roads open", which is what the band was always about: past
     halfway a walk is a commitment rather than a probe he thought better of. **This** is the
-    25–75 band.
+    target, and the design's words for it are: *someone who sets out on the walk should get there
+    about half the time.* So aim at **50%** and read 25–75 as the width of the tolerance, not as
+    the goal — pinned at either edge the walk is a formality or a trap, and only the middle makes
+    the choice between the roads a real one. Currently 55%: 12 committed walks finished, 10 were
+    stopped and the match went to force.
   Why the distinction was worth writing down: the field share sat at 18% and three separate
   content numbers were swept looking for it — shrine `rate` to 0.40, `drain` to 16,
   `CASTLE_HP` to 3600 — and each moved it four points or less, because the matches were not
