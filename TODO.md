@@ -652,6 +652,59 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       while its count thrashed the cache. `R.modelKey` is now the ONLY place that key is
       written and the cache key is built from it, so the two cannot drift again.
 
+## IN FLIGHT — read this first if you are picking the work up
+
+`main` is v0.9.5 and green (headless 1200/1200, browser 276/276, referee green on
+every target). The branch `claude/game-design-open-world-5mzdhz` sits ONE commit ahead
+of it, and that commit is deliberately **not mergeable**.
+
+- [ ] **Terrain refuses a man — FINISH IT.** Branch commit `63885d9`, marked INCOMPLETE.
+      The rule works: men standing on rock or water went from 691 of 136,793 unit-samples
+      (286 distinct men, worst 128 units into a lake) to ZERO. Forest is untouched — only
+      cost-0 cells refuse anyone. **`node test/headless.js` is 1200/1201**: `an army that
+      has marched is still spread` fails at 2.2 against the 15.4 the rule asks for.
+      The cause is understood. That test plants the banner at x=2350 on a map 1400 wide —
+      the order is entirely off the board and every sample point within 120 of it is
+      impassable — and it only ever passed because men could walk off the map to reach it,
+      which is the bug being fixed. **The fix: fold an unreachable ORDER onto the nearest
+      standable ground, exactly as `placeAt` already folds a PLACE.** Better in play too: a
+      tap past a shoreline should gather a company on the bank, not press it into the water.
+      Two wrong cures are recorded in the commit message — reverting the step alone (a
+      settled company jitters 0.602 a tick against a stride of 1.77) and PINNING him, which
+      is stone's cure and is worse, because a shore can take a whole company and pinned men
+      are skipped by the crowd pass so they stack. The cure lives at the crowd's end now.
+      **Re-measure 691 → 0 after the fix**: the mechanism has changed twice since that
+      number was taken, and a number is only true of the code that produced it.
+- [ ] **An army through a narrow path should behave like sand in an hourglass.** Not yet
+      answered. A rig marching 60 men at a curtain's 30-wide gateway measured 0 of 60 going
+      through it — all sixty walked round the ends, and the flow field is RIGHT to send them:
+      360 units of wall (the longest the ground and the masons would take) on a 1400-wide map
+      makes going round plainly cheaper than queueing. So a player's curtain is not an
+      hourglass. The real necks are the map's ~3 natural terrain corridors, and testing them
+      only becomes meaningful once the terrain rule above lands — until now men could cut
+      across the impassable ground beside a choke, so a corridor was not really a corridor.
+      (Watch the rig, too: the first version counted anyone crossing the wall's LINE and so
+      read men walking round it as a torrent through the gap.)
+- [ ] **The Pattern is at the top of its tolerance.** Opening the economy moved it from
+      deciding 10% of matches to 45%, and 67-75% of CONTESTED ones against a 25-75 band. If a
+      full `node sim.js` pushes it past 75, the lever is the Shrine's `drain` or `rate` — NOT
+      undoing the errand company, since "no heir can afford to walk" was the actual defect.
+- [ ] **The Jewel of Judgment is stronger than it was.** A body that stays a body is better
+      storm-bait: 44% → 79% of a 64-man host harvested by the worst 85-disc after a war of
+      attrition. If it is too strong, widen the berth passed to `bodyPlace`; a comment at the
+      call site gives the geometry (a body of n at berth b is a disc of radius b·√(n/π)).
+- [ ] **The fog blur fix needs a PHONE.** Shipped in v0.9.5: the remembered-ground mask is
+      softened by an upscale instead of a ~50-device-pixel canvas blur. Four reproduction
+      attempts on SwiftShader came back clean — including one at 285 men with 65% of the board
+      remembered — so software rendering cannot confirm it. `R.debugFog = {mem,discs,rim}`
+      switches each veil pass off if it needs bisecting again.
+- [ ] **The unpausable walk** (the user's decision, reaffirmed): refuse `{c:'walk', on:false}`
+      once started, drop the pause card, retire `pauseWalk` from every doctrine. Safe because
+      `minRate` 0.5 carries a broke walker. **The AI's start gate must be tightened in the SAME
+      change** — the code already records that a weaker form of this trebled timeouts — and the
+      heirs should halt the muster to bank first (no doctrine has ever issued `{c:'muster'}`).
+      Now much more attractive: heirs holding 5-6 springs earn 32-37/s against a walk's 22/s.
+
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play
