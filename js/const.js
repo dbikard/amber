@@ -443,7 +443,9 @@
    *   `menOnly` — he cannot attack works or Seats at all. Not a reduced multiplier: `acquire`
    *      never offers him one, so he walks past stone looking for somebody to shoot. Every
    *      shooter has it, which is why no host of archers and sorcerers can end a match — the
-   *      Shieldwall, the Ram and the Bombard are the only road to a rival's Seat.
+   *      Shieldwall, the Ram and the Bombard are the only road to a rival's Seat. ONE
+   *      EXCEPTION, and pillar 3 requires it: a SHRINE is a target for him, because what he
+   *      aims at there is not the stone but the walker standing in the lines.
    *   `mans` — he may take a berth on a parapet or a place in a tower. Shooters only: a wall is
    *      a shooting platform, and a swordsman on top of one was only ever a man in the open.
    *   `siege` — his blow against stone, multiplied. Below 1 it would make him bad at sieges;
@@ -470,7 +472,15 @@
      * The Jewel does sixty; a soldier is left standing on ten and a shieldman barely notices,
      * which is the whole bet — half the damage per essence for a line that a storm, a cannon
      * or a bombard cannot sweep away. */
-    shieldman:{ name: 'Shieldman', icon: '🛡', hp: 155, dmg: 13, atk: 1.0, range: 20,  speed: 44, aggro: 130, bounty: 12, size: 12, cost: 30,
+    /* HE IS FEWER AND TOUGHER, NOT SIMPLY MORE. At 155 he was the most hit points per essence
+     * on the board — above the line he is meant to trade against — and a defender who forked to
+     * him could not be stormed at all: measured, brand stood on 227 shieldmen at twenty minutes
+     * with his Seat untouched at full health, walked the Pattern behind them, and the referee
+     * read 80% of contested matches going to the Pattern with matchups timing out. He buys the
+     * same hit points per essence a soldier does now. What he still buys, and what the branch is
+     * FOR, is that they come in fewer bodies: a storm does sixty and leaves him standing where
+     * it deletes the man beside him. */
+    shieldman:{ name: 'Shieldman', icon: '🛡', hp: 128, dmg: 13, atk: 1.0, range: 20,  speed: 44, aggro: 130, bounty: 11, size: 12, cost: 30,
                 blurb: 'The house guard. Two soldiers out-fight him and neither of them lives through a storm.' },
     /* PRICED AS FAST, NOT AS BEST. At 13 he was the finest damage-per-essence buy on the
      * board — better than a soldier — AND half again as quick, which is not a trade, it is

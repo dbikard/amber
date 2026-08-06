@@ -808,7 +808,7 @@
      * for a player to infer from a reach of 105 */
     const tags = [];
     if (u.siege) tags.push(`×${u.siege} vs stone`);
-    if (u.menOnly) tags.push('cannot touch stone');
+    if (u.menOnly) tags.push('besieges nothing · but strikes a Shrine');
     if (u.mans) tags.push('holds walls and towers');
     if (u.mend) tags.push(`mends ${u.mend}/s`);
     if (u.bind) tags.push('binds fiends');

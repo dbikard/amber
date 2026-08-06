@@ -24,12 +24,19 @@ The one hard division in the army, and the two rules that make it:
 - **A shooter has no target among works at all** — not a reduced blow, no target. So no host of
   archers, sorcerers, wardens and binders can take a Seat however large it grows, and a shooting
   company has to be escorted by a Shieldwall, a Ram or a Bombard.
+  **Except a Shrine, and pillar 3 is why** — see below. What a shooter aims at there is not the
+  stone, it is the walker standing in the lines. Without the exception a walking player was
+  unattackable by half of every army: measured, the Pattern took 92% of contested matches and
+  matchups ran to the twenty-minute cap because nobody could reach the man.
 - **Only a shooter may man stone.** A swordsman on a parapet was a man in the open with further
   to fall, holding a berth an archer needed. A curtain is a shooting platform you must muster
   *for*, and a wall defended by a soldier company kills nothing.
 
 Both are content-free rules with large consequences, so they are the first suspects whenever the
-match-length band or the by-force half of the two roads moves.
+match-length band or the by-force half of the two roads moves. And REACH IS THE EXPENSIVE THING:
+a shooter who out-throws melee by 87 for three essence more is not making a trade, he is simply
+better — the archer at 19 made julian the strongest heir on the ladder and simultaneously unable
+to finish a match. Price a shooter against the sorcerer, never against the line.
 
 ### 3. The walk forces the fight
 Pattern progress is revealed. A walking player must be attackable and a stalling player must
