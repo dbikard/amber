@@ -1019,10 +1019,24 @@ suite('the curtain wall')
   settle();
   b.hp = b.maxHp;
   const hidden = pin(put(0, side(-C.WALL.man - 70)));
-  pin(put(1, side(C.WALL.man * 0.5)));
+  pin(put(1, side(C.WALL.man * 0.5), 'soldier'));
   run(6);
   eq('hugging a rival curtain does not put you on it', hidden.hp, 1e9);
-  ok('...though the wall itself is a target', b.hp < b.maxHp, `${Math.round(b.hp)}/${b.maxHp}`);
+  ok('...though the wall itself is a target to a man who can break stone',
+     b.hp < b.maxHp, `${Math.round(b.hp)}/${b.maxHp}`);
+
+  /* ...AND NOT TO A SHOOTER, standing in the very same place. An archer or a sorcerer has no
+   * target among works at all: he does not chip at the stone slowly, he never looks at it. */
+  settle();
+  b.hp = b.maxHp;
+  pin(put(1, side(C.WALL.man * 0.5), 'archer'));
+  run(6);
+  eq('a shooter at the same spot never touches the stone', b.hp, b.maxHp);
+  settle();
+  b.hp = b.maxHp;
+  pin(put(1, side(C.WALL.man * 0.5), 'sorcerer'));
+  run(6);
+  eq('...and neither does a sorcerer, who used to be a siege weapon', b.hp, b.maxHp);
 
   /* nothing walks through it. The banner is planted on the far side of the run — the one
    * order that would take a column straight through the stone if stone did not stop it. */
@@ -2333,15 +2347,16 @@ suite('veterans, not crowds')
   eq('rank 1 is exactly the man we always had', C.TIER[0], 1);
   ok('and every rank after is better', C.TIER[1] > C.TIER[0] && C.TIER[2] > C.TIER[1], C.TIER.join('/'));
 
-  /* THE ECONOMY IS UNCHANGED. Same drain, same hit points and same damage per minute at
-   * every level as the throughput upgrade bought — this is the assertion that says the swap
-   * was a repackaging and not a buff. */
+  /* THE RANK MULTIPLIER IS UNCHANGED. Same drain, same hit points and same damage per minute
+   * at every rank as the old throughput upgrade bought — the assertion that says the swap was
+   * a repackaging and not a buff. It is about `TIER` reproducing the old rate ratios exactly;
+   * WHICH man a level-2 hall raises is the branch's business now, and is tested below. */
   const u = C.UNITS.soldier, OLD = [8, 6.4, 5.0];
   for (let L = 1; L <= 3; L++) {
     const m = C.TIER[L - 1], per = b.period[L - 1];
-    near(`level ${L} drains what it always did`, (u.cost * m) / per, u.cost / OLD[L - 1], 0.05);
-    near(`level ${L} delivers the hit points it always did`, (60 / per) * u.hp * m, (60 / OLD[L - 1]) * u.hp, 2);
-    near(`level ${L} delivers the damage it always did`, (60 / per) * u.dmg * m, (60 / OLD[L - 1]) * u.dmg, 0.4);
+    near(`rank ${L} drains what it always did`, (u.cost * m) / per, u.cost / OLD[L - 1], 0.05);
+    near(`rank ${L} delivers the hit points it always did`, (60 / per) * u.hp * m, (60 / OLD[L - 1]) * u.hp, 2);
+    near(`rank ${L} delivers the damage it always did`, (60 / per) * u.dmg * m, (60 / OLD[L - 1]) * u.dmg, 0.4);
   }
 
   /* and in the sim: a level-2 hall musters a heavier man, not a faster one */
@@ -2362,7 +2377,8 @@ suite('veterans, not crowds')
   /* THE MASONS TAKE TIME, AND THE HALL GOES QUIET. That is the real cost of a level. */
   const before = w.units.filter((q) => q.owner === 0).length;
   const fromHall = w.units.filter((q) => q.owner === 0 && q.from === hall.id).length;
-  const up = World.applyCommand(w, 0, { c: 'up', id: hall.id });
+  /* a hall's level-2 upgrade IS its fork, so it must name a branch — see 'the halls fork' */
+  const up = World.applyCommand(w, 0, { c: 'up', id: hall.id, br: 'line' });
   ok('the hall can be raised a level', up.ok, up.err);
   ok('...and it takes masonry, not a moment', hall.work > 0, hall.work);
   /* AND IT TAKES A CREW. The crew was taken off this once, because against one mason per
@@ -2382,12 +2398,15 @@ suite('veterans, not crowds')
   eq('the masons finish', hall.work, 0);
   eq('...at the level that was paid for', hall.level, 2);
 
-  /* and now the men are different men */
+  /* AND NOW THE MEN ARE DIFFERENT MEN — twice over. The rank makes them tougher, and the
+   * BRANCH makes them somebody else: a hall that chose the Shieldwall stops raising soldiers
+   * for the rest of the match. Both axes at once is the whole point of the fork. */
   run(30);
   const vets = w.units.filter((q) => q.owner === 0 && q.tier === 2);
   ok('the hall musters veterans', vets.length > 0, vets.length);
-  near('...who are tougher', vets[0].maxHp, C.UNITS.soldier.hp * C.TIER[1], 0.01);
-  near('...and hit harder', vets[0].dmg, C.UNITS.soldier.dmg * C.TIER[1], 0.01);
+  eq('...and they are the branch\'s men, not the hall\'s old ones', vets[0].kind, 'shieldman');
+  near('...who are tougher for their rank', vets[0].maxHp, C.UNITS.shieldman.hp * C.TIER[1], 0.01);
+  near('...and hit harder', vets[0].dmg, C.UNITS.shieldman.dmg * C.TIER[1], 0.01);
   ok('a veteran keeps his rank after the hall falls',
      (() => { World.hurtBuilding(w, 0, hall.id, 1e9, 1); return w.units.some((q) => q.tier === 2); })());
 }

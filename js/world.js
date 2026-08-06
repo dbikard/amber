@@ -315,6 +315,14 @@
    * so the line does not reshuffle itself every frame — and the first `berths` of them take
    * the parapet. The rest are not turned away: they stand at the foot, in rows behind the
    * stone, sheltered and waiting for a place. */
+  /* STONE IS FOR SHOOTERS. A parapet is a shooting platform, and a swordsman standing on one
+   * was only ever a man in the open with further to fall — he could not reach anything the
+   * wall was keeping away from him, and he took the berth an archer needed. Only a unit the
+   * table marks `mans` may hold a place on a wall or a room in a tower; everyone else still
+   * gets a `post`, and still stations at the FOOT of the run in cover, which is where a
+   * Shieldwall belongs. A flag rather than a reach threshold on purpose: an Engine throws 150
+   * and a Bombard 365, and a siege train does not climb a curtain. */
+  const mans = (u) => !!C.UNITS[u.kind].mans;
   function postWalls(world) {
     for (const u of world.units) if (u.man) u.man = 0;
     if (!world.anyWall) return;
@@ -344,12 +352,15 @@
     for (const [id, list] of rosters) {
       const w = world.walls.find((q) => q.b.id === id);
       if (!w) continue;
-      list.sort((p, q) => p.id - q.id);          // a stable line, not a nightly reshuffle
+      /* SHOOTERS FIRST, then a stable line by id — not a nightly reshuffle. The sort is what
+       * puts the archers on the parapet whatever their ids, and leaves the swordsmen behind
+       * them in the rows at the foot rather than blocking berths they cannot use. */
+      list.sort((p, q) => (mans(q) - mans(p)) || (p.id - q.id));
       const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
       const berths = Math.max(2, Math.round(L / C.WALL.berth));
       for (let i = 0; i < list.length; i++) {
         list[i].berth = i;
-        if (i < berths) list[i].man = id;        // he has a place on the stone
+        if (i < berths && mans(list[i])) list[i].man = id;   // he has a place on the stone
       }
       w.berths = berths;
     }
@@ -376,6 +387,54 @@
     const off = C.WALL.man * 0.45 + C.WALL.foot * (row + 1);
     return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
   }
+  /* ---------------- the tower garrison ----------------
+   * A TOWER IS A PLACE TO STAND, not only a gun. It shot on its own and men stood in the grass
+   * beneath it, which made a Watchtower a thing you built INSTEAD of defending a spot rather
+   * than a thing you defended it FROM. A few shooters may go up — `TOWER.berths` of them, and
+   * no more, because a tower is a room and not a field — and from up there they throw
+   * `TOWER.over`, further than any of them can on the ground. The tower's own gunnery is
+   * untouched: the garrison shoots AS WELL AS the tower, which is what makes filling one worth
+   * the men. They are exposed while they are up there, exactly as a man on a parapet is.
+   *
+   * Ordered by the same rule as a wall — the ORDER a man is under, not where he happens to be
+   * — so filling a tower is something you decide rather than something that happens. */
+  function postTowers(world) {
+    for (const u of world.units) if (u.tow) u.tow = 0;
+    const rosters = new Map();
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.owner === C.CHAOS_ID || !mans(u)) continue;
+      const pl3 = world.players[u.owner];
+      const co3 = u.co ? coOf(world, u.owner, u.co) : null;
+      const gs = co3 && co3.rally ? co3.rally : pl3.banner;
+      if (!gs) continue;
+      let post = null, pd = C.TOWER.man;
+      for (const b of pl3.buildings) {
+        if (b.bt !== 'tower' || b.raise > 0) continue;
+        const dd = Math.sqrt(d2(b.x, b.y, gs.x, gs.y));
+        if (dd < pd) { pd = dd; post = b; }
+      }
+      if (!post) continue;
+      let list = rosters.get(post.id);
+      if (!list) { list = []; rosters.set(post.id, list); }
+      list.push(u);
+    }
+    for (const [id, list] of rosters) {
+      list.sort((p, q) => p.id - q.id);      // a stable garrison: the same men hold it
+      for (let i = 0; i < list.length && i < C.TOWER.berths; i++) {
+        list[i].tow = id; list[i].towSlot = i;
+      }
+    }
+  }
+  /* his window: the garrison stands around the tower's head, evenly, so three men read as
+   * three men rather than one stack */
+  function towerStation(b, u) {
+    const a = ((u.towSlot || 0) + 0.5) / C.TOWER.berths * Math.PI * 2;
+    return { x: b.x + Math.cos(a) * C.TOWER.ring, y: b.y + Math.sin(a) * C.TOWER.ring };
+  }
+  const towerOf = (world, u) => {
+    if (!u.tow) return null;
+    return world.players[u.owner].buildings.find((b) => b.id === u.tow) || null;
+  };
   /* IS THERE STONE BETWEEN THEM? Every finished wall the line crosses blocks it — with one
    * exception, and the whole design rests on it: a wall does not hide a man who is manning
    * IT. Come up to your own parapet and you can shoot out; the same stone that was covering
@@ -461,7 +520,7 @@
     const R = C.CROWD.space, R2 = R * R, cw = R;
     const grid = new Map();
     for (const u of world.units) {
-      if (u.hp <= 0 || u.man) continue;        // a berth on a parapet is not a crowd
+      if (u.hp <= 0 || u.man || u.tow) continue;   // a berth on a parapet, or a room in a tower, is not a crowd
       const k = Math.floor(u.y / cw) * 100003 + Math.floor(u.x / cw);
       const cell = grid.get(k);
       if (cell) cell.push(u); else grid.set(k, [u]);
@@ -768,21 +827,60 @@
   /* ---------------- pathfinding: the nav grid does the walking ---------------- */
 
   /* ---------------- commands ---------------- */
-  /* a tower's live stats: shared until the level-2 fork, per-branch after it */
+  /* ---------------- the fork ----------------
+   * A WORK MAY BRANCH, AND THE CHOICE IS FOREVER. The Watchtower was the only thing that did
+   * this for a long time and the rule was written into six places as the word 'tower'. It is a
+   * property of the TABLE now: any work carrying `branches` forks at its `fork` level, and
+   * every consumer — the price, the command, the sheet, the model key, the heirs — asks these
+   * two functions instead of naming a building. A branch's effect arrays are indexed by
+   * `level - fork`, so [L2, L3] for a fork at 2.
+   *
+   * The whole feature rests on this being generic: three troop halls fork now, and the reason
+   * that cost a table entry rather than a rewrite is that the tower had already paid for the
+   * mechanism. */
+  const branchesOf = (bt) => (C.BUILDINGS[bt] && C.BUILDINGS[bt].branches) || null;
+  const forkAt = (bt) => (C.BUILDINGS[bt] && C.BUILDINGS[bt].fork) || 0;
+  /* the branch a work is actually RUNNING — it has one only once it has reached the fork */
+  function branchOf(b) {
+    if (!b || !b.br || b.level < forkAt(b.bt)) return null;
+    const tb = branchesOf(b.bt);
+    return (tb && tb[b.br]) || null;
+  }
+  /* WHAT A HALL MUSTERS, and how often. Before the fork it is the table's own recruit; after
+   * it, the branch's — a Barracks that chose the Shieldwall stops raising soldiers and raises
+   * shieldmen, which is the whole point of the branch and the reason a level and a branch are
+   * different axes. Everything that needs to know — the muster loop, the upgrade card's rate
+   * line, the heirs' sense of what a hall costs to run — asks this rather than reading
+   * `def.spawns`, which is only ever the level-1 answer now.
+   * Takes anything with `bt`, `level` and `br`, so a caller can ask about the level a hall is
+   * ABOUT to reach as easily as the one it holds. */
+  function mustersOf(b) {
+    const def = b && C.BUILDINGS[b.bt];
+    if (!def || !def.spawns) return null;
+    const br = branchOf(b);
+    return {
+      kind: (br && br.spawns) || def.spawns,
+      period: br && br.period ? br.period[b.level - forkAt(b.bt)] : def.period[b.level - 1]
+    };
+  }
+  /* a tower's live stats: shared until the level-2 fork, per-branch after it. Gunnery is the
+   * tower's own business, so this stays tower-shaped — it simply asks the table who the
+   * branch is rather than naming the constant. */
   function towerStats(b) {
     const def = C.BUILDINGS.tower;
-    const br = b.level >= def.fork && b.br ? C.TOWER_BRANCHES[b.br] : null;
+    const br = branchOf(b);
     if (!br) return { dmg: def.dmg[b.level - 1], range: def.range[b.level - 1], atk: def.atk, splash: 0 };
     const i = b.level - def.fork;
     return { dmg: br.dmg[i], range: br.range[i], atk: br.atk[i],
              splash: br.splash[i], splashDmg: br.dmg[i] * (br.splashFrac || 0) };
   }
-  /* `br` is the branch the tower is being upgraded INTO (or already holds) */
+  /* `br` is the branch the work is being upgraded INTO (or already holds) */
   function upgradeCost(bt, level, br) {
-    if (bt === 'tower') {
-      const b2 = C.TOWER_BRANCHES[br];
-      if (!b2) return C.BUILDINGS.tower.up[level - 1];          // unforked fallback
-      return level < C.BUILDINGS.tower.fork ? b2.cost : b2.up[level - C.BUILDINGS.tower.fork];
+    const tb = branchesOf(bt);
+    if (tb) {
+      const b2 = tb[br];
+      if (!b2) return C.BUILDINGS[bt].up ? C.BUILDINGS[bt].up[level - 1] : Infinity;   // unforked fallback
+      return level < forkAt(bt) ? b2.cost : b2.up[level - forkAt(bt)];
     }
     const up = C.BUILDINGS[bt].up;
     return up ? up[level - 1] : Infinity;   // no table = this work does not upgrade
@@ -887,14 +985,19 @@
       const s = bldOf(world, pi, cmd.id);
       if (!s) return { ok: false, err: 'id' };
       if (s.raise > 0) return { ok: false, err: 'raising' };
-      /* some works simply do not upgrade — the Shrine is one, and there is nothing to offer */
-      if (s.bt !== 'tower' && !C.BUILDINGS[s.bt].up) return { ok: false, err: 'noup' };
+      /* some works simply do not upgrade — the Shrine is one, and there is nothing to offer.
+       * A work that BRANCHES may have no `up` table of its own; its prices live per branch. */
+      if (!C.BUILDINGS[s.bt].up && !branchesOf(s.bt)) return { ok: false, err: 'noup' };
       if (s.level >= C.MAX_LEVEL) return { ok: false, err: 'max' };
-      /* the Watchtower fork: the level-2 upgrade must name a branch, and it is forever */
+      /* THE FORK: the upgrade that reaches `fork` must name a branch, and it is forever. Read
+       * `cmd.br` at that level and nowhere else — every later upgrade falls through to the
+       * branch the work already holds, which is what makes the choice permanent rather than
+       * something a second tap can quietly rewrite. */
       let br = s.br;
-      if (s.bt === 'tower' && s.level + 1 === C.BUILDINGS.tower.fork) {
+      const tb = branchesOf(s.bt);
+      if (tb && s.level + 1 === forkAt(s.bt)) {
         br = cmd.br;
-        if (!C.TOWER_BRANCHES[br]) return { ok: false, err: 'branch' };
+        if (!tb[br]) return { ok: false, err: 'branch' };
       }
       /* AN UPGRADE TAKES A CREW, TIME, AND SILENCE. The crew was taken OFF this once, because
        * against one mason per three Gates it taxed whoever expanded hardest out of the game.
@@ -909,6 +1012,12 @@
       s.level++;
       if (br) s.br = br;
       s.work = s.workFor = Math.max(1, (C.BUILDINGS[s.bt].raise || 10) * C.UP_WORK);
+      /* A HALL THAT FORKS DOES NOT KEEP THE CHANGE. Recruits are paid for continuously into
+       * `paid`, and the fork can change who is being paid for — a Spire part-way through a
+       * sorcerer that becomes a Ram Shed would carry the surplus over and hand out several men
+       * at once the moment the masons left. Clamp it to what the new recruit actually costs. */
+      const mus2 = mustersOf(s);
+      if (mus2 && s.paid > 0) s.paid = Math.min(s.paid, C.UNITS[mus2.kind].cost * C.TIER[s.level - 1]);
       /* a work whose level buys STONE rather than an effect — the Curtain Wall, which has no
        * effect to buy — grows its hit points, keeping the damage already done to it */
       if (C.BUILDINGS[s.bt].hpAt) {
@@ -1219,6 +1328,17 @@
         if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
       }
     }
+    /* A SHOOTER DOES NOT TOUCH STONE. Archers, sorcerers, wardens and binders have no target
+     * among works or Seats at ALL — not a reduced blow, no target — so the search ends here and
+     * a shooter who can find nobody to shoot simply keeps marching past the wall. A zero siege
+     * multiplier would not have done it: `acquire` would still have handed him the nearest
+     * curtain and he would have stood in front of it swinging at nothing for the rest of the
+     * match. The consequence is deliberate and it is the point: a host of shooters cannot end a
+     * match, so a siege needs the Shieldwall, the Ram or the Bombard to go with it. */
+    if (C.UNITS[u.kind].menOnly) {
+      u._t = kind === 'unit' ? best : null;
+      return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
+    }
     for (let ci = 0; ci < world.players.length; ci++) {
       if (ci === u.owner) continue;
       const tp = world.players[ci];
@@ -1385,8 +1505,11 @@
            * beyond its essence, and the reason to think about WHEN rather than only whether:
            * the men you would have had while the masons were in the yard are the real cost. */
           if (b.work > 0) { b.cd = Math.max(b.cd, 0.5); continue; }
-          const price = C.UNITS[def.spawns].cost * C.TIER[b.level - 1];
-          const per = def.period[b.level - 1];
+          /* WHICH MAN, and how often — the branch's answer once the hall has forked, the
+           * table's before that. A Barracks that chose the Shieldwall stops raising soldiers. */
+          const mus = mustersOf(b);
+          const price = C.UNITS[mus.kind].cost * C.TIER[b.level - 1];
+          const per = mus.period;
           b.paid = b.paid || 0;
           /* recruits are paid for CONTINUOUSLY: the treasury drains smoothly, and a poor
            * treasury slows the muster instead of silently skipping it */
@@ -1399,7 +1522,7 @@
                * and the price was being taken anyway — an army standing at its ceiling paid
                * a measured 6 essence a second for soldiers who never appeared. Take the
                * money only when a man actually walks out of the hall. */
-              if (spawnUnit(world, pi, def.spawns, sp.x, sp.y, undefined, b.co, b.id, b.level)) {
+              if (spawnUnit(world, pi, mus.kind, sp.x, sp.y, undefined, b.co, b.id, b.level)) {
                 b.paid -= price;
                 b.cd += per;
               } else b.cd = 0.5;   // full up: try again shortly, and keep the war chest
@@ -1523,6 +1646,7 @@
     /* the parapet roster, before anyone moves or shoots: who is ON the wall this tick decides
      * both where he walks and whether he can shoot over it */
     if (world.anyWall || world.hadWall) { postWalls(world); world.hadWall = world.anyWall; }
+    postTowers(world);
     /* units: fight what's near, else march the paths toward the banner/goal */
     const n = world.units.length, fwd = world.tick % 2 === 0;   // alternate order: no first-strike seat bias
     for (let ii = 0; ii < n; ii++) {
@@ -1548,9 +1672,12 @@
        * nothing to see: a man on the wall fought from the wall and was drawn in the grass
        * beside it, so the one bargain the whole design rests on was invisible. The renderer
        * lifts him onto the stone from this, and it rides the wire so a guest sees it too. */
-      const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0) + (home ? 140 : 0));
+      /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
+       * than he ever could on the ground, and everything that can see the tower can see him. */
+      const gar = u.tow ? C.TOWER.over : 0;
+      const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? 140 : 0));
       if (foe) {
-        const rng = par ? Math.max(def.range, C.WALL.over) : def.range;
+        const rng = Math.max(par ? Math.max(def.range, C.WALL.over) : def.range, gar);
         const reach = rng + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
           : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
         if (foe.d <= reach) {
@@ -1594,6 +1721,24 @@
          * Each soldier takes his own STATION instead, exactly as he takes his own place in
          * the muster ring: a stable berth from his id, so the line is even and does not
          * jostle, and the whole run is manned rather than one yard of it. */
+        /* A GARRISON GOES TO ITS TOWER and stays in it — the order put him there, and being
+         * dragged back to the order's own point every tick would empty the tower he was sent
+         * to fill. Checked before the parapet, because a tower built INTO a curtain would
+         * otherwise post him to the run and leave the room above it empty. */
+        if (u.tow) {
+          const tb = towerOf(world, u);
+          if (tb) {
+            const ts = towerStation(tb, u);
+            const dg = Math.sqrt(d2(u.x, u.y, ts.x, ts.y));
+            if (dg > 3) {
+              const s5 = dg < C.NAV.arrive ? null : NAV.steer(world.nav, world, u.owner, ts.x, ts.y, u.x, u.y);
+              const L3 = s5 ? 1 : dg;
+              const vx3 = s5 ? s5.x : (ts.x - u.x) / L3, vy3 = s5 ? s5.y : (ts.y - u.y) / L3;
+              u.x += vx3 * def.speed * dt; u.y += vy3 * def.speed * dt;
+            }
+            continue;   // his place in the tower is exact: he is not jostled out of it
+          }
+        }
         if (u.post) {
           const post = world.walls.find((q) => q.b.id === u.post);
           if (post) {
@@ -1677,7 +1822,9 @@
      * shoves run again over whoever the crowd moved. */
     jostle(world);
     for (const u of world.units) {
-      if (u.hp <= 0 || u.man) continue;
+      /* a man holding a place on stone is not shoved off it — his station IS his position,
+       * and a tower's garrison stands inside the ring `stand` would push him out of */
+      if (u.hp <= 0 || u.man || u.tow) continue;
       stand(world, u);
       if (world.anyWall) shove(world, u);
     }
@@ -1742,6 +1889,6 @@
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
-                   wallCrews, wallReach };
+                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

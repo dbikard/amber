@@ -1288,7 +1288,9 @@
         /* ...and its DAMAGE step, so a work being taken apart is taken apart on the board and
          * not only in a number. A ghost has no hp on the wire, so it is never hurt. */
         const hurt = ghost ? 0 : hurtOf(b);
-        const key = (b.bt === 'tower' && b.br ? 'tower:' + b.br : b.bt)
+        /* any work may carry a branch now, not only the tower — a Barracks that chose the
+         * Shieldwall is a different building on the board, and the key is what says so */
+        const key = (b.br ? b.bt + ':' + b.br : b.bt)
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
           + '@' + (b.level || 1) + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
           + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '')

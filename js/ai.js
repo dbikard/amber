@@ -282,6 +282,16 @@
    * Pattern holding less than the shared rule will abandon it for (`broke`, 140). */
   const CHEST = 150;
 
+  /* WHICH WAY AN HEIR FORKS. A persona names its doctrine per building in `branch`; anything it
+   * does not name — and the baselines name nothing — falls to the table's own first option, so
+   * a branching work added later never lands an heir on `undefined` and gets its upgrade
+   * refused for 'branch'. */
+  function branchFor(P, bt, v) {
+    const d = C.BUILDINGS[bt];
+    const pick = P.branch && P.branch[bt] ? P.branch[bt](v) : null;
+    return pick && d.branches[pick] ? pick : d.branchUI[0];
+  }
+
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
     julian: {
@@ -306,7 +316,9 @@
         return wants;
       },
       upPref: ['tower', 'gate', 'barracks', 'siege'],
-      towerBranch: () => 'cannon',   // the Warden holds a line; lines are broken by crowds
+      /* the Warden holds a line: crowds break lines, so the cannon; and he is the one heir
+       * who raises the stone that archers are worth having */
+      branch: { tower: () => 'cannon', barracks: () => 'archer', spire: () => 'warden', siege: () => 'bombard' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
       banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (v.unexplored > 2 && v.army >= 4 ? seek(v) : v.myCity.id),
@@ -328,7 +340,9 @@
       plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'siege',
                    'spire', 'barracks', 'siege', 'spire', 'barracks', 'tower'],
       upPref: ['barracks', 'siege', 'spire', 'gate', 'tower'],
-      towerBranch: () => 'bolt',     // Bleys keeps few towers; they must hit hard and far
+      /* Bleys keeps few towers; they must hit hard and far. Everything else is the assault:
+       * outriders to arrive, a ram to get in, and Chaos turned on whoever is in the way */
+      branch: { tower: () => 'bolt', barracks: () => 'raid', spire: () => 'binder', siege: () => 'ram' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
       banner: (v) => v.army >= 6 ? strike(v) : seek(v),   // scout, stage, then storm the gates
       walk: () => false, pauseWalk: () => false,
@@ -344,7 +358,9 @@
       plan: () => ['gate', 'gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire',
                    'tower', 'barracks', 'spire', 'tower'],
       upPref: ['tower', 'gate', 'barracks'],
-      towerBranch: () => 'cannon',   // the walk is answered by an army, and an army is a crowd
+      /* the walk is answered by an army, and an army is a crowd — and a walker must HOLD, so
+       * shieldmen on the ground and a warden keeping them standing */
+      branch: { tower: () => 'cannon', barracks: () => 'line', spire: () => 'warden', siege: () => 'bombard' },
       /* Greed must still MINE. Keeping Brand's army home to guard the walk was tried and
        * measured: it starves him (2 wins across the field) because the walk's drain has to
        * come from somewhere, and under the new economy that somewhere is the springs. */
@@ -361,7 +377,7 @@
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks',
                    'siege', 'tower', 'barracks', 'spire', 'gate'],
       upPref: ['barracks', 'gate', 'siege', 'spire', 'tower'],
-      towerBranch: () => 'bolt',
+      branch: { tower: () => 'bolt', barracks: () => 'raid', spire: () => 'binder', siege: () => 'ram' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
       banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
         ? v.enCityId
@@ -397,7 +413,15 @@
         return wants;
       },
       upPref: ['gate', 'barracks', 'siege', 'tower', 'spire'],
-      towerBranch: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),   // the master answers what he sees
+      /* THE MASTER ANSWERS WHAT HE SEES, and that is his whole character — every fork is a
+       * read of the board rather than a doctrine he brought with him. */
+      branch: {
+        tower: (v) => (v.enemyArmy >= 4 ? 'cannon' : 'bolt'),
+        /* archers are only worth raising if he has stone to stand them on */
+        barracks: (v) => (v.have.wall || v.have.tower >= 2 ? 'archer' : v.enemyArmy >= 6 ? 'line' : 'raid'),
+        spire: (v) => (v.threats.length >= 2 ? 'warden' : 'binder'),
+        siege: (v) => (v.enemyArmy >= 5 ? 'bombard' : 'ram')
+      },
       missions: (v) => [wantGates('own', 2), wantWatch(1),
                         ...(v.enemyArmy <= 3 ? [wantGates('mid', 1)] : [])],
       banner: (v) => {
@@ -550,9 +574,12 @@
        * it double-counts against the halls the plan already names and the heir builds a barrack
        * town. (It did: greedy, whose plan names four, ran to seven and a half.) */
       const musterCap = v.pl.buildings.reduce((s, b) => {
-        const bd = C.BUILDINGS[b.bt];
-        if (!bd.spawns || b.raise > 0 || b.work > 0) return s;
-        return s + C.UNITS[bd.spawns].cost * C.TIER[b.level - 1] / bd.period[b.level - 1];
+        if (b.raise > 0 || b.work > 0) return s;
+        /* what this hall actually drinks — the BRANCH's recruit once it has forked, which can
+         * be three times the price of the soldier it used to raise */
+        const mus = global.World.mustersOf(b);
+        if (!mus) return s;
+        return s + C.UNITS[mus.kind].cost * C.TIER[b.level - 1] / mus.period;
       }, 0);
       const walkDrain = v.walking ? C.BUILDINGS.shrine.drain[0] : 0;
       const thirsty = v.income - walkDrain > musterCap + SPARE;
@@ -708,8 +735,10 @@
         const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise && !b.work)
                        .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
         for (const b of cands) {
-          /* the Watchtower fork: an heir's doctrine picks the branch, and keeps it after */
-          const br = bt === 'tower' ? (b.br || (P.towerBranch ? P.towerBranch(v) : 'bolt')) : undefined;
+          /* THE FORK: an heir's doctrine picks the branch, and keeps it after. Every branching
+           * work asks the same question — a heir that has already forked a hall re-sends the
+           * branch it holds so the PRICE comes off the branch table rather than the base one. */
+          const br = C.BUILDINGS[bt].branches ? (b.br || branchFor(P, bt, v)) : undefined;
           if (v.essence > global.World.upgradeCost(bt, b.level, br) + 130) {
             issue({ c: 'up', id: b.id, br });
             return;

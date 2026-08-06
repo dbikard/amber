@@ -472,8 +472,11 @@
       players, sites,
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
-                       /* which wall he is standing on, so a guest draws him on the stone too */
+                       /* which wall he is standing on, and which tower he is up in, so a guest
+                        * draws him on the stone too — both change where he IS, not only what
+                        * he looks like, so neither is a secret worth keeping */
                        ...(u.man ? { man: u.man } : {}),
+                       ...(u.tow ? { tow: u.tow, towSlot: u.towSlot || 0 } : {}),
                        /* rank changes what he LOOKS like, so it is not a secret worth keeping */
                        ...(u.tier > 1 ? { tier: u.tier } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),

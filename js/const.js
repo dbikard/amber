@@ -231,6 +231,7 @@
                 blurb: 'Sends Sorcerers — fragile, deadly at range' },
     tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 22,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
+                forkHint: 'Rebuild the tower.',
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
     /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk
      * is meant to be a commitment you pay for in essence you are not spending on an army —
@@ -311,6 +312,12 @@
   CONST.TIER_NAME = ['', 'Veteran ', 'Elite '];
   CONST.UP_WORK = 1.0;
 
+  /* THE TOWER GARRISON. `man` is how near an ORDER must fall to a tower for its shooters to go
+   * up; `berths` is how many fit, because a tower is a room and not a field; `over` is how far
+   * a man throws from up there, further than any shooter reaches on the ground; `ring` is how
+   * far from the tower's foot the garrison stands, so three men read as three. */
+  CONST.TOWER = { man: 76, over: 150, berths: 3, ring: 22 };
+
   CONST.WALL = { man: 32, over: 105, thick: 13, unit: 150,
                  /* A PARAPET HOLDS WHAT IT HOLDS. One berth per `berth` of length, and the men
                   * who cannot get up stay at the FOOT of it — sheltered, useless, and waiting
@@ -363,22 +370,130 @@
               blurb: 'Corwin’s trick — shadow-rouge that burns where Amber’s powder will not. It bursts over a column; against one great foe it is a firework.' }
   };
   CONST.TOWER_BRANCH_UI = ['bolt', 'cannon'];
+  /* A FORK IS A PROPERTY OF THE TABLE, not of the word 'tower'. The Watchtower paid for this
+   * mechanism and was the only thing using it; hanging the tables off the building is what let
+   * the three troop halls fork for the price of a table entry. Everything downstream —
+   * `World.branchesOf`, the price, the `up` command, the sheet, the model key, the heirs —
+   * reads these two keys and never names a building. */
+  CONST.BUILDINGS.tower.branches = CONST.TOWER_BRANCHES;
+  CONST.BUILDINGS.tower.branchUI = CONST.TOWER_BRANCH_UI;
+
+  /* ---------------- the halls fork ----------------
+   * A LEVEL AND A BRANCH ARE DIFFERENT AXES, and the halls only had one of them. A level makes
+   * the same man better armed (`TIER`), so a hall's whole build was decided by how much you
+   * had spent and never by what you chose. The fork is the choice: at level 2 a hall is rebuilt
+   * into one of its branches and raises THAT man for the rest of the match.
+   *
+   * `spawns` is the recruit, `period` is his interval indexed by (level - fork) — [L2, L3] —
+   * `cost` is the 1→2 rebuild and `up` is [2→3], exactly as the Watchtower's branches work.
+   * A branch that names no `period` keeps the hall's own. */
+  CONST.BUILDINGS.barracks.fork = 2;
+  CONST.BUILDINGS.barracks.forkHint = 'Re-raise the hall around one kind of soldiery.';
+  CONST.BUILDINGS.barracks.branches = {
+    line:   { name: 'The Shieldwall', short: 'Shieldwall', icon: '🛡',
+              cost: 130, up: [210], spawns: 'shieldman', period: [11, 11],
+              blurb: 'Fewer men and heavier ones. They hold ground and a gateway, and a storm does not sweep them off it.' },
+    raid:   { name: 'The Outriders',  short: 'Outriders',  icon: '🐎',
+              cost: 110, up: [180], spawns: 'outrider', period: [6, 6],
+              blurb: 'Cheap, quick, and gone before the answer arrives. They take springs and hunt whatever shoots at you.' },
+    archer: { name: 'The Butts',      short: 'Archers',    icon: '🏹',
+              cost: 125, up: [200], spawns: 'archer', period: [8, 8],
+              blurb: 'Bowmen — one of the two who can stand on your stone. Raise them if you own walls and towers to fill.' }
+  };
+  CONST.BUILDINGS.barracks.branchUI = ['line', 'raid', 'archer'];
+
+  CONST.BUILDINGS.spire.fork = 2;
+  CONST.BUILDINGS.spire.forkHint = 'Turn the Spire to one art.';
+  CONST.BUILDINGS.spire.branches = {
+    warden: { name: 'The Warden\'s Art', short: 'Wardens', icon: '✚',
+              cost: 200, up: [320], spawns: 'warden', period: [16, 16],
+              blurb: 'Sends Wardens, who MEND the men beside them. Nothing else in Amber heals a wound.' },
+    binder: { name: 'The Binding',       short: 'Binders', icon: '🌘',
+              cost: 190, up: [310], spawns: 'binder', period: [15, 15],
+              blurb: 'Sends Shadow-binders, who turn a beaten fiend against the road that bore it.' }
+  };
+  CONST.BUILDINGS.spire.branchUI = ['warden', 'binder'];
+
+  CONST.BUILDINGS.siege.fork = 2;
+  CONST.BUILDINGS.siege.forkHint = 'Re-tool the yard.';
+  CONST.BUILDINGS.siege.branches = {
+    ram:     { name: 'The Ram Shed', short: 'Rams',     icon: '🪵',
+               cost: 250, up: [380], spawns: 'ram', period: [30, 30],
+               blurb: 'Builds Rams: twice an Engine\'s bite and twice its stone, and they must reach the wall to swing.' },
+    bombard: { name: 'The Gun Pit',  short: 'Bombards', icon: '💣',
+               cost: 240, up: [370], spawns: 'bombard', period: [28, 28],
+               blurb: 'Builds Bombards: they out-range every tower on the board and burst where they land.' }
+  };
+  CONST.BUILDINGS.siege.branchUI = ['ram', 'bombard'];
 
   /* Units. Every mustered soldier is PAID FOR — essence is a war chest, never a high score.
-   * speed in world-units/sec; aggro = acquire radius; bounty paid to the killer's player. */
+   * speed in world-units/sec; aggro = acquire radius; bounty paid to the killer's player.
+   *
+   * `name`, `icon` and `blurb` are for the player, not the sim: the Muster Roll reads them, and
+   * until there was a screen listing the host there was nowhere a unit's name could be written
+   * down. Do not add a kind without them, or it appears in the codex as a capitalised key.
+   *
+   * THREE FLAGS DECIDE WHAT A MAN IS FOR:
+   *   `menOnly` — he cannot attack works or Seats at all. Not a reduced multiplier: `acquire`
+   *      never offers him one, so he walks past stone looking for somebody to shoot. Every
+   *      shooter has it, which is why no host of archers and sorcerers can end a match — the
+   *      Shieldwall, the Ram and the Bombard are the only road to a rival's Seat.
+   *   `mans` — he may take a berth on a parapet or a place in a tower. Shooters only: a wall is
+   *      a shooting platform, and a swordsman on top of one was only ever a man in the open.
+   *   `siege` — his blow against stone, multiplied. Below 1 it would make him bad at sieges;
+   *      nothing uses it that way, because `menOnly` says the same thing honestly. */
   CONST.UNITS = {
     /* speeds scale with the board. On the 1400x3000 map a soldier at the old 39 took 58s to
      * cross, and armies died of old age before arriving — bleys/corwin drew 15 of 30 at the
      * cap. These are the old speeds x1.35, which puts a crossing back near the old 45s. */
-    soldier:  { hp: 70,  dmg: 9,  atk: 0.9, range: 18,  speed: 53, aggro: 140, bounty: 6,  size: 10, cost: 16 },
-    sorcerer: { hp: 40,  dmg: 15, atk: 1.4, range: 130, speed: 47, aggro: 170, bounty: 10, size: 9,  cost: 28 },
-    champion: { hp: 420, dmg: 34, atk: 0.8, range: 22,  speed: 59, aggro: 160, bounty: 40, size: 14, cost: 0 },
-    fiend:    { hp: 55,  dmg: 11, atk: 1.0, range: 16,  speed: 62, aggro: 260, bounty: 12, size: 10, cost: 0 },
+    soldier:  { name: 'Soldier',   icon: '⚔', hp: 70,  dmg: 9,  atk: 0.9, range: 18,  speed: 53, aggro: 140, bounty: 6,  size: 10, cost: 16,
+                blurb: 'Shadow-drawn infantry. He marches, he fights, and he will pull a wall down given long enough.' },
+    /* THE SORCERER NO LONGER TOUCHES STONE. He was a siege weapon that also killed men, which
+     * made the Spire a strictly better Barracks for anyone who could afford one. He is a
+     * shooter now: he holds a parapet, he out-reaches everything else that can stand on one,
+     * and he cannot help you take a Seat. */
+    sorcerer: { name: 'Sorcerer',  icon: '🜏', hp: 40,  dmg: 15, atk: 1.4, range: 130, speed: 47, aggro: 170, bounty: 10, size: 9,  cost: 28,
+                menOnly: true, mans: true,
+                blurb: 'Fragile, deadly at range, and the longest reach that can stand on a wall. He does not touch stone.' },
+    champion: { name: 'Champion',  icon: '🃏', hp: 420, dmg: 34, atk: 0.8, range: 22,  speed: 59, aggro: 160, bounty: 40, size: 14, cost: 0,
+                blurb: 'The family champion, called through a Trump. One at a time, and worth an army while he stands.' },
+    fiend:    { name: 'Chaos Fiend', icon: '👁', hp: 55, dmg: 11, atk: 1.0, range: 16, speed: 62, aggro: 260, bounty: 12, size: 10, cost: 0,
+                blurb: 'It comes out of a rift and it hates everyone equally. It grows with the hour, and it can be BOUND.' },
+    /* ---- the branches ---- */
+    /* THE SHIELDWALL: fewer men, and each of them survives the blow that deletes a soldier.
+     * The Jewel does sixty; a soldier is left standing on ten and a shieldman barely notices,
+     * which is the whole bet — half the damage per essence for a line that a storm, a cannon
+     * or a bombard cannot sweep away. */
+    shieldman:{ name: 'Shieldman', icon: '🛡', hp: 155, dmg: 13, atk: 1.0, range: 20,  speed: 44, aggro: 130, bounty: 12, size: 12, cost: 30,
+                blurb: 'The house guard. Two soldiers out-fight him and neither of them lives through a storm.' },
+    outrider: { name: 'Outrider',  icon: '🐎', hp: 48,  dmg: 8,  atk: 0.75, range: 18, speed: 76, aggro: 150, bounty: 5,  size: 9,  cost: 13,
+                blurb: 'Arden\'s rangers — half again as fast as anything on the board. They take springs and run down shooters.' },
+    archer:   { name: 'Archer',    icon: '🏹', hp: 45,  dmg: 6,  atk: 0.7, range: 105, speed: 50, aggro: 150, bounty: 7,  size: 9,  cost: 19,
+                menOnly: true, mans: true,
+                blurb: 'The garrison you can afford. He lines a curtain and fills a tower — and an arrow has never brought down a wall.' },
+    warden:   { name: 'Warden',    icon: '✚', hp: 55,  dmg: 5,  atk: 1.5, range: 90,  speed: 47, aggro: 120, bounty: 12, size: 9,  cost: 34,
+                menOnly: true, mend: 7, mendR: 110,
+                blurb: 'The Warden\'s art: he mends the man beside him. Nothing else in Amber heals, which is what makes him worth the essence.' },
+    binder:   { name: 'Shadow-binder', icon: '🌘', hp: 50, dmg: 9, atk: 1.3, range: 110, speed: 47, aggro: 150, bounty: 12, size: 9, cost: 32,
+                menOnly: true, bind: true, bindR: 130, bindHp: 0.5,
+                blurb: 'He turns a beaten fiend onto the road it came from. Shadow will not hold it long.' },
     /* `siege` multiplies damage against a WORK or a Seat, and nothing else. An Engine swings
      * every 2.4s for 12 — five damage a second against men, which is half a soldier at four
      * times the price — and 168 against stone, which is seven soldiers' worth. It cannot
      * outrange a tower and it cannot run, so it arrives escorted or it does not arrive. */
-    engine:   { hp: 260, dmg: 12, atk: 2.4, range: 150, speed: 30, aggro: 190, bounty: 30, size: 14, cost: 70, siege: 14 }
+    engine:   { name: 'Siege Engine', icon: '⚒', hp: 260, dmg: 12, atk: 2.4, range: 150, speed: 30, aggro: 190, bounty: 30, size: 14, cost: 70, siege: 14,
+                blurb: 'Slow, fragile in a fight, and worth four soldiers against stone. It arrives escorted or it does not arrive.' },
+    /* THE RAM has to TOUCH what it breaks, and that is the whole price of it: it cannot
+     * outrange a tower, it cannot run, and it will stand in front of a Seat soaking everything
+     * the defender has. What it buys is twice an Engine's bite on stone and twice its stone. */
+    ram:      { name: 'Siege Ram',  icon: '🪵', hp: 480, dmg: 16, atk: 2.6, range: 26,  speed: 26, aggro: 120, bounty: 40, size: 15, cost: 95, siege: 22,
+                blurb: 'A roofed ram on rollers. It must reach the wall to swing, and very little that reaches one survives it.' },
+    /* THE BOMBARD is Corwin's trick on a cart — the same shadow-rouge that burns in a Cannon
+     * Tower. It out-ranges every tower on the board, which is what a siege train is FOR; it
+     * pays for that in stone bitten per shot, and in being unable to defend itself at all. */
+    bombard:  { name: 'Bombard',    icon: '💣', hp: 190, dmg: 14, atk: 3.2, range: 365, speed: 26, aggro: 240, bounty: 34, size: 14, cost: 88, siege: 9,
+                splash: 55, splashFrac: 0.4,
+                blurb: 'It out-ranges every tower ever raised, and bursts where it lands. Nothing that gets close to it lives long enough to regret it.' }
   };
 
   CONST.POWERS = {

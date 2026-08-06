@@ -316,12 +316,7 @@
     if (d.income) return `<span class="c-rate up">+${d.income[level - 1]}◆/s · +${d.nodeIncome[level - 1]}◆/s on a spring</span>`;
     /* A LEVEL BUYS BETTER MEN, NOT MORE OF THEM, so the card has to say what the men become
      * — the rate is the same at every level and quoting it would read as "no change". */
-    if (d.spawns) {
-      const u = C.UNITS[d.spawns], m = C.TIER[level - 1];
-      const rank = C.TIER_NAME[level - 1];
-      return `<span class="c-rate dn">−${(u.cost * m / d.period[level - 1]).toFixed(1)}◆/s muster</span>` +
-             (level > 1 ? `<span class="c-rate up">${rank}${cap(d.spawns)}: ${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow</span>` : '');
-    }
+    if (d.spawns) return unitLine(d.spawns, d.period[level - 1], level);
     if (bt === 'shrine') return `<span class="c-rate dn">−${d.drain[level - 1]}◆/s while walking</span>`;
     return '';
   }
@@ -439,16 +434,35 @@
   UI.armBuild = function (on) { $('btn-build').classList.toggle('armed', !!on); };
 
   /* a forked tower shows what it BECAME, not the generic name it was raised under */
-  function towerFace(s) {
-    const br = s.bt === 'tower' && s.br ? C.TOWER_BRANCHES[s.br] : null;
+  /* WHAT A WORK CALLS ITSELF. A forked work has stopped being the thing you raised — a
+   * Ballista is not a Watchtower with an option ticked — so its sheet takes the branch's whole
+   * identity. Generic across every branching work, not the tower alone. */
+  function workFace(s) {
+    const br = global.World.branchOf ? global.World.branchOf(s) : null;
     return br ? { icon: br.icon, name: br.name, blurb: br.blurb } : C.BUILDINGS[s.bt];
   }
-  /* what a level of a tower branch actually shoots — the numbers behind the bet */
-  function towerStatLine(br, level) {
-    const b2 = C.TOWER_BRANCHES[br], i = level - C.BUILDINGS.tower.fork;
-    const dps = (b2.dmg[i] / b2.atk[i]).toFixed(1);
-    return `<span class="c-rate wide">${b2.dmg[i]} dmg · ${dps}/s · ${b2.range[i]} range` +
-           (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
+  /* THE NUMBERS BEHIND THE BET. A branch is a permanent choice, so the card has to say what it
+   * buys rather than only what it is called. Two shapes, because there are two kinds of branch:
+   * a work that SHOOTS quotes its gunnery, a work that MUSTERS quotes the man it will raise. */
+  function branchStatLine(bt, key, level) {
+    const b2 = (C.BUILDINGS[bt].branches || {})[key];
+    if (!b2) return '';
+    const i = level - (C.BUILDINGS[bt].fork || 2);
+    if (b2.dmg) {
+      const dps = (b2.dmg[i] / b2.atk[i]).toFixed(1);
+      return `<span class="c-rate wide">${b2.dmg[i]} dmg · ${dps}/s · ${b2.range[i]} range` +
+             (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
+    }
+    if (b2.spawns) return unitLine(b2.spawns, b2.period ? b2.period[i] : C.BUILDINGS[bt].period[level - 1], level);
+    return '';
+  }
+  /* one recruit, priced and described — the same two facts the upgrade card has always shown
+   * for a hall, now that WHICH man it raises is a thing the branch decides */
+  function unitLine(kind, period, level) {
+    const u = C.UNITS[kind], m = C.TIER[level - 1];
+    return `<span class="c-rate dn">−${(u.cost * m / period).toFixed(1)}◆/s muster</span>` +
+           `<span class="c-rate up">${C.TIER_NAME[level - 1]}${u.name || cap(kind)}: ` +
+           `${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow</span>`;
   }
 
   const raiseLine = (s) => (s.work > 0
@@ -458,7 +472,7 @@
     : `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
       'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.');
   UI.upSheet = function (s, essence, walking, me) {
-    const d = C.BUILDINGS[s.bt], face = towerFace(s);
+    const d = C.BUILDINGS[s.bt], face = workFace(s);
     const el = freshSheet();
     el._me = me || null;
     el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
@@ -496,35 +510,38 @@
       UI.tick(essence);
       return;
     }
-    /* the Watchtower fork: the level-2 upgrade is a CHOICE, offered as two cards */
-    const forking = s.bt === 'tower' && !s.br && s.level + 1 === C.BUILDINGS.tower.fork;
+    /* THE FORK: the upgrade that reaches it is a CHOICE, offered as a card per branch. Every
+     * branching work takes this path now, and the Barracks offers three where the tower offers
+     * two — the loop never counted them. */
+    const fork = C.BUILDINGS[s.bt].fork || 0;
+    const forking = !!d.branches && !s.br && s.level + 1 === fork;
     if (forking) {
       const hint = document.createElement('div');
       hint.className = 'sheet-blurb';
-      hint.textContent = 'Rebuild the tower. Choose once — the choice does not come again.';
+      hint.textContent = (d.forkHint || 'Rebuild it.') + ' Choose once — the choice does not come again.';
       el.appendChild(hint);
-      for (const key of C.TOWER_BRANCH_UI) {
-        const b2 = C.TOWER_BRANCHES[key];
-        const cost = global.World.upgradeCost('tower', s.level, key);
+      for (const key of d.branchUI) {
+        const b2 = d.branches[key];
+        const cost = global.World.upgradeCost(s.bt, s.level, key);
         const b = document.createElement('button');
         b.className = 'card' + (essence >= cost ? '' : ' locked');
         b.dataset.cost = cost;
         b.dataset.crew = '1';
         b.innerHTML = `<span class="c-ico">${b2.icon}</span><span class="c-name">${b2.name}</span>` +
                       `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">${b2.blurb}</span>` +
-                      towerStatLine(key, C.BUILDINGS.tower.fork);
+                      branchStatLine(s.bt, key, fork);
         b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, key); UI.closeSheet(); });
         el.appendChild(b);
       }
-    } else if (s.level < C.MAX_LEVEL && (d.up || s.bt === 'tower')) {
+    } else if (s.level < C.MAX_LEVEL && (d.up || d.branches)) {
       const cost = global.World.upgradeCost(s.bt, s.level, s.br);
       const can = essence >= cost;
       const b = document.createElement('button');
       b.className = 'card' + (can ? '' : ' locked');
       b.dataset.cost = cost;
       b.dataset.crew = '1';
-      const forked = s.bt === 'tower' && !!s.br;
-      const rt = forked ? towerStatLine(s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
+      const forked = !!s.br;
+      const rt = forked ? branchStatLine(s.bt, s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
       /* AN UPGRADE IS MASONRY. It takes a crew and it takes time, and the work does its job
        * for nobody meanwhile — a hall musters nothing, a tower does not shoot, a Gate draws
        * nothing. Saying so on the card is the difference between a decision and a surprise. */
