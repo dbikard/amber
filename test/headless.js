@@ -1754,6 +1754,187 @@ suite('an heir does not walk himself broke');
      `walking=${pp.walking} on ${(pp.incomeRate || 0).toFixed(1)}/s against a ${shrineDrain}/s drain`);
 }
 
+/* AN ORDER THE BOARD WILL REFUSE IS NOT AN ORDER, AND A WANT WITH NOWHERE TO GO IS NOT A WALL
+ * ACROSS THE PLAN. Two faults of the same family, and together they stopped a whole policy
+ * from playing.
+ *   The probe and the command have to agree about WHERE a work will stand. A `claim` work is
+ * snapped by the build command to the spring's exact middle, but the heir's placement probe
+ * asked `placementError` about the point it had swept TO — and `placementError` reads the writ
+ * at the point it is handed. A point 46 out from a spring, lying just inside the writ, came
+ * back legal; the order was given; the command snapped it back onto the spring outside the
+ * writ and refused it as 'presence'. Measured on `greedy`, whose plan opens with four Gates:
+ * five to eight such orders a MINUTE, every minute of every match.
+ *   And because the plan stopped dead at its first unmet want whatever the reason, the four
+ * mustering halls behind those Gates in greedy's own plan were never reached. One hall, eight
+ * men, dead at three and a half minutes to the random ghost. The skill gradient was measuring
+ * a ruler that had stopped playing.
+ * The rule now: no crew is nothing to do, no essence is a reason to SAVE, and no GROUND is a
+ * reason to step past the want and get on with the realm. */
+suite('an heir does not order what the board will refuse');
+{
+  let issued = 0, refused = 0, presence = 0;
+  const halls = [];
+  for (const seed of SEEDS) {
+    const w = World.createWorld(seed, 2);
+    w.chaosNext = 1e9;                 // this is about the orders, not about the black road
+    const bot = AI.make('greedy');     // the ruler whose plan opens with four Gates
+    const iss = (cmd) => {
+      const r = World.applyCommand(w, 0, cmd);
+      if (cmd.c === 'build') { issued++; if (!r.ok) { refused++; if (r.err === 'presence') presence++; } }
+      return r;
+    };
+    for (let i = 0; i < 30 * 240; i++) {
+      bot.step(w, 0, iss, C.SIM_DT);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+    }
+    halls.push(w.players[0].buildings.filter((b) => b.bt === 'barracks').length);
+  }
+  ok('some building actually happened, or this suite proves nothing', issued >= 10, `${issued} build orders`);
+  ok('a Gate is never ordered onto ground the command snaps out from under it',
+     presence === 0, `${presence} of ${issued} orders refused as 'presence'`);
+  ok('...and an heir does not spend its match giving orders that bounce',
+     refused <= issued * 0.25, `${refused} of ${issued} build orders refused`);
+  ok('a want with nowhere to go does not stop the plan behind it',
+     halls.every((n) => n >= 3), `mustering halls after four minutes, per map: ${halls.join(', ')}`);
+}
+
+/* YOU CANNOT MARCH ON A SEAT YOU HAVE NOT FOUND. Every doctrine already carried a clause that
+ * says "go and look" — `seek` — and not one of them had ever been ordered, because the banner
+ * was read as "the errand, else the doctrine's call" and there is ALWAYS another spring to
+ * want. Measured over a full twenty minutes of benedict against the random ghost, on a board
+ * whose Seats stood 1588 apart: benedict's unexplored sites never moved off 11 of 24, its
+ * furthest man never got past 800 from its own Seat, it never laid eyes on the rival's Seat,
+ * and so the assault clause could not even be asked. It finished with 279 men against 13 and
+ * could not use one of them. The ghost — whose banner is a uniformly random site — had swept
+ * the board and found everything by minute six. The ghost out-scouted the heir.
+ * The search now outranks the errand, and stands down of its own accord the moment the Seat is
+ * found. This suite is the promise that the war can start at all. */
+suite('an heir goes looking for the man he means to fight');
+{
+  const at = [];
+  let found = 0;
+  for (const seed of SEEDS) {
+    const w = World.createWorld(seed, 2);
+    /* against the GHOST on purpose: it is the measured case. A mirror hides the fault, because
+     * two heirs prowling their own halves eventually blunder into each other; the ghost sits at
+     * home doing nothing coherent, so if the heir does not go and look, nobody looks. */
+    const bots = [AI.make('benedict'), AI.make('random')];
+    const iss = [0, 1].map((pi) => (cmd) => World.applyCommand(w, pi, cmd));
+    let when = null;
+    for (let i = 0; i < 30 * 480 && w.winner === null; i++) {
+      for (const f of [0, 1]) bots[f].step(w, f, iss[f], C.SIM_DT);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      if (when === null && w.players[0].explored[w.map.cities[1]]) when = w.t;
+    }
+    if (when !== null) { found++; at.push((when / 60).toFixed(1) + 'm'); } else at.push('never');
+  }
+  ok('the rival Seat is found, on every map', found === SEEDS.length, `found at ${at.join(', ')}`);
+  ok('...and inside the first half of a match, not at the end of one',
+     at.every((s) => s !== 'never' && parseFloat(s) <= 8), `found at ${at.join(', ')}`);
+}
+
+/* NOTHING IS RAISED UNDER SWORDS. A work goes up as a SHELL — a quarter of its hit points,
+ * earning nothing, mustering nobody, shooting at nothing until the masons are done — so one
+ * begun inside a hostile crowd donates the stone, the crew and the time in a single order.
+ * Measured on benedict against `greedy`: its home Gate, 204 from the Seat with the rival's
+ * column camped on the spring, was thrown down and raised again EIGHT times between minute
+ * three and minute twelve — about a thousand essence and eight crew-shifts on a work that
+ * never drew a drop, while the heir sat on income 2.5 and lost. The board already refuses a
+ * CONTESTED spring beyond the writ; inside the writ nothing refused anything, and inside the
+ * writ is exactly where a besieged heir's springs are.
+ * Both halves are asserted: with a rival column on the spring he does not order the Gate, and
+ * with the same spring clear he does — or the rule would be indistinguishable from an heir
+ * that had simply stopped building. */
+suite('nothing is raised under swords');
+{
+  const trial = (withFoes) => {
+    const w = World.createWorld(1000, 2), pl = w.players[0];
+    w.chaosNext = 1e9;
+    const gate = pl.buildings.find((b) => b.bt === 'gate');
+    const site = w.map.sites[gate.node];
+    pl.buildings.splice(pl.buildings.indexOf(gate), 1);   // his Gate has been thrown down
+    pl.essence = 4000;
+    const d = C.UNITS.soldier;
+    const put = (owner, n, ox) => {
+      for (let i = 0; i < n; i++)
+        w.units.push({ id: w.nextId++, owner, kind: 'soldier', tier: 1, x: site.x + ox + i * 7,
+                       y: site.y, ox: 0, oy: 0, hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0,
+                       goal: null, co: 0, from: -1 });
+    };
+    put(0, 6, -24);                       // his own men hold the spring either way
+    if (withFoes) put(1, 6, 24);          // ...and the rival's column is standing on it
+    const bot = AI.make('benedict');
+    let ordered = false;
+    const iss = (cmd) => {
+      if (cmd.c === 'build' && cmd.bt === 'gate' &&
+          Math.hypot(cmd.x - site.x, cmd.y - site.y) < C.NODE.r) ordered = true;
+      return World.applyCommand(w, 0, cmd);
+    };
+    /* the world is NOT stepped: this is about the ORDER, not about who wins the fight over
+     * the spring, and a melee would settle it before the heir had thought twice */
+    for (let i = 0; i < 30 * 12; i++) bot.step(w, 0, iss, C.SIM_DT);
+    return ordered;
+  };
+  ok('a spring his own men hold, and nobody else, is claimed', trial(false));
+  ok('...and the same spring with a rival column standing on it is not',
+     !trial(true), 'the heir ordered a Gate into a crowd of swords');
+}
+
+/* THE MUSTER ANSWERS THE MUSTER, AND A FINISHED PLAN IS NOT A FINISHED REALM. Recruits are
+ * paid for continuously, so a hall can only ever drink `price / period` essence a second — two
+ * a second at level one. A plan is a fixed list, so an heir who reaches its end stops growing
+ * where it stopped: benedict's names TWO halls and no more, and measured over eight matches
+ * against `greedy` it sat on 2.0 halls and income 11 from minute two to minute thirteen while
+ * the ruler sat on 4.0 and income 18, and lost 5-3 to a policy with no expansion, no powers
+ * and no walk. Six of its eleven a second went into stone, and stone at level one does not
+ * shoot back.
+ * The standing want is ONE MORE HALL THAN HE HOLDS — never a count of its own, which
+ * double-counts against the halls the plan already names and builds a barrack town (it did:
+ * greedy ran to seven and a half). It is capped, so an heir answers a rush without turning
+ * into `greedy`, and it stands down when the two are level. */
+suite('the muster answers the muster');
+{
+  /* the arithmetic the rule rests on: widening the throat by another hall is both cheaper and
+   * wider than widening it by a level, because TIER rides the recruit's PRICE too */
+  const B = C.BUILDINGS.barracks;
+  const drink = (lvl) => C.UNITS.soldier.cost * C.TIER[lvl - 1] / B.period[lvl - 1];
+  ok('a hall drinks its recruit\'s price over his period', drink(1) > 0, `${drink(1).toFixed(1)}/s`);
+  ok('a second hall widens the throat further than a third level does',
+     2 > C.TIER[C.MAX_LEVEL - 1], `x2 against x${C.TIER[C.MAX_LEVEL - 1]}`);
+  ok('...and costs less doing it', B.cost < B.up[0] + B.up[1],
+     `${B.cost} against ${B.up[0] + B.up[1]}`);
+
+  /* and the behaviour: an heir left alone with ground to draw on does not sit at the end of
+   * its plan with a treasury its halls cannot drink — nor does it pave the map with halls */
+  const halls = [], spare = [];
+  for (const seed of SEEDS) {
+    const w = World.createWorld(seed, 2);
+    w.chaosNext = 1e9;
+    const bot = AI.make('benedict');
+    const iss = (cmd) => World.applyCommand(w, 0, cmd);
+    for (let i = 0; i < 30 * 360; i++) {
+      bot.step(w, 0, iss, C.SIM_DT);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+    }
+    const pl = w.players[0];
+    const n = pl.buildings.filter((b) => b.bt === 'barracks').length;
+    halls.push(n);
+    const cap = pl.buildings.reduce((s, b) => {
+      const bd = C.BUILDINGS[b.bt];
+      return bd.spawns && !b.raise && !b.work
+        ? s + C.UNITS[bd.spawns].cost * C.TIER[b.level - 1] / bd.period[b.level - 1] : s;
+    }, 0);
+    spare.push(+cap.toFixed(1));
+  }
+  ok('an heir whose plan named two halls holds more than two', halls.every((n) => n > 2),
+     `halls at six minutes, per map: ${halls.join(', ')}`);
+  /* the cap is the other half of the rule: it answers a rush, it does not become `greedy` */
+  ok('...and never more than the cap the rule sets', halls.every((n) => n <= 4),
+     `halls at six minutes, per map: ${halls.join(', ')}`);
+  ok('so the muster grew with the realm instead of stopping where the plan did',
+     spare.every((s) => s >= drink(1) * 2.5), `essence a second the halls can drink: ${spare.join(', ')}`);
+}
+
 /* A GATE STANDS ON THE SPRING. It may be raised anywhere within NODE.r of one and it used to
  * be left wherever the finger landed, so the work that draws Shadow out of the ground sat on
  * the bank of its own pool — up to ninety-six from the water — and the picture said the two
