@@ -2255,6 +2255,13 @@
         {
           const cs = u.owner !== C.CHAOS_ID ? cityOf(world, u.owner) : null;
           const home = cs && d2(gs.x, gs.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR;
+          /* THE BERTH IS THE ONE NUMBER A STORM CARES ABOUT, so it is worth writing down what it
+           * buys. A body of n men at berth b is a disc of radius b·√(n/π), and a blast of radius
+           * R takes about (R/b·√(n/π))² of it — which predicted every figure measured: the old
+           * spiral's effective berth of 23.4 gave a 65% harvest on 64 men and a berth of 22
+           * gives 73%. A body that stays a body through a war is the bigger change (the old one
+           * dispersed as it fought: 44%). If the referee says the Jewel is too strong now, widen
+           * this berth — nothing else in here needs to move. */
           const off = bodyPlace(u.rank || 0, home ? C.CITY.seatR + 24 : 0, C.CROWD.space);
           const pt = placeAt(world, home ? cs.x : gs.x, home ? cs.y : gs.y, off);
           gx = pt.x; gy = pt.y;
