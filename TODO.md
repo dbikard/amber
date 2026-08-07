@@ -694,21 +694,41 @@ landed (first entry below), headless 1205/1205.
       deciding 10% of matches to 45%, and 67-75% of CONTESTED ones against a 25-75 band. If a
       full `node sim.js` pushes it past 75, the lever is the Shrine's `drain` or `rate` — NOT
       undoing the errand company, since "no heir can afford to walk" was the actual defect.
+      Measured 74% after the movement rework (crush/flow/SDF, 2026-08-07) against 67% before
+      it on the same day — the same referee section, so some of the spread is the n=20
+      sections' own noise, but it is sitting on the lip. First thing to re-read on the next
+      full run.
 - [ ] **The Jewel of Judgment is stronger than it was.** A body that stays a body is better
       storm-bait: 44% → 79% of a 64-man host harvested by the worst 85-disc after a war of
       attrition. If it is too strong, widen the berth passed to `bodyPlace`; a comment at the
       call site gives the geometry (a body of n at berth b is a disc of radius b·√(n/π)).
-- [ ] **The fog blur fix needs a PHONE.** Shipped in v0.9.5: the remembered-ground mask is
-      softened by an upscale instead of a ~50-device-pixel canvas blur. Four reproduction
-      attempts on SwiftShader came back clean — including one at 285 men with 65% of the board
-      remembered — so software rendering cannot confirm it. `R.debugFog = {mem,discs,rim}`
-      switches each veil pass off if it needs bisecting again.
+- [x] **The fog blur fix needs a PHONE.** It got one, and the phone said no: hard cell
+      staircases on the veil boundary and a razor cusp where sight discs meet. The v0.9.5
+      upscale-softening never ran — `memCtx` was a zero-arg wrapper, so the `shrink` it was
+      called with fell on the floor and the mask was drawn full-size and blitted 1:1. The
+      SwiftShader attempts came back clean because a desktop viewport makes a fog cell a few
+      pixels wide, not because software rendering hid it: DPR-3 emulation (360×780,
+      deviceScaleFactor 3) reproduced it on the first try — the veil dropped its whole step in
+      ~2 device pixels. Fixed: the wrapper forwards the shrink; the sight discs now cut the
+      same coarse buffer (mathematically identical to the two destination-out passes, and it
+      rounds the union cusp with the same upscale); a coarse scratch upscales in two ≤4× hops,
+      since one bilinear 16× hop shows its texel ramps as facets. Pinned by "the veil at a
+      phone's pixel density" in test/browser.js, which drives a DPR-3 page and reads the
+      overlay's pixels across the boundary (109 alpha/px before, ~11 after). `R.debugFog =
+      {mem,discs,rim}` still switches each veil pass off.
 - [ ] **The unpausable walk** (the user's decision, reaffirmed): refuse `{c:'walk', on:false}`
       once started, drop the pause card, retire `pauseWalk` from every doctrine. Safe because
       `minRate` 0.5 carries a broke walker. **The AI's start gate must be tightened in the SAME
       change** — the code already records that a weaker form of this trebled timeouts — and the
       heirs should halt the muster to bank first (no doctrine has ever issued `{c:'muster'}`).
       Now much more attractive: heirs holding 5-6 springs earn 32-37/s against a walk's 22/s.
+      **A report from play backs the gate-tightening (2026-08-07):** Brand fell in 6:50 to a
+      human's 81-man storm — he committed to the walk early with nothing banked for defense,
+      let all 8 of his razed works go including the Gates (income chart collapsed while the
+      player's climbed), and never contested the field. His dead were 2% Chaos, 98% the war he
+      declined to fight. The Seat gun fired and was simply drowned by 81 men, which is its
+      design working; the walk gate and the defend-the-Gates doctrine are what failed. The
+      chronicle was requested and should be attached here when it arrives.
 
 ## Housekeeping — from an architecture review (2026-08)
 
