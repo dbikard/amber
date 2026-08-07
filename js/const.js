@@ -197,7 +197,14 @@
     /* A walk on the Pattern is a beacon. The blazing lines light the Shrine and the ground
      * around it for EVERYONE — you cannot reach for the throne in secret, and your rivals
      * are owed the chance to come and stop you. */
-    pattern: 380 };
+    pattern: 380,
+    /* WOODS SWALLOW SIGHT. A fog cell of forest costs this many cells of a sight line's
+     * budget instead of one, so looking through deep woods reaches about HALF as far as
+     * looking over plain (each cell entered eats one extra cell of reach, on top of the
+     * distance itself). 2 is the whole design: a forest is cover you can hide an army in
+     * without being a wall you cannot see past at all — the first rank of trees is always
+     * seen, and a thin belt of wood dims the country beyond rather than deleting it. */
+    forest: 2 };
 
   /* Ground you have HAD eyes on stays on the map under a lighter veil once your troops move
    * on — a country you have walked should not go black again behind you. `keep` is how much

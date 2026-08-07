@@ -111,9 +111,12 @@
       walls: [], anyWall: false,  // the standing curtains, rebuilt whenever one rises or falls
       nextId: 1,
       chaosNext: C.CHAOS.firstAt, chaosParity: 0, surged: false,
-      vis: null                 // per-tick vision cache: [ [sources for p0], [for p1] ]
+      vis: null,                // per-viewer vision cache: [ {g,gw,gh,cell} mask per seat ]
+      visSrc: null,             // ...and the raw source lists the masks were cast from
+      sight: null               // what the land does to a sight line, baked per fog cell
     };
     world.nav = NAV.build(world.map.gen);
+    bakeSight(world);
     /* EVERY HEIR OPENS WITH A GATE ON HIS OWN SPRING — finished, drawing, and standing where
      * worldgen proved a Gate could stand. It is the first mason too: crews are hired one per
      * Gate now, so an heir who began with none would begin unable to build at all. */
@@ -145,10 +148,9 @@
       b.co = joinCo(world, pi, undefined);
       world.players[pi].buildings.push(b);
     }
-    for (let pi = 0; pi < world.players.length; pi++) {
+    for (let pi = 0; pi < world.players.length; pi++)
       world.players[pi].banner = aimAt(world, { site: world.map.cities[pi] });
-      exploreAround(world, pi);   // you know your own surroundings from the start
-    }
+    refreshVision(world);   // you know your own surroundings from the start
     return world;
   }
 
@@ -491,6 +493,28 @@
    * you stops covering you, and the field can shoot back. Standing off behind it, you are
    * safe and useless. `skip` is the wall being shot AT, which cannot block the shot at
    * itself. */
+  /* IS THERE ROCK BETWEEN THEM? The terrain's answer to `walled`: a shot does not cross a
+   * CLIFF cell. Judged on the NAV grid, not the fog grid — a shot deserves the finer 20-unit
+   * cell, and the fog bake's majority rule exists to price whole cells for the EYE, which
+   * would let an arrow slip through ground the archer can plainly see is stone. Sampled
+   * every half nav-cell so no cliff a segment crosses can fall between samples. The
+   * endpoints' own cells are skipped by construction (i runs 1..steps-1 and anything inside
+   * touching range returns early): neither shooter nor mark stands ON rock, and a man shoved
+   * against a cliff foot must not become unhittable. Water does NOT block a shot — an arrow
+   * crosses a pool that a man cannot. */
+  function rockBetween(world, ax, ay, bx, by) {
+    const nav = world.nav, cw = nav.cw, W = nav.W, H = nav.H, terra = nav.terra;
+    const len2 = d2(ax, ay, bx, by);
+    if (len2 < cw * cw) return false;         // touching range crosses no ridge
+    const steps = Math.ceil(Math.sqrt(len2) / (cw * 0.5)), CLIFF = WG.T.CLIFF;
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      const cx = ((ax + (bx - ax) * t) / cw) | 0, cy = ((ay + (by - ay) * t) / cw) | 0;
+      if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
+      if (terra[cy * W + cx] === CLIFF) return true;
+    }
+    return false;
+  }
   function walled(world, ax, ay, bx, by, aOwner, bOwner, skip) {
     if (!world.anyWall) return false;
     const r2 = C.WALL.man * C.WALL.man;
@@ -891,6 +915,10 @@
           if (w.owner === q && segD2(w.b, b.x, b.y) < r2) { on = w.b.id; break; }
         if (on) b.onWall = on; else delete b.onWall;
       }
+    /* the eye's copy of the standing set — rebuilt here because here is the ONLY place the
+     * set changes, and it drops world.vis so no viewer keeps seeing through a finished run
+     * or staying blind past a fresh breach */
+    bakeWallSight(world);
   }
   /* is this point in the gateway of that wall? The gate is the middle of the run and it is
    * the ONLY way through — for the heir who raised it, and for nobody else. */
@@ -996,13 +1024,18 @@
     }
     for (const u of world.units)
       if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
-    /* somebody else's walk lights their Shrine for you too — the Pattern is not walked in
-     * the dark, and a rival reaching for the throne must be findable */
+    /* A WALK LIGHTS ITS SHRINE FOR EVERY VIEWER — the Pattern is not walked in the dark, and
+     * a rival reaching for the throne must be findable. The 4th element marks the source as
+     * the BEACON: the mask fills its whole disc unconditionally, through ridge and curtain
+     * alike, because "a walk is public" is a pillar and occlusion must not quietly repeal it.
+     * The walker's OWN heir gets the beacon too (he used to be skipped as already having
+     * building-vision there) — his ordinary sources are occluded now, and rivals seeing MORE
+     * of the ground around his own Shrine than he does would be absurd. */
     for (let o = 0; o < world.players.length; o++) {
       const q = world.players[o];
-      if (o === pi || q.out || !q.walking) continue;
+      if (q.out || !q.walking) continue;
       const sh = q.buildings.find((b) => b.bt === 'shrine' && !b.raise);
-      if (sh) src.push([sh.x, sh.y, C.VISION.pattern]);
+      if (sh) src.push([sh.x, sh.y, C.VISION.pattern, 1]);
     }
     return src;
   }
@@ -1025,7 +1058,15 @@
     const gw = Math.ceil(C.MAP.W / C.FOG.cell), gh = Math.ceil(C.MAP.H / C.FOG.cell);
     return { g: new Uint8Array(gw * gh), gw, gh, cell: C.FOG.cell, v: 0 };
   }
+  /* Marks ground as remembered. Takes either a raw source list (plain discs — a guest's
+   * reconstruction, which has no opacity bake to consult) or a LIVE MASK from world.vis,
+   * which is a straight OR because both grids are cut from C.FOG.cell. */
   function markSeen(mask, src) {
+    if (src && src.g) {
+      const g = mask.g, m = src.g;
+      for (let i = 0; i < m.length; i++) if (m[i] && !g[i]) { g[i] = 1; mask.v++; }
+      return mask;
+    }
     const cw = mask.cell;
     for (let i = 0; i < src.length; i++) {
       const cx = src[i][0], cy = src[i][1], r = src[i][2], r2 = r * r;
@@ -1044,25 +1085,218 @@
     return mask;
   }
 
-  function seen(src, x, y) {
-    for (let i = 0; i < src.length; i++) {
-      const s = src[i];
-      if (d2(x, y, s[0], s[1]) < s[2] * s[2]) return true;
+  /* ---------------- what the land does to a sight line ----------------
+   * Baked ONCE per world, on the FOG grid (C.FOG.cell = 26; the nav grid's 20 is for feet,
+   * not eyes). Two layers per cell:
+   *   opq  — rock. A cell is OPAQUE when MORE THAN HALF of a 3x3 spread of terrain samples
+   *          under it are CLIFF. Measured on the five test seeds: the land itself is
+   *          4.6-8.6% cliff, "any sample" opaques 5.9-10.7% of fog cells — a quarter MORE
+   *          stone than the land has, every diagonal saddle a column can walk through
+   *          turned into a curtain the eye cannot follow it into — while majority lands on
+   *          4.6-8.5%, tracking the terrain's own share to within a tenth of a point.
+   *          Majority is what ships.
+   *   cost — woods. The FOREST share of the same samples scales a cell's price toward
+   *          C.VISION.forest: sight spends cells of its reach walking a line, and a wooded
+   *          cell charges extra — see castFrom.
+   * Walls are the third layer, rebuilt by noteWalls whenever the standing set changes,
+   * because stone rises and falls mid-match and the terrain never does. */
+  function bakeSight(world) {
+    const gw = Math.ceil(C.MAP.W / C.FOG.cell), gh = Math.ceil(C.MAP.H / C.FOG.cell);
+    const cw = C.FOG.cell, nav = world.nav, T = WG.T;
+    const opq = new Uint8Array(gw * gh), cost = new Float32Array(gw * gh);
+    const fw = C.VISION.forest - 1;
+    for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+      let cliff = 0, forest = 0, n = 0;
+      for (let sy = 0; sy < 3; sy++) for (let sx = 0; sx < 3; sx++) {
+        const ci = NAV.cellOf(nav, (gx + (sx + 0.5) / 3) * cw, (gy + (sy + 0.5) / 3) * cw);
+        if (ci < 0) continue;
+        n++;
+        const t = nav.terra[ci];
+        if (t === T.CLIFF) cliff++;
+        else if (t === T.FOREST) forest++;
+      }
+      const i = gy * gw + gx;
+      opq[i] = n > 0 && cliff * 2 > n ? 1 : 0;
+      cost[i] = 1 + (n ? forest / n : 0) * fw;
     }
-    return false;
+    world.sight = { gw, gh, cell: cw, opq, cost, wall: new Uint8Array(gw * gh) };
+    /* a RE-bake (tests paint terrain; a match never does) must not lose the standing stone
+     * or leave masks cast against the old land */
+    if (world.walls && world.walls.length) bakeWallSight(world);
+    world.vis = null;
   }
+  /* THE STANDING STONE, ON THE EYE'S GRID. Stamped from world.walls — the same standing set
+   * `walled` reads, so a shell blocks no sight and a breach stops blocking the tick it is
+   * made. Called by noteWalls and nowhere else: that is the ONE place the set changes, so it
+   * is the one place this can go stale — and it also drops world.vis, so every viewer's mask
+   * is recast against the new stone before the next question is answered (that drop is the
+   * versioning: there is no counter to forget to bump).
+   * The stamp is 4-CONNECTED (a diagonal sample step also stamps the orthogonal in-between
+   * cell), because castFrom's corner test can only stop a ray squeezing through a corner if
+   * the run has no diagonal-only links for it to squeeze through. */
+  function bakeWallSight(world) {
+    const s = world.sight;
+    if (!s) return;
+    s.wall.fill(0);
+    const cw = s.cell, gw = s.gw, gh = s.gh;
+    for (const w of world.walls) {
+      const len = Math.hypot(w.bx - w.ax, w.by - w.ay);
+      const steps = Math.max(1, Math.ceil(len / (cw * 0.5)));
+      let px = -1, py = -1;
+      for (let k = 0; k <= steps; k++) {
+        const f = k / steps;
+        const gx = ((w.ax + (w.bx - w.ax) * f) / cw) | 0, gy = ((w.ay + (w.by - w.ay) * f) / cw) | 0;
+        if (gx < 0 || gy < 0 || gx >= gw || gy >= gh) continue;
+        if (px >= 0 && gx !== px && gy !== py) s.wall[py * gw + gx] = 1;   // no diagonal-only link
+        s.wall[gy * gw + gx] = 1;
+        px = gx; py = gy;
+      }
+    }
+    world.vis = null;   // every mask was cast against stone that is no longer the stone
+  }
+
+  /* ---------------- the rays a sight disc is filled by ----------------
+   * Precomputed per integer radius (in fog cells; the biggest on the board is the
+   * Watchtower's 520/26 = 20) and shared by every source in every match. Built so that
+   * EVERY cell of the disc lies on at least one ray: walk the disc's offsets from the rim
+   * inward and give any cell no earlier ray covered its own Bresenham line from the origin.
+   * Plain rim-rays alone leave pinholes — cells no rim line happens to pass through — and a
+   * pinhole in fog is a spot on the map a unit flickers in. Measured at radius 10 (a unit's
+   * 260): 64 rays cover all 317 cells in 540 steps a source. */
+  const RAYS = new Map();
+  const SQ2 = Math.SQRT2;
+  function raysFor(R) {
+    let bun = RAYS.get(R);
+    if (bun) return bun;
+    const side = 2 * R + 1, covered = new Uint8Array(side * side);
+    const offs = [];
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      if (!dx && !dy) continue;
+      const h = Math.sqrt(dx * dx + dy * dy);
+      if (h <= R + 1e-9) offs.push([dx, dy, h]);
+    }
+    offs.sort((a, b) => b[2] - a[2]);   // rim first: long rays cover the most on their way out
+    const dxs = [], dys = [], hs = [], sls = [], dgs = [], idx = [0];
+    for (const [ox, oy] of offs) {
+      if (covered[(oy + R) * side + (ox + R)]) continue;
+      let x = 0, y = 0, err = Math.abs(ox) - Math.abs(oy);
+      const ax = Math.abs(ox), ay = Math.abs(oy), sx = ox > 0 ? 1 : -1, sy = oy > 0 ? 1 : -1;
+      while (x !== ox || y !== oy) {
+        const e2 = 2 * err;
+        let mx = 0, my = 0;
+        if (e2 > -ay) { err -= ay; mx = sx; }
+        if (e2 < ax) { err += ax; my = sy; }
+        x += mx; y += my;
+        dxs.push(x); dys.push(y);
+        hs.push(Math.sqrt(x * x + y * y));
+        sls.push(mx && my ? SQ2 : 1);
+        dgs.push(mx && my ? 1 : 0);
+        covered[(y + R) * side + (x + R)] = 1;
+      }
+      idx.push(dxs.length);
+    }
+    bun = { n: idx.length - 1, idx: Int32Array.from(idx), dx: Int8Array.from(dxs),
+            dy: Int8Array.from(dys), h: Float32Array.from(hs), sl: Float32Array.from(sls),
+            dg: Uint8Array.from(dgs) };
+    RAYS.set(R, bun);
+    return bun;
+  }
+  /* Fill one source's sight into a viewer's mask: march every ray of the disc, spending a
+   * budget of B cells of reach. Distance itself is the base price (the precomputed hypot, so
+   * open ground stays the same Euclidean circle the old source-list fog drew); a wooded cell
+   * charges its extra ON ENTRY — the first rank of trees is seen, the country past it costs
+   * more than it used to. An OPAQUE cell (rock, or a standing wall) is marked and STOPS the
+   * ray: you see the ridge face, never past it. The source's own cell never blocks — a
+   * berthed man at the parapet, or a man on the ridge top, sees out. On a diagonal step the
+   * two corner cells are consulted: both opaque means the ray is squeezing through a corner
+   * no eye fits through. */
+  function castFrom(s, m, sx, sy, B) {
+    const gw = s.gw, gh = s.gh, opq = s.opq, wall = s.wall, cost = s.cost;
+    m[sy * gw + sx] = 1;
+    const bun = raysFor(Math.ceil(B));
+    for (let r = 0; r < bun.n; r++) {
+      let pen = 0, pgx = sx, pgy = sy;
+      for (let k = bun.idx[r], end = bun.idx[r + 1]; k < end; k++) {
+        const gx = sx + bun.dx[k], gy = sy + bun.dy[k];
+        if (gx < 0 || gy < 0 || gx >= gw || gy >= gh) break;   // a straight line never comes back
+        const i = gy * gw + gx;
+        if (bun.dg[k]) {
+          const c1 = pgy * gw + gx, c2 = gy * gw + pgx;
+          if ((opq[c1] || wall[c1]) && (opq[c2] || wall[c2])) break;
+        }
+        const price = bun.h[k] + pen + (cost[i] - 1) * bun.sl[k];
+        if (price > B) break;
+        m[i] = 1;
+        if (opq[i] || wall[i]) break;
+        pen = price - bun.h[k];
+        pgx = gx; pgy = gy;
+      }
+    }
+  }
+  /* the beacon's disc: unconditional, no rays, no stone — see visionSources on why */
+  function fillDisc(s, m, cx, cy, r) {
+    const cw = s.cell, r2 = r * r;
+    const gx0 = Math.max(0, ((cx - r) / cw) | 0), gx1 = Math.min(s.gw - 1, ((cx + r) / cw) | 0);
+    const gy0 = Math.max(0, ((cy - r) / cw) | 0), gy1 = Math.min(s.gh - 1, ((cy + r) / cw) | 0);
+    for (let gy = gy0; gy <= gy1; gy++) {
+      const dy = (gy + 0.5) * cw - cy;
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const dx = (gx + 0.5) * cw - cx;
+        if (dx * dx + dy * dy <= r2) m[gy * s.gw + gx] = 1;
+      }
+    }
+  }
+  /* One viewer's mask for this refresh. Sources are DEDUPED BY FOG CELL first — an army is
+   * thirty men standing on a dozen cells, and casting a dozen discs instead of thirty is
+   * what keeps the refresh inside its budget (measured on a clustered 300-man board: 75
+   * sources cast as ~25 cells, and the whole 4-viewer refresh lands at 1.0-1.7ms against
+   * the ~2ms budget). Ties keep the longest reach. */
+  function visMask(world, pi, src) {
+    const s = world.sight, cw = s.cell, n = s.gw * s.gh;
+    const bufs = world._visBuf || (world._visBuf = []);
+    let m = bufs[pi];
+    if (!m || m.length !== n) m = bufs[pi] = new Uint8Array(n);
+    else m.fill(0);
+    const ded = new Map();
+    for (let i = 0; i < src.length; i++) {
+      const q = src[i];
+      if (q[3]) { fillDisc(s, m, q[0], q[1], q[2]); continue; }   // A WALK IS PUBLIC
+      let gx = (q[0] / cw) | 0, gy = (q[1] / cw) | 0;
+      gx = gx < 0 ? 0 : gx >= s.gw ? s.gw - 1 : gx;
+      gy = gy < 0 ? 0 : gy >= s.gh ? s.gh - 1 : gy;
+      const key = gy * s.gw + gx, B = q[2] / cw;
+      const held = ded.get(key);
+      if (held === undefined || held < B) ded.set(key, B);
+    }
+    for (const [key, B] of ded) castFrom(s, m, key % s.gw, (key / s.gw) | 0, B);
+    /* the same {g,gw,gh,cell} shape as pl.seen — the renderer's veil reads both */
+    return { g: m, gw: s.gw, gh: s.gh, cell: cw };
+  }
+  const maskAt = (v, x, y) => {
+    const gx = (x / v.cell) | 0, gy = (y / v.cell) | 0;
+    if (gx < 0 || gy < 0 || gx >= v.gw || gy >= v.gh) return false;
+    return v.g[gy * v.gw + gx] === 1;
+  };
+
+  /* The refresh: sources gathered, masks cast, memory updated — the 5 Hz heartbeat of every
+   * fog in the game. world.vis[pi] is a CELL MASK now, not a source list: the snapshot
+   * filter asks canSee per object per guest at 10 Hz, and each ask is one array read instead
+   * of a walk of every source. The raw lists survive as world.visSrc because the renderer's
+   * veil is still drawn from them. */
   function refreshVision(world) {
-    world.vis = world.players.map((q, pi) => visionSources(world, pi));
+    world.visSrc = world.players.map((q, pi) => visionSources(world, pi));
+    world.vis = world.players.map((q, pi) => visMask(world, pi, world.visSrc[pi]));
     for (let pi = 0; pi < world.players.length; pi++) exploreAround(world, pi);
   }
   function exploreAround(world, pi) {
-    const src = world.vis ? world.vis[pi] : visionSources(world, pi);
+    const v = world.vis[pi];
+    const see1 = (x, y) => maskAt(v, x, y);
     const pl = world.players[pi];
     /* A Seat is a site like any other: you know it is there once you have SEEN it, and not
      * before. Finding the rival's is the whole early game now. */
     for (const s of world.map.sites)
-      if (seen(src, s.x, s.y)) pl.explored[s.id] = { kind: s.kind, name: s.name };
-    markSeen(pl.seen, src);
+      if (see1(s.x, s.y)) pl.explored[s.id] = { kind: s.kind, name: s.name };
+    markSeen(pl.seen, v);   // live mask and memory share C.FOG.cell: a straight OR
     /* the new fog rule: a rival's work is visible only while you can SEE it, and remembered
      * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
     for (let o = 0; o < world.players.length; o++) {
@@ -1073,14 +1307,14 @@
         if (b.x2 != null) { g.x2 = b.x2; g.y2 = b.y2; }
         if (o === pi) { pl.ghosts[b.id] = g; continue; }
         const e = b.x2 != null ? wallEnds(b) : null;
-        if (seen(src, b.x, b.y) || (e && (seen(src, e[0], e[1]) || seen(src, e[2], e[3])))) pl.ghosts[b.id] = g;
+        if (see1(b.x, b.y) || (e && (see1(e[0], e[1]) || see1(e[2], e[3])))) pl.ghosts[b.id] = g;
       }
     }
   }
   /* public vision test for render/snapshots: can `pi` see point (x,y) right now? */
   function canSee(world, pi, x, y) {
     if (!world.vis) refreshVision(world);
-    return seen(world.vis[pi], x, y);
+    return maskAt(world.vis[pi], x, y);
   }
   /* ---------------- one fog gate, written once ----------------
    * The wire (Net.snapFor) and the host's own screen both have to answer "does this rival
@@ -1766,6 +2000,8 @@
     const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
     if (d >= radius) return null;
     if (world.anyWall && walled(world, u.x, u.y, v.x, v.y, u.owner, v.owner)) return null;
+    /* re-validated like the wall: a mark chased AROUND a ridge is a mark lost behind it */
+    if (rockBetween(world, u.x, u.y, v.x, v.y)) return null;
     return { t: v, kind: 'unit', d, x: v.x, y: v.y };
   }
   function acquire(world, u, radius) {
@@ -1775,11 +2011,13 @@
     }
     /* a fallen heir has nothing left to attack — and their Seat is a ruin, not a target */
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
-    /* A WALL IS OPAQUE. Nothing is a target if stone stands in the way — the soldier looks
-     * past it to whatever he CAN see, which is what makes men behind a curtain safe and what
-     * sends an army that wants them to the wall itself. Costs nothing until a wall exists. */
-    const seen = (x, y, owner, skip) => !world.anyWall
-      || !walled(world, u.x, u.y, x, y, u.owner, owner, skip);
+    /* A WALL IS OPAQUE — AND SO IS THE LAND'S OWN STONE. Nothing is a target if stone stands
+     * in the way, raised or grown: the soldier looks past it to whatever he CAN see, which is
+     * what makes men behind a curtain (or a ridge) safe and what sends an army that wants
+     * them round it. The wall half still costs nothing until a wall exists; the rock half
+     * always pays, because the ridge was always there. */
+    const seen = (x, y, owner, skip) => !rockBetween(world, u.x, u.y, x, y)
+      && (!world.anyWall || !walled(world, u.x, u.y, x, y, u.owner, owner, skip));
     const consider = (d, t2, k, x, y) => { if (d < bestD) { bestD = d; best = t2; kind = k; bx = x; by = y; } };
     const stone = [];   // curtains found on the way: a last resort, not a first choice
     const gx = (u.x / BIN) | 0, gy = (u.y / BIN) | 0;
@@ -2006,7 +2244,12 @@
     pl.seatCd = (pl.seatCd || 0) - dt;
     if (pl.seatCd > 0) return;
     /* hostile to its owner, exactly as a tower is: rivals AND the black road, and nobody of
-     * his own. `forNear` walks the same spatial hash the towers do. */
+     * his own. `forNear` walks the same spatial hash the towers do.
+     * NO rockBetween HERE, DELIBERATELY — the Seat's gun is not stopped by the land's rock,
+     * exactly as it is not stopped by walls (see SEAT_GUN): the Seat stands where worldgen
+     * put it forever, and a throne a lucky ridge could shade would have its guns switched
+     * off from outside their reach for the whole match — the same hole the walls exemption
+     * closed, reopened by terrain nobody chose. */
     let best = null, bd = g.range * g.range;
     forNear(world, city.x, city.y, g.range, (u) => {
       if (u.owner === pi) return;
@@ -2154,6 +2397,9 @@
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
               if (dd >= bd) return;
               if (world.anyWall && walled(world, sp.x, sp.y, u.x, u.y, pi, u.owner, mine && mine.b)) return;
+              /* and a tower does not shoot through the land's rock either — the gun that
+               * wants the far side of the ridge is built on the ridge */
+              if (rockBetween(world, sp.x, sp.y, u.x, u.y)) return;
               bd = dd; best = u;
             });
             if (best) {
@@ -2599,6 +2845,16 @@
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
-                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush };
+                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush,
+                   /* the fog's working parts, exported for the tests, the probes and the
+                    * GUEST: refresh on demand, re-bake after painting terrain, the shot's
+                    * rock test — and the two a guest needs to cast its own occluded veil
+                    * against its reference world (same seed, so the same sight bake):
+                    * visMask(refWorld, seat, World.visionSources(snapshotAsWorld, seat))
+                    * returns the {g,gw,gh,cell} mask; bakeWallSight(refWorld) re-stamps
+                    * refWorld.walls ([{ax,ay,bx,by}] — build it from the snapshot's visible
+                    * runs via wallEnds) into the bake first, since a guest knows only the
+                    * stone it can see. */
+                   refreshVision, bakeSight, rockBetween, visMask, bakeWallSight };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -4279,6 +4279,281 @@ suite('multiplayer snapshots');
   }
 }
 
+/* ---------------- fog of war: the land, the stone and the woods ----------------
+ * These suites PAINT terrain — nav.terra is the sim's one truth about the land, and the
+ * noise owes an assertion nothing — then re-bake the sight grid. Movement cost is left
+ * stale on purpose: the men in these arenas are pinned by their banners, and both the eye
+ * (World.bakeSight) and the shot (World.rockBetween) read terra, not cost. */
+const fogPaint = (w, x0, y0, x1, y1, t) => {
+  const nav = w.nav;
+  const cx0 = Math.max(0, (x0 / nav.cw) | 0), cx1 = Math.min(nav.W - 1, (x1 / nav.cw) | 0);
+  const cy0 = Math.max(0, (y0 / nav.cw) | 0), cy1 = Math.min(nav.H - 1, (y1 / nav.cw) | 0);
+  for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++)
+    nav.terra[cy * nav.W + cx] = t;
+};
+/* bakeSight is guarded so these suites still RUN (and fail honestly) against pre-fog code */
+const fogBake = (w) => { if (World.bakeSight) World.bakeSight(w); w.vis = null; };
+const fogFresh = (w) => { w.vis = null; };   // canSee recomputes on the next ask
+/* a spot at least `need` from every Seat and well off the rim — painting near a Seat would
+ * entangle these suites with city vision and the throne's gun */
+const fogArena = (w, need) => {
+  for (let y = 500; y < C.MAP.H - 500; y += 100) for (let x = 500; x < C.MAP.W - 500; x += 100) {
+    let clear = true;
+    for (let pi = 0; pi < w.players.length && clear; pi++) {
+      const c = World.cityOf(w, pi);
+      if (Math.hypot(x - c.x, y - c.y) < need) clear = false;
+    }
+    if (clear) return { x, y };
+  }
+  return null;
+};
+const fogMan = (w, owner, kind, x, y, hp) => {
+  const d = C.UNITS[kind];
+  const u = { id: w.nextId++, owner, kind, x, y, ox: 0, oy: 0, hp: hp == null ? d.hp : hp,
+              maxHp: hp == null ? d.hp : hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+  w.units.push(u); return u;
+};
+
+suite('rock blocks the eye');
+{
+  const w = World.createWorld(1000, 2);
+  w.chaosNext = 1e9;
+  const F = C.FOG.cell, cc = (g) => (g + 0.5) * F;
+  const spot = fogArena(w, 700);
+  ok('an arena far from both Seats exists', !!spot);
+  const CX = Math.round(spot.x / F), CY = Math.round(spot.y / F);
+  fogPaint(w, cc(CX) - 400, cc(CY) - 400, cc(CX) + 400, cc(CY) + 400, WG.T.PLAIN);
+  fogBake(w);
+  const scout = fogMan(w, 0, 'soldier', cc(CX - 4), cc(CY));
+  const mark = fogMan(w, 1, 'soldier', cc(CX + 4), cc(CY));
+  fogFresh(w);
+  ok('over open ground the mark is seen', World.canSee(w, 0, mark.x, mark.y),
+     `${Math.round(Math.hypot(mark.x - scout.x, mark.y - scout.y))} apart, vision ${C.VISION.unit}`);
+  /* the ridge: one fog-cell column, seven cells tall, square across the line of sight.
+   * The nav grid is 20 and the fog grid 26, so painting nav cells under a fog rect grows
+   * the rock by up to a cell of overhang either side — which fog column ends up the FACE
+   * is therefore read back off the bake, never assumed. */
+  fogPaint(w, CX * F, (CY - 3) * F, (CX + 1) * F - 1, (CY + 4) * F - 1, WG.T.CLIFF);
+  fogBake(w);
+  ok('behind the ridge he is NOT', !World.canSee(w, 0, mark.x, mark.y));
+  let face = -1;
+  for (let gx = CX - 3; gx <= CX + 1 && face < 0; gx++)
+    if (w.sight && w.sight.opq[CY * w.sight.gw + gx]) face = gx;
+  ok('the ridge has a face on the scout\'s side', face > CX - 4 && face > 0,
+     w.sight ? `first opaque column at ${face - CX} of the ridge` : 'no sight bake at all');
+  ok('the ridge face itself IS seen', World.canSee(w, 0, cc(face), cc(CY)));
+  ok('...and the ground before it', World.canSee(w, 0, cc(face - 1), cc(CY)));
+  ok('but not the ground past it', !World.canSee(w, 0, cc(CX + 1), cc(CY)));
+  /* the SNAPSHOT's gate is this same answer: Net.snapFor filters rival units through
+   * canSee, so the mark above is exactly what a guest's wire withholds.
+   * NOTE for the wire's keeper: add the direct snapFor assertion (a rival unit behind a
+   * ridge absent from the snapshot) beside the leak tests in `multiplayer snapshots`. */
+  ok('the shot asks the same ridge', !!World.rockBetween &&
+     World.rockBetween(w, scout.x, scout.y, mark.x, mark.y) === true);
+  /* step him clear of it — same viewer, half the distance short of his reach, and the
+   * sight line up the scout's own column, which no painted rock can touch */
+  mark.x = scout.x; mark.y = scout.y - 130;
+  fogFresh(w);
+  ok('stepped clear of the ridge he is seen again', World.canSee(w, 0, mark.x, mark.y),
+     `${Math.round(Math.hypot(mark.x - scout.x, mark.y - scout.y))} apart`);
+  ok('and the shot agrees the way is clear', !!World.rockBetween &&
+     World.rockBetween(w, scout.x, scout.y, mark.x, mark.y) === false);
+}
+
+suite('a curtain blocks the eye');
+{
+  const w = World.createWorld(1000, 2);
+  w.chaosNext = 1e9;
+  const pl = w.players[0], c = World.cityOf(w, 0);
+  pl.essence = 1e6;
+  World.applyCommand(w, 0, { c: 'muster', pause: true });
+  World.applyCommand(w, 1, { c: 'muster', pause: true });
+  /* a legal run beside the Seat, found the way the shell suites find one */
+  let line = null;
+  for (let a = 0; a < 6.28 && !line; a += 0.2)
+    for (let r = 200; r <= 340 && !line; r += 22) {
+      const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
+      const px = -Math.sin(a) * C.WALL.unit * 0.45, py = Math.cos(a) * C.WALL.unit * 0.45;
+      if (!World.wallError(w, 0, mx - px, my - py, mx + px, my + py))
+        line = [mx - px, my - py, mx + px, my + py];
+    }
+  ok('a run can be laid', !!line);
+  const rb = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: line[0], y: line[1], x2: line[2], y2: line[3] });
+  ok('and the order accepted', rb.ok, rb.err);
+  const b = pl.buildings.find((q) => q.bt === 'wall');
+  const ends = World.wallEnds(b), mid = { x: b.x, y: b.y };
+  /* the oriented normal: +d the field side, -d the side the Seat shelters */
+  let nx = -(ends[3] - ends[1]), ny = ends[2] - ends[0];
+  if (nx * (c.x - mid.x) + ny * (c.y - mid.y) > 0) { nx = -nx; ny = -ny; }
+  const nL = Math.hypot(nx, ny) || 1;
+  const side = (d) => ({ x: mid.x + (nx / nL) * d, y: mid.y + (ny / nL) * d });
+  /* level the ground around the run: these asserts are about the STONE, not whatever
+   * woods or crags the seed grew beside this Seat */
+  fogPaint(w, mid.x - 350, mid.y - 350, mid.x + 350, mid.y + 350, WG.T.PLAIN);
+  fogBake(w);
+  let scout = fogMan(w, 1, 'soldier', side(120).x, side(120).y);
+  let hidden = fogMan(w, 0, 'soldier', side(-64).x, side(-64).y);
+  fogFresh(w);
+  ok('a rising run hides nobody', World.canSee(w, 1, hidden.x, hidden.y));
+  /* the masons finish — the field cleared first, so nobody is shot while we wait */
+  w.units.length = 0;
+  for (let i = 0; i < 30 * (C.BUILDINGS.wall.raise + 6) && b.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('the masons finish it', b.raise, 0);
+  scout = fogMan(w, 1, 'soldier', side(120).x, side(120).y);
+  hidden = fogMan(w, 0, 'soldier', side(-64).x, side(-64).y);
+  fogFresh(w);
+  ok('a standing run blocks sight', !World.canSee(w, 1, hidden.x, hidden.y),
+     `scout ${Math.round(Math.hypot(scout.x - hidden.x, scout.y - hidden.y))} from the man behind it`);
+  ok('...but its own stone is seen', World.canSee(w, 1, mid.x, mid.y));
+  World.hurtBuilding(w, 0, b.id, 1e9, 1);
+  eq('the run is breached', b.breach, 1);
+  /* NO refresh is forced here — the breach itself must drop the stale masks (that is the
+   * wall-layer versioning), or every viewer stays blind through the new hole until some
+   * later rebuild remembers them */
+  ok('and sight returns through the breach at once', World.canSee(w, 1, hidden.x, hidden.y));
+}
+
+suite('the woods dim the eye');
+{
+  const w = World.createWorld(42, 2);
+  w.chaosNext = 1e9;
+  const F = C.FOG.cell, cc = (g) => (g + 0.5) * F;
+  const spot = fogArena(w, 700);
+  ok('an arena exists', !!spot);
+  const CX = Math.round(spot.x / F), CY = Math.round(spot.y / F);
+  fogPaint(w, cc(CX) - 400, cc(CY) - 400, cc(CX) + 400, cc(CY) + 400, WG.T.PLAIN);
+  /* a belt of woods five cells deep, east of the scout only. The arithmetic this suite
+   * pins down (VISION.forest = 2, charged on entry): a unit's reach is 10 cells; the twin
+   * over plain costs his 8 cells of distance and is seen; the twin past the belt costs
+   * 8 + 5 wooded cells x 1 extra = 13 and is not. The belt itself stays visible — the
+   * first rank of trees is always seen, cover you can look AT but not through. */
+  fogPaint(w, (CX + 1) * F, (CY - 8) * F, (CX + 6) * F - 1, (CY + 9) * F - 1, WG.T.FOREST);
+  fogBake(w);
+  fogMan(w, 0, 'soldier', cc(CX), cc(CY));
+  const twinWoods = fogMan(w, 1, 'soldier', cc(CX + 8), cc(CY));
+  const twinPlain = fogMan(w, 1, 'soldier', cc(CX - 8), cc(CY));
+  fogFresh(w);
+  ok('over plain a man eight cells out is seen', World.canSee(w, 0, twinPlain.x, twinPlain.y));
+  ok('through the woods his twin at the same distance is NOT',
+     !World.canSee(w, 0, twinWoods.x, twinWoods.y));
+  ok('the first rank of trees is seen', World.canSee(w, 0, cc(CX + 1), cc(CY)));
+}
+
+suite('the walk outshines the ridge');
+{
+  const w = World.createWorld(1000, 3), pl = w.players[1], c = World.cityOf(w, 1);
+  w.chaosNext = 1e9;
+  pl.essence = 999999;
+  const F = C.FOG.cell, cc = (g) => (g + 0.5) * F;
+  let at = null;
+  for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+    for (let a = 0; a < 40 && !at; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 1, x, y, 'shrine') === null) at = { x, y };
+    }
+  ok('seat 1 raises a Shrine', !!at && raise(w, 1, at.x, at.y, 'shrine').ok);
+  const sh = pl.buildings.find((b) => b.bt === 'shrine');
+  /* a ridge two cells thick hard against the Shrine's west face, and a rival scout beyond it */
+  const SX = Math.floor(sh.x / F), SY = Math.floor(sh.y / F);
+  fogPaint(w, (SX - 3) * F, (SY - 6) * F, (SX - 1) * F - 1, (SY + 7) * F - 1, WG.T.CLIFF);
+  fogBake(w);
+  const scout = fogMan(w, 0, 'soldier', cc(SX - 7), cc(SY));
+  fogFresh(w);
+  ok('an ordinary eye behind the ridge cannot see the quiet Shrine',
+     !World.canSee(w, 0, sh.x, sh.y),
+     `scout ${Math.round(Math.hypot(scout.x - sh.x, scout.y - sh.y))} away, vision ${C.VISION.unit}`);
+  World.applyCommand(w, 1, { c: 'walk', on: true });
+  fogFresh(w);
+  /* A WALK IS PUBLIC — the pillar. The beacon fills its whole disc for EVERY viewer,
+   * through the ridge, whether or not the viewer has an eye anywhere near it. */
+  ok('the walk lights the Shrine THROUGH the ridge', World.canSee(w, 0, sh.x, sh.y));
+  ok('...for an heir with no eyes near it at all', World.canSee(w, 2, sh.x, sh.y));
+  ok('...and the beacon ground west of the stone is lit too', World.canSee(w, 2, cc(SX - 4), cc(SY)));
+  World.applyCommand(w, 1, { c: 'walk', on: false });
+  fogFresh(w);
+  ok('the light goes out with the walk', !World.canSee(w, 0, sh.x, sh.y));
+}
+
+suite('rock blocks the shot');
+{
+  const w = World.createWorld(1000, 2);
+  w.chaosNext = 1e9;
+  World.applyCommand(w, 0, { c: 'muster', pause: true });
+  World.applyCommand(w, 1, { c: 'muster', pause: true });
+  const F = C.FOG.cell, cc = (g) => (g + 0.5) * F;
+  const spot = fogArena(w, 700);
+  ok('an arena exists', !!spot);
+  const CX = Math.round(spot.x / F), CY = Math.round(spot.y / F);
+  fogPaint(w, cc(CX) - 400, cc(CY) - 400, cc(CX) + 400, cc(CY) + 400, WG.T.PLAIN);
+  /* the ridge: two fog cells wide, nine tall, square across every line of fire below */
+  fogPaint(w, (CX - 1) * F, (CY - 4) * F, (CX + 1) * F - 1, (CY + 5) * F - 1, WG.T.CLIFF);
+  fogBake(w);
+  const pin = (u) => { w.players[u.owner].banner = { x: u.x, y: u.y, site: -1 }; return u; };
+  const run = (secs) => { for (let i = 0; i < 30 * secs; i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+
+  /* an archer and his mark, 96 apart with 52 of rock between (his range is 105) */
+  const archer = pin(fogMan(w, 0, 'archer', cc(CX) - 48, cc(CY), 1e9));
+  const mark = pin(fogMan(w, 1, 'soldier', cc(CX) + 48, cc(CY), 1e9));
+  run(3);
+  eq('with rock between them the arrow never lands', mark.hp, 1e9);
+  eq('...and the mark never found the archer either', archer.hp, 1e9);
+  /* round the ridge: the same range, a clear line */
+  archer.x = mark.x; archer.y = mark.y - 90; archer._t = null; pin(archer);
+  run(3);
+  ok('round the ridge the arrow lands', mark.hp < 1e9, `hp ${mark.hp}`);
+
+  /* the tower obeys the same law */
+  w.units.length = 0;
+  const tdef = C.BUILDINGS.tower;
+  w.players[0].buildings.push({ id: w.nextId++, bt: 'tower', level: 1, x: cc(CX) - 130, y: cc(CY),
+                                cd: 0, raise: 0, raiseFor: tdef.raise, hp: tdef.hp, maxHp: tdef.hp,
+                                lastHurt: -99, node: -1, co: 0 });
+  const prey = pin(fogMan(w, 1, 'soldier', cc(CX) + 60, cc(CY), 1e9));
+  run(2);
+  eq('a tower does not shoot through the land\'s rock', prey.hp, 1e9);
+  prey.x = cc(CX) - 130; prey.y = cc(CY) + 180; pin(prey);
+  run(2);
+  ok('clear of the ridge, the tower fires', prey.hp < 1e9, `hp ${prey.hp}`);
+
+  /* THE SEAT IS EXEMPT — deliberately, the same exemption walls already grant it: the
+   * throne stands where worldgen put it forever, so rock that could shade it would switch
+   * its guns off from outside their reach for the whole match. */
+  w.units.length = 0;
+  const c0 = World.cityOf(w, 0);
+  fogPaint(w, c0.x + 80, c0.y - 80, c0.x + 120, c0.y + 80, WG.T.CLIFF);
+  fogBake(w);
+  const brave = pin(fogMan(w, 1, 'soldier', c0.x + 150, c0.y, 1e9));
+  ok('there IS rock between the throne and its mark', !!World.rockBetween &&
+     World.rockBetween(w, c0.x, c0.y, brave.x, brave.y) === true);
+  run(1);
+  ok('and the throne\'s gun fires over it regardless', brave.hp < 1e9, `hp ${brave.hp}`);
+}
+
+suite('the fog pays its way');
+{
+  const w = World.createWorld(1000, 4);
+  w.chaosNext = 1e9;
+  /* three hundred men in fifteen-man companies scattered over the sites — the shape of a
+   * late war, and the shape the source dedupe exists for */
+  let n = 0;
+  for (let pi = 0; pi < 4; pi++)
+    for (let i = 0; i < 75; i++) {
+      const s = w.map.sites[(pi * 31 + ((i / 15) | 0) * 7) % w.map.sites.length];
+      fogMan(w, pi, 'soldier', s.x + (i % 5) * 9, s.y + (((i / 5) | 0) % 3) * 9);
+      n++;
+    }
+  eq('three hundred men stand on the board', n, 300);
+  const refresh = World.refreshVision || ((w2) => { w2.vis = null; World.canSee(w2, 0, 0, 0); });
+  refresh(w); refresh(w); refresh(w);   // warm the ray cache and the JIT
+  const N = 30, t0 = process.hrtime.bigint();
+  for (let i = 0; i < N; i++) refresh(w);
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6 / N;
+  /* the working budget is ~2ms; the ceiling is generous so a regression screams without
+   * this test going flaky on a loaded machine */
+  ok(`a 4-viewer refresh on a 300-unit board stays under 8ms (measured ${ms.toFixed(2)}ms)`,
+     ms < 8, `measured ${ms.toFixed(2)}ms`);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

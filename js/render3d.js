@@ -1774,8 +1774,9 @@
    * nothing. On a desktop window the fog cells are a few pixels and the staircase hides; on a
    * phone a cell is ~100 device pixels and the mask's raw grid marched across the screen —
    * which is why four SwiftShader reproductions came back clean and one Android photo did not. */
-  const rimStore = {}, memStore = {}, midStore = {};
+  const rimStore = {}, memStore = {}, midStore = {}, visStore = {};
   const rimCtx = () => scratch(rimStore);
+  const visCtx = (k) => scratch(visStore, k);
   const memCtx = (shrink) => scratch(memStore, shrink);
   const midCtx = (shrink) => scratch(midStore, shrink);
 
@@ -1827,22 +1828,23 @@
       const mc = memCtx(shrink);
       if (mc) {
         mc.clearRect(0, 0, W, H);
-        if (sm) {
-          /* the memory cuts at partial strength — the alpha rides the fill so the whole veil
-           * can leave in ONE composite below */
-          mc.fillStyle = 'rgba(255,255,255,' + (1 - C.FOG.keep) + ')';
-          const cw = sm.cell, vr = R.viewRect();
-          const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(sm.gw - 1, (vr.x1 / cw | 0) + 1);
-          const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(sm.gh - 1, (vr.y1 / cw | 0) + 1);
+        /* ONE loop turns a cell mask into ground-hugging quads, because two masks need it
+         * now: the REMEMBERED ground at partial strength, and — once the sim serves an
+         * occlusion-aware live mask (`view.visMask`) — CURRENT sight at full strength. A run
+         * of cells is one quad; under perspective its far edge is narrower than its near
+         * one, so it is projected as a quad, not a rectangle. */
+        const quads = (mask, alpha) => {
+          mc.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+          const cw = mask.cell, vr = R.viewRect();
+          const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(mask.gw - 1, (vr.x1 / cw | 0) + 1);
+          const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(mask.gh - 1, (vr.y1 / cw | 0) + 1);
           mc.beginPath();
           for (let gy = gy0; gy <= gy1; gy++) {
             let run = -1;
             for (let gx = gx0; gx <= gx1 + 1; gx++) {
-              const on = gx <= gx1 && sm.g[gy * sm.gw + gx];
+              const on = gx <= gx1 && mask.g[gy * mask.gw + gx];
               if (on && run < 0) run = gx;
               else if (!on && run >= 0) {
-                /* a run of cells is one ground-hugging quad; under perspective its far edge is
-                 * narrower than its near one, so it is projected as a quad, not a rectangle */
                 const wx0 = run * cw, wx1 = gx * cw, wy0 = gy * cw, wy1 = (gy + 1) * cw;
                 const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
                 const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
@@ -1854,14 +1856,22 @@
             }
           }
           mc.fill();
-        }
+        };
+        if (sm) quads(sm, 1 - C.FOG.keep);
+        /* CURRENT SIGHT FROM THE MASK, WHEN THE SIM SERVES ONE. Occlusion makes a sight
+         * region an arbitrary shape — a ridge's shadow is not an ellipse — so the ellipse
+         * holes below cannot draw it. The mask can, through the exact pipeline the memory
+         * already rides: same buffer, full strength, one composite. Ellipses remain as the
+         * fallback so a view without a mask (an old guest, a mid-migration build) keeps its
+         * fog rather than losing the veil's holes entirely. */
+        if (view.visMask && !(dbg && dbg.discs === false)) quads(view.visMask, 1);
         /* the sight discs cut the SAME buffer at full strength — over the memory's partial
          * alpha, source-over composes to exactly what two destination-out passes left before
          * ((1-a)(1-m)), and it buys two things: where discs meet, the pointed cusp of the union
          * is rounded by the same upscale that hides the mask's staircase instead of staying a
          * razor corner; and the gradients fill a buffer a shrink² fraction of the screen
          * instead of the full overlay. */
-        for (const [cx2, cy2, rx, ry] of cut) {
+        for (const [cx2, cy2, rx, ry] of (view.visMask ? [] : cut)) {
           mc.save();
           mc.translate(cx2, cy2); mc.scale(1, ry / rx);
           /* a tight falloff: the edge of sight should read as an edge, not a smear */
@@ -1906,7 +1916,48 @@
      * Fill the union of the discs into a scratch, cut a slightly smaller union back out, and
      * what survives is exactly the outer boundary — one pass, no outline geometry. */
     const rc = rimCtx();
-    if (rc && discs.length && !(dbg && dbg.rim === false)) {
+    /* WITH A MASK, THE RIM IS A DILATION. An occluded sight region is an arbitrary shape, so
+     * the ring is cut from the shape itself: stamp the live-vision scratch four times at a
+     * pixel's offset (the dilated union), cut the un-offset stamp back out (the interior),
+     * and what survives is the boundary — then tint it through source-in. Same warm line,
+     * no geometry, and it hugs a ridge's shadow exactly where the ellipse union cannot. */
+    if (rc && view.visMask && !(dbg && dbg.rim === false)) {
+      const vc = visCtx(1);   // full-size: the rim is one pixel wide and must stay one pixel
+      if (vc) {
+        vc.clearRect(0, 0, W, H);
+        vc.fillStyle = '#fff';
+        const mask = view.visMask, cw2 = mask.cell, vr2 = R.viewRect();
+        const hx0 = Math.max(0, (vr2.x0 / cw2 | 0) - 1), hx1 = Math.min(mask.gw - 1, (vr2.x1 / cw2 | 0) + 1);
+        const hy0 = Math.max(0, (vr2.y0 / cw2 | 0) - 1), hy1 = Math.min(mask.gh - 1, (vr2.y1 / cw2 | 0) + 1);
+        vc.beginPath();
+        for (let gy = hy0; gy <= hy1; gy++) {
+          let run = -1;
+          for (let gx = hx0; gx <= hx1 + 1; gx++) {
+            const on = gx <= hx1 && mask.g[gy * mask.gw + gx];
+            if (on && run < 0) run = gx;
+            else if (!on && run >= 0) {
+              const wx0 = run * cw2, wx1 = gx * cw2, wy0 = gy * cw2, wy1 = (gy + 1) * cw2;
+              const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
+              const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
+              if (a1.ok && b1.ok && c1.ok && d1.ok) {
+                vc.moveTo(a1.x, a1.y); vc.lineTo(b1.x, b1.y); vc.lineTo(c1.x, c1.y); vc.lineTo(d1.x, d1.y); vc.closePath();
+              }
+              run = -1;
+            }
+          }
+        }
+        vc.fill();
+        rc.clearRect(0, 0, W, H);
+        for (const [ox, oy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) rc.drawImage(visStore.cv, ox, oy, W, H);
+        rc.globalCompositeOperation = 'destination-out';
+        rc.drawImage(visStore.cv, 0, 0, W, H);
+        rc.globalCompositeOperation = 'source-in';
+        rc.fillStyle = 'rgba(255,233,168,0.34)';
+        rc.fillRect(0, 0, W, H);
+        rc.globalCompositeOperation = 'source-over';
+        g.drawImage(rimStore.cv, 0, 0, W, H);
+      }
+    } else if (rc && discs.length && !(dbg && dbg.rim === false)) {
       rc.clearRect(0, 0, W, H);
       rc.fillStyle = 'rgba(255,233,168,0.34)';
       rc.beginPath();

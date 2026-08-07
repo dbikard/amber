@@ -30,7 +30,7 @@
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
-  let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null, guestSeen = null;
+  let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null, guestSeen = null, guestWallKey = '';
 
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
@@ -351,6 +351,18 @@
       storms: world.storms.filter((s) => see(s.x, s.y)),
       visSources: World.visionSources(world, viewer),
       seen: world.players[viewer].seen,   // ground you have ever had eyes on
+      /* CURRENT sight as a cell mask, when the sim computes one — the occlusion work makes a
+       * sight region an arbitrary shape, and the renderer draws the veil's holes from this
+       * when present, falling back to source ellipses when not. Tolerant of either shape the
+       * sim might serve ({g,gw,gh,cell} directly, or wrapped as {mask}), because the two
+       * halves of this feature land in separate changes and neither may break the other. */
+      visMask: (() => {
+        const v = world.vis && world.vis[viewer];
+        if (!v) return null;
+        if (v.g && v.gw) return v;
+        if (v.mask && v.mask.g) return v.mask;
+        return null;
+      })(),
       see
     };
   }
@@ -378,17 +390,46 @@
      * the host's fog therefore always sends it. A fog rule added to the sim now reaches
      * this screen without anyone remembering to copy it. */
     const src = World.visionSources({ map: refWorld.map, players: snap.players, units }, me);
-    const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
+    /* OCCLUDED SIGHT, COMPUTED WHERE THE GUEST STANDS. No mask rides the wire: the guest holds
+     * the same land from the same seed, so it bakes the same opacity and marches the same rays
+     * over its own snapshot's sources. One honest asymmetry: the wall layer here is built from
+     * the walls the guest can SEE — an undiscovered rival curtain does not shade the guest's
+     * veil yet. Nothing leaks by it: the HOST's mask is what filters the snapshot, so what the
+     * guest receives is already fogged by the true set; its own veil is merely a shade
+     * optimistic until the wall is found, which is the moment it starts blocking. */
+    let vism = null;
+    if (World.bakeSight && World.visMask) {
+      if (!refWorld.sight) World.bakeSight(refWorld);
+      const wallList = [];
+      for (const p of snap.players) for (const b of (p.buildings || [])) {
+        if (b.x2 == null || b.breach || (b.raise > 0)) continue;
+        const e = World.wallEnds(b);
+        wallList.push({ ax: e[0], ay: e[1], bx: e[2], by: e[3] });
+      }
+      const wallKey = wallList.map((w) => `${w.ax | 0},${w.ay | 0},${w.bx | 0},${w.by | 0}`).join('|');
+      if (wallKey !== guestWallKey) {
+        guestWallKey = wallKey;
+        World.bakeWallSight({ sight: refWorld.sight, walls: wallList });
+      }
+      vism = World.visMask({ sight: refWorld.sight }, 0, src);   // returns {g,gw,gh,cell}
+    }
+    const see = vism
+      ? (x, y) => {
+          const gx = (x / vism.cell) | 0, gy = (y / vism.cell) | 0;
+          return gx >= 0 && gy >= 0 && gx < vism.gw && gy < vism.gh && vism.g[gy * vism.gw + gx] === 1;
+        }
+      : (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
     /* the guest builds the same world from the same seed, so terrain needs no wire at all */
     /* the guest remembers the land itself. Nothing about it needs to cross the wire — it is
      * built from the same sight the guest already computes for its own fog. */
     if (!guestSeen) guestSeen = World.newSeenMask();
-    World.markSeen(guestSeen, src);
+    World.markSeen(guestSeen, vism || src);
     return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
              seen: guestSeen,
              seatSeen: refWorld.map.cities.map((id, pi) => pi === Net.localIdx ||
                !!(snap.sites[id] && snap.sites[id].live !== undefined)),
-             sites: snap.sites, units, storms: snap.storms, visSources: src, see };
+             sites: snap.sites, units, storms: snap.storms, visSources: src, see,
+             visMask: vism };
   }
 
   /* ---------------- event routing (banners + canvas fx; fog respected) ---------------- */
