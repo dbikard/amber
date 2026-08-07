@@ -2321,6 +2321,11 @@
          * occlusion-aware live mask (`view.visMask`) — CURRENT sight at full strength. A run
          * of cells is one quad; under perspective its far edge is narrower than its near
          * one, so it is projected as a quad, not a rectangle. */
+        /* the same cheap blur the rim takes, and for the same reason: the upscale alone leaves
+         * a little cell structure in the ramp, and anything downstream that is non-linear will
+         * find it and put the staircase back. Taken on the SMALL buffer, so it is nearly free. */
+        const mcFilter = typeof mc.filter === 'string';
+        if (mcFilter) mc.filter = 'blur(' + Math.max(1, Math.min(4, Math.round(Math.min(window.devicePixelRatio || 1, 2) * 1.2))) + 'px)';
         const quads = (a, mask, alpha) => {
           if (cg && a) bandFill(mc, cg, mask.gw, mask.gh, a, alpha);
         };
@@ -2338,6 +2343,7 @@
          * is rounded by the same upscale that hides the mask's staircase instead of staying a
          * razor corner; and the gradients fill a buffer a shrink² fraction of the screen
          * instead of the full overlay. */
+        if (mcFilter) mc.filter = 'none';
         for (const [cx2, cy2, rx, ry] of (view.visMask ? [] : cut)) {
           mc.save();
           mc.translate(cx2, cy2); mc.scale(1, ry / rx);
@@ -2428,14 +2434,23 @@
         }
         rc.clearRect(0, 0, W, H);
         rc.imageSmoothingEnabled = true;
-        /* the ring steps out with the smoothing: on a soft ramp a two-pixel offset barely
-         * differs from the un-offset stamp, and the warm line all but vanishes */
-        const ro = Math.max(2, Math.min(9, Math.round(rimCell * 0.16)));
-        for (const [ox, oy] of [[ro, 0], [-ro, 0], [0, ro], [0, -ro]]) rc.drawImage(rsrc, ox, oy, W, H);
+        /* A DILATION IS A THIN LINE ONLY WHILE THE FIELD IS BINARY, and this one is no longer
+         * binary. Stamping four offset copies source-over gives 1-(1-f)^4, which at f=0.2 is
+         * 0.59 — so subtracting the un-offset copy leaves a third of the alpha standing across
+         * the WHOLE ramp, not in a band beside it. Reported from play as "the fog is brighter
+         * than the lit ground": the rim had stopped being a line and become a halo. Worse, that
+         * curve maps mid-tones upward, so it RE-SHARPENED exactly the cell structure the blur
+         * had just softened, and the steps came back inside the halo.
+         * ONE offset, not four, keeps it linear-ish: what survives is the difference across a
+         * single step of the ramp, which is the gradient — brightest where the edge is
+         * steepest and gone where the field is flat. Kept small, and the tint dropped to match,
+         * because the accent has to sit UNDER the lit ground it borders, never over it. */
+        const ro = Math.max(1, Math.min(3, Math.round(rimCell * 0.06)));
+        rc.drawImage(rsrc, ro, ro, W, H);
         rc.globalCompositeOperation = 'destination-out';
         rc.drawImage(rsrc, 0, 0, W, H);
         rc.globalCompositeOperation = 'source-in';
-        rc.fillStyle = 'rgba(255,233,168,0.34)';
+        rc.fillStyle = 'rgba(255,233,168,0.5)';
         rc.fillRect(0, 0, W, H);
         rc.globalCompositeOperation = 'source-over';
         g.drawImage(rimStore.cv, 0, 0, W, H);
