@@ -915,8 +915,8 @@
       new THREE.MeshBasicMaterial({ color: 0x0b0912 }));
     under.position.set(C.MAP.W / 2, -5, C.MAP.H / 2);
     scene.add(under);
-    MAT = new THREE.MeshLambertMaterial({ vertexColors: true });
-    MATB = new THREE.MeshBasicMaterial({ vertexColors: true });
+    MAT = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    MATB = fogPatch(new THREE.MeshBasicMaterial({ vertexColors: true }));
     overlay = document.getElementById('overlay');
     octx = overlay.getContext('2d');
     stormState = [];
@@ -1211,6 +1211,90 @@
   }
   R.debugVeilPath = maskPath;
 
+  /* ---------------- EXPERIMENT: the veil sampled in the shader (TODO #61) ----------------
+   * Behind `R.shaderFog`, OFF by default, so the two can be judged from the same world.
+   * The overlay draws a WORLD-SPACE field as SCREEN-SPACE polygons and every artifact this
+   * session chased came from that gap. Here the same eased field — the very arrays the
+   * overlay bands — is uploaded as a small texture (one texel per fog cell, about 77x93) and
+   * sampled by world XZ in the materials that were being darkened anyway. No polygons, so no
+   * chord divergence; bilinear filtering is the smoothing, done by hardware in a fetch it was
+   * making regardless; and fog can be DRAINED of colour rather than merely tinted, which is
+   * the thing a 2D canvas over a WebGL canvas simply cannot reach.
+   * R = what the viewer sees now, G = what he has ever seen. fog = G - R, shroud = 1 - G. */
+  /* uFogSpan must be a real Vector2 from the START: the uniform is uploaded whenever the
+   * material compiles, long before the first fogUpload, and Three reads .x off it — a null
+   * here throws on the very first frame whether the experiment is switched on or not. */
+  const FOGU = { uFogTex: { value: null }, uFogSpan: { value: new THREE.Vector2(1, 1) }, uFogOn: { value: 0 } };
+  let fogTex = null, fogPix = null;
+  function fogUpload(gw, gh, cell, liveA, memA) {
+    const n = gw * gh;
+    if (!fogTex || fogPix.length !== n * 4) {
+      fogPix = new Uint8Array(n * 4);
+      fogTex = new THREE.DataTexture(fogPix, gw, gh, THREE.RGBAFormat);
+      /* LINEAR is the whole point: the staircase the overlay spent three passes hiding is
+       * dissolved here by the sampler, for free. flipY stays false so texel row 0 is world
+       * y 0 — a flipped mask is a mirrored map and is not subtle. */
+      fogTex.minFilter = fogTex.magFilter = THREE.LinearFilter;
+      fogTex.wrapS = fogTex.wrapT = THREE.ClampToEdgeWrapping;
+      fogTex.flipY = false;
+      FOGU.uFogTex.value = fogTex;
+      FOGU.uFogSpan.value.set(gw * cell, gh * cell);
+    }
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      fogPix[j] = liveA[i] * 255;
+      fogPix[j + 1] = memA[i] * 255;
+    }
+    fogTex.needsUpdate = true;
+  }
+  function fogPatch(mat) {
+    if (!mat || mat._fogPatched) return mat;
+    mat._fogPatched = true;
+    mat.onBeforeCompile = (sh) => {
+      sh.uniforms.uFogTex = FOGU.uFogTex;
+      sh.uniforms.uFogSpan = FOGU.uFogSpan;
+      sh.uniforms.uFogOn = FOGU.uFogOn;
+      sh.vertexShader = 'varying vec2 vFogXZ;\n' + sh.vertexShader.replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 fogW = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          fogW = instanceMatrix * fogW;
+        #endif
+        vFogXZ = (modelMatrix * fogW).xz;`);
+      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nvarying vec2 vFogXZ;\n'
+        + sh.fragmentShader.replace('#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        if (uFogOn > 0.5) {
+          vec2 m = texture2D(uFogTex, vFogXZ / uFogSpan).rg;
+          float sight = m.r;
+          float seen = max(m.g, m.r);
+          float fogAmt = clamp(seen - sight, 0.0, 1.0);
+          float shroud = clamp(1.0 - seen, 0.0, 1.0);
+          vec3 c = gl_FragColor.rgb;
+          /* FOG IS DRAINED, NOT DIMMED — the thing the overlay could never do. Colour goes
+             to luma, then a cold cast and half the light: you remember the land, you cannot
+             see what stands on it. */
+          float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+          vec3 drained = mix(c, vec3(l), 0.88) * vec3(0.60, 0.70, 0.98) * 0.52;
+          c = mix(c, drained, fogAmt);
+          c = mix(c, vec3(0.023, 0.016, 0.047), shroud * 0.94);
+          gl_FragColor.rgb = c;
+        }`);
+      /* PROVE THE INJECTION LANDED. A `.replace` whose needle is absent returns the string
+       * unchanged and throws nothing — the patch then silently does nothing and the render
+       * looks like a plausible result rather than a broken one. */
+      mat.userData.fogVert = sh.vertexShader.indexOf('vFogXZ = ') >= 0;
+      mat.userData.fogFrag = sh.fragmentShader.indexOf('uFogOn > 0.5') >= 0;
+    };
+    mat.needsUpdate = true;
+    return mat;
+  }
+  R.fogPatch = fogPatch;
+  R.debugFogU = FOGU;   // so a rig can force the shader off and measure the raw scene
+  R.debugFogMats = () => [MAT, MATB, ground && ground.material].map((m) => m && ({
+    type: m.type, patched: !!m._fogPatched, vert: !!m.userData.fogVert, frag: !!m.userData.fogFrag }));
+
+
   /* ---------------- the veil lifts over TIME, not in jumps ----------------
    * Sight is recomputed five times a second on a 26-unit grid, so a cell goes from unseen to
    * seen in one step and the country ahead of a marching column opens in visible lurches. The
@@ -1344,7 +1428,7 @@
         groundGrid[gz * gridW + gx] = hFn(gx * GRES, gz * GRES);
     const tex2 = new THREE.CanvasTexture(bake.canvas);
     tex2.colorSpace = THREE.SRGBColorSpace;
-    ground = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex2 }));
+    ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 })));
     worldG.add(ground);
 
     /* forests: 3 instanced palettes (display-space bands → world positions) */
@@ -2300,8 +2384,10 @@
      * fill, the mask march, the discs and the rim in one test rather than asking each pass
      * to notice an all-ones mask. */
     if (!view.allSeen) {
-    g.fillStyle = 'rgba(6,4,12,0.86)';
-    g.fillRect(0, 0, W, H);
+    if (!R.shaderFog) {
+      g.fillStyle = 'rgba(6,4,12,0.86)';
+      g.fillRect(0, 0, W, H);
+    }
     /* project every sight disc ONCE — the holes and the rim are both drawn from these */
     const discs = [];
     for (const [x, y, r2] of view.visSources) {
@@ -2336,7 +2422,12 @@
     const liveA = (cg && view.visMask)
       ? easeVeil('live', view.visMask.g, view.visMask.gw * view.visMask.gh, lastDt) : null;
     const memA = (cg && sm && sm.g) ? easeVeil('mem', sm.g, sm.gw * sm.gh, lastDt) : null;
-    if (sm || cut.length) {
+    /* EXPERIMENT (R.shaderFog): hand the same field to the materials and draw no veil here.
+     * The 2D passes below are skipped wholesale — the dark fill, the bands, and the rim. */
+    const shaderFog = !!R.shaderFog && !!(sm && liveA && memA);
+    if (shaderFog) { fogUpload(sm.gw, sm.gh, sm.cell, liveA, memA); FOGU.uFogOn.value = 1; }
+    else if (FOGU.uFogOn.value) FOGU.uFogOn.value = 0;
+    if ((sm || cut.length) && !shaderFog) {
       /* HOW COARSE THE MASK IS DRAWN is how soft its edge comes out, and that is the whole
        * softening now — see the note where it is composited. A cell of remembered ground should
        * land on about two pixels of the scratch, so the upscale smears exactly across the
@@ -2464,7 +2555,7 @@
      * pixel's offset (the dilated union), cut the un-offset stamp back out (the interior),
      * and what survives is the boundary — then tint it through source-in. Same warm line,
      * no geometry, and it hugs a ridge's shadow exactly where the ellipse union cannot. */
-    if (rc && view.visMask && !(dbg && dbg.rim === false)) {
+    if (rc && view.visMask && !R.shaderFog && !(dbg && dbg.rim === false)) {
       /* THE RIM IS DRAWN COARSE FOR THE SAME REASON THE VEIL IS. It used to be stamped at full
        * size from the raw mask — "one pixel wide and must stay one pixel" — which was right
        * while the boundary was a union of ELLIPSES, smooth at any resolution you traced it at.
@@ -2484,7 +2575,7 @@
       const rimCell = C.FOG.cell * scaleOf();
       const rimShrink = Math.max(1, Math.min(16, rimCell / 2));
       const vc = visCtx(rimShrink);
-      if (vc && cg && liveA) {
+      if (vc && cg && liveA && !R.shaderFog) {
         vc.clearRect(0, 0, W, H);
         const canFilter = typeof vc.filter === 'string';
         if (canFilter) vc.filter = 'blur(' + Math.max(1, Math.min(4, Math.round(Math.min(window.devicePixelRatio || 1, 2) * 1.2))) + 'px)';

@@ -3042,10 +3042,60 @@ async function match(browser, base, renderer) {
          different world every run — one pass saw 264 fog cells and the next saw 4, which makes
          the sample count, not the veil, decide whether the suite passes. The timestep is fixed,
          so running UNTIL tick 6000 lands on the same world every time. */
-      while (w.tick < 6000) { window.World.update(w, 1 / 30); w.events.length = 0; w.winner = null; }
-      /* and pull back, or the camera sits over the Seat where everything is in sight and there
-         is barely any fog on screen to measure */
-      window.Render.setZoom(window.CONST.VIEW.min);
+      /* RUN UNTIL THE SCENARIO EXISTS, not for a fixed span. Fog is ground sight has been and
+         LEFT, and how much of it a match has produced by any given tick is not reproducible
+         here: the page advances a variable number of ticks with the AI driving before this
+         line takes over without it, so no two runs reach tick 6000 by the same road. Asking
+         for a tick count therefore measured a different world every time — 264 fog cells one
+         pass, 4 the next, 1 on a third. Ask for the CONDITION instead and run until it holds. */
+      const wv0 = w.vis[window.Game.game.viewer], ws0 = w.players[window.Game.game.viewer].seen;
+      const fogCells = () => {
+        let n = 0;
+        for (let i = 0; i < ws0.g.length; i++) if (ws0.g[i] && !wv0.g[i]) n++;
+        return n;
+      };
+      while (w.tick < 60000 && (w.tick < 6000 || fogCells() < 700)) {
+        for (let i = 0; i < 600; i++) { window.World.update(w, 1 / 30); w.events.length = 0; w.winner = null; }
+      }
+      /* AND POINT THE CAMERA AT THE THING BEING MEASURED. Zooming out and hoping is not
+         enough: how much fog lands on screen swings wildly between runs (264 cells one pass,
+         4 the next, 0 on a third), because the world advances a VARIABLE number of ticks with
+         the AI driving before the fast-forward takes over without it — so no two runs reach
+         tick 6000 by the same road. Search the grid for a window that actually holds all
+         three states and look there. The suite then measures the veil rather than the luck of
+         the camera. */
+      const wv = w.vis[window.Game.game.viewer], ws = w.players[window.Game.game.viewer].seen;
+      const cand = [];
+      for (let cy = 8; cy < wv.gh - 8; cy += 2) for (let cx = 8; cx < wv.gw - 8; cx += 2) {
+        let a = 0, b2 = 0, c2 = 0;
+        for (let dy = -16; dy <= 16; dy += 2) for (let dx = -8; dx <= 8; dx += 2) {
+          const gy2 = cy + dy, gx2 = cx + dx;
+          if (gy2 < 0 || gx2 < 0 || gy2 >= wv.gh || gx2 >= wv.gw) continue;
+          const k = gy2 * wv.gw + gx2;
+          if (wv.g[k]) a++; else if (ws.g[k]) b2++; else c2++;
+        }
+        cand.push({ cx, cy, sc: Math.min(a, b2, c2) });
+      }
+      cand.sort((p2, q2) => q2.sc - p2.sc);
+      /* and CHECK the framing rather than trusting the score: the search window is a guess at
+         what the pitched camera shows, so walk the best candidates until one really does put
+         all three states on screen. Counting what projects is the only honest test of that. */
+      window.Render.setZoom(1.15);
+      const onScreen = () => {
+        const c3 = { s: 0, f: 0, u: 0 };
+        for (let gy2 = 0; gy2 < wv.gh; gy2++) for (let gx2 = 0; gx2 < wv.gw; gx2++) {
+          const k = gy2 * wv.gw + gx2;
+          const q2 = window.Render.project((gx2 + 0.5) * wv.cell, (gy2 + 0.5) * wv.cell);
+          if (!q2.ok || q2.x < 8 || q2.y < 130 || q2.x > window.innerWidth - 8 || q2.y > window.innerHeight - 130) continue;
+          if (wv.g[k]) c3.s++; else if (ws.g[k]) c3.f++; else c3.u++;
+        }
+        return c3;
+      };
+      for (let i = 0; i < 12 && i < cand.length; i++) {
+        window.Render.lookAt((cand[i].cx + 0.5) * wv.cell, (cand[i].cy + 0.5) * wv.cell);
+        const c3 = onScreen();
+        if (c3.s >= 60 && c3.f >= 30 && c3.u >= 60) break;
+      }
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       const cv = document.getElementById('overlay');
       const ctx = cv.getContext('2d', { willReadFrequently: true });
