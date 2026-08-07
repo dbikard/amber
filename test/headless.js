@@ -3574,11 +3574,11 @@ suite('the black road is not the war')
   }
   ok('a work stands', !!at && raise(w2, 0, at.x, at.y, 'tower').ok);
   const b2 = pl2.buildings[pl2.buildings.length - 1];
-  w2.events.length = 0; pl2.slotAlert = -99;
+  w2.events.length = 0; pl2.alertAt = -99;
   World.hurtBuilding(w2, 0, b2.id, 5, C.CHAOS_ID);
   const byChaos = w2.events.find((e) => e.e === 'hurtcity');
   eq('a work gnawed by fiends names Chaos', byChaos && byChaos.by, C.CHAOS_ID);
-  w2.events.length = 0; pl2.slotAlert = -99;
+  w2.events.length = 0; pl2.alertAt = -99;
   World.hurtBuilding(w2, 0, b2.id, 5, 1);
   const byFoe = w2.events.find((e) => e.e === 'hurtcity');
   eq('and one broken by an heir names the heir', byFoe && byFoe.by, 1);

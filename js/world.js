@@ -872,7 +872,7 @@
         if (isWall(o)) {
           const e = wallEnds(o);
           if (crosses(ax, ay, bx, by, e[0], e[1], e[2], e[3])) return 'crowded';
-          if (segD2(o, ax, ay) < 26 * 26 && segD2(o, bx, by) < 26 * 26) return 'crowded';
+          if (segD2(o, ax, ay) < C.WALL.atop * C.WALL.atop && segD2(o, bx, by) < C.WALL.atop * C.WALL.atop) return 'crowded';
         } else if (o.bt === 'tower' && q === pi) {
           /* A TOWER OF YOURS IS A BASTION, not an obstacle. The game already lets you raise a
            * tower INTO your curtain; the reverse has to hold or a corner tower is a full stop
@@ -918,8 +918,8 @@
       if (nodeHolder(world, site) !== -1) return 'taken';
       if (inClaim(world, pi, x, y)) return busy;
       /* beyond the writ it must be a spring your troops hold and the enemy's do not */
-      if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'presence';
-      if (world.units.some((u) => u.owner !== pi && u.owner !== C.CHAOS_ID && d2(u.x, u.y, site.x, site.y) < 90 * 90)) return 'contested';
+      if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < C.NODE.hold * C.NODE.hold)) return 'presence';
+      if (world.units.some((u) => u.owner !== pi && u.owner !== C.CHAOS_ID && d2(u.x, u.y, site.x, site.y) < C.NODE.hold * C.NODE.hold)) return 'contested';
       return busy;
     }
     if (inClaim(world, pi, x, y)) return busy;
@@ -1923,8 +1923,8 @@
       if (C.BUILDINGS[b.bt].spawns) pruneCos(world, pi);
       /* a fallen mustering hall is a fallen standard: its company rallies to the banner */
       for (const q of world.players) delete q.ghosts[b.id];
-    } else if (world.t - (pl.slotAlert || -99) > 12) {
-      pl.slotAlert = world.t;
+    } else if (world.t - (pl.alertAt || -99) > C.HURT_ALERT) {
+      pl.alertAt = world.t;
       /* WHO is at the gate. This banner fired for anything that scratched a work, so a
        * rift chewing an outlying Gate read as "the enemy is inside your city" exactly like a
        * rival's assault — and a player watching for the rival never saw the black road
@@ -2032,7 +2032,7 @@
          * a breached wall inherited that — so rubble quietly climbed back toward a full wall's
          * hit points while staying breached: harder and harder to clear, and never any use to
          * anyone. A breach is closed by masons and by nothing else. */
-        if (b.hp < b.maxHp && t - b.lastHurt > 10 && !b.breach)
+        if (b.hp < b.maxHp && t - b.lastHurt > C.STRUCT_REGEN_WAIT && !b.breach)
           b.hp = Math.min(b.maxHp, b.hp + C.STRUCT_REGEN * dt);
         /* THE MASONS ARE IN THE YARD. A work being raised a level is still a work — it stands,
          * it blocks, it sees, it holds its spring, and it can be broken — but it does not do
@@ -2185,7 +2185,7 @@
       for (let i = 0; i < n; i++) spawnUnit(world, C.CHAOS_ID, 'fiend', at.x, at.y);
       world.chaosNext = t + C.CHAOS.interval(t);
     }
-    if (!world.surged && t > 600) { world.surged = true; emit(world, { e: 'surge' }); }
+    if (!world.surged && t > C.CHAOS.surgeAt) { world.surged = true; emit(world, { e: 'surge' }); }
 
     /* storms */
     for (let i = world.storms.length - 1; i >= 0; i--) {
@@ -2249,7 +2249,7 @@
       /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
        * than he ever could on the ground, and everything that can see the tower can see him. */
       const gar = u.tow ? C.TOWER.over : 0;
-      const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? 140 : 0));
+      const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
       if (foe) {
         const rng = Math.max(par ? Math.max(def.range, C.WALL.over) : def.range, gar);
         const reach = rng + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size

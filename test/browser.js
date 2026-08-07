@@ -5,7 +5,7 @@
  * are always asked of the renderer itself (R.project) so a test can never drift away from
  * the projection the player actually sees — that lesson cost several false alarms.
  *
- * Needs Playwright + Chromium. Without them it reports a skip and exits 0, so `npm test`
+ * Needs Playwright + Chromium. Without them it reports a skip and exits 0, so `node test/run.js`
  * still means something on a machine that has neither. */
 'use strict';
 const http = require('http');

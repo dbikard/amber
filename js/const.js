@@ -9,7 +9,8 @@
   /* seatR is the Seat-tower's own ground: no work may stand inside it, and a tap inside it
    * opens the Seat's sheet. ONE number, so the two can never disagree — they did, and the
    * ring between them was buildable ground you could not tap. */
-  CONST.CITY = { r: 150, seatR: 74 };
+  CONST.CITY = { r: 150, seatR: 74,
+                 homeAggro: 140 };  // extra acquire reach inside your own city's r — an open city's garrison sees trouble coming
 
   /* ---- Free placement (open world, stage 4) ----
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is
@@ -77,7 +78,8 @@
    * is never buried under men, which is how you tap it to raise it a level. */
   CONST.BUILD = { foot: 34, gap: 10, pass: 26 };
   /* a Shadow Gate within this of an essence node draws from it (and claims it) */
-  CONST.NODE = { r: 96 };
+  CONST.NODE = { r: 96,
+                 hold: 90 };  // troops within this of a spring beyond the writ are what TAKES it (else 'presence'/'contested')
   CONST.CASTLE_HP = 2500;         // retune: a Seat must not fall in ninety seconds of contact
   CONST.START_ESSENCE = 180;
   CONST.BASE_INCOME = 2.5;        // essence/sec before any Shadow Gate
@@ -175,7 +177,8 @@
               'the Wind Scarp', 'the Old Barrow', 'the Black Tor', 'the Raven Steps']
   };
 
-  CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after 10s unharmed
+  CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after STRUCT_REGEN_WAIT unharmed
+  CONST.STRUCT_REGEN_WAIT = 10;   // s a work must go unhit before the mending starts
   /* HOW LONG SHADOW HOLDS A BOUND FIEND. It has to end: the Chaos cap counts fiends by owner,
    * so every one taken frees a slot for the road to tear open another, and a permanent bind
    * would let a binder host farm the black road into a private army — the very failure that
@@ -391,6 +394,7 @@
                   * else's, which is the price of a short blocking piece and a real reason to
                   * draw a longer one. */
                  gateMin: 120,
+                 atop: 26,   // a new run with BOTH ends this near a standing one lies atop it — refused as 'crowded'
                  repair: 0.5, fixWork: 0.7, rubble: 0.3 };
 
   /* The Watchtower fork — chosen at the level-2 upgrade, permanent.
@@ -647,6 +651,7 @@
      * from there Chaos is a constant tax on forward country rather than a rising tide:
      * 5 fiends every 26s, at twice the hit points and a third again the damage. */
     firstAt: 100,                      // s before the first rift
+    surgeAt: 600,                      // s: the one-time "black road surges" knell (a banner — the ramp above is the teeth)
     interval: (t) => Math.max(26, 50 - t * 0.030),  // s between rifts, floored at 800s
     count: (t) => Math.min(5, 2 + Math.floor(t / 190)),   // fiends per rift, capped at 570s
     hpScale: (t) => Math.min(2.0, 1 + t / 480),
@@ -665,6 +670,7 @@
     { at: 75,    msg: ' is three quarters of the way round the Pattern' },
     { at: 90,    msg: ' nears the final veil of the Pattern!' }
   ];
+  CONST.HURT_ALERT = 12;   // s between "your city is hurt" banners per heir — often enough to matter, quiet enough to read
 
   /* NO CEILING ON AN HEIR'S MUSTER. There was one, at 110, and a chronicle from play showed
    * exactly what it cost: an army pinned at 110 from minute six, twenty-two thousand essence
