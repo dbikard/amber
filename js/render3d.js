@@ -569,6 +569,138 @@
     return m;
   }
 
+  /* ---------------- THE DOORS IN THE GATEWAY ----------------
+   * A curtain's gateway is the middle of the run, `WALL.gate` wide, punched out of the OWNER'S
+   * nav layer alone — a rival reaching it finds it shut. On the board it was a hole: two piers
+   * and a threshold, which reads as a wall somebody gave up on rather than as a gate that is
+   * yours. Two timber leaves hang in it and they SWING — open while your own column is coming
+   * through, shut the rest of the time. It is the only thing on the field that says out loud
+   * whose door this is, and it says it without a label.
+   *
+   * THE ANGLE IS NOT IN THE MODEL KEY. `R.modelKey` is the only place that key is written and
+   * the frame's cache key is built from it; a leaf angle in there would tear down and re-merge
+   * every course of stone in the run on every frame the door moved. So the leaves are hung on
+   * the finished group as children and driven from the wall's own row each frame, and the state
+   * that has to outlive a rebuild (how far open it is, and the grace it is holding) lives out
+   * here, keyed by the run's id.
+   *
+   * Only fields that CROSS THE WIRE are read — type, ends, owner, `gated`, `breach`, `raise`,
+   * `flip` — so a guest hangs the same doors on the same runs the host does. */
+  const gateState = new Map();       // wall id -> { a, open, hold, x, y }
+  /* 1.25 rad, not a right angle: a leaf swung fully flat lies against the inner face of its own
+   * curtain and is invisible from the side the camera is usually on, so "open" would read as
+   * "the doors have vanished". At seventy degrees the gap is plainly clear and the leaves are
+   * still angled where you can see them. */
+  const GATE = { open: 1.25, speed: 4.2, grace: 0.8, near: C.WALL.gate + 18 };
+  /* Which way they swing. `station` faces a run's parapet AWAY from the Seat it shelters and
+   * `flip` is the heir's overrule of that guess; a gate opens onto the SHELTERED side, so it
+   * swings against that normal. A leaf turned by +s swings toward -(-uz, ux) — see the
+   * derivation at `gateLeaves` — so all this has to answer is which sign that is. */
+  function gateSign(b, city) {
+    const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+    const ux = b.x2 - ax, uy = b.y2 - ay;
+    let flipN = false;
+    if (city && (-uy) * (city.x - b.x) + ux * (city.y - b.y) > 0) flipN = !flipN;
+    if (b.flip) flipN = !flipN;
+    return flipN ? -1 : 1;
+  }
+  /* The two leaves, hinged at the piers and meeting at the middle of the run. Each is a GROUP
+   * whose origin is its hinge, so opening it is one `rotation.y` and no geometry moves.
+   *
+   * The group carrying the run has no rotation of its own (a course is turned by `part`), so a
+   * leaf's closed angle is the run's own bearing: rotating local +X about Y by θ lands it on
+   * world (cos θ, -sin θ), and the run's direction is (ux, uz), so θ = -atan2(uz, ux) = `ang`
+   * — the same expression `wallModel` turns its courses by. The far leaf is that plus π. */
+  function gateLeaves(b) {
+    const ax = b.x * 2 - b.x2, az = b.y * 2 - b.y2, bx = b.x2, bz = b.y2;
+    const len = Math.hypot(bx - ax, bz - az) || 1;
+    const ux = (bx - ax) / len, uz = (bz - az) / len;
+    const ang = -Math.atan2(bz - az, bx - ax);
+    const lv = Math.max(1, Math.min(3, b.level || 1));
+    const wh = 26 + (lv - 1) * 3;                       // the same wall height wallModel uses
+    const th = C.WALL.thick * (1.6 + (lv - 1) * 0.34);
+    const gate = C.WALL.gate;
+    const base = groundH(b.x, b.y);
+    const wood = 0x6b4a2e, woodD = 0x4a3220, iron = 0x8a8f9c;
+    /* one leaf: hinge at the origin, boards running out along +X, standing on its own ground */
+    const leaf = () => {
+      const p = [];
+      const h = wh + 4;
+      for (let i = 0; i < 4; i++)                        // the boards
+        p.push(part(box(gate * 0.24, h, th * 0.28), i % 2 ? wood : woodD,
+                    gate * (0.13 + i * 0.25), h / 2, 0));
+      p.push(part(box(gate, 2.6, th * 0.34), iron, gate / 2, h * 0.22, 0));    // two iron straps
+      p.push(part(box(gate, 2.6, th * 0.34), iron, gate / 2, h * 0.78, 0));
+      p.push(part(cyl(1.5, 1.8, h + 3, 5), iron, 0.6, (h + 3) / 2, 0));        // the hinge post
+      p.push(part(sph(2.1), iron, gate * 0.94, h * 0.5, 0));                   // the ring
+      return meshOf(p);
+    };
+    const grp = new THREE.Group();
+    const mk = (sgn, rot) => {
+      const px = b.x + ux * gate * sgn, pz = b.y + uz * gate * sgn;
+      const g2 = new THREE.Group();
+      g2.add(leaf());
+      g2.position.set(px - b.x, groundH(px, pz) - base - 2, pz - b.y);
+      g2.rotation.y = rot;
+      grp.add(g2);
+      return g2;
+    };
+    return { grp, la: mk(-1, ang), lb: mk(1, ang + Math.PI), ang, x: b.x, y: b.y };
+  }
+  /* THE SWING ITSELF, once a frame for every gateway on the board. The test is deliberately
+   * cheap and deliberately renderer-side: the sim has no opinion about a door. Any man of the
+   * run's OWN heir inside `GATE.near` of the gateway opens it; nobody for `GATE.grace` shuts it
+   * again, so a column filing through does not make the doors flutter. A rival standing in the
+   * gap is not his own heir and the doors stay shut in his face, which is exactly what the nav
+   * layer already tells him. */
+  function updateGates(view, dt) {
+    const live = [];
+    for (let pi = 0; pi < cityObjs.length; pi++)
+      for (const [id, w] of cityObjs[pi].works) if (w.gate) live.push({ id, w, owner: pi });
+    if (!live.length) { if (gateState.size) gateState.clear(); return; }
+    const near2 = GATE.near * GATE.near;
+    for (const L of live) {
+      const gt = L.w.gate;
+      let st = gateState.get(L.id);
+      if (!st) { st = { a: 0, open: false, hold: 0 }; gateState.set(L.id, st); }
+      st.x = gt.x; st.y = gt.y;
+      let seen = false;
+      for (const u of view.units) {
+        if (u.owner !== L.owner || u.in) continue;
+        const dx = u.x - gt.x, dy = u.y - gt.y;
+        if (dx * dx + dy * dy <= near2) { seen = true; break; }
+      }
+      st.hold = seen ? GATE.grace : Math.max(0, st.hold - dt);
+      st.open = seen || st.hold > 0;
+      const want = st.open ? GATE.open : 0;
+      st.a += (want - st.a) * Math.min(1, dt * GATE.speed);
+      if (Math.abs(want - st.a) < 0.004) st.a = want;
+      /* the sheltered face is re-asked every frame: `flip` is a command, and a run turned
+       * about must not keep opening its doors into the assault */
+      const sgn = gt.row ? gateSign(gt.row, gt.city) : 1;
+      gt.la.rotation.y = gt.ang + sgn * st.a;
+      gt.lb.rotation.y = gt.ang + Math.PI - sgn * st.a;
+      st.ang = gt.ang; st.sign = sgn;
+      st.la = gt.la.rotation.y; st.lb = gt.lb.rotation.y;
+    }
+    if (gateState.size > live.length) {
+      const alive = new Set(live.map((L) => L.id));
+      for (const id of [...gateState.keys()]) if (!alive.has(id)) gateState.delete(id);
+    }
+  }
+  /* test handle: the gateway as the board currently has it — how far open its leaves are
+   * swung, and whether anything is holding them. A leaf is a child of a merged group with no
+   * object of its own to interrogate from outside, so without this "the door opens for its
+   * own and not for a rival" is unprovable. */
+  /* `sign`, `la` and `lb` are the WAY it swings — a gate opens onto the sheltered face, which
+   * `{c:'flip'}` may turn about, and an angle alone cannot tell the two apart. */
+  R.debugGate = (id) => {
+    const s = gateState.get(id);
+    return s ? { angle: s.a, open: !!s.open, x: s.x, y: s.y,
+                 sign: s.sign, ang: s.ang, la: s.la, lb: s.lb } : null;
+  };
+  R.debugGates = () => [...gateState.keys()];
+
   /* A VETERAN LOOKS LIKE ONE. The hall's level rides on the man (u.tier), and it has to be
    * legible at the zoom this game is actually played at — where a soldier is a few pixels —
    * so rank is carried by SILHOUETTE and not by shading: a crest that breaks the head's
@@ -1006,6 +1138,110 @@
   }
   /* world (ground) → screen: the inverse of toWorld, same 2-arg shape in both renderers */
   R.project = (x, y) => proj(x, groundH(x, y) + 2, y);
+
+  /* ---------------- the veil's cell corners, projected ONCE a frame ----------------
+   * THE BUG THIS REPLACED, because it is not obvious from the code that was here. Every veil
+   * pass turned a cell mask into ground-hugging polygons, and a horizontal RUN of visible
+   * cells was ONE quad with four corner height samples. A run is often thirty cells — near
+   * eight hundred world units of rolling ground — so its far edge was a straight chord across
+   * terrain that is not straight. The row beyond it drew its near edge as a DIFFERENT chord,
+   * because its run began and ended at different cells, and two chords across the same curve
+   * part in the middle. A lens of unpainted ground opened between every pair of rows: the
+   * veil "lifted in steps" instead of continuously. Worse, the rim pass kept a byte-identical
+   * copy of the same loop, so it outlined every one of those bars — laying gold lines across
+   * open country and straight over the Seat.
+   * The fix is to subdivide each run's long edges at EVERY cell boundary and read the corners
+   * from one shared table, so neighbouring rows trace identical points and there is nothing
+   * left to gap. Projecting once also keeps `proj`'s per-call object out of a loop that now
+   * touches a couple of thousand corners a frame. */
+  let cgx = new Float32Array(0), cgy = new Float32Array(0), cgok = new Uint8Array(0);
+  const cgw = { x0: 0, y0: 0, x1: 0, y1: 0, nx: 0, ny: 0, cell: 0 };
+  function cornerGrid(cw, gwMax, ghMax) {
+    if (!(cw > 0) || gwMax < 1 || ghMax < 1) return null;
+    const vr = R.viewRect();
+    const x0 = Math.max(0, (vr.x0 / cw | 0) - 1), x1 = Math.min(gwMax - 1, (vr.x1 / cw | 0) + 1);
+    const y0 = Math.max(0, (vr.y0 / cw | 0) - 1), y1 = Math.min(ghMax - 1, (vr.y1 / cw | 0) + 1);
+    if (x1 < x0 || y1 < y0) return null;
+    const nx = x1 - x0 + 2, ny = y1 - y0 + 2;   // one more corner than cell, each way
+    const n = nx * ny;
+    if (cgx.length < n) { cgx = new Float32Array(n); cgy = new Float32Array(n); cgok = new Uint8Array(n); }
+    for (let j = 0; j < ny; j++) {
+      const wy = (y0 + j) * cw;
+      for (let i = 0; i < nx; i++) {
+        const wx = (x0 + i) * cw, k = j * nx + i;
+        pv.set(wx, groundH(wx, wy) + 1, wy).project(cam);
+        cgx[k] = (pv.x * 0.5 + 0.5) * W;
+        cgy[k] = (-pv.y * 0.5 + 0.5) * H;
+        cgok[k] = (pv.z < 1 && pv.z > -1) ? 1 : 0;
+      }
+    }
+    cgw.x0 = x0; cgw.y0 = y0; cgw.x1 = x1; cgw.y1 = y1; cgw.nx = nx; cgw.ny = ny; cgw.cell = cw;
+    return cgw;
+  }
+  /* one subpath per run of cells above `thr`, both long edges walked cell by cell. Caller sets
+   * the fill and calls fill() — ONE path and ONE fill for the whole mask, so where two rows
+   * meet the shared edge is interior and composes once, not twice. */
+  function maskPath(ctx, cg, gw, gh, bits, thr) {
+    const nx = cg.nx, bx0 = cg.x0;
+    ctx.beginPath();
+    const gy1 = Math.min(cg.y1, gh - 1), gx1 = Math.min(cg.x1, gw - 1);
+    for (let gy = cg.y0; gy <= gy1; gy++) {
+      const jn = (gy - cg.y0) * nx, jf = jn + nx;   // near row of corners, far row
+      let run = -1;
+      for (let gx = cg.x0; gx <= gx1 + 1; gx++) {
+        const on = gx <= gx1 && bits[gy * gw + gx] > thr;
+        if (on && run < 0) run = gx;
+        else if (!on && run >= 0) {
+          let ok = true;
+          for (let x = run; x <= gx && ok; x++) {
+            const i = x - bx0;
+            if (!cgok[jn + i] || !cgok[jf + i]) ok = false;
+          }
+          if (ok) {
+            let k = jn + (run - bx0);
+            ctx.moveTo(cgx[k], cgy[k]);
+            for (let x = run + 1; x <= gx; x++) { k = jn + (x - bx0); ctx.lineTo(cgx[k], cgy[k]); }
+            for (let x = gx; x >= run; x--) { k = jf + (x - bx0); ctx.lineTo(cgx[k], cgy[k]); }
+            ctx.closePath();
+          }
+          run = -1;
+        }
+      }
+    }
+  }
+  R.debugVeilPath = maskPath;
+
+  /* ---------------- the veil lifts over TIME, not in jumps ----------------
+   * Sight is recomputed five times a second on a 26-unit grid, so a cell goes from unseen to
+   * seen in one step and the country ahead of a marching column opens in visible lurches. The
+   * mask itself must stay a hard 0/1 — the AI, the snapshot and every fog rule read it — so
+   * the easing lives HERE, in the drawing: a per-cell weight chasing the mask with a short
+   * time constant. It is kept in WORLD space, on the mask's own grid, because the obvious
+   * cheap version (blend last frame's veil buffer with this one) is in SCREEN space and smears
+   * into a comet the moment the camera pans.
+   * It is drawn as a few alpha BANDS rather than a fill per cell: band i is every cell at
+   * least i/BANDS of the way in, and the incremental alphas compose source-over to exactly
+   * that fraction of the layer's strength. Under the upscale's blur, four bands read as
+   * continuous — the edge advances as a soft front instead of a rank of cells. */
+  const VEIL_BANDS = 4;
+  const veilT = {};
+  function easeVeil(key, bits, n, dt) {
+    let a = veilT[key];
+    if (!a || a.length !== n) { a = veilT[key] = Float32Array.from(bits); return a; }
+    const k = 1 - Math.exp(-Math.max(0, dt) / C.FOG.ease);
+    for (let i = 0; i < n; i++) a[i] += (bits[i] - a[i]) * k;
+    return a;
+  }
+  /* cumulative source-over to alpha*i/BANDS after the i'th band: inc = step / (1 - reached) */
+  function bandFill(ctx, cg, gw, gh, a, alpha) {
+    for (let i = 0; i < VEIL_BANDS; i++) {
+      const lo = i / VEIL_BANDS, inc = (alpha / VEIL_BANDS) / (1 - alpha * lo);
+      ctx.fillStyle = 'rgba(255,255,255,' + Math.max(0, Math.min(1, inc)) + ')';
+      maskPath(ctx, cg, gw, gh, a, lo);
+      ctx.fill();
+    }
+  }
+  R.debugVeilEase = (k) => veilT[k] || null;
   /* what a work is drawn as, and how it is drawn — the suite's way of asking whether two works
    * look the same without reaching into the scene graph */
   R.modelKey = modelKey;
@@ -1055,9 +1291,16 @@
       worldG.remove(c2);
     }
     siteObjs.clear(); unitIM = {}; unitFace.clear(); coFlags.clear();
+    /* and the veil forgets what it was easing towards: a new board's first frame must open on
+     * THIS match's fog, not fade out of the last one's */
+    for (const k in veilT) delete veilT[k];
     /* the halo hangs in worldG, which was just emptied — forget the handle or the next frame
      * writes instances into a mesh that is no longer in the scene */
     haloIM = null; haloCo = null;
+    /* the darts and the chains hang in worldG too, and it was just emptied — their geometry is
+     * disposed with everything else, so the handles must go with it or the next frame writes
+     * instances into a mesh that is no longer in the scene */
+    arrowIM = null; hexIM = null; arrows.length = 0; gateState.clear();
     hurtMem.clear(); hpMem.clear(); flash.clear(); barRec.clear();
     writG = null; writKey = '';
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
@@ -1251,6 +1494,129 @@
     fx.push({ k: 'bolt', obj: m, ttl, max: ttl, x: x1, z: z1 });
   }
 
+  /* ---------------- ARROWS ARE THINGS IN THE AIR ----------------
+   * A shot was a straight line drawn between two points for a fifth of a second, which is what
+   * a laser looks like, and with a hundred archers on a curtain the board strobed. An arrow
+   * LEAVES the bow, arcs, and ARRIVES — and that flight is the whole reason a volley reads as a
+   * volley and not as a flicker. The sim only says the shot happened, on the tick it happened;
+   * everything after that is the renderer's, so it costs the sim nothing and rides no wire.
+   *
+   * ONE geometry and ONE instanced mesh for every dart on the board. Dozens are in the air at
+   * once, this runs on phones, and a Line per shot was an allocation, a BufferGeometry, a
+   * material and a draw call EACH. The pool grows in doublings and never shrinks. */
+  let arrowIM = null;
+  const arrows = [];
+  const ARROW = { speed: 620, min: 0.13, max: 0.7, arc: 0.17, room0: 64 };
+  /* the dart itself, built pointing along +Z so `Object3D.lookAt` can aim it down its own
+   * velocity — for anything that is not a camera, lookAt turns local +Z at the target */
+  function arrowGeo() {
+    const shaft = colorize(cyl(0.7, 0.7, 19, 4).toNonIndexed().rotateX(Math.PI / 2), 0xe8dcb8);
+    const head = colorize(cone(2.1, 6, 4).toNonIndexed().rotateX(Math.PI / 2).translate(0, 0, 12), 0xfff4e0);
+    const fl1 = colorize(box(0.5, 4.4, 4.6).toNonIndexed().translate(0, 0, -8), 0xe6dcf0);
+    const fl2 = colorize(box(4.6, 0.5, 4.6).toNonIndexed().translate(0, 0, -8), 0xe6dcf0);
+    return merge([shaft, head, fl1, fl2]);
+  }
+  function arrowFx(x1, z1, x2, z2, color) {
+    const d = Math.hypot(x2 - x1, z2 - z1);
+    if (d < 1) return;                       // nowhere to fly; a degenerate lookAt has no answer
+    arrows.push({ x1, z1, x2, z2, t: 0,
+                  dur: Math.max(ARROW.min, Math.min(ARROW.max, d / ARROW.speed)),
+                  y1: groundH(x1, z1) + 16, y2: groundH(x2, z2) + 11,
+                  rise: Math.min(52, d * ARROW.arc), color });
+  }
+  /* the parabola, sampled twice: where the dart is, and where it will be a moment later, which
+   * is the direction it points. Cheaper and shorter than differentiating the arc by hand, and
+   * exact enough at a scale where the dart is a dozen units long. */
+  const arcAt = (a, k) => ({ x: a.x1 + (a.x2 - a.x1) * k, z: a.z1 + (a.z2 - a.z1) * k,
+                             y: a.y1 + (a.y2 - a.y1) * k + a.rise * 4 * k * (1 - k) });
+  function updateArrows(dt) {
+    for (let i = arrows.length - 1; i >= 0; i--) {
+      arrows[i].t += dt;
+      if (arrows[i].t >= arrows[i].dur) arrows.splice(i, 1);   // retired ON ARRIVAL
+    }
+    if (!arrows.length) { if (arrowIM) arrowIM.count = 0; return; }
+    if (arrowIM && arrows.length > arrowIM._room) {
+      arrowIM.removeFromParent(); arrowIM.geometry.dispose(); arrowIM.dispose(); arrowIM = null;
+    }
+    if (!arrowIM) {
+      let room = ARROW.room0;
+      while (room < arrows.length) room *= 2;
+      /* UNLIT, like the tracer it replaces. A dart is a few pixels of gold against a night
+       * board and a Lambert one loses half its brightness to the sun's angle — which would
+       * make the new volley HARDER to read than the line it is meant to improve on. */
+      arrowIM = new THREE.InstancedMesh(arrowGeo(), MATB, room);
+      arrowIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      arrowIM.frustumCulled = false;         // rewritten every frame — see makeIM
+      arrowIM._room = room;
+      worldG.add(arrowIM);
+    }
+    for (let i = 0; i < arrows.length; i++) {
+      const a = arrows[i], k = a.t / a.dur;
+      const p = arcAt(a, k), q = arcAt(a, Math.min(1, k + 0.06));
+      dum.position.set(p.x, p.y, p.z);
+      dum.scale.set(1, 1, 1);
+      dum.lookAt(q.x, q.y, q.z);
+      dum.updateMatrix();
+      arrowIM.setMatrixAt(i, dum.matrix);
+      colTmp.setHex(a.color);
+      arrowIM.setColorAt(i, colTmp);
+    }
+    arrowIM.count = arrows.length;
+    arrowIM.instanceMatrix.needsUpdate = true;
+    if (arrowIM.instanceColor) arrowIM.instanceColor.needsUpdate = true;
+  }
+  /* test handle: how many darts are in the air. They live in ONE instanced mesh with no object
+   * per shot, so a suite has nothing else to count. */
+  R.debugArrows = () => arrows.length;
+
+  /* ---------------- THE CHAINS ----------------
+   * FEATURE-DETECTED, and silent until the sim carries it. A man the Binding has caught wears
+   * `hexed` — a world-time expiry — and while it holds he drags a ring of Shadow at his feet,
+   * in the Trump's violet, which is the Binding's own colour on the Spire. If the field is not
+   * on the wire yet, nothing is drawn and nothing complains. One instanced mesh, like the
+   * armed company's halo, so a field full of chained men is still one draw call. */
+  let hexIM = null;
+  const hexGeo = () => new THREE.RingGeometry(6.5, 10.5, 14).rotateX(-Math.PI / 2);
+  const hexedNow = (u, now) => u.hexed != null && u.hexed !== false &&
+    !(typeof u.hexed === 'number' && now != null && u.hexed <= now);
+  function updateHex(view) {
+    const now = view.t;
+    const on = [];
+    for (const u of view.units) if (!u.in && hexedNow(u, now)) on.push(u);
+    if (!on.length) { if (hexIM) hexIM.count = 0; return; }
+    if (hexIM && on.length > hexIM._room) {
+      hexIM.removeFromParent(); hexIM.geometry.dispose(); hexIM.material.dispose();
+      hexIM.dispose(); hexIM = null;
+    }
+    if (!hexIM) {
+      let room = 64;
+      while (room < on.length) room *= 2;
+      hexIM = new THREE.InstancedMesh(hexGeo(),
+        new THREE.MeshBasicMaterial({ color: 0xc48eff, transparent: true, opacity: 0.55, depthWrite: false }),
+        room);
+      hexIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      hexIM.frustumCulled = false;
+      hexIM.renderOrder = 1;
+      hexIM._room = room;
+      worldG.add(hexIM);
+    }
+    /* it turns the other way from the armed company's halo and it does not breathe: a hold is
+     * a thing being done TO him, not a standard he answers to */
+    hexIM.material.opacity = 0.4 + 0.2 * Math.sin(T * 6);
+    for (let i = 0; i < on.length; i++) {
+      const u = on[i];
+      dum.position.set(u.x, groundH(u.x, u.y) + 1.2, u.y);
+      dum.rotation.set(0, -T * 1.4, 0);
+      dum.scale.set(1, 1, 1);
+      dum.updateMatrix();
+      hexIM.setMatrixAt(i, dum.matrix);
+    }
+    hexIM.count = on.length;
+    hexIM.instanceMatrix.needsUpdate = true;
+  }
+  /* test handle: how many men are wearing chains this frame */
+  R.debugHex = () => (hexIM ? hexIM.count : 0);
+
   R.addEvents = function (events, view, viewer) {
     if (!R.ready) return;
     for (const ev of events) {
@@ -1261,8 +1627,22 @@
                ev.id ? 16 : 74);
         if (ev.splash > 0) ringFx(ev.to.x, ev.to.y, 0xffb070, 0.32, ev.splash * 0.9);   // the burst
       } else if (ev.e === 'wshot') boltFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
-      else if (ev.e === 'bolt') boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, tintOf(ev.from.owner, viewer), 0.3);
-      else if (ev.e === 'die') ringFx(ev.x, ev.y, tintOf(ev.owner, viewer), 0.5, 20);
+      else if (ev.e === 'bolt') {
+        /* WHO SHOT DECIDES WHAT IT LOOKS LIKE — and this is FEATURE-DETECTED, because the
+         * shooter's kind is a field the sim only recently started putting on the event. An
+         * archer's shot becomes a dart with a flight of its own; a sorcerer's, a warden's and
+         * a binder's KEEP the arcane tracer they have always had, and so does an event that
+         * carries no kind at all. */
+        const tint = tintOf(ev.from.owner, viewer);
+        if (ev.kind === 'archer') arrowFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, tint);
+        else boltFx(ev.from.x, ev.from.y, ev.to.x, ev.to.y, tint, 0.3);
+      } else if (ev.e === 'hex') {
+        /* the chains, thrown. Feature-detected exactly like the field they leave behind: an
+         * event shape the sim may not emit yet, drawn only when it arrives. */
+        const to = ev.to || { x: ev.x, y: ev.y };
+        if (ev.to) boltFx(ev.x, ev.y, to.x, to.y, 0xc48eff, 0.34);
+        ringFx(to.x, to.y, 0xc48eff, 0.5, 16);
+      } else if (ev.e === 'die') ringFx(ev.x, ev.y, tintOf(ev.owner, viewer), 0.5, 20);
       else if (ev.e === 'rift') ringFx(ev.x, ev.y, 0x5ad584, 3.0, 46, 0x7dff9e);
       else if (ev.e === 'siege') ringFx(ev.x, ev.y, 0xffb090, 0.35, 18, ev.pi === viewer ? 0xff5a4a : null);
       /* build/up carry the work's own position now — there is no slot ring to look it up in */
@@ -1296,9 +1676,12 @@
     updateUnits(view, viewer, dt);
     updateSites(view, viewer);
     updateCities(view, viewer);
+    updateGates(view, dt);        // ...after the works: a gate is hung on a run that exists
     updateWrit(view, viewer);
     updateBanner(view, viewer);
     updateStorms(view, viewer);
+    updateArrows(dt);
+    updateHex(view);
     updateFxs(dt);
     for (const so of siteObjs.values())
       for (const ch of so.holder.children) if (ch._water) ch.material.emissiveIntensity = 0.7 + 0.4 * Math.sin(T * 2 + so.holder.position.z);
@@ -1582,6 +1965,7 @@
           if (w) { w.grp.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); w.grp.removeFromParent(); }
           const grp = new THREE.Group();
           const isW = b.x2 != null;
+          let w2gate = null;
           /* a tower BUILT INTO a curtain stands on the parapet, not on the grass beside it —
            * it is the one work whose height is not the ground's */
           const onWall = b.onWall ? 27 : 0;
@@ -1593,6 +1977,14 @@
                 new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
           pad.position.y = -0.4;
           grp.add(pad, isW ? wallModel(b, hurt) : buildingModel(mkey));
+          /* THE GATE HANGS ON THE FINISHED RUN. A breached run is rubble and has no gateway to
+           * shut; a rising one is a shell, and the doors arrive with the stone. `gated` is the
+           * sim's own answer to whether this run is long enough to spare a gateway, and it
+           * rides the wire, so a guest hangs the same doors. */
+          if (isW && !ghost && b.gated && !b.breach && !(b.raise > 0)) {
+            w2gate = gateLeaves(b);
+            grp.add(w2gate.grp);
+          }
           /* a work about to go leans. It is a small angle on purpose — enough that a ruinous
            * hall reads as one out of the corner of the eye, not so much that the board looks
            * broken — and a curtain is spared it, since a whole run tipping together would
@@ -1629,11 +2021,15 @@
             if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), b.raise > 0 ? 0.5 : 0.3);
           });
           worldG.add(grp);
-          w = { grp, key, pad, onWall };
+          w = { grp, key, pad, onWall, gate: w2gate };
           g.works.set(id, w);
         }
         w.grp.position.set(b.x, groundH(b.x, b.y) + 1.5 + (w.onWall || 0), b.y);
         w.grp.scale.y = b.raise > 0 ? 0.3 + 0.7 * (1 - b.raise / (b.raiseFor || 1)) : 1;
+        /* the door reads its run's CURRENT row every frame — `flip` is a command and a guest's
+         * rows are rebuilt out of each snapshot, so a reference taken at build time would be a
+         * reference to the wall as it stood one order ago */
+        if (w.gate) { w.gate.row = b; w.gate.city = { x: g.cx, y: g.cy }; }
         w.seen = true;
         if (g.own) w.pad.material.color.setHex(R.selected === id ? 0x8a6c3c : 0x46382a);
       }
@@ -1900,6 +2296,16 @@
     const dbg = R.debugFog || null;
     const sm = (dbg && dbg.mem === false) ? null : view.seen;
     const cut = (dbg && dbg.discs === false) ? [] : discs;
+    /* the veil, the live sight and the rim all walk the same cell grid — corners once */
+    const cgSrc = view.visMask || ((sm && sm.g) ? sm : null);
+    const cg = cgSrc ? cornerGrid(cgSrc.cell,
+      Math.max((sm && sm.gw) || 0, (view.visMask && view.visMask.gw) || 0),
+      Math.max((sm && sm.gh) || 0, (view.visMask && view.visMask.gh) || 0)) : null;
+    /* eased ONCE a frame each — the rim reads the same weights the veil does, and easing them
+     * twice would run the clock at double speed for whichever pass asked second */
+    const liveA = (cg && view.visMask)
+      ? easeVeil('live', view.visMask.g, view.visMask.gw * view.visMask.gh, lastDt) : null;
+    const memA = (cg && sm && sm.g) ? easeVeil('mem', sm.g, sm.gw * sm.gh, lastDt) : null;
     if (sm || cut.length) {
       /* HOW COARSE THE MASK IS DRAWN is how soft its edge comes out, and that is the whole
        * softening now — see the note where it is composited. A cell of remembered ground should
@@ -1915,38 +2321,17 @@
          * occlusion-aware live mask (`view.visMask`) — CURRENT sight at full strength. A run
          * of cells is one quad; under perspective its far edge is narrower than its near
          * one, so it is projected as a quad, not a rectangle. */
-        const quads = (mask, alpha) => {
-          mc.fillStyle = 'rgba(255,255,255,' + alpha + ')';
-          const cw = mask.cell, vr = R.viewRect();
-          const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(mask.gw - 1, (vr.x1 / cw | 0) + 1);
-          const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(mask.gh - 1, (vr.y1 / cw | 0) + 1);
-          mc.beginPath();
-          for (let gy = gy0; gy <= gy1; gy++) {
-            let run = -1;
-            for (let gx = gx0; gx <= gx1 + 1; gx++) {
-              const on = gx <= gx1 && mask.g[gy * mask.gw + gx];
-              if (on && run < 0) run = gx;
-              else if (!on && run >= 0) {
-                const wx0 = run * cw, wx1 = gx * cw, wy0 = gy * cw, wy1 = (gy + 1) * cw;
-                const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
-                const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
-                if (a1.ok && b1.ok && c1.ok && d1.ok) {
-                  mc.moveTo(a1.x, a1.y); mc.lineTo(b1.x, b1.y); mc.lineTo(c1.x, c1.y); mc.lineTo(d1.x, d1.y); mc.closePath();
-                }
-                run = -1;
-              }
-            }
-          }
-          mc.fill();
+        const quads = (a, mask, alpha) => {
+          if (cg && a) bandFill(mc, cg, mask.gw, mask.gh, a, alpha);
         };
-        if (sm) quads(sm, 1 - C.FOG.keep);
+        if (sm) quads(memA, sm, 1 - C.FOG.keep);
         /* CURRENT SIGHT FROM THE MASK, WHEN THE SIM SERVES ONE. Occlusion makes a sight
          * region an arbitrary shape — a ridge's shadow is not an ellipse — so the ellipse
          * holes below cannot draw it. The mask can, through the exact pipeline the memory
          * already rides: same buffer, full strength, one composite. Ellipses remain as the
          * fallback so a view without a mask (an old guest, a mid-migration build) keeps its
          * fog rather than losing the veil's holes entirely. */
-        if (view.visMask && !(dbg && dbg.discs === false)) quads(view.visMask, 1);
+        if (view.visMask && !(dbg && dbg.discs === false)) quads(liveA, view.visMask, 1);
         /* the sight discs cut the SAME buffer at full strength — over the memory's partial
          * alpha, source-over composes to exactly what two destination-out passes left before
          * ((1-a)(1-m)), and it buys two things: where discs meet, the pointed cusp of the union
@@ -2004,35 +2389,51 @@
      * and what survives is the boundary — then tint it through source-in. Same warm line,
      * no geometry, and it hugs a ridge's shadow exactly where the ellipse union cannot. */
     if (rc && view.visMask && !(dbg && dbg.rim === false)) {
-      const vc = visCtx(1);   // full-size: the rim is one pixel wide and must stay one pixel
-      if (vc) {
+      /* THE RIM IS DRAWN COARSE FOR THE SAME REASON THE VEIL IS. It used to be stamped at full
+       * size from the raw mask — "one pixel wide and must stay one pixel" — which was right
+       * while the boundary was a union of ELLIPSES, smooth at any resolution you traced it at.
+       * Occlusion made sight an arbitrary CELL shape, and the same code turned into a pixel-art
+       * cutout: the fill was softened by its downscale and the rim was not, so the one the eye
+       * follows was the hard one. Now both come off the same coarse draw and the same bilinear
+       * upscale, so the rim cannot disagree with the edge it is supposed to be tracing. */
+      /* HOW MUCH SMOOTHING THE STAIRCASE ACTUALLY NEEDS. A step is one cell wide on screen —
+       * `cellPx`, often thirty CSS pixels — and the upscale smears by about `shrink` pixels, so
+       * the old cap of 16 could only ever soften half a step and the edge stayed a flight of
+       * stairs. The rest comes from a real blur taken on the SMALL buffer, where it is nearly
+       * free: a blur of p there is worth p*shrink/dpr on screen, so two pixels buys most of a
+       * cell. (This is what the veil's own note warns against doing at FULL size — a
+       * fifty-pixel blur across the whole overlay every frame — and the reason it is fine here
+       * is the buffer is a shrink-th of the screen.) Feature-detected: a canvas without
+       * `filter` keeps the upscale alone, which is exactly today's look, not a broken one. */
+      const rimCell = C.FOG.cell * scaleOf();
+      const rimShrink = Math.max(1, Math.min(16, rimCell / 2));
+      const vc = visCtx(rimShrink);
+      if (vc && cg && liveA) {
         vc.clearRect(0, 0, W, H);
-        vc.fillStyle = '#fff';
-        const mask = view.visMask, cw2 = mask.cell, vr2 = R.viewRect();
-        const hx0 = Math.max(0, (vr2.x0 / cw2 | 0) - 1), hx1 = Math.min(mask.gw - 1, (vr2.x1 / cw2 | 0) + 1);
-        const hy0 = Math.max(0, (vr2.y0 / cw2 | 0) - 1), hy1 = Math.min(mask.gh - 1, (vr2.y1 / cw2 | 0) + 1);
-        vc.beginPath();
-        for (let gy = hy0; gy <= hy1; gy++) {
-          let run = -1;
-          for (let gx = hx0; gx <= hx1 + 1; gx++) {
-            const on = gx <= hx1 && mask.g[gy * mask.gw + gx];
-            if (on && run < 0) run = gx;
-            else if (!on && run >= 0) {
-              const wx0 = run * cw2, wx1 = gx * cw2, wy0 = gy * cw2, wy1 = (gy + 1) * cw2;
-              const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
-              const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
-              if (a1.ok && b1.ok && c1.ok && d1.ok) {
-                vc.moveTo(a1.x, a1.y); vc.lineTo(b1.x, b1.y); vc.lineTo(c1.x, c1.y); vc.lineTo(d1.x, d1.y); vc.closePath();
-              }
-              run = -1;
-            }
+        const canFilter = typeof vc.filter === 'string';
+        if (canFilter) vc.filter = 'blur(' + Math.max(1, Math.min(4, Math.round(Math.min(window.devicePixelRatio || 1, 2) * 1.2))) + 'px)';
+        bandFill(vc, cg, view.visMask.gw, view.visMask.gh, liveA, 1);
+        if (canFilter) vc.filter = 'none';
+        /* the same two-stage hop the veil takes, and for the same reason: one bilinear stage
+         * is only smooth to about 4x, past which the ramps between texels facet */
+        let rsrc = visStore.cv;
+        if (rimShrink >= 4) {
+          const rmid = midCtx(Math.sqrt(rimShrink));
+          if (rmid) {
+            rmid.clearRect(0, 0, W, H);
+            rmid.imageSmoothingEnabled = true;
+            rmid.drawImage(rsrc, 0, 0, W, H);
+            rsrc = midStore.cv;
           }
         }
-        vc.fill();
         rc.clearRect(0, 0, W, H);
-        for (const [ox, oy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) rc.drawImage(visStore.cv, ox, oy, W, H);
+        rc.imageSmoothingEnabled = true;
+        /* the ring steps out with the smoothing: on a soft ramp a two-pixel offset barely
+         * differs from the un-offset stamp, and the warm line all but vanishes */
+        const ro = Math.max(2, Math.min(9, Math.round(rimCell * 0.16)));
+        for (const [ox, oy] of [[ro, 0], [-ro, 0], [0, ro], [0, -ro]]) rc.drawImage(rsrc, ox, oy, W, H);
         rc.globalCompositeOperation = 'destination-out';
-        rc.drawImage(visStore.cv, 0, 0, W, H);
+        rc.drawImage(rsrc, 0, 0, W, H);
         rc.globalCompositeOperation = 'source-in';
         rc.fillStyle = 'rgba(255,233,168,0.34)';
         rc.fillRect(0, 0, W, H);
@@ -2246,6 +2647,141 @@
       }
     }
   }
+
+  /* ---------------- THE MUSTER ROLL'S FIGURES ----------------
+   * A codex of men described in numbers is a codex you have to imagine. Each row of the Roll
+   * gets the man himself, turning — and it is the SAME model the board draws, off `unitGeo`,
+   * so a kind whose geometry moves moves here too and the Roll can never show a soldier the
+   * game does not have.
+   *
+   * ONE WEBGL CONTEXT FOR ALL OF THEM. A canvas per row is the obvious way and it is the wrong
+   * one: browsers keep only eight to sixteen live contexts and the Roll lists eighteen men, so
+   * the bottom of the list would come up blank — on a phone, which is where it is read. The
+   * three.js "many elements, one renderer" pattern instead: one canvas laid over the screen and
+   * one SCISSOR RECTANGLE per row. The alternative — draw each figure offscreen and blit it
+   * into a per-row 2D canvas — is a GPU→CPU→GPU round trip per row per frame, which is exactly
+   * what a phone cannot pay for.
+   *
+   * AND IT RUNS ONLY WHILE THE ROLL IS UP. `rollStart` arms the loop, `rollStop` cancels it,
+   * and a closed Roll costs nothing at all — no frame, no context work, and the framebuffer
+   * shrunk to a pixel so a menu is not holding a screen's worth of it.
+   *
+   * If the glass refuses — no THREE, no context, a dead canvas — `rollStart` returns false and
+   * says nothing; ui.js leaves the icon glyph in the card, which is what it was showing before. */
+  let rollR = null, rollScene = null, rollCam = null, rollCanvas = null;
+  let rollRAF = 0, rollRows = [], rollFigs = new Map(), rollMat = null;
+  let rollW = 0, rollH = 0, rollFrames = 0, rollDrawn = 0;
+  /* the figure a row shows: the in-game model at tier 1, in the gold that is always YOURS.
+   * `unitGeo` carries its own vertex colours (the metal, the leather, the crest) and Lambert
+   * multiplies the material colour through them, so one shared material tints every man. */
+  R.rollFigure = function (kind) {
+    if (typeof THREE === 'undefined' || !C.UNITS[kind]) return null;
+    if (!rollMat) rollMat = new THREE.MeshLambertMaterial({ vertexColors: true, color: C.SEAT_TINT[0] });
+    const geo = unitGeo(kind, 1);
+    geo.computeBoundingBox();
+    const bb = geo.boundingBox;
+    const m = new THREE.Mesh(geo, rollMat);
+    /* frame him off his own bounds rather than off a number chosen for the soldier: a Ram is
+     * wide and low and a Champion is tall, and one distance flatters neither */
+    m.userData.mid = (bb.min.y + bb.max.y) / 2;
+    m.userData.rad = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z) / 2 || 12;
+    return m;
+  };
+  R.rollStart = function (canvas, rows) {
+    R.rollStop();
+    if (typeof THREE === 'undefined' || !canvas || typeof requestAnimationFrame !== 'function') return false;
+    if (rollR && rollCanvas !== canvas) { try { rollR.dispose(); } catch (e) { /* going anyway */ } rollR = null; }
+    if (!rollR) {
+      try {
+        rollR = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      } catch (e) { rollR = null; return false; }
+      rollCanvas = canvas;
+      rollR.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      rollR.outputColorSpace = THREE.SRGBColorSpace;
+      rollR.autoClear = false;          // one clear a frame, ours, so scrolled-off rows leave nothing
+      rollW = rollH = 0;
+      if (!rollScene) {
+        rollScene = new THREE.Scene();
+        rollScene.add(new THREE.HemisphereLight(0xb8b0e0, 0x4a3a28, 2.4));
+        const key = new THREE.DirectionalLight(0xffe8c0, 2.0);
+        key.position.set(-50, 70, 90);
+        rollScene.add(key);
+        rollCam = new THREE.PerspectiveCamera(30, 1, 1, 500);
+      }
+    }
+    rollRows = [];
+    for (const r of rows || []) {
+      if (!r || !r.el || !C.UNITS[r.kind]) continue;
+      let fig = rollFigs.get(r.kind);
+      if (!fig) {
+        fig = R.rollFigure(r.kind);
+        if (!fig) continue;
+        fig.visible = false;
+        rollScene.add(fig);
+        rollFigs.set(r.kind, fig);
+      }
+      /* one figure per KIND, however many rows show it — a hall's own recruit is listed twice
+       * and a second copy of his geometry would buy nothing. Each row turns him from its own
+       * phase so the column does not read as one man reflected down the page. */
+      rollRows.push({ el: r.el, fig, phase: rollRows.length * 0.7 });
+    }
+    if (!rollRows.length) return false;
+    rollFrames = 0;
+    const step = () => { rollRAF = requestAnimationFrame(step); rollTick(); };
+    rollRAF = requestAnimationFrame(step);
+    return true;
+  };
+  R.rollStop = function () {
+    if (rollRAF) cancelAnimationFrame(rollRAF);
+    rollRAF = 0;
+    rollRows = [];
+    rollDrawn = 0;
+    /* a screen-sized framebuffer is several megabytes and the Roll is shut — give it back and
+     * let the next open size it again */
+    if (rollR && rollW) { try { rollR.setSize(1, 1, false); } catch (e) { /* nothing to give back */ } rollW = rollH = 0; }
+  };
+  function rollTick() {
+    rollFrames++;
+    const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+    const w = window.innerWidth, h = window.innerHeight;
+    if (rollW !== w || rollH !== h) { rollW = w; rollH = h; rollR.setSize(w, h, false); }
+    rollR.setScissorTest(false);
+    rollR.clear(true, true, false);
+    rollR.setScissorTest(true);
+    rollDrawn = 0;
+    for (const row of rollRows) {
+      /* the rows MOVE — the Roll is a long scroll — so every rect is asked of the row itself
+       * each frame rather than cached at open. Eighteen clean reads of a static layout is
+       * nothing beside a figure drawn where its row used to be. */
+      const r = row.el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) continue;
+      if (r.bottom <= 0 || r.top >= h || r.right <= 0 || r.left >= w) continue;   // scrolled away
+      const x = Math.round(r.left), yb = Math.round(h - r.bottom);
+      const rw = Math.round(r.width), rh = Math.round(r.height);
+      rollR.setViewport(x, yb, rw, rh);
+      rollR.setScissor(x, yb, rw, rh);
+      const f = row.fig;
+      f.visible = true;
+      f.rotation.y = t * 0.6 + row.phase;
+      rollCam.aspect = rw / rh;
+      /* a little above him and looking slightly down, which is the angle the board is played
+       * at — and it is the only way a Ram or a Bombard reads as a machine rather than a plank */
+      rollCam.position.set(0, f.userData.mid + f.userData.rad * 0.5,
+                           f.userData.rad / Math.tan(15 * Math.PI / 180) * 1.06);
+      rollCam.lookAt(0, f.userData.mid, 0);
+      rollCam.updateProjectionMatrix();
+      rollR.render(rollScene, rollCam);
+      f.visible = false;
+      rollDrawn++;
+    }
+    rollR.setScissorTest(false);
+  }
+  /* test handles: the loop's own frame counter — the one way to prove a closed Roll has really
+   * stopped rather than merely gone invisible, which is what a leaked rAF looks like — and how
+   * many figures the last frame actually put on the glass. */
+  R.debugRollLoop = () => rollFrames;
+  R.debugRollDraws = () => rollDrawn;
+  R.debugRollRunning = () => !!rollRAF;
 
   global.Render3D = R;
 })(typeof window !== 'undefined' ? window : globalThis);

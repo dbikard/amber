@@ -244,11 +244,112 @@ async function match(browser, base, renderer) {
     ok('each one called what the table calls it', roll.named && roll.manned);
     ok('and what a shooter cannot do is said in words', roll.saysStone && roll.saysWalls && roll.saysMend);
 
+    /* EVERY FIELD THE TABLE CARRIES IS SAID. The stat line used to be a hand-written list of
+     * `if (u.siege)` tests, which fails in both directions: a mechanic the sim drops keeps
+     * being advertised, and a mechanic the sim GAINS is silently absent. So the line is driven
+     * off each unit def's own keys — and this is the assertion that keeps it that way. The base
+     * numbers are already above it; everything else must appear, in prose or as itself. */
+    const fields = await pg.evaluate(() => {
+      const C = window.CONST;
+      /* read each man's OWN ROW, not the whole page: '110' is the binder's reach as well as the
+       * warden's mending radius, and a substring hunt across the codex would pass on somebody
+       * else's number and prove nothing */
+      const rowOf = {};
+      for (const row of document.querySelectorAll('#roll-body .roll-unit')) {
+        const slot = row.querySelector('[data-kind]');
+        if (slot && !rowOf[slot.dataset.kind]) rowOf[slot.dataset.kind] = row.textContent;
+      }
+      const base = new Set(['name', 'icon', 'blurb', 'hp', 'dmg', 'atk', 'range', 'speed',
+                            'aggro', 'bounty', 'size', 'cost', 'keep']);
+      const miss = [], noRow = [];
+      let checked = 0;
+      for (const k of Object.keys(C.UNITS)) {
+        const txt = rowOf[k];
+        if (txt == null) { noRow.push(k); continue; }
+        for (const f of Object.keys(C.UNITS[k])) {
+          if (base.has(f)) continue;
+          const v = C.UNITS[k][f];
+          /* a flag is prose and its wording is nobody's business here — the existing
+           * assertions above already pin what the three flags say. A NUMBER is the thing a
+           * codex must never drop: it is the field's own value and it can come from nowhere
+           * else on that row. */
+          if (typeof v !== 'number' || !v) continue;
+          checked++;
+          if (txt.indexOf(String(v)) < 0 && txt.indexOf(String(Math.round(v * 100))) < 0)
+            miss.push(k + '.' + f + '=' + v);
+        }
+      }
+      return { miss, noRow, checked };
+    });
+    ok('every man in the table has a row of his own', fields.noRow.length === 0, fields.noRow.join(','));
+    ok('and every NUMBER his entry carries reaches that row',
+       fields.miss.length === 0 && fields.checked > 0,
+       `${fields.checked} checked; missing: ${fields.miss.join(', ') || 'none'}`);
+
+    /* ---------------- the figures ----------------
+     * Each man in the round, turning. ONE WebGL context for the whole list — a canvas per row
+     * would run a phone out of live contexts halfway down it — so what is asserted is the loop
+     * (it runs, it draws, it tracks the rows as they scroll) and, hardest and most important,
+     * that it STOPS: a leaked rAF behind a hidden panel looks exactly like a feature that
+     * works. If the glass refuses, the roll keeps its glyphs and says nothing, and that path
+     * is asserted too rather than assumed. */
+    await until(pg, () => window.Render && window.Render.debugRollLoop
+                       && window.Render.debugRollLoop() > 2);
+    const figs = await pg.evaluate(() => {
+      const R = window.Render, C = window.CONST;
+      const slots = [...document.querySelectorAll('#roll-body .c-fig')];
+      return { live: document.getElementById('roll').classList.contains('figs'),
+               canvas: !!document.getElementById('roll-figs'),
+               slots: slots.length,
+               units: document.querySelectorAll('#roll-body .roll-unit').length,
+               named: slots.every((e) => !!C.UNITS[e.dataset.kind]),
+               frames: R.debugRollLoop(), drew: R.debugRollDraws(),
+               hasFigure: !!R.rollFigure && !!R.rollFigure('soldier') };
+    });
+    ok('every man in the list has a berth for his figure',
+       figs.slots === figs.units && figs.slots > 0, `${figs.slots} berths, ${figs.units} rows`);
+    ok('...each naming a man the table has', figs.named);
+    ok('the figure is the game\'s own model, not a second copy of it', figs.hasFigure);
+    if (figs.live) {
+      ok('the loop runs while the roll is open', figs.frames > 2, `${figs.frames} frames`);
+      ok('...and puts a figure on the glass', figs.drew > 0, `${figs.drew} drawn`);
+      /* THEY TRACK THE ROWS. The roll is a long scroll and the rectangles are asked for every
+       * frame; scrolling to the muster at the bottom, where the men are listed back to back,
+       * must put several of them on screen at once. */
+      const scrolled = await pg.evaluate(async () => {
+        const el = document.getElementById('roll');
+        el.scrollTop = el.scrollHeight;
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        return { top: el.scrollTop, drew: window.Render.debugRollDraws() };
+      });
+      ok('...and follow their rows down the scroll', scrolled.top > 0 && scrolled.drew > figs.drew,
+         `${scrolled.drew} drawn at the foot of the roll against ${figs.drew} at its head`);
+    } else {
+      /* the documented fallback: no context, no `figs` class, and the glyph that was always
+       * there is still there and still legible */
+      const glyphs = await pg.evaluate(() =>
+        [...document.querySelectorAll('#roll-body .c-fig')].every((e) => e.textContent.trim().length > 0));
+      ok('with no figures the roll keeps its glyphs and says nothing about it', glyphs,
+         'WebGL declined — the icon fallback stands');
+    }
+
     /* it must be dismissable BOTH ways: the button, and the phone's back gesture — which at
      * the menu is a layer nothing had armed before this screen existed */
     await pg.evaluate(() => document.getElementById('roll-close').click());
     await until(pg, () => document.getElementById('roll').classList.contains('hidden'));
     ok('CLOSE puts the menu back', await hidden('roll') && !(await hidden('menu')));
+    /* THE LOOP IS OFF, not merely out of sight. Measured as a frame counter that does not move
+     * across four real animation frames of the page — the one thing a leaked rAF cannot fake. */
+    const stopped = await pg.evaluate(async () => {
+      const R = window.Render;
+      const a = R.debugRollLoop();
+      for (let i = 0; i < 4; i++) await new Promise((res) => requestAnimationFrame(res));
+      await new Promise((res) => setTimeout(res, 200));
+      return { a, b: R.debugRollLoop(), running: R.debugRollRunning() };
+    });
+    ok('closing the roll stops its loop dead', stopped.a === stopped.b && !stopped.running,
+       `${stopped.a} -> ${stopped.b}`);
     await tapRoll();
     await until(pg, () => !document.getElementById('roll').classList.contains('hidden'));
     await pg.goBack(); await pg.waitForTimeout(300);
@@ -2009,6 +2110,202 @@ async function match(browser, base, renderer) {
       ok('...its sheet opens', onWork.sheet);
       ok('...and no standard is armed by it', !onWork.armed, String(onWork.armed));
     }
+
+    /* ---------------- a gateway that knows its own ----------------
+     * A curtain's gate is the middle of the run, WALL.gate wide, punched out of the OWNER'S nav
+     * layer alone — a rival reaching it finds it shut. On the board that was a hole in the
+     * parapet and nothing else, which is a picture of a rule the sim does not play. Two leaves
+     * hang in it now and they swing for his own men only, so what the board says about who may
+     * walk through matches what the sim will let through. Read off `Render.debugGate`, because a
+     * leaf is a child of a group merged into one mesh and there is nothing else to interrogate. */
+    suite(`${r} · a gateway wears a gate`);
+    const gate = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, C = window.CONST, g = window.Game.game;
+      window.UI.closeSheet(); g.armedFlag = null;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      g.world.players[0].essence = 99000;
+      for (const b of g.world.players[0].buildings) b.raise = 0;
+      R.setZoom(1); R.lookAt(c.x, c.y);
+      /* LONG ENOUGH TO SPARE A GATEWAY. Below WALL.gateMin the sim leaves the run solid and
+       * there is no gate to hang — a short run here would look exactly like a broken feature. */
+      const half = C.WALL.gateMin / 2 + 12;
+      let made = null;
+      for (let a2 = 0; a2 < 6.283 && !made; a2 += 0.25) {
+        for (let rr = 150; rr <= 280 && !made; rr += 25) {
+          const mx = c.x + Math.cos(a2) * rr, my = c.y + Math.sin(a2) * rr;
+          const px = -Math.sin(a2) * half, py = Math.cos(a2) * half;
+          const A = { x: mx - px, y: my - py }, B = { x: mx + px, y: my + py };
+          if (W.wallError(g.world, 0, A.x, A.y, B.x, B.y)) continue;
+          const before = g.world.players[0].buildings.length;
+          W.applyCommand(g.world, 0, { c: 'build', x: A.x, y: A.y, x2: B.x, y2: B.y, bt: 'wall' });
+          if (g.world.players[0].buildings.length > before)
+            made = g.world.players[0].buildings[g.world.players[0].buildings.length - 1];
+        }
+      }
+      if (!made) return { err: 'no legal run long enough for a gateway' };
+      /* the masons out of it: a rising run is a shell and hangs no doors */
+      made.raise = 0; made.hp = made.maxHp;
+      W.update(g.world, C.SIM_DT);
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      return { id: made.id, gated: !!made.gated, shut: R.debugGate(made.id), gates: R.debugGates().length };
+    });
+    ok('a run long enough to spare a gateway can be raised', !gate.err, gate.err || `wall ${gate.id}`);
+    if (!gate.err) {
+      ok('the sim says this run has a gateway', gate.gated);
+      ok('...and the board hangs a gate in it', !!gate.shut, JSON.stringify(gate.shut));
+      ok('...which starts shut', gate.shut && gate.shut.angle === 0 && !gate.shut.open,
+         JSON.stringify(gate.shut));
+      /* THE MEN ARE PARKED, so the answer is about the door and not about where the sim walked
+       * them between two frames. The halt is world state and `update` returns early on it, but
+       * game.js keeps rendering through it — which is exactly the rig this needs.
+       *
+       * THE OWNER GOES FIRST, deliberately. "A rival does not open it" is a measurement of
+       * NOTHING HAPPENING, and nothing happening is what a dead rig looks like — so the door is
+       * made to swing wide for its own man first, and only then is the rival walked into the
+       * same doorway to watch it shut in his face. Waited on the leaf's own angle rather than a
+       * fixed sleep: a headless page's frame clock is nobody's business here. */
+      await pg.evaluate(([id]) => {
+        const g = window.Game.game, R = window.Render;
+        window.__gate = { id, keep: g.world.units.slice(), at: R.debugGate(id) };
+        g.world.paused = { by: 0, at: g.world.t };
+        window.__gateMan = (owner) => {
+          const st = window.__gate.at;
+          g.world.units.length = 0;
+          if (owner < 0) return;
+          g.world.units.push({ id: g.world.nextId++, owner, kind: 'soldier', x: st.x, y: st.y,
+                               ox: 0, oy: 0, hp: 70, maxHp: 70, dmg: 9, cd: 0, goal: null, co: 0,
+                               from: -1, tier: 1 });
+        };
+      }, [gate.id]);
+      const leaf = () => pg.evaluate(() => window.Render.debugGate(window.__gate.id).angle);
+      await pg.evaluate(() => window.__gateMan(0));
+      await until(pg, () => window.Render.debugGate(window.__gate.id).angle > 1, 8000);
+      const own = await leaf();
+      ok('its owner\'s man swings it wide', own > 1, `leaf at ${own.toFixed(2)}`);
+      /* the same doorway, the same frame loop, a different heir standing in it */
+      await pg.evaluate(() => window.__gateMan(1));
+      await until(pg, () => window.Render.debugGate(window.__gate.id).angle < 0.15, 12000);
+      const shut = await leaf();
+      ok('...and it shuts again behind him', shut < 0.15, `leaf at ${shut.toFixed(2)}`);
+      await pg.waitForTimeout(400);
+      const held = await pg.evaluate(() => {
+        const R = window.Render, im = R.debugUnitMeshes()['soldier#1'];
+        return { a: R.debugGate(window.__gate.id).angle,
+                 open: R.debugGate(window.__gate.id).open,
+                 foe: window.Game.game.world.units.filter((u) => u.owner === 1).length,
+                 /* and he is REALLY THERE on the renderer's side of the fog: the only man on
+                  * the board is the rival, so the army's own bucket must be drawing exactly
+                  * him. Without this "the gate stayed shut" would also be what a rival nobody
+                  * can see looks like, which is a different rule entirely. */
+                 drawn: im ? im.count : 0 };
+      });
+      ok('the rival is on the board where the renderer can see him', held.foe === 1 && held.drawn === 1,
+         `${held.foe} in the world, ${held.drawn} drawn`);
+      ok('a rival pressed against it finds it shut, and keeps finding it shut',
+         held.a < 0.15 && !held.open, `leaf at ${held.a.toFixed(2)}`);
+      /* AND IT OPENS ONTO THE SHELTERED FACE — the one `{c:'flip'}` decides. The gate swings
+       * inward, so a run its heir has turned about must swing its doors the other way, or a
+       * column comes out through a leaf standing in the open. */
+      const turned = await pg.evaluate(async ([id]) => {
+        const R = window.Render, W = window.World, g = window.Game.game;
+        window.__gateMan(0);
+        const wait = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        await wait(); await wait();
+        const was = R.debugGate(id).sign;
+        /* the halt refuses every order but its own, so it is lifted for exactly one command
+         * and put straight back — the men have not had a tick to walk anywhere */
+        const halt = g.world.paused;
+        g.world.paused = null;
+        W.applyCommand(g.world, 0, { c: 'flip', id, on: true });
+        g.world.paused = halt;
+        await wait(); await wait();
+        const now = R.debugGate(id);
+        return { was, sign: now.sign, flipped: !!g.world.players[0].buildings.find((b) => b.id === id).flip,
+                 leaf: now.la - now.ang, a: now.angle };
+      }, [gate.id]);
+      ok('turning the run about turns its gate with it',
+         turned.flipped && turned.sign === -turned.was && Math.sign(turned.leaf) === turned.sign,
+         `sign ${turned.was} -> ${turned.sign}, leaf offset ${turned.leaf.toFixed(2)}`);
+      await pg.evaluate(([id]) => {
+        const g = window.Game.game, halt = g.world.paused;
+        g.world.paused = null;
+        window.World.applyCommand(g.world, 0, { c: 'flip', id, on: false });
+        g.world.paused = halt;
+      }, [gate.id]);
+      await pg.evaluate(() => {
+        const g = window.Game.game;
+        window.__gateMan(-1);
+        g.world.units.push(...window.__gate.keep);
+        g.world.paused = null;
+      });
+    }
+
+    /* ---------------- arrows are things in the air ----------------
+     * A shot was a line between two points for a fifth of a second, which is a laser. The
+     * renderer owns the FLIGHT — the sim says only that the shot happened — so what is asserted
+     * here is that an archer's shot enters the air, and that it LEAVES it again on arrival: a
+     * pool that never retires is a leak that looks like a feature for the first ten seconds. */
+    suite(`${r} · an arrow flies`);
+    const flight = await pg.evaluate(async () => {
+      const R = window.Render, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const shot = (extra) => R.addEvents([Object.assign(
+        { e: 'bolt', from: { x: c.x, y: c.y, owner: 0 }, to: { x: c.x + 150, y: c.y + 90 } }, extra)],
+        g.world, 0);
+      const start = R.debugArrows();
+      shot({ kind: 'archer' });
+      const flying = R.debugArrows();
+      /* FEATURE-DETECTED: an event with no kind, or another kind, keeps the old tracer — and
+       * must not put a dart in the air */
+      shot({});
+      shot({ kind: 'sorcerer' });
+      const stillOne = R.debugArrows();
+      await new Promise((res) => setTimeout(res, 1200));
+      return { start, flying, stillOne, landed: R.debugArrows() };
+    });
+    ok('nothing is in the air to begin with', flight.start === 0, String(flight.start));
+    ok('an archer\'s shot puts a dart in the air', flight.flying === 1, String(flight.flying));
+    ok('a shot with no kind, and an arcane one, keep the tracer they had',
+       flight.stillOne === 1, String(flight.stillOne));
+    ok('and the dart retires when it arrives', flight.landed === 0, String(flight.landed));
+
+    /* ---------------- the chains ----------------
+     * The Binding throws chains on a rival's men — a slow and an amplifier — and a hold nothing
+     * marks is a rule played in secret. `u.hexed` is the expiry time and it rides the wire; the
+     * renderer reads it and nothing else. Feature-detected on purpose: a man with no such field
+     * wears nothing, which is what kept this quiet until the sim carried it. */
+    suite(`${r} · a chained man is marked`);
+    const chains = await pg.evaluate(async () => {
+      const R = window.Render, g = window.Game.game;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const keep = g.world.units.slice();
+      g.world.paused = { by: 0, at: g.world.t };
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const mk = (extra) => Object.assign({ id: g.world.nextId++, owner: 0, kind: 'soldier',
+        x: c.x + 60, y: c.y + 60, ox: 0, oy: 0, hp: 70, maxHp: 70, dmg: 9, cd: 0, goal: null,
+        co: 0, from: -1, tier: 1 }, extra);
+      g.world.units.length = 0;
+      g.world.units.push(mk({}));
+      await paint();
+      const free = R.debugHex();
+      g.world.units.push(mk({ x: c.x + 90, y: c.y + 60, hexed: g.world.t + 30 }));
+      await paint();
+      const held = R.debugHex();
+      /* an expiry the world has already passed is not a hold */
+      g.world.units[1].hexed = g.world.t - 1;
+      await paint();
+      const expired = R.debugHex();
+      /* and the throw itself draws, without a word to the console */
+      R.addEvents([{ e: 'hex', pi: 0, x: c.x, y: c.y, to: { x: c.x + 90, y: c.y + 60 } }], g.world, 0);
+      await paint();
+      g.world.paused = null;
+      g.world.units.length = 0;
+      g.world.units.push(...keep);
+      return { free, held, expired };
+    });
+    ok('a man nobody has chained wears nothing', chains.free === 0, String(chains.free));
+    ok('a chained man is marked on the ground', chains.held === 1, String(chains.held));
+    ok('and the mark goes when the chains do', chains.expired === 0, String(chains.expired));
 
     suite(`${r} · back button`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });

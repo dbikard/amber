@@ -847,6 +847,37 @@
    * table, the branches are whatever is in it, the men are `CONST.UNITS` entire — so a branch
    * added later appears here by itself, and one whose numbers move is never described wrongly.
    * A codex with its own copy of the numbers is worse than no codex. */
+  /* THE FIELDS ARE THE SOURCE, NOT A LIST OF MECHANICS SOMEBODY REMEMBERED. This was six
+   * hand-written `if (u.siege)` lines, which has the failure the whole codex exists to avoid in
+   * both directions: a mechanic the sim drops keeps being advertised until somebody deletes the
+   * line, and a mechanic the sim GAINS is silently missing from the Roll until somebody adds
+   * one. So the line is driven off the unit def's OWN KEYS — everything that is not one of the
+   * base numbers already said above becomes a tag. `SAY` gives the ones we have words for their
+   * words; anything else is stated plainly as the field and its value, which is honest about a
+   * number nobody has written prose for yet and, crucially, is never SILENT about it. */
+  const BASE_KEYS = new Set(['name', 'icon', 'blurb', 'hp', 'dmg', 'atk', 'range',
+                             'speed', 'aggro', 'bounty', 'size', 'cost', 'keep']);
+  /* a key whose value is said as part of another key's phrase: it must not be said twice */
+  const FOLDED = new Set(['mendR', 'bindR', 'splashFrac']);
+  const SAY = {
+    siege: (v) => `×${v} vs stone`,
+    menOnly: () => 'besieges nothing · but strikes a Shrine',
+    mans: () => `holds a parapet, and shelters inside a tower (${C.TOWER.berths} to a tower)`,
+    mend: (v, u) => `mends ${v}/s` + (u.mendR ? ` out to ${u.mendR}` : ''),
+    bind: (v, u) => 'throws chains' + (u.bindR ? ` out to ${u.bindR}` : ''),
+    bindHp: (v) => `a fiend already under ${Math.round(v * 100)}% of its life turns instead`,
+    /* the Binding's three numbers, each said by ITS OWN key: drop one from the table and its
+     * sentence goes with it, and nothing else in the line has to be rewritten */
+    hexT: (v) => `the chains hold ${v}s`,
+    hexSlow: (v) => `a chained man marches at ${Math.round(v * 100)}% pace`,
+    hexAmp: (v) => `…and takes ×${v} from every blow`,
+    hexCd: (v) => `a throw every ${v}s, in place of his shot`,
+    splash: (v, u) => `splash ${v}` + (u.splashFrac ? ` at ${Math.round(u.splashFrac * 100)}%` : '')
+  };
+  /* a field with no words yet, said as itself: 'hexSlow' 0.4 → "hex slow 0.4". Ugly on purpose
+   * — it is a prompt to write the sentence, not a substitute for one — and never wrong. */
+  const plainly = (k, v) => k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase() +
+                            (v === true ? '' : ' ' + v);
   const rollStat = (kind) => {
     const u = C.UNITS[kind];
     if (!u) return '';
@@ -856,21 +887,22 @@
     /* the hall's ceiling belongs beside the price: how many of this man ONE hall will keep
      * in the field, refilling as they fall — the number that says what a hall is worth */
     if (u.keep) bits.push(`${u.keep} to a hall`);
-    /* the three flags decide what a man is FOR, so they are said in words rather than left
-     * for a player to infer from a reach of 105 */
     const tags = [];
-    if (u.siege) tags.push(`×${u.siege} vs stone`);
-    if (u.menOnly) tags.push('besieges nothing · but strikes a Shrine');
-    if (u.mans) tags.push(`holds a parapet, and shelters inside a tower (${C.TOWER.berths} to a tower)`);
-    if (u.mend) tags.push(`mends ${u.mend}/s`);
-    if (u.bind) tags.push('binds fiends');
-    if (u.splash) tags.push(`splash ${u.splash}`);
+    for (const k of Object.keys(u)) {
+      if (BASE_KEYS.has(k) || FOLDED.has(k)) continue;
+      const v = u[k];
+      if (v === false || v === 0 || v == null) continue;
+      tags.push(SAY[k] ? SAY[k](v, u) : plainly(k, v));
+    }
     return `<span class="c-rate wide">${bits.join(' · ')}</span>` +
            (tags.length ? `<span class="c-rate up">${tags.join(' · ')}</span>` : '');
   };
+  /* the icon doubles as the FIGURE'S BERTH: a live 3D man is drawn over this box while the
+   * Roll is open (Render.rollStart), and the glyph under him is what you see if the glass
+   * refuses. `data-kind` is what tells the renderer which man goes in which rectangle. */
   function unitRow(kind) {
     const u = C.UNITS[kind];
-    return `<div class="card roll-unit"><span class="c-ico">${u.icon || '•'}</span>` +
+    return `<div class="card roll-unit"><span class="c-ico c-fig" data-kind="${kind}">${u.icon || '•'}</span>` +
            `<span class="c-name">${u.name || cap(kind)}</span>` +
            `<span class="c-cost">${u.cost ? '◆ ' + u.cost : ''}</span>` +
            `<span class="c-blurb">${u.blurb || ''}</span>${rollStat(kind)}</div>`;
@@ -905,9 +937,42 @@
     $('menu').classList.add('hidden');
     $('roll').classList.remove('hidden');
     body.scrollTop = 0;
+    rollFigures();
     if (H.onRollOpen) H.onRollOpen();
   };
+  /* THE FIGURES ARE THE RENDERER'S, AND THE TIMING IS OURS. ui.js owns one canvas and the two
+   * moments that matter — the Roll opened, the Roll shut — and render3d.js owns every line
+   * that is actually drawn into it (see R.rollStart: one context, one scissor per row). Nothing
+   * here duplicates a unit's geometry, which is the whole reason the codex cannot drift.
+   * The canvas is made once and kept: a WebGL context is expensive to raise and this screen is
+   * opened and shut repeatedly. */
+  let rollCv = null;
+  function rollFigures() {
+    const R3 = global.Render;
+    const roll = $('roll');
+    roll.classList.remove('figs');
+    if (!R3 || !R3.rollStart) return false;
+    if (!rollCv) {
+      rollCv = document.createElement('canvas');
+      rollCv.id = 'roll-figs';
+      roll.appendChild(rollCv);
+    }
+    rollCv.classList.remove('hidden');
+    const rows = [...$('roll-body').querySelectorAll('.c-fig')]
+      .map((el) => ({ el, kind: el.dataset.kind }));
+    const live = !!R3.rollStart(rollCv, rows);
+    /* AND IF IT REFUSES, THE ROLL IS STILL THE ROLL. `figs` is the only thing that fades the
+     * glyph, so a page with no WebGL keeps the icons it always had and says nothing about it. */
+    roll.classList.toggle('figs', live);
+    if (!live) rollCv.classList.add('hidden');
+    return live;
+  }
   UI.rollClose = function () {
+    /* the loop STOPS. A rAF left running behind a hidden panel is a phone drawing eighteen
+     * men into a canvas nobody is looking at, for as long as the menu is up. */
+    if (global.Render && global.Render.rollStop) global.Render.rollStop();
+    if (rollCv) rollCv.classList.add('hidden');
+    $('roll').classList.remove('figs');
     $('roll').classList.add('hidden');
     $('menu').classList.remove('hidden');
   };

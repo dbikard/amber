@@ -335,6 +335,21 @@ body {
 .roll-branch { border-color: #c9a44f88; }
 .roll-unit { background: linear-gradient(#1d1728, #150f1d); }
 #roll .mbtn { margin: 6px 0 24px; }
+/* ---- the live figures ----
+   ONE canvas over the whole screen and ONE WebGL context for every man in the list, each drawn
+   into his own row's scissor rectangle (js/render3d.js, rollStart). A canvas per row would run
+   a phone out of live contexts halfway down the codex. It is fixed rather than in the flow, so
+   it does not scroll with the text — the rows' screen rectangles are asked for every frame —
+   and it never takes a tap, so the Roll under it still scrolls and CLOSE still closes. */
+#roll-figs { position: fixed; inset: 0; z-index: 41; pointer-events: none; }
+/* a man drawn in the icon's 34px column is a smudge; the unit rows get a wider berth for him,
+   and the glyph sits in the same box so nothing moves when the glass refuses and it is all
+   there is to show */
+.roll-unit { grid-template-columns: 54px 1fr auto; }
+.roll-unit .c-fig {
+  width: 54px; height: 54px; display: flex; align-items: center; justify-content: center;
+}
+#roll.figs .roll-unit .c-fig { color: transparent; }
 /* the chronicle's last resort: a browser that will not reach the clipboard still has to let
  * you get the text out, so it goes somewhere you can select it by hand */
 #record-box {

@@ -223,7 +223,12 @@
    * on — a country you have walked should not go black again behind you. `keep` is how much
    * of the full veil remains over remembered ground; `cell` is the grain the memory is kept
    * at, coarse enough to cost nothing and fine enough that the edge reads as terrain. */
-  CONST.FOG = { cell: 26, keep: 0.45 };
+  /* `ease` is the veil's TIME constant, in seconds — how fast the drawn fog chases the mask.
+   * Sight is recomputed 5x a second on a 26-unit grid, so an unsmoothed veil opens the ground
+   * ahead of a marching column in visible lurches. The mask stays a hard 0/1 (the AI and the
+   * snapshot read it); only the drawing eases. Long enough to hide the 200ms step, short
+   * enough that the lit ground still keeps up with the men who are lighting it. */
+  CONST.FOG = { cell: 26, keep: 0.45, ease: 0.22 };
 
   /* ---- Navigation (open world, stage 2): units move continuously over a cost grid ----
    * The site web is baked in as corridors — free within freeR of a path or site, ramping
@@ -298,7 +303,10 @@
     spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 36,
                 spawns: 'sorcerer', period: [11, 11, 11],
                 blurb: 'Sends Sorcerers — fragile, deadly at range, and no use at all against stone. At level 2 the Spire turns to ONE art, mending or binding, and there is no going back.' },
-    tower:    { name: 'Watchtower',    icon: '🗼', cost: 130, up: [100, 180], hp: 960, raise: 22,
+    /* a ROOK, not the Tokyo Tower: 🗼 is a steel lattice mast and read as modern the moment it
+     * sat beside a Seat. ♜ is the medieval silhouette, and being a glyph rather than a colour
+     * emoji it sits with ⚔ ⚒ ✚ 🜏 in the dark-and-gold sheet instead of shouting over them. */
+    tower:    { name: 'Watchtower',    icon: '♜', cost: 130, up: [100, 180], hp: 960, raise: 22,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 forkHint: 'Rebuild the tower.',
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
