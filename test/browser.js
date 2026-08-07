@@ -2517,6 +2517,101 @@ async function match(browser, base, renderer) {
   const done = await runRenderer('3d');
   record(done.rows, done.times);
 
+  /* ---------------- the veil at a phone's pixel density ----------------
+   * The remembered-ground mask is softened by drawing it SMALL and letting the bilinear
+   * upscale smear its cell staircase (overlayPass). That softening once fell out of the
+   * pipeline entirely — `memCtx` swallowed the shrink argument it was called with — and no
+   * desktop run noticed, because on a desktop viewport a fog cell is a few pixels and its raw
+   * edge hides; on a phone a cell is ~100 device pixels and the mask marched across the
+   * screen as piano keys. So this drives the page as the phone that reported it (DPR 3),
+   * finds the veil boundary in WORLD terms from the seen-mask, projects it with
+   * Render.project, and reads the overlay's own pixels across the crossing: a raw cell edge
+   * drops the whole veil step in a pixel or two, the softened edge spreads it over the cell.
+   * Every candidate crossing is measured and the SOFTEST one judged: HUD ink (a site label, a
+   * bar) can make a soft edge read hard, but nothing can make the mask's hard edge read soft,
+   * so if even one crossing is gentle the mask is being softened. */
+  {
+    suite('the veil at a phone\'s pixel density');
+    const pg = await browser.newPage({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 3 });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
+    await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
+      .find((e) => /julian/i.test(e.textContent)).click());
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const veil = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      R.debugFog = { discs: false, rim: false };   // the mask alone, so the mask is what is measured
+      R.setZoom(C.VIEW.min);                       // far enough out that the boundary is on screen
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const sm = g.world.players[0].seen;
+      const at = (x, y) => {
+        const gx = x / sm.cell | 0, gy = y / sm.cell | 0;
+        return gx >= 0 && gy >= 0 && gx < sm.gw && gy < sm.gh ? sm.g[gy * sm.gw + gx] : 0;
+      };
+      const overlay = document.getElementById('overlay');
+      const dpr = overlay.width / window.innerWidth;
+      const ctx = overlay.getContext('2d');
+      const HALF = 44;                             // CSS px each side of the crossing
+      /* ink that is not the veil, to steer around: the minimap, and every site label */
+      const mb = R.miniBox();
+      const rects = [[mb.mx - 4, mb.my - 4, mb.mx + mb.mw + 4, mb.my + mb.mh + 4]];
+      for (const s of g.world.map.sites) {
+        const q = R.project(s.x, s.y);
+        rects.push([q.x - 140, q.y - 8, q.x + 140, q.y + 44]);
+      }
+      const clear = (x0, x1, y) => rects.every(([a, b, c, d]) => y < b || y > d || x1 < a || x0 > c);
+      const tried = [];
+      let best = null;
+      for (let sy = 0.2; sy <= 0.8; sy += 0.05) {
+        const wc = R.toWorld(window.innerWidth / 2, window.innerHeight * sy);
+        if (!at(wc.x, wc.y)) continue;
+        for (const dir of [-2, 2]) {
+          for (let x = wc.x; x > 0 && x < C.MAP.W; x += dir) {
+            if (at(x, wc.y)) continue;
+            const q = R.project(x, wc.y);
+            if (q.x > HALF + 8 && q.x < window.innerWidth - HALF - 8 &&
+                q.y > 40 && q.y < window.innerHeight - 40 && clear(q.x - HALF, q.x + HALF, q.y)) {
+              const py = Math.round(q.y * dpr);
+              const x0 = Math.round((q.x - HALF) * dpr), x1 = Math.round((q.x + HALF) * dpr);
+              const row = ctx.getImageData(x0, py, x1 - x0, 1).data;
+              let maxJump = 0, lo = 255, hi = 0;
+              for (let i = 7; i < row.length; i += 4) {
+                maxJump = Math.max(maxJump, Math.abs(row[i] - row[i - 4]));
+                lo = Math.min(lo, row[i]); hi = Math.max(hi, row[i]);
+              }
+              /* only a window that actually crosses the veil step says anything */
+              if (hi - lo >= 60) {
+                tried.push(maxJump);
+                if (!best || maxJump < best.maxJump) best = { maxJump, range: hi - lo, px: q.x | 0, py: q.y | 0 };
+              }
+            }
+            break;                                 // first crossing in this direction only
+          }
+        }
+      }
+      R.debugFog = null;
+      if (!best) return { err: 'no clean crossing of the veil boundary found on screen' };
+      /* how big a fog cell is on this screen, asked of the projection itself */
+      const cw = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
+      const cellPx = sm.cell * Math.abs(R.project(cw.x + 100, cw.y).x - R.project(cw.x, cw.y).x) / 100;
+      return { best, crossings: tried.length, cellPx };
+    });
+    ok('the veil boundary crosses the screen where it can be read', !veil.err,
+       veil.err || `${veil.crossings} crossings`);
+    if (!veil.err) {
+      ok('a fog cell is big enough there for a raw edge to show', veil.cellPx >= 6, `cell ≈ ${veil.cellPx.toFixed(1)} css px`);
+      ok('and the veil steps down as a slope, not as the mask\'s raw cell edge', veil.best.maxJump <= 40,
+         `sharpest alpha step ${veil.best.maxJump}/px over a ${veil.best.range} drop at ${veil.best.px},${veil.best.py}`);
+    }
+    ok('the DPR-3 page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   await browser.close();
   srv.close();
   process.exit(report('browser'));

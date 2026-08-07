@@ -1711,9 +1711,16 @@
     store.c2.setTransform(w2 / W, 0, 0, h2 / H, 0, 0);
     return store.c2;
   }
-  const rimStore = {}, memStore = {};
+  /* THE WRAPPER MUST FORWARD THE SHRINK. `memCtx` was `() => scratch(memStore)` — a zero-arg
+   * wrapper — while the veil called `memCtx(shrink)`; the argument fell on the floor, the
+   * scratch stayed full-size, and the "softening by upscale" was a 1:1 blit that softened
+   * nothing. On a desktop window the fog cells are a few pixels and the staircase hides; on a
+   * phone a cell is ~100 device pixels and the mask's raw grid marched across the screen —
+   * which is why four SwiftShader reproductions came back clean and one Android photo did not. */
+  const rimStore = {}, memStore = {}, midStore = {};
   const rimCtx = () => scratch(rimStore);
-  const memCtx = () => scratch(memStore);
+  const memCtx = (shrink) => scratch(memStore, shrink);
+  const midCtx = (shrink) => scratch(midStore, shrink);
 
   /* about how many screen pixels a world unit spans at the middle of the view — enough to
    * size a blur by, not a projection */
@@ -1752,74 +1759,90 @@
      * and reads as "this pass is innocent" when it means "the switch was never thrown". */
     const dbg = R.debugFog || null;
     const sm = (dbg && dbg.mem === false) ? null : view.seen;
-    if (sm) {
+    const cut = (dbg && dbg.discs === false) ? [] : discs;
+    if (sm || cut.length) {
       /* HOW COARSE THE MASK IS DRAWN is how soft its edge comes out, and that is the whole
        * softening now — see the note where it is composited. A cell of remembered ground should
        * land on about two pixels of the scratch, so the upscale smears exactly across the
        * staircase we are hiding and no further. */
-      const cellPx = Math.max(1, sm.cell * scaleOf());
-      const mc = memCtx(Math.max(1, Math.min(16, cellPx / 2)));
+      const cellPx = Math.max(1, C.FOG.cell * scaleOf());
+      const shrink = Math.max(1, Math.min(16, cellPx / 2));
+      const mc = memCtx(shrink);
       if (mc) {
         mc.clearRect(0, 0, W, H);
-        mc.fillStyle = '#fff';
-        const cw = sm.cell, vr = R.viewRect();
-        const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(sm.gw - 1, (vr.x1 / cw | 0) + 1);
-        const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(sm.gh - 1, (vr.y1 / cw | 0) + 1);
-        mc.beginPath();
-        for (let gy = gy0; gy <= gy1; gy++) {
-          let run = -1;
-          for (let gx = gx0; gx <= gx1 + 1; gx++) {
-            const on = gx <= gx1 && sm.g[gy * sm.gw + gx];
-            if (on && run < 0) run = gx;
-            else if (!on && run >= 0) {
-              /* a run of cells is one ground-hugging quad; under perspective its far edge is
-               * narrower than its near one, so it is projected as a quad, not a rectangle */
-              const wx0 = run * cw, wx1 = gx * cw, wy0 = gy * cw, wy1 = (gy + 1) * cw;
-              const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
-              const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
-              if (a1.ok && b1.ok && c1.ok && d1.ok) {
-                mc.moveTo(a1.x, a1.y); mc.lineTo(b1.x, b1.y); mc.lineTo(c1.x, c1.y); mc.lineTo(d1.x, d1.y); mc.closePath();
+        if (sm) {
+          /* the memory cuts at partial strength — the alpha rides the fill so the whole veil
+           * can leave in ONE composite below */
+          mc.fillStyle = 'rgba(255,255,255,' + (1 - C.FOG.keep) + ')';
+          const cw = sm.cell, vr = R.viewRect();
+          const gx0 = Math.max(0, (vr.x0 / cw | 0) - 1), gx1 = Math.min(sm.gw - 1, (vr.x1 / cw | 0) + 1);
+          const gy0 = Math.max(0, (vr.y0 / cw | 0) - 1), gy1 = Math.min(sm.gh - 1, (vr.y1 / cw | 0) + 1);
+          mc.beginPath();
+          for (let gy = gy0; gy <= gy1; gy++) {
+            let run = -1;
+            for (let gx = gx0; gx <= gx1 + 1; gx++) {
+              const on = gx <= gx1 && sm.g[gy * sm.gw + gx];
+              if (on && run < 0) run = gx;
+              else if (!on && run >= 0) {
+                /* a run of cells is one ground-hugging quad; under perspective its far edge is
+                 * narrower than its near one, so it is projected as a quad, not a rectangle */
+                const wx0 = run * cw, wx1 = gx * cw, wy0 = gy * cw, wy1 = (gy + 1) * cw;
+                const a1 = proj(wx0, groundH(wx0, wy0) + 1, wy0), b1 = proj(wx1, groundH(wx1, wy0) + 1, wy0);
+                const c1 = proj(wx1, groundH(wx1, wy1) + 1, wy1), d1 = proj(wx0, groundH(wx0, wy1) + 1, wy1);
+                if (a1.ok && b1.ok && c1.ok && d1.ok) {
+                  mc.moveTo(a1.x, a1.y); mc.lineTo(b1.x, b1.y); mc.lineTo(c1.x, c1.y); mc.lineTo(d1.x, d1.y); mc.closePath();
+                }
+                run = -1;
               }
-              run = -1;
             }
           }
+          mc.fill();
         }
-        mc.fill();
-        g.globalCompositeOperation = 'destination-out';
-        g.globalAlpha = 1 - C.FOG.keep;
+        /* the sight discs cut the SAME buffer at full strength — over the memory's partial
+         * alpha, source-over composes to exactly what two destination-out passes left before
+         * ((1-a)(1-m)), and it buys two things: where discs meet, the pointed cusp of the union
+         * is rounded by the same upscale that hides the mask's staircase instead of staying a
+         * razor corner; and the gradients fill a buffer a shrink² fraction of the screen
+         * instead of the full overlay. */
+        for (const [cx2, cy2, rx, ry] of cut) {
+          mc.save();
+          mc.translate(cx2, cy2); mc.scale(1, ry / rx);
+          /* a tight falloff: the edge of sight should read as an edge, not a smear */
+          const gr = mc.createRadialGradient(0, 0, rx * 0.82, 0, 0, rx);
+          gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+          mc.fillStyle = gr;
+          mc.beginPath(); mc.arc(0, 0, rx, 0, 7); mc.fill();
+          mc.restore();
+        }
         /* THE SOFTENING IS THE UPSCALE, NOT A BLUR. The memory is kept on a coarse grid and its
          * raw edge is a staircase of cells; what the eye should read is "you have been here",
          * not the resolution the sim files it at. That used to be `ctx.filter = 'blur(26px)'`
          * over the whole overlay — a fifty-device-pixel blur on a full-screen canvas, every
-         * frame — and it is the leading suspect for the hard-edged dark shapes reported from
-         * play on an Android GPU: a big canvas blur is tiled by the driver, it is exact in
-         * software (four reproduction attempts on SwiftShader came back clean, including one at
-         * 285 men and 65% of the board remembered), and the region it covers is the remembered
-         * ground, which grows through a match exactly as an army does — which is why it looked
-         * like a crowd bug.
-         * Drawing the mask small and letting the bilinear upscale spread it gives the same read
-         * with no filter, and it is far cheaper on a phone: the scratch is a sixteenth of the
-         * pixels at most, and the driver does the smoothing in the blit it was going to do
-         * anyway. If the artifact survives this, the filter was innocent and `debugFog` is
-         * still there to ask the next question. */
+         * frame. Drawing the mask small and letting the bilinear upscale spread it gives the
+         * same read with no filter, and it is far cheaper on a phone: the scratch is a
+         * sixteenth of the pixels at most, and the driver does the smoothing in the blit it
+         * was going to do anyway.
+         * A single bilinear hop is only smooth up to about 4× — past that the ramps between
+         * texels show as facets, which is its own staircase — so a coarse scratch takes an
+         * intermediate hop and each stage stays within 4× (shrink caps at 16, and √16 = 4).
+         * `imageSmoothingEnabled` is re-asserted at every hop because SETTING A CANVAS'S SIZE
+         * RESETS ITS CONTEXT STATE, and the scratches resize with the zoom and the window. */
+        let src = memStore.cv;
+        if (shrink >= 4) {
+          const midc = midCtx(Math.sqrt(shrink));
+          if (midc) {
+            midc.clearRect(0, 0, W, H);
+            midc.imageSmoothingEnabled = true;
+            midc.drawImage(src, 0, 0, W, H);
+            src = midStore.cv;
+          }
+        }
+        g.globalCompositeOperation = 'destination-out';
         g.imageSmoothingEnabled = true;
-        g.drawImage(memStore.cv, 0, 0, W, H);
-        g.globalAlpha = 1;
+        g.drawImage(src, 0, 0, W, H);
         g.globalCompositeOperation = 'source-over';
       }
     }
-    g.globalCompositeOperation = 'destination-out';
-    for (const [cx2, cy2, rx, ry] of (dbg && dbg.discs === false ? [] : discs)) {
-      g.save();
-      g.translate(cx2, cy2); g.scale(1, ry / rx);
-      /* a tight falloff: the edge of sight should read as an edge, not a smear */
-      const gr = g.createRadialGradient(0, 0, rx * 0.82, 0, 0, rx);
-      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = gr;
-      g.beginPath(); g.arc(0, 0, rx, 0, 7); g.fill();
-      g.restore();
-    }
-    g.globalCompositeOperation = 'source-over';
     /* ONE warm line on the edge of sight — the OUTER limit of the lit ground, not a ring
      * around every lamp. A ring per source turned a well-watched city into a nest of circles,
      * and since units carry sight too, each soldier dragged his own ring across the map.
