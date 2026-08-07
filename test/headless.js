@@ -353,6 +353,14 @@ suite('shooters, stone, and the arts')
   ok('a Shrine was raised to shoot at', !!shrine, shrErr);
   if (shrine) {
     for (let i = 0; i < 30 * 80 && shrine.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    /* THE RIG'S SUBJECT IS THE ARCHER AND THE SHRINE, and nobody else. The eighty seconds
+     * the raise takes are eighty seconds of the rival's opening hall mustering soldiers into
+     * the court a bowshot from this rig — and whether one of them wandered inside aggro and
+     * killed the archer mid-rig depended on nothing but the court's exact geometry. It
+     * passed for as long as the muster happened to settle a few units short, and a movement
+     * change that bent a column an arm's width broke it. Clear the bystanders and starve the
+     * hall for the rig's six seconds; the essence comes back for the blocks below. */
+    w.units.length = 0; p1.essence = 0;
     shrine.hp = shrine.maxHp;
     pin(0, shrine.x, shrine.y - 40);
     put(0, 'archer', shrine.x, shrine.y - 40);
@@ -365,6 +373,7 @@ suite('shooters, stone, and the arts')
     put(0, 'archer', mark.x, mark.y - 30);
     run(6);
     eq('and a hall in the same spot is still nothing to him', mark.hp, mark.maxHp);
+    p1.essence = 100000;
   }
 
   /* A SEAT IS A WORK TOO, and it is the one that ends matches */
@@ -2413,6 +2422,78 @@ suite('a company holding a wall fills the towers on it');
  * melee was a single point with a hundred sprites in it — an army of twenty and an army of two
  * hundred looked the same. Two rules together: a FORMATION that hands each man a place a berth
  * from his neighbours, and a SEPARATION pass for the transient crowding a march produces. */
+/* THE GROUND IS A FIELD, NOT A YES/NO — the signed distance the resolver walks men along,
+ * and the crush that meters a packed column. The claims are made against the field itself
+ * and the pure curve, because a scrum staged well enough to assert on is a scrum the crowd
+ * rules have already changed. */
+suite('the measured ground');
+{
+  const w = World.createWorld(1000, 2);
+  const cw = w.nav.cw;
+  let inBadNeg = 0, inBadN = 0, inGoodPos = 0, inGoodN = 0, gradUp = 0, gradN = 0;
+  for (let i = 0; i < w.nav.W * w.nav.H; i += 3) {
+    const x = (i % w.nav.W + 0.5) * cw, y = (Math.floor(i / w.nav.W) + 0.5) * cw;
+    const g = NAV.ground(w.nav, x, y);
+    if (w.nav.cost[i] === 0) { inBadN++; if (g.d < 0) inBadNeg++; }
+    else { inGoodN++; if (g.d > 0) inGoodPos++; }
+    /* near the line, a step along the gradient must never lose ground */
+    if (g.d > -20 && g.d < 20) {
+      gradN++;
+      const g2 = NAV.ground(w.nav, x + g.gx * 4, y + g.gy * 4);
+      if (g2.d > g.d - 0.01) gradUp++;
+    }
+  }
+  ok('the field is negative in the water', inBadNeg === inBadN, `${inBadNeg}/${inBadN}`);
+  ok('...positive on the ground', inGoodPos === inGoodN, `${inGoodPos}/${inGoodN}`);
+  ok('...and its gradient climbs out everywhere near the line', gradUp === gradN, `${gradUp}/${gradN}`);
+  /* the edge of the world is impassable ground worldgen never wrote down. Probed where the
+   * edge is the BINDING constraint — a rim cell whose nearest water is well behind the edge */
+  let probe = null;
+  for (let gy = 1; gy < w.nav.H - 1 && !probe; gy++) {
+    if (w.nav.sdf[gy * w.nav.W] > 25) probe = { x: 3, y: (gy + 0.5) * cw, gx: 1, gy: 0 };            // west rim
+    else if (w.nav.sdf[gy * w.nav.W + w.nav.W - 1] > 25)
+      probe = { x: C.MAP.W - 3, y: (gy + 0.5) * cw, gx: -1, gy: 0 };                                  // east rim
+  }
+  for (let gx = 1; gx < w.nav.W - 1 && !probe; gx++) {
+    if (w.nav.sdf[gx] > 25) probe = { x: (gx + 0.5) * cw, y: 3, gx: 0, gy: 1 };                       // north rim
+    else if (w.nav.sdf[(w.nav.H - 1) * w.nav.W + gx] > 25)
+      probe = { x: (gx + 0.5) * cw, y: C.MAP.H - 3, gx: 0, gy: -1 };                                  // south rim
+  }
+  ok('a dry stretch of rim exists to probe', !!probe);
+  if (probe) {
+    const mid = NAV.ground(w.nav, probe.x, probe.y);
+    ok('the world\'s edge reads as three units of ground left',
+       Math.abs(mid.d - 3) < 0.5 && mid.gx === probe.gx && mid.gy === probe.gy,
+       `d ${mid.d.toFixed(1)}, g ${mid.gx},${mid.gy}`);
+  }
+
+  /* the crush curve: free through a settled body's shoulder-rubbing, monotonic past it,
+   * floored so a scrum still pours */
+  ok('a lone man walks at his stride', World.crush(0) === 1 && World.crush(undefined) === 1);
+  ok('a settled body\'s press is free', World.crush(C.CROWD.crushFree) === 1);
+  const c5 = World.crush(C.CROWD.crushFree + 2), c9 = World.crush(C.CROWD.crushFree + 6);
+  ok('past it the press drags, and more press drags more', c5 < 1 && c9 < c5,
+     `${c5.toFixed(2)} then ${c9.toFixed(2)}`);
+  ok('...down to a floor, never a standstill',
+     World.crush(1000) === C.CROWD.crushFloor && C.CROWD.crushFloor > 0.3);
+
+  /* the flow is SAMPLED, not stepped: two men a stride apart on open ground are handed
+   * headings a few degrees apart, not a cell-boundary kink */
+  const A = World.cityOf(w, 0), B = World.cityOf(w, 1);
+  let worst = 0, n = 0;
+  for (let k = 0; k < 40; k++) {
+    const x = A.x + (B.x - A.x) * (0.25 + k * 0.01), y = A.y + (B.y - A.y) * (0.25 + k * 0.01);
+    const s1 = NAV.steer(w.nav, w, 0, B.x, B.y, x, y);
+    const s2 = NAV.steer(w.nav, w, 0, B.x, B.y, x + 2, y);
+    if (!s1 || !s2) continue;
+    n++;
+    const dot = Math.max(-1, Math.min(1, s1.x * s2.x + s1.y * s2.y));
+    const turn = Math.acos(dot) * 180 / Math.PI;
+    if (turn > worst) worst = turn;
+  }
+  ok('the flow bends, it does not kink', n > 20 && worst < 30, `worst turn ${worst.toFixed(1)}° over ${n} pairs`);
+}
+
 suite('men have width');
 {
   const w = World.createWorld(1000, 2), pl = w.players[0], c = World.cityOf(w, 0);

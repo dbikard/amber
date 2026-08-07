@@ -541,37 +541,6 @@
    * went ACROSS it is kept, which is what walking round a corner is. Nothing else changes:
    * with no motion to slide, or with the motion already leading away, this is the old push. */
   function stand(world, u, lx, ly) {
-    /* THE GROUND HAS THE LAST WORD, AND IT SAYS THIS BEFORE THE STONE DOES. The nav grid has
-     * always known that rock and water are impassable — it is what the flow fields route
-     * around — but knowing it and being bound by it are different things. Inside `NAV.arrive`
-     * a man beelines with no field to steer him, the crowd rules shove him sideways with no
-     * opinion about what is underneath, and the last `stand` of the tick only ever asked about
-     * WORKS. So a column rounding a lake walked into it, and men fought in the water.
-     *
-     * A destination is already folded onto standable ground (`placeAt`); this is the other
-     * half — the STEP. Collide and slide: keep whichever axis of the step still lands on
-     * ground, so a man walking into a shoreline walks ALONG it instead of stopping dead
-     * against it, and only refuse the step outright when neither axis will do.
-     *
-     * The `standable(lx, ly)` guard is an escape hatch and it matters: a man who is somehow
-     * already on bad ground — spawned there, dropped there by a tower coming down, left there
-     * by a rule written later — must be free to walk OUT. Without it the fix would strand
-     * exactly the men it is meant to rescue.
-     *
-     * FOREST IS NOT ROCK. Only cost-0 cells refuse a man; forest is passable at a price and
-     * that price is the flow field's business, not this rule's. */
-    if (lx != null && !standable(world, u.x, u.y) && standable(world, lx, ly)) {
-      if (standable(world, u.x, ly)) u.y = ly;
-      else if (standable(world, lx, u.y)) u.x = lx;
-      else { u.x = lx; u.y = ly; }
-      /* HE IS NOT PINNED HERE, and that is the difference between ground and stone. A pinned
-       * man is skipped by the crowd pass so it can route around him, which is right for a wall
-       * — thin, few men against it — and wrong for a shoreline or the edge of the world, which
-       * a whole company can press at once: pin them all and none of them separate. Measured,
-       * that stacked a marched army to 2.4 apart against a rule asking for 15.4. The crowd is
-       * kept out of the water at ITS end instead (see `jostle`), so there is no fight for a pin
-       * to settle, and these men go on giving way to each other along the bank. */
-    }
     const pad = C.BUILD.pass, p2 = pad * pad;
     for (let q = 0; q < world.players.length; q++)
       for (const b of world.players[q].buildings) {
@@ -607,6 +576,66 @@
          * the crowd, and they do not need to know about each other. */
         u.set = 1; u.pin = world.tick;
       }
+  }
+  /* THE GROUND HAS THE LAST WORD. The nav grid has always known rock and water are
+   * impassable — it is what the flow fields route around — but knowing it and being bound
+   * by it are different things, and the first binding was three different things: an
+   * axis-by-axis slide in `stand` (stair-stepping down a diagonal bank), a flat refusal of
+   * crowd pushes near water in `jostle` (which could not slide at all), and an escape
+   * hatch for a man already IN a lake, because a yes/no test has no opinion about the way
+   * out. The signed distance field (NAV.ground) is one rule for all of it: how far to the
+   * bad ground, and which way the good ground lies. Below the shore clearance he is walked
+   * back up the gradient — which drops exactly the component of his motion that pointed
+   * into the water and keeps the one along the bank, which is what sliding IS — and a man
+   * deep in the wrong ground (spawned there, spilled there by a tower coming down) has a
+   * gradient pointing home from anywhere, walked out at a stride a tick rather than
+   * teleported to the bank.
+   * FOREST IS NOT ROCK: the field is built from cost-0 cells only; a price on the ground
+   * is the flow field's business, not this rule's.
+   * HE IS NOT PINNED HERE, and that is the difference between ground and stone: a wall is
+   * thin and few men press it, a shoreline can take a whole company, and pinned men are
+   * skipped by the crowd pass, so they stack. Projected men keep giving way to each other
+   * along the bank. */
+  function grounded(world, u) {
+    const clear = C.NAV.shore, cap = C.NAV.wade;
+    for (let i = 0; i < 2; i++) {
+      const g = NAV.ground(world.nav, u.x, u.y);
+      if (g.d >= clear) break;
+      const L = Math.sqrt(g.gx * g.gx + g.gy * g.gy) || 1;
+      const step = Math.min(clear - g.d, cap);
+      u.x += (g.gx / L) * step; u.y += (g.gy / L) * step;
+      if (step === cap) return;         // wading out: no second pass, he is walking
+    }
+    /* AND THE CELL ITSELF IS THE LAW. The bilinear field is smooth, and smoothness cuts
+     * corners — at the corner of a lone bad cell the blend of three good samples and one bad
+     * reads well above zero, so a man can satisfy the shore clearance while standing on the
+     * one kind of ground the doctrine flatly refuses. The field says HOW to leave; the cell
+     * says WHETHER he must. A short walk up the gradient, cell-checked each step, settles
+     * the argument the binary way the rest of the sim (standable, placeAt, the tests)
+     * already speaks. */
+    for (let i = 0; i < 4; i++) {
+      const cc = NAV.cellOf(world.nav, u.x, u.y);
+      if (cc >= 0 && world.nav.cost[cc] > 0) return;
+      const g = NAV.ground(world.nav, u.x, u.y);
+      const L = Math.sqrt(g.gx * g.gx + g.gy * g.gy) || 1;
+      /* short steps: the corner zone this covers is shallow, and ejecting by half a cell
+       * threw a man 10 for an incursion of 1 — the crowd nudged him over the line, the law
+       * hurled him back, and the pair of them read as a 9.5-unit shiver */
+      u.x += (g.gx / L) * 2; u.y += (g.gy / L) * 2;
+    }
+  }
+  /* ---------------- THE RESOLVER: every projection, once, in one order ----------------
+   * A man's tick is PREDICT then PROJECT. The march, the chase and the crowd only ever
+   * propose motion; what the world permits is settled here, and the order is doctrine:
+   * the works first (a hall's rim, collide-and-slide), then the standing stone (a wall is
+   * absolute — `shove`), then the ground, which has the last word on everything including
+   * where the first two put him. This used to be four call sites each remembering to make
+   * two of the three calls in the right order; the ordering was load-bearing and nothing
+   * said so. Now it is one word, and a pass that moves a man ends with it. */
+  function project(world, u, lx, ly) {
+    stand(world, u, lx, ly);
+    if (world.anyWall) shove(world, u);
+    grounded(world, u);
   }
   /* ---------------- ANTICIPATION: steer clear before you arrive ----------------
    * THE MODEL WAS THE BUG. `stand` is a POSITION projection — let a man walk into the stone,
@@ -737,13 +766,14 @@
         const give = (R - dd) * 0.5 * C.CROWD.push;
         a._cx -= nx * give; a._cy -= ny * give; a._cn++;
         b._cx += nx * give; b._cy += ny * give; b._cn++;
+        a._pr++; b._pr++;                       // ...and each is one man of the other's press
       } else if (a.owner === b.owner && a.co === b.co) {   // COHESION: my own company, and no one else's
         const give = (dd - R) * 0.5 * C.CROWD.knit;
         a._cx += nx * give; a._cy += ny * give; a._cn++;
         b._cx -= nx * give; b._cy -= ny * give; b._cn++;
       }
     };
-    for (const cell of grid.values()) for (const u of cell) { u._cx = 0; u._cy = 0; u._cn = 0; }
+    for (const cell of grid.values()) for (const u of cell) { u._cx = 0; u._cy = 0; u._cn = 0; u._pr = 0; }
     for (const [k, cell] of grid) {
       for (let i = 0; i < cell.length; i++) {
         for (let j = i + 1; j < cell.length; j++) part(cell[i], cell[j]);
@@ -778,20 +808,38 @@
       if (L < C.CROWD.dead) continue;
       if (L > cap) { dx = dx / L * cap; dy = dy / L * cap; }
       if (barred(world, u, u.x + dx, u.y + dy)) continue;   // nor is a crowd a way through stone
-      /* ...NOR A WAY INTO A LAKE. The crowd is the only rule that moves a man sideways with no
-       * opinion about what is under him, so it is the one that walks him off the bank — and
-       * refusing the push HERE is what stops it, rather than putting him back afterwards.
-       * Putting him back was tried: the ground shoves, the crowd shoves, thirty times a second,
-       * and a settled company jittered 0.602 a tick against a stride of 1.77. Pinning him
-       * instead — stone's cure — was worse, because a wall is thin and few men press it while a
-       * shore or a map edge can take a whole company, and pinned men are skipped by this pass,
-       * so they stacked: 2.4 apart where the rule asks for 15.4. Refused at source there is no
-       * fight to settle, and the men spread ALONG the bank, which is what a company blocked by
-       * water should do. */
-      if (!standable(world, u.x + dx, u.y + dy) && standable(world, u.x, u.y)) continue;
+      /* ...NOR A WAY TOWARD THE WATER — a REFUSAL, and deliberately not a projection. It was
+       * a projection for one afternoon: let the push land and have the resolver walk the man
+       * back up the gradient. Every end-of-tick position was clean, and a settled army's
+       * drift measured FOUR TIMES its old value — the men at the waterline were cycling
+       * push-in, eject-out, thirty times a second, invisible to any position sample and
+       * plain in the motion. A refused push is a man standing still, which is what a settled
+       * man is for. The asymmetry is the escape hatch it always was: a man already below the
+       * clearance is free to be pushed anywhere, including out. The MARCH is the opposite
+       * choice on purpose — a step is turned along the bank (see the guard at the stride),
+       * because a marcher has somewhere to be. */
+      const jx = u.x + dx, jy = u.y + dy;
+      const jc = NAV.cellOf(world.nav, jx, jy);
+      if ((jc < 0 || world.nav.cost[jc] === 0 || NAV.ground(world.nav, jx, jy).d < C.NAV.shore)
+          && NAV.ground(world.nav, u.x, u.y).d >= C.NAV.shore) continue;
       u.x += dx; u.y += dy;
     }
+    /* the press, published: how many neighbours stood closer than a berth this tick. Read
+     * next tick by the march to slow a packed column — see CROWD.crush. */
+    for (const cell of grid.values()) for (const u of cell) u.press = u._pr;
   }
+  /* THE CRUSH: a packed man's stride. Exported pure so the referee's tests can read the
+   * curve without staging a scrum. press is last tick's count of neighbours closer than a
+   * berth (jostle publishes it); a marching column's ordinary shoulder-rubbing — a man
+   * settled in a body sits a shade under a berth from two or three fellows — is free, and
+   * past that each man in the press drags. Floored: a scrum still moves, it just pours.
+   * Deliberately NOT applied to the chase — a man closing on something he means to kill
+   * shoulders through; it is the ORDERED march that queues. */
+  const crush = (press) => {
+    const over = (press || 0) - C.CROWD.crushFree;
+    if (over <= 0) return 1;
+    return Math.max(C.CROWD.crushFloor, 1 / (1 + C.CROWD.crush * over));
+  };
   function shove(world, u) {
     const pad = C.WALL.thick + 6, p2 = pad * pad;
     for (const w of world.walls) {
@@ -2275,8 +2323,7 @@
           const mv = def.speed * dt / (foe.d || 1);
           const cx0 = u.x, cy0 = u.y;
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
-          stand(world, u, cx0, cy0);
-          if (world.anyWall) shove(world, u);   // STONE HAS THE LAST WORD: see the note on stand()
+          project(world, u, cx0, cy0);   // the chase is not slowed by the press, but it is projected like everything else
         }
         continue;
       }
@@ -2342,9 +2389,9 @@
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
             const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
             const wx0 = u.x, wy0 = u.y;
-            u.x += vx2 * def.speed * dt; u.y += vy2 * def.speed * dt;
-            stand(world, u, wx0, wy0);
-            shove(world, u);
+            const sp2 = def.speed * crush(u.press) * dt;   // a march to a wall queues like any other
+            u.x += vx2 * sp2; u.y += vy2 * sp2;
+            project(world, u, wx0, wy0);
             continue;
           }
         }
@@ -2391,7 +2438,7 @@
          * the field cannot carry him there, and at the Seat it would even hold him in the
          * middle, since by the field's reckoning he has already arrived. */
         const dField = Math.sqrt(d2(u.x, u.y, gs.x, gs.y));
-        let vx = 0, vy = 0;
+        let vx = 0, vy = 0, inColumn = false;
         if (dgoal < C.NAV.arrive || dField < C.NAV.arrive || (muster && dField < muster)) {
           /* HE HAS ARRIVED WHEN HE IS STANDING WITH HIS FELLOWS, not when he is on a point.
            * The stop was four units, which is inside the room a man now keeps: separation
@@ -2405,6 +2452,7 @@
           if (!u.set && dgoal > C.CROWD.space * 0.75) { vx = (gx - u.x) / dgoal; vy = (gy - u.y) / dgoal; }
           else u.set = 1;
         } else {
+          inColumn = true;
           const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);
           if (s3) { vx = s3.x; vy = s3.y; }
           else {
@@ -2422,23 +2470,53 @@
         const clear = steerClear(world, u, vx, vy, Math.sqrt(d2(u.x, u.y, gx, gy)), gx, gy);
         if (clear) { vx = clear.x; vy = clear.y; }
         const mx0 = u.x, my0 = u.y;
-        u.x += vx * def.speed * dt; u.y += vy * def.speed * dt;
-        stand(world, u, mx0, my0);
-        if (world.anyWall) shove(world, u);
+        /* THE CRUSH: last tick's press drags at this tick's stride — see CROWD.crush. The
+         * COLUMN only: a man riding the field in a press is a man in a queue, and the queue
+         * pours. A man already on the muster ground stepping into his place is NOT crushed —
+         * his stride is the formation settling, and dragging it left the whole body milling
+         * below the crowd's own noise: the shiver detector read 33 of 63 men reversing, and
+         * the ranks never closed in time when men fell. The chase above is exempt the same
+         * way — a man closing on something he means to kill shoulders through. */
+        const sp = def.speed * (inColumn ? crush(u.press) : 1) * dt;
+        /* THE BANK TURNS THE STEP BEFORE THE GROUND REFUSES IT. `steerClear`'s own lesson:
+         * a position projection alone is repulsion-after-contact, and with a place across a
+         * water inlet the beeline steps in and the resolver steps out along the same line,
+         * thirty times a second — measured as a man moving 7.75 in a tick that should have
+         * been 1.77, and a settled body's drift riding just under its ceiling. One sample
+         * ahead: if the stride lands below the shore clearance, drop the component that
+         * points into the water and keep the one along the bank. The resolver stays, as the
+         * safety net it should be. */
+        const ax2 = u.x + vx * sp, ay2 = u.y + vy * sp;
+        const ahead = NAV.ground(world.nav, ax2, ay2);
+        const aCell = NAV.cellOf(world.nav, ax2, ay2);
+        /* the CELL is asked as well as the field: the bilinear reads a bad cell's corner as
+         * standable room (three good samples outvote one bad), so a beeline through a water
+         * inlet's corner sailed past this guard, entered the cell, and the resolver's binary
+         * law threw him back out — a 9.5-unit tick where his stride is 1.77 */
+        if (ahead.d < C.NAV.shore || aCell < 0 || world.nav.cost[aCell] === 0) {
+          const gl = Math.sqrt(ahead.gx * ahead.gx + ahead.gy * ahead.gy) || 1;
+          const nnx = ahead.gx / gl, nny = ahead.gy / gl;
+          const into = vx * nnx + vy * nny;
+          if (into < 0) { vx -= into * nnx; vy -= into * nny; }
+        }
+        u.x += vx * sp; u.y += vy * sp;
+        project(world, u, mx0, my0);
       }
     }
 
     /* AND THEN THEY MAKE ROOM FOR EACH OTHER. Once, after everyone has moved, so the pass is
-     * symmetric — a man does not give way to a neighbour who has not taken his step yet. The
-     * stone has the last word: separation can push a man into a wall or onto a hall, so both
-     * shoves run again over whoever the crowd moved. */
+     * symmetric — a man does not give way to a neighbour who has not taken his step yet. Then
+     * the resolver runs over EVERYONE, mover or not — the crowd can push a man onto a hall's
+     * rim or toward the water, and a settled man nudged into stone by a neighbour used to
+     * stay there until his next march because only movers were re-projected. The tick is
+     * predict-then-project all the way down: the march, the chase and the crowd PROPOSE,
+     * `project` disposes, and it always has the last word of the tick. */
     jostle(world);
     for (const u of world.units) {
       /* a man holding a place on stone is not shoved off it — his station IS his position,
        * and a tower's garrison stands inside the ring `stand` would push him out of */
       if (u.hp <= 0 || u.man || u.tow) continue;
-      stand(world, u, u._px, u._py);
-      if (world.anyWall) shove(world, u);
+      project(world, u, u._px, u._py);
     }
 
     /* bury the dead */
@@ -2501,6 +2579,6 @@
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
-                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder };
+                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);

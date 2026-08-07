@@ -119,7 +119,15 @@
    * number the anticipatory steering has: turn early enough and he never touches a work, so
    * nothing has to push him off one and nothing can oscillate. At a soldier's pace this is
    * about sixty units of warning — a couple of strides more than the work is wide. */
-  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, pull: 44, knit: 0.04, dead: 0.35, look: 1.2 };
+  CONST.CROWD = { space: 22, push: 1.0, step: 1.5, pull: 44, knit: 0.04, dead: 0.35, look: 1.2,
+                  /* THE CRUSH: packed men walk slower. press counts the neighbours standing
+                   * closer than a berth (the separation pass already finds every such pair for
+                   * free); the first few are a marching column's ordinary shoulder-rubbing and
+                   * cost nothing, past that each one drags, floored so a scrum still moves.
+                   * This is what makes a gap between works or curtains meter an army through
+                   * instead of teleporting the queue: the press at the mouth slows, the men
+                   * behind pile into it, and the column pours. */
+                  crush: 0.15, crushFree: 3, crushFloor: 0.45 };
 
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle
@@ -210,7 +218,11 @@
     /* terrain costs live in WorldGen.COST; climbing is charged on top of them */
     slope: 26,         // extra move cost per unit of elevation climbed (descending is free)
     arrive: 72,        // within this of the goal a unit steers to its own place in the line
-    cacheMax: 48       // flow fields held before the cache is dropped
+    cacheMax: 48,      // flow fields held before the cache is dropped
+    shore: 4,          // world units a man keeps from the waterline (the SDF isoline he is
+                       // projected back to — see NAV.ground and `grounded` in world.js)
+    wade: 6            // the most one tick's projection may move him: a man deep in the wrong
+                       // ground WALKS out at ~180/s instead of teleporting to the bank
   };
 
   /* Buildings — ONE table now. Outposts and city works were always the same idea: a thing
