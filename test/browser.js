@@ -3008,6 +3008,98 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- shroud, fog and sight are three different things ----------------
+   * SHROUD is ground never seen. FOG is ground seen once and not seen now. SIGHT is ground
+   * watched this instant. Fog used to be nothing but LESS SHROUD — the same near-black at a
+   * fraction of its strength — which is three states along ONE axis, and it is why fog never
+   * read as fog: reported from play as "explored ground looks lighter than ground in view".
+   * Dimming does not say "remembered", it flattens contrast, and a flat mid-tone beside
+   * high-contrast lit country reads as paler even when it is measurably darker.
+   * So fog now carries its own cold HUE. This measures the overlay's own pixels, classified
+   * by the sim's masks, and asserts BOTH axes: fog sits between its neighbours in strength,
+   * and it is COOLER than the shroud rather than a weaker copy of it. The hue assertion is
+   * the one that fails on the old code, where both came from the same fill. */
+  {
+    suite('shroud, fog and sight read differently');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
+    await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
+      .find((e) => /julian/i.test(e.textContent)).click());
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const m = await pg.evaluate(async () => {
+      const w = window.Game.game.world;
+      /* FOG ONLY EXISTS WHERE SIGHT HAS BEEN AND GONE. A fresh match has none at all — every
+       * cell you have seen you can still see — so the men have to march first or this suite
+       * measures an empty bucket and passes without testing anything. */
+      /* to a FIXED TICK, not for a fixed number of steps. The page reaches this line at
+         whatever tick the real-time loop happened to have run to, so "advance 5400" lands on a
+         different world every run — one pass saw 264 fog cells and the next saw 4, which makes
+         the sample count, not the veil, decide whether the suite passes. The timestep is fixed,
+         so running UNTIL tick 6000 lands on the same world every time. */
+      while (w.tick < 6000) { window.World.update(w, 1 / 30); w.events.length = 0; w.winner = null; }
+      /* and pull back, or the camera sits over the Seat where everything is in sight and there
+         is barely any fog on screen to measure */
+      window.Render.setZoom(window.CONST.VIEW.min);
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const cv = document.getElementById('overlay');
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      const dpr = cv.width / cv.clientWidth, vi = window.Game.game.viewer;
+      const vis = w.vis[vi], seen = w.players[vi].seen;
+      const acc = { sight: [], fog: [], shroud: [] };
+      /* WALK THE CELLS, DO NOT SPRAY THE SCREEN. Sampling screen points uniformly finds
+         however much fog the camera happens to be pointed at — one run caught 264 fog pixels
+         and the next 17, which turns the sample count itself into the thing that decides
+         whether the suite passes. Every cell of the grid is classified from the sim's own
+         masks and projected with Render.project, so each class is found deliberately. */
+      for (let gy = 0; gy < vis.gh; gy++) for (let gx = 0; gx < vis.gw; gx++) {
+        const k = gy * vis.gw + gx;
+        const cls = vis.g[k] ? 'sight' : (seen.g[k] ? 'fog' : 'shroud');
+        if (acc[cls].length > 400) continue;
+        const q = window.Render.project((gx + 0.5) * vis.cell, (gy + 0.5) * vis.cell);
+        if (!q.ok) continue;
+        const sx = q.x, sy = q.y;
+        if (sx < 6 || sy < 6 || sx > cv.clientWidth - 6 || sy > cv.clientHeight - 6) continue;
+        const p = ctx.getImageData(Math.round(sx * dpr), Math.round(sy * dpr), 1, 1).data;
+        /* HUD INK IS NOT THE VEIL. Site labels, bars and the writ line are drawn on this same
+         * overlay in warm cream, and at (blue-red) about -87 a single sample in ten drags the
+         * mean far enough to invert the answer — which is exactly how this suite first
+         * reported the veil as WARMER than the shroud while the wash it was meant to be
+         * measuring is rgb(12,16,30), i.e. +18. Every colour the veil paints is very dark, so
+         * anything bright is somebody else's ink; drop it, and take the MEDIAN besides. */
+        if (p[0] + p[1] + p[2] > 150) continue;
+        acc[cls].push(p);
+      }
+      const med = (xs) => { xs.sort((u, v) => u - v); return xs[xs.length >> 1]; };
+      const stat = (a) => {
+        if (!a.length) return { n: 0 };
+        let al = 0;
+        for (const p of a) al += p[3] / 255;
+        return { n: a.length, alpha: al / a.length, cool: med(a.map((p) => p[2] - p[0])) };
+      };
+      return { sight: stat(acc.sight), fog: stat(acc.fog), shroud: stat(acc.shroud) };
+    });
+    ok('the rig is alive: all three states are on screen', m.sight.n > 50 && m.fog.n > 20 && m.shroud.n > 50,
+       `sight ${m.sight.n}, fog ${m.fog.n}, shroud ${m.shroud.n}`);
+    if (m.fog.n > 20) {
+      ok('ground in sight is clear of the veil', m.sight.alpha < 0.12, `alpha ${m.sight.alpha.toFixed(3)}`);
+      ok('fog is plainly veiled, not merely tinted', m.fog.alpha > m.sight.alpha + 0.25,
+         `sight ${m.sight.alpha.toFixed(3)} vs fog ${m.fog.alpha.toFixed(3)}`);
+      ok('...and still plainly lighter than shroud', m.shroud.alpha > m.fog.alpha + 0.15,
+         `fog ${m.fog.alpha.toFixed(3)} vs shroud ${m.shroud.alpha.toFixed(3)}`);
+      /* the axis the old veil did not have: fog is COLD, the shroud is merely black */
+      ok('fog is a colder colour than the shroud, not a weaker copy of it', m.fog.cool > m.shroud.cool + 4,
+         `blue-over-red: fog ${m.fog.cool.toFixed(1)}, shroud ${m.shroud.cool.toFixed(1)}`);
+    }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   await browser.close();
   srv.close();
   process.exit(report('browser'));

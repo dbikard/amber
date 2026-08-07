@@ -1225,6 +1225,7 @@
    * continuous — the edge advances as a soft front instead of a rank of cells. */
   const VEIL_BANDS = 4;
   const veilT = {};
+  let fogA = null;   // seen-minus-sight, rebuilt each frame into the same buffer
   function easeVeil(key, bits, n, dt) {
     let a = veilT[key];
     if (!a || a.length !== n) { a = veilT[key] = Float32Array.from(bits); return a; }
@@ -2250,11 +2251,38 @@
    * nothing. On a desktop window the fog cells are a few pixels and the staircase hides; on a
    * phone a cell is ~100 device pixels and the mask's raw grid marched across the screen —
    * which is why four SwiftShader reproductions came back clean and one Android photo did not. */
-  const rimStore = {}, memStore = {}, midStore = {}, visStore = {};
+  const rimStore = {}, memStore = {}, midStore = {}, visStore = {}, fogStore = {}, fogMid = {};
   const rimCtx = () => scratch(rimStore);
   const visCtx = (k) => scratch(visStore, k);
   const memCtx = (shrink) => scratch(memStore, shrink);
   const midCtx = (shrink) => scratch(midStore, shrink);
+  const fogCtx = (shrink) => scratch(fogStore, shrink);
+  const fogMidCtx = (shrink) => scratch(fogMid, shrink);
+  /* THE THREE STATES OF GROUND, AND WHY FOG NEEDS A COLOUR OF ITS OWN.
+   *   SHROUD — never seen. Black.
+   *   FOG    — seen once, not seen now. You remember the land; you do not know what stands
+   *            on it. Drawn from the viewer's `seen` mask minus what he can see this instant.
+   *   SIGHT  — watched right now. Clear.
+   * Fog used to be nothing but LESS SHROUD: the same near-black at 45% of its strength. Three
+   * states along one axis, which is why it never read as fog — reported from play as
+   * "explored ground looks lighter than ground in view". Dimming does not say "remembered",
+   * it just flattens contrast, and a flattened mid-tone beside high-contrast lit country
+   * reads as paler even when it is measurably darker (measured: 0.024 sight, 0.367 fog,
+   * 0.818 shroud — the ordering was right and it still looked wrong).
+   * So fog gets its own HUE instead of a fraction of the shroud's: the explored region is
+   * punched clear of the shroud entirely, and a cold slate wash is laid back over the part of
+   * it nobody is watching. Warm and clear where you look, cold and drained where you only
+   * remember, black where you have never been — three readings on two axes.
+   * The wash is kept DARK on purpose. A mid-grey would lighten night terrain and reintroduce
+   * exactly the complaint; this only ever darkens, and cools while it does.
+   * (True desaturation is what most games use and would be better still. It is not available
+   * here: the veil is a 2D canvas layered OVER the WebGL canvas, so no composite op of ours
+   * can reach the pixels beneath, and CSS mix-blend-mode is all-or-nothing for the element.
+   * Draining fog's colour properly wants the visibility mask sampled in the ground shader.) */
+  /* dark enough that it can only ever DARKEN. A mid-tone slate would lighten night terrain
+   * and bring back the very complaint this fixes, so the wash sits below the darkest ground
+   * the board paints; the blue lead over the red is what carries the "cold" read. */
+  const FOG_WASH = [12, 16, 30];
 
   /* about how many screen pixels a world unit spans at the middle of the view — enough to
    * size a blur by, not a projection */
@@ -2331,7 +2359,9 @@
         const quads = (a, mask, alpha) => {
           if (cg && a) bandFill(mc, cg, mask.gw, mask.gh, a, alpha);
         };
-        if (sm) quads(memA, sm, 1 - C.FOG.keep);
+        /* the explored region is punched CLEAR of the shroud — fog's darkness is no longer a
+         * leftover fraction of it, it is the slate wash laid back on below */
+        if (sm) quads(memA, sm, 1);
         /* CURRENT SIGHT FROM THE MASK, WHEN THE SIM SERVES ONE. Occlusion makes a sight
          * region an arbitrary shape — a ridge's shadow is not an ellipse — so the ellipse
          * holes below cannot draw it. The mask can, through the exact pipeline the memory
@@ -2383,6 +2413,44 @@
         g.imageSmoothingEnabled = true;
         g.drawImage(src, 0, 0, W, H);
         g.globalCompositeOperation = 'source-over';
+        /* ---- and now FOG, in its own colour ----
+         * fogOnly = what you have seen MINUS what you see now, on the same grid and from the
+         * same eased weights, so the wash lifts and settles with the sight that made it and
+         * never fights the veil it sits beside. */
+        const fcx = (cg && memA && liveA) ? fogCtx(shrink) : null;
+        if (fcx) {
+          const n = Math.min(memA.length, liveA.length);
+          if (!fogA || fogA.length !== n) fogA = new Float32Array(n);
+          for (let i = 0; i < n; i++) { const d = memA[i] - liveA[i]; fogA[i] = d > 0 ? d : 0; }
+          fcx.clearRect(0, 0, W, H);
+          if (mcFilter) fcx.filter = mc.filter;
+          bandFill(fcx, cg, sm.gw, sm.gh, fogA, 1);
+          if (mcFilter) fcx.filter = 'none';
+          /* shape the colour by the mask, then lay it down in one pass */
+          fcx.globalCompositeOperation = 'source-in';
+          fcx.fillStyle = 'rgb(' + FOG_WASH[0] + ',' + FOG_WASH[1] + ',' + FOG_WASH[2] + ')';
+          fcx.fillRect(0, 0, W, H);
+          fcx.globalCompositeOperation = 'source-over';
+          let fsrc = fogStore.cv;
+          if (shrink >= 4) {
+            const fm = fogMidCtx(Math.sqrt(shrink));
+            if (fm) {
+              fm.clearRect(0, 0, W, H);
+              fm.imageSmoothingEnabled = true;
+              fm.drawImage(fsrc, 0, 0, W, H);
+              fsrc = fogMid.cv;
+            }
+          }
+          /* the wash has to clear BOTH neighbours: dark enough that fog never reads as sight
+           * (the reported bug), light enough that fog never reads as shroud. Measured with
+           * the overlay's own alpha: 0.02 sight / ~0.50 fog / 0.82 shroud leaves a gap either
+           * side. And the surer signal is not tone at all — under fog you can still make out
+           * the LAND, under shroud there is nothing to make out. */
+          g.globalAlpha = Math.max(0, Math.min(1, C.FOG.keep + 0.05));
+          g.imageSmoothingEnabled = true;
+          g.drawImage(fsrc, 0, 0, W, H);
+          g.globalAlpha = 1;
+        }
       }
     }
     /* ONE warm line on the edge of sight — the OUTER limit of the lit ground, not a ring
