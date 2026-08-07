@@ -190,14 +190,51 @@
       }
     }
 
-    /* ---- the courts of the two Seats ---- */
-    for (let pi = 0; pi < 2; pi++) {
+    /* ---- the courts of the Seats: ground worked bare by everyone who lives on it ----
+     * EVERY Seat, not the first two. This loop was `pi < 2` from the duel days, so at a
+     * three- or four-handed table the third and fourth heirs sat on untouched wilderness.
+     * And this is now the ONLY court. The renderer used to stamp a flat opaque CircleGeometry
+     * over the top of this — reported from play as an ugly brown disc, and it was three wrongs
+     * at once: a paint-bucket colour on a board that is painterly everywhere else, a PLANAR
+     * circle on ground that is not planar (cutting into the hill on one side, floating on the
+     * other), and a hard rim with no falloff. Painted into the bake instead it IS the land:
+     * it follows every slope for free, it has no edge to catch the eye, and it costs no mesh,
+     * no transparency and no z-fighting. */
+    for (let pi = 0; pi < map.cities.length; pi++) {
       const cs = map.sites[map.cities[pi]];
-      const X = cs.x, Y = cs.y;
+      if (!cs) continue;
+      const X = cs.x, Y = cs.y, own = pi === viewer, R0 = C.CITY.r;
+      /* the far glow — the realm's colour bleeding into the country around the Seat */
       const gr = g.createRadialGradient(X, Y, 20, X, Y, 330);
-      gr.addColorStop(0, pi === viewer ? 'rgba(120,96,44,0.34)' : 'rgba(110,44,54,0.26)');
+      gr.addColorStop(0, own ? 'rgba(120,96,44,0.34)' : 'rgba(110,44,54,0.26)');
       gr.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = gr; g.beginPath(); g.arc(X, Y, 330, 0, 7); g.fill();
+      /* the court proper: earth beaten bare, faded out long before its edge so there is no
+       * circle to see. The old disc's hard rim was half of why it read as a sticker. */
+      const ct = g.createRadialGradient(X, Y, R0 * 0.15, X, Y, R0 * 1.12);
+      ct.addColorStop(0, own ? 'rgba(74,58,30,0.55)' : 'rgba(70,34,36,0.50)');
+      ct.addColorStop(0.62, own ? 'rgba(60,47,26,0.32)' : 'rgba(58,29,32,0.28)');
+      ct.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = ct; g.beginPath(); g.arc(X, Y, R0 * 1.12, 0, 7); g.fill();
+      /* tracks worn out of it by everything that has ever marched off this ground */
+      g.lineCap = 'round';
+      for (let k = 0; k < 7; k++) {
+        const a = rng.next() * 6.283, x2 = X + Math.cos(a) * R0 * 1.06, y2 = Y + Math.sin(a) * R0 * 1.06;
+        const tg = g.createLinearGradient(X, Y, x2, y2);
+        tg.addColorStop(0, 'rgba(96,78,44,0.30)'); tg.addColorStop(1, 'rgba(96,78,44,0)');
+        g.strokeStyle = tg; g.lineWidth = 9 + rng.next() * 13;
+        g.beginPath(); g.moveTo(X, Y); g.lineTo(x2, y2); g.stroke();
+      }
+      /* gravel and broken flag, so there is something for the eye to land on up close */
+      for (let k = 0; k < 260; k++) {
+        const a = rng.next() * 6.283, r = Math.sqrt(rng.next()) * R0 * 1.05;
+        const f = 1 - r / (R0 * 1.05);
+        g.globalAlpha = (0.05 + rng.next() * 0.13) * f;
+        g.fillStyle = rng.next() < 0.42 ? '#0d0a08' : (own ? '#b49a62' : '#a8737a');
+        const s2 = 1.6 + rng.next() * 3.4;
+        g.fillRect(X + Math.cos(a) * r, Y + Math.sin(a) * r, s2, s2 * (0.6 + rng.next() * 0.8));
+      }
+      g.globalAlpha = 1;
     }
 
     /* the world dissolves into Shadow at its rim */

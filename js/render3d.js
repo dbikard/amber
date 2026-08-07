@@ -1450,14 +1450,16 @@
     const own = pi === viewer;
     const city = view.map.sites[view.map.cities[pi]];
     const g = { cx: city.x, cy: city.y, own, group: new THREE.Group() };
-    /* worked ground disc */
-    const court = new THREE.Mesh(new THREE.CircleGeometry(C.CITY.r + 14, 30).rotateX(-Math.PI / 2),
-      new THREE.MeshLambertMaterial({ color: own ? 0x2e2416 : 0x2a161a, transparent: true, opacity: 0.85 }));
-    /* on the GROUND, not on the y=0 plane: the land has real elevation now, and a Seat on a
-     * hill was buried to its neck while its court disc lay underground entirely */
+    /* THE COURT IS PAINTED, NOT STAMPED. There was a flat CircleGeometry here — one solid
+     * colour at 0.85 opacity, laid at the Seat's own height. Reported from play as an ugly
+     * brown disc, and it was three wrongs at once: a paint-bucket colour on a board that is
+     * painterly everywhere else; a PLANAR circle on ground that is not planar, so it cut into
+     * the hill on one side and floated on the other; and a hard rim with no falloff.
+     * It was also redundant. `terrain.js` already paints a court into the ground bake — the
+     * same ground every other feature is painted into — which blends, follows the land because
+     * it IS the land, and costs no mesh, no transparency and no z-fighting. The disc was a
+     * second court stamped on top of a better one. Deleted; the bake does the work. */
     const ch = groundH(city.x, city.y);
-    court.position.set(city.x, ch + 0.6, city.y);
-    g.group.add(court);
     g.tower = towerModel(own);
     g.tower.position.set(city.x, ch, city.y);
     g.group.add(g.tower);

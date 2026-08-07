@@ -636,11 +636,23 @@
     }
     flipCard(el, s);
     if (s.bt === 'shrine') {
+      /* A WALK CANNOT BE CALLED OFF. `{c:'walk',on:false}` is refused with 'committed', so the
+       * old "⏸ Pause the walk" card was a button that issued an order the sim threw away — the
+       * worst kind of control, one that looks live and does nothing. While walking this is a
+       * READOUT, not a button: it says the thing the player most needs to know, which is that
+       * the choice is already made and the only ways off the lines are winning or losing the
+       * Shrine. Only the invitation to START is still something you can press. */
       const b = document.createElement('button');
       b.className = 'card walkbtn';
-      b.innerHTML = `<span class="c-name">${walking ? '⏸ Pause the walk' : '✴ Walk the Pattern'}</span>` +
-                    `<span class="c-blurb">${walking ? 'Hold your step upon the blazing lines' : 'Drains Essence. Your rival WILL know.'}</span>`;
-      b.addEventListener('click', () => { H.onWalk(!walking); UI.closeSheet(); });
+      if (walking) {
+        b.disabled = true;
+        b.innerHTML = '<span class="c-name">✴ Walking the Pattern</span>' +
+                      '<span class="c-blurb">The lines will not let go. Only the Pattern finished — or this Shrine thrown down — ends the walk.</span>';
+      } else {
+        b.innerHTML = '<span class="c-name">✴ Walk the Pattern</span>' +
+                      '<span class="c-blurb">Drains Essence, and the drain comes before your halls are paid. Your rival WILL know. There is no turning back.</span>';
+        b.addEventListener('click', () => { H.onWalk(true); UI.closeSheet(); });
+      }
       el.appendChild(b);
     }
     addCancel(el);
