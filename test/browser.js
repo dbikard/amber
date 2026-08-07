@@ -11,9 +11,17 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { suite, ok, report, record } = require('./lib.js');
+const { suite, ok, report, record, track } = require('./lib.js');
 
 const ROOT = path.join(__dirname, '..');
+/* THE PAGE'S CODE IS WHAT THE SERVER SERVES — the js/ files are loaded over HTTP from disk on
+ * every navigation, not require()d, so lib.js's require.cache sweep cannot see them. Track
+ * each script index.html names (plus index.html itself) now, before the first navigation, so
+ * the provenance line pins what the first page-load got and report() screams if an edit lands
+ * on disk mid-run — later navigations would silently be testing a different game. */
+for (const m of fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').matchAll(/<script src="([^"?]+)/g))
+  track(path.join(ROOT, m[1]));
+track(path.join(ROOT, 'index.html'));
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 

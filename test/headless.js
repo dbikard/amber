@@ -12,6 +12,17 @@ R('record.js');
 const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG } = globalThis;
 const { suite, ok, eq, near, report } = require('./lib.js');
 
+/* ---- --quick: a partial pass for the edit loop ----
+ * The full run is ~6 minutes and its own timing line names where they go — the solo ladder
+ * alone is ~170s of bot-vs-bot matches. --quick skips exactly the sim-heavy suites marked
+ * with QUICK() below and says so LOUDLY beside the tally, on its own lines, so the
+ * "headless: N/N passing" line that other tools grep is untouched.
+ * THE FULL SUITE (no flag) STAYS THE GATE BEFORE ANY PUSH — a skipped suite vouches for
+ * nothing, and the suites skipped here are the ones that play whole matches. */
+const QUICK_RUN = process.argv.includes('--quick');
+const skipped = [];
+const QUICK = (name) => { if (QUICK_RUN) skipped.push(name); return QUICK_RUN; };
+
 const SEEDS = [1, 7, 42, 1000, 31337];
 
 /* ---------------- the world ---------------- */
@@ -514,7 +525,14 @@ suite('stone is for shooters')
     eq('a tower is a room, not a field', crowd.filter((u) => u.in === tw.id).length, C.TOWER.berths);
     ok('and the rest stay outside', crowd.filter((u) => !u.in).length === 3);
     ok('a swordsman never goes up one', !sword.tow);
-    ok('every man up it has his own place', new Set(crowd.filter((u) => u.in).map((u) => u.towSlot)).size === C.TOWER.berths);
+    /* This used to assert a distinct `towSlot` per man — the ring-around-the-crown geometry
+     * from the days when assignment WAS entry. Since "the rim is the door" (v0.9.11) a man
+     * through the door has no place on the field at all, so the slot is gone from the unit
+     * and from the wire, and what is asserted is its absence: both checks FAIL on the old
+     * code, where the roster dealt slots and snapFor shipped them. */
+    ok('a man through the door has no ring slot — the field is not where he is',
+       crowd.every((u) => !('towSlot' in u)));
+    ok('...and no slot rides the wire', JSON.stringify(Net.snapFor(w2, 0, [])).indexOf('towSlot') === -1);
     ok('a man in a tower throws further than he could on the ground',
        C.TOWER.over > C.UNITS.archer.range, `${C.TOWER.over} vs ${C.UNITS.archer.range}`);
   }
@@ -990,7 +1008,9 @@ suite('companies')
 }
 
 suite('the masons')
-{
+/* ~13s: the "cap is really gone" loop below raises thirty towers and waits on the crews for
+ * each — sim weight, not logic, so --quick puts it down */
+if (!QUICK('the masons')) {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
   pl.essence = 99000;
   /* this is about the crews, not the black road — and works now take long enough to raise
@@ -3528,7 +3548,9 @@ suite('the halt')
  * mirror, i.e. no handicap at all. Income and the hour it marches are the two knobs that bite,
  * and both must move monotonically down the table. */
 suite('the solo ladder')
-{
+/* ~170s of the ~6-minute run: eight full bot-vs-bot matches. The heaviest thing here by far,
+ * so it is the first thing --quick puts down. */
+if (!QUICK('the solo ladder')) {
   const D = C.DIFFICULTY, order = C.DIFFICULTY_UI;
   /* The top rung used to BE the unhandicapped heir — eco 1, hold 0 — and it is not any more:
    * every footing was eased. What must still hold is that the top is nearly that heir and
@@ -3907,7 +3929,9 @@ suite('a hall keeps so many men and no more');
 }
 
 suite('no ceiling on the muster')
-{
+/* ~30s: it steps 900 sim-seconds under four halls to prove throughput and the wall-clock
+ * budget — pure sim weight, so --quick puts it down too */
+if (!QUICK('no ceiling on the muster')) {
   eq('an heir musters as many as it can pay for', C.CAP.player, 0);
   ok('Chaos still has one — a director is not a player', C.CAP.chaos > 0, `${C.CAP.chaos}`);
 
@@ -4256,4 +4280,11 @@ suite('multiplayer snapshots');
 }
 
 /* ---------------- */
-process.exit(report("headless"));
+const bad = report("headless");
+if (QUICK_RUN) {
+  /* after the tally, each on its own line: nothing that greps the "headless: N/N passing"
+   * line breaks, and nobody can quote the tally without this staring at them */
+  console.log(`\x1b[33mQUICK RUN — PARTIAL: skipped ${skipped.length} suite(s): ${skipped.join(' · ')}\x1b[0m`);
+  console.log(`\x1b[33mthe full \`node test/headless.js\` (no flag) is the gate before any push\x1b[0m`);
+}
+process.exit(bad);

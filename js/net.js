@@ -485,7 +485,11 @@
                         * draws him on the stone too — both change where he IS, not only what
                         * he looks like, so neither is a secret worth keeping */
                        ...(u.man ? { man: u.man } : {}),
-                       ...(u.tow ? { tow: u.tow, towSlot: u.towSlot || 0 } : {}),
+                       /* `tow` alone — there is no `towSlot` any more: the slot only ever fed
+                        * the old ring-around-the-crown geometry, and since "the rim is the
+                        * door" (v0.9.11) a man inside is not drawn at all, so the field was a
+                        * dead byte on every garrisoned man in every snapshot */
+                       ...(u.tow ? { tow: u.tow } : {}),
                       /* through the door or still walking to it — a guest draws the walk and
                        * hides the room exactly as the host does */
                       ...(u.in ? { in: u.in } : {}),

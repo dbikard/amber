@@ -383,7 +383,7 @@
       const places = [];
       for (let i = 0; i < Math.max(berths, C.TOWER.berths); i++) {
         if (i < berths) places.push({ man: id });
-        for (const t of towers) if (i < C.TOWER.berths) places.push({ tow: t.id, slot: i });
+        for (const t of towers) if (i < C.TOWER.berths) places.push({ tow: t.id });
       }
       /* `station` reads ONE number: a `berth` below `berths` is a place on the parapet, and
        * anything above it is a row at the foot. So the two are counted separately — a man given
@@ -397,7 +397,7 @@
         if (mans(u) && take < places.length) {
           const p = places[take++];
           if (p.man) { u.man = p.man; u.berth = parapet++; }
-          else { u.tow = p.tow; u.towSlot = p.slot; }
+          else u.tow = p.tow;
           continue;
         }
         u.berth = berths + foot++;
@@ -473,17 +473,14 @@
     }
     for (const [id, list] of rosters) {
       list.sort((p, q) => p.id - q.id);      // a stable garrison: the same men hold it
-      for (let i = 0; i < list.length && i < C.TOWER.berths; i++) {
-        list[i].tow = id; list[i].towSlot = i;
-      }
+      for (let i = 0; i < list.length && i < C.TOWER.berths; i++) list[i].tow = id;
     }
   }
-  /* his window: the garrison stands around the tower's head, evenly, so three men read as
-   * three men rather than one stack */
-  function towerStation(b, u) {
-    const a = ((u.towSlot || 0) + 0.5) / C.TOWER.berths * Math.PI * 2;
-    return { x: b.x + Math.cos(a) * C.TOWER.ring, y: b.y + Math.sin(a) * C.TOWER.ring };
-  }
+  /* There is no towerStation and no per-man slot any more. It placed the garrison in a ring
+   * around the crown, from the days when assignment WAS entry; since "the rim is the door"
+   * (v0.9.11) an assigned man marches to the tower like anyone marches anywhere and stops
+   * existing on the field the tick he crosses it — grepped the tree, nothing read the slot but
+   * the ring geometry itself, so the slot came off the unit and off the wire with it. */
   const towerOf = (world, u) => {
     if (!u.tow) return null;
     return world.players[u.owner].buildings.find((b) => b.id === u.tow) || null;
@@ -1958,11 +1955,11 @@
       for (let k = 0; k < spill.length; k++) {
         const u = spill[k];
         const a = (k + 0.5) / spill.length * Math.PI * 2;
-        u.tow = 0; u.towSlot = 0; u.in = 0;
+        u.tow = 0; u.in = 0;
         u.x = b.x + Math.cos(a) * C.TOWER.ring; u.y = b.y + Math.sin(a) * C.TOWER.ring;
       }
       /* a man still WALKING to it was never in it — he keeps his feet and loses the errand */
-      for (const u of world.units) if (u.tow === b.id) { u.tow = 0; u.towSlot = 0; }
+      for (const u of world.units) if (u.tow === b.id) u.tow = 0;
       pl.buildings.splice(i, 1);
       if (isWall(b)) { world.navVersion++; noteWalls(world); }   // a breach is a hole
       if (b.bt === 'shrine') {
