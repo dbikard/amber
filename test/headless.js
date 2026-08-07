@@ -2432,8 +2432,12 @@ suite('men have width');
      clear.n > 10 && clear.worst > C.CROWD.space * 0.35,
      `${clear.n} men clear of a work, closest pair ${clear.worst.toFixed(1)}`);
 
-  /* ...AND STILL SPREAD AFTER A MARCH, which is where a formation usually collapses */
-  pl.banner = { x: c.x + 700, y: c.y + 300, site: -1 };
+  /* ...AND STILL SPREAD AFTER A MARCH, which is where a formation usually collapses.
+   * The march points INTO the board. It used to point 350 past the east edge, and the claim
+   * only ever held because men walked off the world to reach it — the walk the terrain rule
+   * refuses now. Open-field spacing is an open-field claim; what an order past the edge gets
+   * is its own claim, made below. */
+  pl.banner = { x: c.x - 700, y: c.y + 300, site: -1 };
   for (let i = 0; i < 30 * 40; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
   const far = spacing();
   ok('an army that has marched is still spread', far.avg > C.CROWD.space * 0.7,
@@ -2451,6 +2455,31 @@ suite('men have width');
   const drift = moved / n;
   ok('a settled army stands still', drift < C.UNITS.soldier.speed * C.SIM_DT * 0.15,
      `${drift.toFixed(3)} a tick against a stride of ${(C.UNITS.soldier.speed * C.SIM_DT).toFixed(2)}`);
+
+  /* AN ORDER PAST THE EDGE OF THE WORLD gathers the company on the bank. The banner is 350
+   * beyond the east edge; the order is folded onto the nearest standable ground (foldOrder),
+   * and nobody honours it by leaving the world or wading out — which is exactly how this
+   * point was honoured before the ground had the last word. A half-disc pressed against the
+   * edge cannot keep open-field spacing, so the body claim here has the bank's floor, not
+   * the field's. */
+  pl.banner = { x: c.x + 700, y: c.y + 300, site: -1 };
+  for (let i = 0; i < 30 * 40; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const bank = mine();
+  ok('an order past the edge strands nobody off the board',
+     bank.every((u) => u.x >= 0 && u.y >= 0 && u.x <= C.MAP.W && u.y <= C.MAP.H),
+     `${bank.filter((u) => u.x < 0 || u.y < 0 || u.x > C.MAP.W || u.y > C.MAP.H).length} out in the dark`);
+  const wet = bank.filter((u) => {
+    const cc = NAV.cellOf(w.nav, u.x, u.y);
+    return cc < 0 || w.nav.cost[cc] === 0;
+  });
+  ok('...and puts nobody on ground that refuses a man', wet.length === 0, `${wet.length} on rock or water`);
+  const fold = World.foldOrder(w, pl.banner);
+  ok('...and the company gathered at the fold', !!fold &&
+     bank.filter((u) => Math.hypot(u.x - fold.x, u.y - fold.y) < 260).length > bank.length * 0.8,
+     fold ? `fold at ${fold.x.toFixed(0)},${fold.y.toFixed(0)}` : 'no fold on the order');
+  const edge = spacing();
+  ok('...still a body, spread along the ground it has', edge.avg > C.CROWD.space * 0.45,
+     `${edge.avg.toFixed(1)} on the bank against ${(C.CROWD.space * 0.45).toFixed(1)}`);
 
   /* the formation is what does the work, and it is deterministic: the same board twice puts
    * the same man in the same place, or a guest and a host disagree about where the army is */

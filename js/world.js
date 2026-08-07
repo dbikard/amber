@@ -342,7 +342,7 @@
        * army one tick late and leave a man mustered this tick with no station at all */
       const pl3 = world.players[u.owner];
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
-      const gs = co3 && co3.rally ? co3.rally : pl3.banner;
+      const gs = foldOrder(world, co3 && co3.rally ? co3.rally : pl3.banner);
       if (!gs) continue;
       let post = null, pd = reach;
       for (const w of world.walls) {
@@ -453,7 +453,7 @@
       if (u.man || u.tow) continue;             // already given a place by the run he was sent to
       const pl3 = world.players[u.owner];
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
-      const gs = co3 && co3.rally ? co3.rally : pl3.banner;
+      const gs = foldOrder(world, co3 && co3.rally ? co3.rally : pl3.banner);
       if (!gs) continue;
       let post = null, pd = C.TOWER.man;
       for (const b of pl3.buildings) {
@@ -1517,6 +1517,38 @@
     const c = NAV.cellOf(world.nav, x, y);
     return c >= 0 && world.nav.cost[c] > 0;
   }
+  /* AN UNREACHABLE ORDER IS FOLDED ONTO THE NEAREST STANDABLE GROUND — the other half of
+   * `placeAt`, which folds a PLACE. A tap is clamped to the board by `applyCommand`, but the
+   * board is not the ground: a banner planted in a lake, on a crag, or set past the edge by a
+   * test or a doctrine is an order no man can carry out. While men could still walk onto bad
+   * ground they simply went — which is the bug `stand` and `jostle` now refuse — and once they
+   * refuse, a company sent at water pressed against the bank and stacked. Folded HERE, at the
+   * order, the whole body gathers on the bank instead: the flow field, the muster ground and
+   * every man's place all follow the folded point, so nothing downstream has to know.
+   * Cached in a WeakMap keyed by the order object — NOT on the order itself, because a rally
+   * rides the snapshot verbatim (net.js) and a cache written onto it would leak to every
+   * guest. Terrain cost never changes within a match (walls live in the nav MASKS, not the
+   * cost), so a fold is true for as long as the order stands, and a new order arrives as a
+   * new object and falls out of the map with the old one. The scan is the whole grid, once
+   * per bad order: exact, and cheaper than being clever about rings. */
+  function foldOrder(world, p) {
+    if (!p || standable(world, p.x, p.y)) return p;
+    const folds = world._folds || (world._folds = new WeakMap());
+    let f = folds.get(p);
+    if (f) return f;
+    const nav = world.nav, cw = nav.cw;
+    let bx = p.x, by = p.y, bd = Infinity;
+    for (let cy = 0; cy < nav.H; cy++) for (let cx = 0; cx < nav.W; cx++) {
+      if (nav.cost[cy * nav.W + cx] === 0) continue;
+      const x = (cx + 0.5) * cw, y = (cy + 0.5) * cw;
+      if (!standable(world, x, y)) continue;   // the board's margin is part of "standable"
+      const d = (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y);
+      if (d < bd) { bd = d; bx = x; by = y; }
+    }
+    f = { x: bx, y: by, site: p.site != null ? p.site : -1 };
+    folds.set(p, f);
+    return f;
+  }
   function placeAt(world, cx, cy, off) {
     if (standable(world, cx + off.x, cy + off.y)) return { x: cx + off.x, y: cy + off.y };
     /* ALONG HIS OWN BEARING, and not onto the flag. Folding a bad place all the way back to the
@@ -1540,11 +1572,11 @@
      * what the CROWD needs, too. Held exactly at the boundary instead, the men pressed against
      * it were still shoved over it by the separation pass, which knows nothing about the world's
      * edge: 8 of 96 a few units out in the dark.
-     * An order that is off the board ENTIRELY is a different thing and is left alone: a standard
-     * planted where nobody can stand is an order to TRY (see the march), the men keep their
-     * places in the line and try, and the alternative is a company that stacks on the boundary
-     * — measured, an army marched at a point past the east edge closed to 11.8 apart. */
-    if (cx < 0 || cy < 0 || cx > C.MAP.W || cy > C.MAP.H) return { x: cx + off.x, y: cy + off.y };
+     * There used to be a third case here — an order off the board ENTIRELY was left alone as
+     * "an order to TRY", because men could still walk off the map and trying beat stacking on
+     * the boundary. That walk is the bug `stand` now refuses, and the order itself is folded
+     * onto standable ground before it reaches this function (see foldOrder), so the case
+     * cannot arise from the march any more. */
     const m = C.CROWD.space;
     const hold = (p, hi) => Math.max(m, Math.min(hi - m, p));
     return { x: hold(cx + off.x, C.MAP.W), y: hold(cy + off.y, C.MAP.H) };
@@ -1562,7 +1594,8 @@
       if (u.owner !== C.CHAOS_ID) {
         const pl = world.players[u.owner];
         const co = u.co ? coOf(world, u.owner, u.co) : null;   // its company, if it still exists
-        const want = co && co.rally ? co.rally : pl.banner;
+        /* folded, so an order given on water gathers the company on the bank — see foldOrder */
+        const want = foldOrder(world, co && co.rally ? co.rally : pl.banner);
         if (u.goal !== want) u.goal = want;
       }
       /* a berth on a parapet and a room in a tower are STATIONS, and a station is exact. Neither
@@ -2437,6 +2470,6 @@
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
                    visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
-                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf };
+                   wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;
 })(typeof window !== 'undefined' ? window : globalThis);
