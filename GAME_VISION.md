@@ -2,16 +2,16 @@
 
 ## The Concept
 
-**A competitive, real-time, lane-based city-builder for the phone**, inspired by Roger
-Zelazny's *The Chronicles of Amber*. Single-player against AI rival heirs; 1v1 over LAN
-(serverless WebRTC, QR pairing), later up to 4.
+**A competitive, real-time, open-world city-builder for the phone**, inspired by Roger
+Zelazny's *The Chronicles of Amber*. Single-player against AI rival heirs; two to four over
+LAN (serverless WebRTC, QR pairing).
 
-Oberon is gone. Two heirs raise rival cities in Shadow, contesting the **black road** — the
-corrupt path the Courts of Chaos carved toward Amber. Each player **builds their city** at one
-end of the road, draws **Essence** by walking in Shadow, raises troops that march and fight
-on their own, and races to either **overrun the rival's Seat of Power** or be first to
-**walk the Pattern** and claim the throne. Meanwhile the road itself festers: **Chaos rifts**
-open along it and spew fiends at both sides, escalating until someone wins — turtling is death.
+Oberon is gone. Rival heirs raise their cities in Shadow — a land made new each match — draw
+**Essence** from the springs their Shadow Gates stand on, raise troops that march and fight
+on their own, and race to either **overrun a rival's Seat of Power** or be first to
+**walk the Pattern** and claim the throne. Meanwhile Chaos festers in the country between:
+**rifts** tear open at the springs and the high places and spew fiends at everyone, so the
+best ground always has a price — and turtling loses to whoever goes out and pays it.
 
 ## Core Pillars
 
@@ -32,52 +32,47 @@ open along it and spew fiends at both sides, escalating until someone wins — t
 5. **The AI heirs are the content.** Each rival sibling is a distinct strategy personality;
    the single-player campaign is the succession ladder through the family.
 
-> **Direction of travel:** the site graph below is being replaced by a continuous open world —
-> free movement over real terrain, free placement inside claimed ground, essence nodes, and
-> walls. See **`OPEN_WORLD_PLAN.md`**. This section describes what ships
-> today; it migrates stage by stage.
+> **The open world has landed.** The site graph this document once described is gone: free
+> movement over real terrain, free placement inside the writ, springs worth fighting for, and
+> walls have all shipped, stage by stage. **`OPEN_WORLD_PLAN.md`** is the plan they shipped
+> from, and now reads as the record of why each was done the way it was.
 >
 > **Walls have shipped, and not as pieces.** The Curtain Wall is one work with a length: two
 > taps lay a run of stone that bars the ground to every heir but its owner and stops shots
 > crossing it — except from the men standing ON it, who throw further than anyone on the
 > ground and are shot at in return. A wall alone kills nobody. See `OPEN_WORLD_PLAN.md` §6.
 
-## The Board (v0.2 — "The Shadow March": a scrollable map of Shadow)
+## The Board — a world made new each match
 
-A portrait map ~3 screens tall you drag to explore. Cities at the ends; between them a
-**web of shadow-paths** — the black road as the central spine, winding side routes through
-named sites. Units march the paths; fights happen where armies meet.
+A continuous land (`CONST.MAP`, 2000×2400) you drag on both axes — no lanes, no template, no
+mirror. Elevation and moisture are noise and seven terrains are read off them — water, marsh,
+plain, meadow, forest, hill, crag. Water and crag refuse everyone; the rest is passable at
+rising cost, climbing is charged on top, and the handful of corridors any given match has are
+wherever the mountains and the water happened to leave them. Units march the land freely;
+fights happen where armies meet.
 
-```
-        [RIVAL CITY]  (veiled)
-         /    |    \
-   (spring) (road) (spring)
-       |      |      |
-  (vantage)—(road)—(vantage)
-       |   ⚔  |  ⚔   |
-   (spring)—(road)—(spring)     ← contested middle: the eco war
-       |      |      |
-  (vantage)—(road)—(vantage)
-       |      |      |
-   (spring) (road) (spring)
-         \    |    /
-        [YOUR CITY]  (3×3 grid + walls)
-```
+- **Fairness is chosen, not mirrored.** A point-mirrored map tells you exactly where your
+  rival stands, and a hidden Seat cannot survive that. Hundreds of candidate Seat pairs are
+  scored on what each side actually has in reach — springs, buildable ground — and the least
+  skewed pair wins. The rival's Seat stays hidden until somebody lays eyes on it.
+- **Sites**: **springs of Shadow** (a Shadow Gate stands on one, and only there — the income,
+  and the reason to fight) and **high places** (named hilltops). Chaos rifts tear open at
+  both: the ground worth holding is the ground that costs something to hold.
+- **The writ**: your Seat's country plus every Shadow Gate's. Works are placed freely inside
+  it; a Gate may be raised beyond it only on a free spring your troops are standing on —
+  which is the only way a claim grows.
+- **Fog of war**: you see around your Seat, works and men. Explored ground is remembered
+  (dimmed, last-known state); a rival's work is seen while any part of it is in sight and
+  survives as a ghost after; enemy armies move unseen otherwise.
+- **The standards**: the royal War Banner and one pennant per company — plant one on any
+  point of the world and its men march there. Defend home, seize a spring, assault their
+  gate — one tap, zero micro.
+- **Walls**: the Curtain Wall is a run of stone with a length — two taps, priced by the foot,
+  barred to everyone but its owner, manned by shooters (see `OPEN_WORLD_PLAN.md` §6).
+- Essence always has somewhere to go: works, upgrades, walls, the walk — and whoever holds
+  the springs out-scales the other. Map control breaks stalemates by design.
 
-- **Fog of war**: you see around your city, units, and outposts. Explored sites are
-  remembered (dimmed, last-known state); enemy armies move unseen otherwise.
-- **Sites**: **springs** (build a Shadow Gate → income — the reason to fight),
-  **vantages** (high ground for Watchposts), **road stones** (the spine; Chaos rifts here).
-- **Outposts**: claim a site by standing a unit on it, then build: Shadow Gate (eco),
-  Watchpost (vision + arrows), **Rampart** (a wall across the path — enemies must break it).
-- **The War Banner**: one royal banner; tap any site to plant it and your whole army
-  marches there. Defend home, seize a spring, assault their gate — one tap, zero micro.
-- **City walls**: a Walls building in the city grid raises a rampart ring around your
-  castle — attackers chew the wall before the keep. Walls and outposts slowly self-mend.
-- Essence always has somewhere to go: outposts, upgrades, walls — and whoever holds the
-  springs out-scales the other. Map control breaks stalemates by design.
-
-## Buildings (tap an empty slot)
+## Buildings (choose, then place)
 
 | Building | Lore | Role |
 |---|---|---|
@@ -86,10 +81,11 @@ named sites. Units march the paths; fights happen where armies meet.
 | **Sorcery Spire** | Fiona's arts | spawns Sorcerers (ranged) on a timer |
 | **Siege Works** | the timber yard | spawns Engines — made for stone, useless against men |
 | **Curtain Wall** | a run of stone with a length | bars the ground; shooters man its parapet |
-| **Watchtower** | Julian's vigil | shoots attackers near your castle; **shelters ten shooters inside**, untouchable until the tower falls |
+| **Watchtower** | Julian's vigil | shoots whatever comes in reach; **shelters ten shooters inside**, untouchable until the tower falls |
 | **Pattern Shrine** | a reflection of the Pattern (one only) | channel Essence → Pattern progress; 100% = throne |
 
-All buildings upgrade to level 3. Castle (Seat of Power) is pre-placed with HP.
+Works upgrade to level 3 — except the Shrine, which does not upgrade at all: there is one
+Pattern and one way to walk it. The Castle (Seat of Power) is pre-placed with HP.
 
 **And every hall that raises men FORKS at level 2, permanently** — a level makes the same man
 better armed, a branch makes him somebody else:
@@ -160,20 +156,24 @@ AI plays fair: same information rules as a human (no map hacks, no resource chea
 - Netcode model: **host-authoritative state sync** (not Perils' lockstep — competitive play
   needs fog of war and must not depend on cross-browser determinism). Guests send commands;
   the host simulates and streams each player a fog-filtered snapshot ~10 Hz.
-- Host plays **Corwin**, guest plays **Eric**. Of course.
+- A star, two to four heirs: the host holds one peer per guest, each paired by the same QR
+  dance, and hands out seed, player count and seat at start. Host = seat 0; a guest may hold
+  any other. You always see yourself in gold.
 
-## Fog of War (MVP form)
+## Fog of War
 
-The rival's city is **veiled in Shadow**: you see that slots are occupied, not what they hold.
-Units on the road, castle HP, and storms are public. Starting a Pattern walk **reveals the
-shrine and its progress** — power like that resonates through Shadow.
+The rival's realm is **veiled in Shadow**: a work of theirs exists for you only while seen,
+and is remembered as a ghost after — their Seat itself is hidden until somebody lays eyes on
+it. Units and storms are seen or absent; castle HP is public. Starting a Pattern walk
+**reveals the shrine and its progress** — power like that resonates through Shadow.
 
 ## Art Direction
 
 **Painterly Amber fantasy**, rendered procedurally: the golden city glow against the void,
-cold crimson rival skyline, black-green Chaos veins in the road. Sprites are pre-painted at
-boot onto offscreen canvases (layered gradients, rim light, noise speckle) — a solo-dev
-sustainable pipeline, richer than Perils' neon vectors. `render.js` stays isolated.
+cold crimson rival skyline, black-green Chaos boiling out of the rifts. The ground is baked
+painterly at boot (`js/terrain.js`) and draped over a real 3D land; buildings and units are
+procedural low-poly models under a pitched camera (`js/render3d.js`, Three.js) — a solo-dev
+sustainable pipeline, richer than Perils' neon vectors. The renderer stays isolated.
 
 ## Match Targets
 
@@ -188,6 +188,5 @@ timer.
 
 ## Later (post-MVP)
 
-3–4 player LAN (host-as-hub star, per Perils `COOP_4P_PLAN.md`), more heirs and Trumps
-(hero variety), Rebma/Tir-na Nog'th expansion sites, Jewel weather control mini-game,
-audio, PWA install.
+More heirs and Trumps (hero variety), Rebma/Tir-na Nog'th expansion sites, Jewel weather
+control mini-game, audio.

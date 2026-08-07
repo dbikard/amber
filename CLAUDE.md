@@ -2,13 +2,15 @@
 
 ## Project Overview
 
-**Amber — The Succession**: a mobile-first, competitive, real-time, lane-based city-builder
+**Amber — The Succession**: a mobile-first, competitive, real-time, open-world city-builder
 in the browser, deployed on **GitHub Pages**. Inspired by Zelazny's *Chronicles of Amber*.
-Build your city, defend the black road, break the rival's castle or walk the Pattern first.
-Single-player vs AI heirs; LAN 1v1 via serverless WebRTC + QR pairing (ported from
+Build your city, take the springs, break a rival's Seat or walk the Pattern first.
+Single-player vs AI heirs; LAN 2-4 via serverless WebRTC + QR pairing (ported from
 `../perils/`).
 
-**Vanilla HTML/CSS/JS + Canvas 2D — no frameworks, no build step, no dependencies.**
+**Vanilla HTML/CSS/JS — no frameworks, no build step.** The one dependency is Three.js,
+vendored into the repo (`js/vendor/three.min.js`) and loaded as a plain script tag — no CDN,
+no bundler. WebGL is a hard requirement, stated plainly at boot (`js/render_select.js`).
 
 ## Key Documents
 
@@ -24,8 +26,11 @@ render + input + net on top. The AI and `sim.js` depend on this.
 ```
 index.html      — entry, canvas, DOM overlays, GAME_VERSION, script order
 styles.css      — HUD/menus (dark + gold, painterly-fantasy theme)
+js/vendor/three.min.js — Three.js, vendored; loaded first, the renderer's one dependency
 js/rng.js       — seeded RNG (headless-safe)
 js/const.js     — content tables: BUILDINGS, UNITS, POWERS, CHAOS, HEIRS (headless-safe)
+js/worldgen.js  — the land made new each match: noise → terrain → springs/Seats (headless-safe)
+js/nav.js       — movement: cost grid + per-(goal, owner) Dijkstra flow fields (headless-safe)
 js/world.js     — sim core: createWorld / applyCommand / update(world, dt) (headless-safe)
 js/ai.js        — bot policies: personalities + random/greedy baselines (headless-safe)
 js/terrain.js   — bakes the painted ground + shared writ-outline helpers (browser)
@@ -42,18 +47,24 @@ test/run.js     — the whole suite: test/headless.js (Node) + test/browser.js (
 
 Script load order = the order above. Headless files use the UMD pattern
 `(function(global){...})(typeof window !== 'undefined' ? window : globalThis)` and attach
-globals (`RNG`, `CONST`, `World`, `AI`) so `sim.js` can `require()` them in order.
+globals (`RNG`, `CONST`, `WorldGen`, `NAV`, `World`, `AI`) so `sim.js` can `require()` them
+in order.
 
 ## Sim model
 
 - Fixed timestep `SIM_DT = 1/30`; browser uses an accumulator; `sim.js` steps the same dt.
   Seeded RNG (`world.rng`) — deterministic replays/balance runs (netcode does NOT rely on it).
-- Lane coordinate `p ∈ [0,1000]`: player 0 castle at p=0 (rendered bottom), player 1 at
-  p=1000. Units also carry a small lateral `x` for visuals. Guest's renderer flips the view.
+- Open world: `CONST.MAP` is 2000×2400 and units and works carry real `x`/`y` on it. The land
+  is noise, not a template — asymmetric on purpose (a mirrored world tells you where the rival
+  stands), with fairness *chosen* by scoring candidate Seat pairs (`js/worldgen.js`). A guest's
+  renderer mirrors nothing: its camera simply starts over its own Seat (`js/render3d.js`).
 - `world.events` is an append-only queue for the renderer/UI (shots, deaths, rifts, alerts);
   the sim never reads it. Consumers drain it each frame.
-- Commands: `{c:'build',slot,bt}`, `{c:'up',slot}`, `{c:'walk',on}`, `{c:'flip',id,on}`,
-  `{c:'power',k,p}` — all validated in `applyCommand(world, playerIdx, cmd)`.
+- Eleven commands, all validated in `applyCommand(world, playerIdx, cmd)`. None carries a
+  slot — a work is named by `id` and ground by `x`/`y`: `{c:'pause',on}`,
+  `{c:'build',x,y,bt,co}` (a wall adds `x2,y2`), `{c:'up',id,br}` (`br` read at the fork level
+  only), `{c:'fix',id}`, `{c:'flip',id,on}`, `{c:'walk',on}`, `{c:'muster',pause[,co]}`,
+  `{c:'rally',co,x,y}`, `{c:'assign',id,co}`, `{c:'banner',x,y}`, `{c:'power',k,x,y}`.
 - **The halt** is world state (`world.paused = {by, at}`), not a session flag, so it is
   host-authoritative and rides the snapshot to every seat. `update()` returns early and
   `applyCommand` refuses everything but `{c:'pause',on}` — a pause you can build through is a
@@ -88,9 +99,13 @@ ground around it are a vision source for everyone (see `visionSources`), and eve
 progress is on the top-right board. `World.walkers(world)` is the one answer to who is
 walking, where, and how far along.
 
-Rival slot *occupancy* is public, building *type/level* is veiled. Road units, castle HP,
-storms: public. A started Pattern walk reveals that shrine + progress. AI reads only what a
-human could see (see `AI.view()`).
+A rival's work is seen or it is not: while any part of it is in sight it rides the snapshot
+plainly — type, level, hp, scaffolding, breaches — and out of sight it survives only as a
+GHOST, the viewer's memory of it. A branch (`br`) and a hall's company never cross the wire
+to a rival; essence, income, banner and standards are the owner's alone. Units and storms
+exist for a viewer only while seen; castle HP is public; the rival's Seat itself is hidden
+until somebody lays eyes on it (`seatSeen`). A started Pattern walk reveals that shrine +
+progress. AI reads only what a human could see (see `AI.view()`).
 
 ## Development Practices
 
@@ -116,7 +131,7 @@ human could see (see `AI.view()`).
   renderer or viewport size would need to run alongside.
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
-  drives a real page (both renderers) for input, camera, the writ, HUD layering, the back
+  drives a real page for input, camera, the writ, HUD layering, the back
   button and the LAN guest path. It skips itself cleanly where Playwright is missing.
   Screen positions in tests must come from `Render.project`/`toWorld`, never re-derived —
   a test that reimplements the projection tests itself, not the game.

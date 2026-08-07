@@ -1,4 +1,4 @@
-/* test/run.js — the whole suite. `node test/run.js` (or `npm test`).
+/* test/run.js — the whole suite. `node test/run.js` (there is no package.json, so no `npm test`).
  * Each file runs in its own process so a crash in one cannot hide the other's results. */
 'use strict';
 const { spawnSync } = require('child_process');

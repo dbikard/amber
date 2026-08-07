@@ -2,3 +2,11 @@
 # work in parallel without treading on each other; the checkouts are copies of this very
 # repository and have no business being committed into it.
 .claude/worktrees/
+
+# Referee scratch. Long `node sim.js` and suite runs are teed into dot-files at the repo
+# root so a shell can poll them while they grind (.full.txt, .brand.txt, .b1.txt, .suite.txt,
+# .full.time, .full.done and their kin). They are per-machine working notes, not results —
+# the results worth keeping are written into the docs.
+.*.txt
+.*.time
+.*.done

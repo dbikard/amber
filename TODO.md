@@ -655,36 +655,41 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
 ## IN FLIGHT — read this first if you are picking the work up
 
 `main` is v0.9.5 and green (headless 1200/1200, browser 276/276, referee green on
-every target). The branch `claude/game-design-open-world-5mzdhz` sits ONE commit ahead
-of it, and that commit is deliberately **not mergeable**.
+every target). The branch `claude/game-design-open-world-5mzdhz` sits three commits ahead
+of it and is whole again: the INCOMPLETE commit it used to end on has had its other half
+landed (first entry below), headless 1205/1205.
 
-- [ ] **Terrain refuses a man — FINISH IT.** Branch commit `63885d9`, marked INCOMPLETE.
-      The rule works: men standing on rock or water went from 691 of 136,793 unit-samples
-      (286 distinct men, worst 128 units into a lake) to ZERO. Forest is untouched — only
-      cost-0 cells refuse anyone. **`node test/headless.js` is 1200/1201**: `an army that
-      has marched is still spread` fails at 2.2 against the 15.4 the rule asks for.
-      The cause is understood. That test plants the banner at x=2350 on a map 1400 wide —
-      the order is entirely off the board and every sample point within 120 of it is
-      impassable — and it only ever passed because men could walk off the map to reach it,
-      which is the bug being fixed. **The fix: fold an unreachable ORDER onto the nearest
-      standable ground, exactly as `placeAt` already folds a PLACE.** Better in play too: a
-      tap past a shoreline should gather a company on the bank, not press it into the water.
-      Two wrong cures are recorded in the commit message — reverting the step alone (a
-      settled company jitters 0.602 a tick against a stride of 1.77) and PINNING him, which
-      is stone's cure and is worse, because a shore can take a whole company and pinned men
-      are skipped by the crowd pass so they stack. The cure lives at the crowd's end now.
-      **Re-measure 691 → 0 after the fix**: the mechanism has changed twice since that
-      number was taken, and a number is only true of the code that produced it.
-- [ ] **An army through a narrow path should behave like sand in an hourglass.** Not yet
-      answered. A rig marching 60 men at a curtain's 30-wide gateway measured 0 of 60 going
-      through it — all sixty walked round the ends, and the flow field is RIGHT to send them:
-      360 units of wall (the longest the ground and the masons would take) on a 1400-wide map
-      makes going round plainly cheaper than queueing. So a player's curtain is not an
-      hourglass. The real necks are the map's ~3 natural terrain corridors, and testing them
-      only becomes meaningful once the terrain rule above lands — until now men could cut
-      across the impassable ground beside a choke, so a corridor was not really a corridor.
-      (Watch the rig, too: the first version counted anyone crossing the wall's LINE and so
-      read men walking round it as a torrent through the gap.)
+- [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
+      yet answered for the ORDER, so a banner planted past a shoreline pressed the company
+      into the bank in a stack, and one assertion whose target lay 350 off the board failed —
+      it had only ever passed because men could leave the world, which was the bug.
+      Landed as `An unreachable order is folded onto ground a man can stand on`:
+      `World.foldOrder` is the other half of `placeAt` — an order on ground no man can stand
+      on is folded onto the nearest standable cell, once, and the flow field, the muster
+      ground, walls and towers all read through the fold, so a tap past a shoreline gathers
+      the company on the bank. Cached in a WeakMap keyed by the order object, NOT written
+      onto the order — a rally rides the snapshot verbatim, and a cache on it would leak to
+      every guest. Re-measured, as the handoff demanded: 6 of 601,967 unit-samples on
+      impassable ground (was 691 of 136,793), worst 16 units in (was 128 — one nav cell, a
+      graze, not a man in a lake). Headless 1205/1205.
+- [ ] **An army through a narrow path should behave like sand in an hourglass — and the maps
+      have no narrow paths.** Measured, now that the terrain rule makes it meaningful. A rig
+      traced the marching route city-to-city by the flow field, took the narrowest passable
+      span on it clear of both cities' ground as the neck, and classified every man's first
+      crossing of the neck's line by PERPENDICULAR OFFSET — through the gap, through some
+      other corridor, or across the impassable ground beside it. Three seeds, ~87 crossings
+      each: every one through the gap, zero elsewhere, zero on impassable ground. The ground
+      binds completely. But the "necks" measured 408, 500 and 564 wide — an army of sixty is
+      a disc of radius ~100, so nothing on the war road ever constricts it, and the arrival
+      tail (median ~28s, last ~148s) is reinforcements trickling in, not a queue at a choke.
+      Same verdict as the curtain rig before it (0 of 60 through a 30-wide gateway on a run
+      it was cheaper to walk round): the flow field is honest, the ground is just too open.
+      **If the design wants hourglass fights, the lever is WORLDGEN** — somewhere on the road
+      between Seats the passable ground has to close below ~150, reliably enough to plan
+      around. Then the rig above becomes the test.
+      (Watch the rig, still: the first curtain version counted anyone crossing the wall's
+      LINE and so read men walking round it as a torrent through the gap — classify by
+      offset along the line, never by the line alone.)
 - [ ] **The Pattern is at the top of its tolerance.** Opening the economy moved it from
       deciding 10% of matches to 45%, and 67-75% of CONTESTED ones against a 25-75 band. If a
       full `node sim.js` pushes it past 75, the lever is the Shrine's `drain` or `rate` — NOT
@@ -704,6 +709,30 @@ of it, and that commit is deliberately **not mergeable**.
       change** — the code already records that a weaker form of this trebled timeouts — and the
       heirs should halt the muster to bank first (no doctrine has ever issued `{c:'muster'}`).
       Now much more attractive: heirs holding 5-6 springs earn 32-37/s against a walk's 22/s.
+
+## Housekeeping — from an architecture review (2026-08)
+
+- [ ] **`update()` wants breaking up.** It is ~480 lines (world.js 1955–2432) with a ~215-line
+      per-unit loop in the middle, and the TICK ORDER is load-bearing — vision, rebin, the
+      players' pass, Chaos, storms, the parapet roster, the march, the crowd — but written
+      down nowhere as an order. Extract `stepUnit`/`stepBuilding` and state the order in one
+      place. Behaviour-neutral, so the suite is the referee.
+- [ ] **`applyCommand` is eleven `if (cmd.c === …)` branches in a flat chain.** A handler
+      table is a cheap, safe refactor; the pause gate and the winner gate stay in front of it.
+- [ ] **`spawnUnit` still carries the dead two-lane rule.** With no spawn point given the
+      y-offset is `owner === 0 ? -60 : 60` (world.js ~1443) — "toward the other end of the
+      lane", on a board that has not had ends since v0.8, and wrong for seats 1-3 in a
+      free-for-all. Behavioural fix: `node sim.js` referees it.
+- [ ] **The module list is written in four places** — index.html, sw.js `CORE`, sim.js and
+      test/headless.js — and nothing asserts they agree. Only index.html fails loudly when a
+      file is missed; the others degrade quietly (a stale offline cache, a global leaking in
+      from an earlier require). One list, or a test that reads index.html and checks the rest
+      against it.
+- [ ] **The pre-push gate is slow because it plays whole matches.** The headless suite's
+      longest stretches are full bot games — `the solo ladder` alone is on the order of 100s,
+      and the other match-length suites add ~90s more. Match-scale questions are `sim.js`'s
+      job; consider moving them to a sim tier so `node test/run.js` answers in well under a
+      minute. The suite already names its slowest suites — start there.
 
 ## Phase 1 — Feel & fairness
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
@@ -727,4 +756,5 @@ of it, and that commit is deliberately **not mergeable**.
 ## Known decisions
 - Host-authoritative netcode (not lockstep) — fog of war + no cross-browser determinism trust.
 - Pattern walk is an *instant win at 100%* but revealed at start — the anti-stall keystone.
-- One screen, no camera pan (MVP); portrait-first.
+- Portrait-first; the world pans on both axes at a fixed visible width (`CONST.VIEW_W`) —
+  the one-screen, no-pan MVP board is long gone.
