@@ -315,7 +315,11 @@
   function rateTag(bt, level) {
     const d = C.BUILDINGS[bt];
     if (!d) return '';
-    if (d.income) return `<span class="c-rate up">+${d.income[level - 1]}◆/s · +${d.nodeIncome[level - 1]}◆/s on a spring</span>`;
+    /* `nodeIncome`, not `income`: a Gate stands on a spring or nowhere since the open world,
+     * and the old base-income field is gone from the table. Keyed on the dead field this
+     * branch silently never fired, so a Gate's card — build sheet and upgrade sheet alike —
+     * stopped saying what a Gate is FOR. Found by a test that asked the card to say it. */
+    if (d.nodeIncome) return `<span class="c-rate up">+${d.nodeIncome[level - 1]}◆/s from its spring</span>`;
     /* A LEVEL BUYS BETTER MEN, NOT MORE OF THEM, so the card has to say what the men become
      * — the rate is the same at every level and quoting it would read as "no change". */
     if (d.spawns) return unitLine(d.spawns, d.period[level - 1], level);
@@ -374,8 +378,15 @@
    * stays, empty, because the crew lock still writes a refusal into it on the sheets that
    * have room for one — and an empty one collapses its row to nothing. */
   function cardBody(d, bt, bad) {
+    /* WHAT IT COSTS TO KEEP, not only to raise. The stone price is paid once; a hall then
+     * draws its recruit's price every muster period for the rest of the match, and that
+     * standing drain — the number that actually decides whether a realm can carry another
+     * hall — was nowhere on the card that sells it. `rateTag` is the same line the upgrade
+     * sheet already shows: +◆/s on a Gate, −◆/s and the man on a hall, the walk's drain on
+     * the Shrine. Reported from play as "the rate cost of mustering should be visible". */
     return `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
            `<span class="c-cost">◆ ${d.cost}${d.raise ? ' · 🔨' + d.raise + 's' : ''}</span>` +
+           rateTag(bt, 1) +
            `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : ''}</span>`;
   }
   /* ONE caller now: the BUILD button's sheet. The `at`/`why` pair went with the site sheet —

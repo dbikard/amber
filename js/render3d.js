@@ -786,11 +786,7 @@
     MATB = new THREE.MeshBasicMaterial({ vertexColors: true });
     overlay = document.getElementById('overlay');
     octx = overlay.getContext('2d');
-    stormState = [0, 1].map(() => {
-      const l = new THREE.PointLight(0xff6a5a, 0, 420);
-      scene.add(l);
-      return { light: l };
-    });
+    stormState = [];
     R.resize();
     R.ready = true;
   };
@@ -1013,6 +1009,9 @@
    * look the same without reaching into the scene graph */
   R.modelKey = modelKey;
   R.model = buildingModel;
+  /* the raging storms as drawn — the suite asks whether a disc lies ON the ground it covers,
+   * which is not answerable from outside without reaching into the scene graph */
+  R.debugStorms = () => stormState;
 
   /* ---------------- world (re)build ---------------- */
   const mapKey = (view, viewer) => (view.mapSeed || 0) + ':' + viewer;
@@ -1636,8 +1635,18 @@
   }
 
   function updateStorms(view, viewer) {
-    for (let i = 0; i < 2; i++) {
-      const st = (view.storms || [])[i], ss = stormState[i];
+    /* AS MANY AS ARE RAGING. The pool was a hard [0, 1] — two lights, two discs — which was
+     * every storm a duel can hold and one fewer than a four-handed table can: the third
+     * Jewel cast simply did not draw, sim and snapshot both carrying a storm the board never
+     * showed. The pool grows to what the view brings and idles the rest. */
+    const list = view.storms || [];
+    while (stormState.length < Math.max(2, list.length)) {
+      const l = new THREE.PointLight(0xff6a5a, 0, 420);
+      scene.add(l);
+      stormState.push({ light: l });
+    }
+    for (let i = 0; i < stormState.length; i++) {
+      const st = list[i], ss = stormState[i];
       if (!st) {
         ss.light.intensity = 0;
         if (ss.disc) ss.disc.visible = false;
@@ -1647,14 +1656,28 @@
       if (!ss.disc) {
         ss.disc = new THREE.Mesh(new THREE.CircleGeometry(C.POWERS.storm.radius, 26).rotateX(-Math.PI / 2),
           new THREE.MeshBasicMaterial({ color: 0x1e0a14, transparent: true, opacity: 0.45, depthWrite: false }));
-        ss.disc.position.y = 3;
         worldG.add(ss.disc);
         ss.lines = new THREE.LineSegments(new THREE.BufferGeometry(),
           new THREE.LineBasicMaterial({ color: 0xffdcdc, transparent: true }));
         worldG.add(ss.lines);
       }
       ss.disc.visible = true;
-      ss.disc.position.set(st.x, groundH(st.x, st.y) + 3, st.y);
+      /* THE SHADOW LIES ON THE GROUND, NOT ON A PLANE THROUGH IT. A flat disc three units up
+       * was fine while the world was flat; on real terrain the ground pokes through it and the
+       * hill's own slope hides the rest — a storm on a hillside showed as half a storm, which
+       * on a power you AIM is half the information. Same fault the spring pools had, and the
+       * springs' cure (level the ground in worldgen) is not available to a storm cast anywhere
+       * — so the disc conforms instead: each vertex is dropped onto the ground beneath it. Done
+       * once per cast, keyed on the storm's spot; a storm does not move. */
+      if (ss.at !== st.x * 1e5 + st.y) {
+        ss.at = st.x * 1e5 + st.y;
+        const pos = ss.disc.geometry.attributes.position;
+        for (let vi = 0; vi < pos.count; vi++)
+          pos.setY(vi, groundH(st.x + pos.getX(vi), st.y + pos.getZ(vi)) + 2.5);
+        pos.needsUpdate = true;
+        ss.disc.geometry.computeBoundingSphere();
+      }
+      ss.disc.position.set(st.x, 0, st.y);
       ss.light.position.set(st.x, 120, st.y);
       if (st.delay > 0) {
         ss.disc.material.opacity = 0.15 + 0.1 * Math.sin(st.delay * 18);
@@ -2040,12 +2063,17 @@
     if (R.targeting) {
       g.fillStyle = 'rgba(255,90,74,0.06)'; g.fillRect(0, 0, W, H);
       if (R.pointer) {
+        /* the ring the player aims by, projected the way the fog holes are: a world circle
+         * under this camera is an ellipse, and drawing it round overstated the storm's reach
+         * up-screen by the pitch — you aimed at men the blast could not touch */
         const w2 = R.toWorld(R.pointer.x, R.pointer.y);
-        const c2 = proj(w2.x, 2, w2.y);
-        const e2 = proj(w2.x + C.POWERS.storm.radius, 2, w2.y);
-        const rr = Math.abs(e2.x - c2.x);
+        const r0 = C.POWERS.storm.radius, gh = groundH(w2.x, w2.y) + 2;
+        const c2 = proj(w2.x, gh, w2.y);
+        const eH = proj(w2.x + r0, gh, w2.y);
+        const eV1 = proj(w2.x, gh, w2.y - r0), eV2 = proj(w2.x, gh, w2.y + r0);
+        const rx = Math.abs(eH.x - c2.x), ry = Math.max(6, Math.abs(eV1.y - eV2.y) / 2);
         g.strokeStyle = '#ff6a5a'; g.setLineDash([6, 6]);
-        g.beginPath(); g.arc(c2.x, c2.y, rr, 0, 7); g.stroke();
+        g.beginPath(); g.ellipse(c2.x, (eV1.y + eV2.y) / 2, rx, ry, 0, 0, 7); g.stroke();
         g.setLineDash([]);
       }
     }

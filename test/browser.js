@@ -784,8 +784,22 @@ async function match(browser, base, renderer) {
       const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       g.world.players[0].essence = 99000;
       for (const b of g.world.players[0].buildings) { b.raise = 0; b.work = 0; b.fixing = 0; }
-      W.applyCommand(g.world, 0, { c: 'build', bt: 'barracks', x: c.x - 150, y: c.y + 30 });
+      /* THE BUILD MUST BE SEEN TO LAND. This rig wrote one spot and took `.pop()` on faith —
+       * and when a suite running earlier left that spot crowded, the refused build made
+       * `.pop()` hand back the FIRST hall, the fork order bounced off its existing branch with
+       * ok:true, and the assertion compared a building with itself: both keys barracks:line@3,
+       * failing red on a renderer that was right. Sweep for ground the board will take, and
+       * prove the hall is NEW before asking anything about it. */
+      const before = new Set(g.world.players[0].buildings.map((b) => b.id));
+      for (let rad = 150; rad < 340; rad += 30) {
+        let done = false;
+        for (let a2 = 0; a2 < 6.283; a2 += 0.3)
+          if (W.applyCommand(g.world, 0, { c: 'build', bt: 'barracks',
+                x: c.x + Math.cos(a2) * rad, y: c.y + Math.sin(a2) * rad }).ok) { done = true; break; }
+        if (done) break;
+      }
       const two = g.world.players[0].buildings.filter((b) => b.bt === 'barracks').pop();
+      if (before.has(two.id)) return { err: 'no ground for a second hall' };
       two.raise = 0; two.hp = two.maxHp;
       const up = W.applyCommand(g.world, 0, { c: 'up', id: two.id, br: 'raid' });
       two.work = 0;
@@ -1494,6 +1508,24 @@ async function match(browser, base, renderer) {
                stillOpen: window.UI.sheetOpen(),
                freeNow: card() && !card().classList.contains('locked') };
     });
+    /* WHAT A HALL COSTS TO KEEP. The stone price is once; the muster drain is for ever, and it
+     * was nowhere on the card that sells the hall — reported from play. The assertion reads the
+     * table's own numbers, so re-pricing a recruit cannot rot it. */
+    const drain = await pg.evaluate(() => {
+      const C = window.CONST, g = window.Game.game, pl = g.world.players[0];
+      window.UI.buildSheet(9999, pl);
+      const card = (bt) => document.querySelector(`#sheet .card[data-bt="${bt}"]`);
+      const want = (C.UNITS[C.BUILDINGS.barracks.spawns].cost / C.BUILDINGS.barracks.period[0]).toFixed(1);
+      const out = { want,
+        hall: card('barracks') && card('barracks').textContent,
+        gate: card('gate') && card('gate').textContent };
+      window.UI.closeSheet();
+      return out;
+    });
+    ok('a hall\'s card says what its muster drains', !!drain.hall && drain.hall.indexOf(`−${drain.want}◆/s`) >= 0,
+       `wanted −${drain.want}◆/s in: ${drain.hall}`);
+    ok('...and a Gate\'s says what it earns', !!drain.gate && /\+.*◆\/s/.test(drain.gate), drain.gate);
+
     ok('the dearest card is locked while the purse is short', live.lockedPoor,
        `${live.bt} at ${live.cost}`);
     ok('the sheet is still the one you opened', live.stillOpen);
@@ -1989,6 +2021,44 @@ async function match(browser, base, renderer) {
     ok('the storm is arming', await pg.evaluate(() => !!window.Game.game.targeting));
     await pg.goBack(); await until(pg, () => !window.Game.game.targeting);
     ok('back cancels the storm aim', await pg.evaluate(() => !window.Game.game.targeting));
+
+    /* THE SHADOW LIES ON THE GROUND. A flat disc on real terrain is half-buried by any slope —
+     * reported from play as the Jewel being "only half visible" — so the disc conforms now,
+     * vertex by vertex. Cast a real storm on the roughest ground near the Seat and measure the
+     * drawn mesh against the renderer's own groundH: if the conform ever regresses to a plane,
+     * the worst vertex error on a slope is the hill's full height and this line goes red. */
+    const stormLie = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, C = window.CONST, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const pl = g.world.players[0];
+      pl.essence = 9999; pl.powers.storm = 0;
+      /* the roughest castable spot in the Seat's country — flat ground proves nothing */
+      let at = null, rough = -1;
+      for (let a = 0; a < 6.283; a += 0.35) for (const r of [180, 260, 340]) {
+        const x = c.x + Math.cos(a) * r, y = c.y + Math.sin(a) * r;
+        let lo = 1e9, hi = -1e9;
+        for (let dx = -60; dx <= 60; dx += 30) for (let dy = -60; dy <= 60; dy += 30) {
+          const h = R.groundH(x + dx, y + dy); lo = Math.min(lo, h); hi = Math.max(hi, h);
+        }
+        if (hi - lo > rough) { rough = hi - lo; at = { x, y }; }
+      }
+      const r2 = W.applyCommand(g.world, 0, { c: 'power', k: 'storm', x: at.x, y: at.y });
+      if (!r2.ok) return { err: r2.err };
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      await paint();
+      const ss = (R.debugStorms() || []).find((q) => q.disc && q.disc.visible);
+      if (!ss) return { err: 'no disc drawn', rough };
+      const pos = ss.disc.geometry.attributes.position;
+      let worst = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const wx = at.x + pos.getX(i), wz = at.y + pos.getZ(i);
+        const err = Math.abs(pos.getY(i) - (R.groundH(wx, wz) + 2.5));
+        if (err > worst) worst = err;
+      }
+      return { rough: +rough.toFixed(1), worst: +worst.toFixed(2), verts: pos.count };
+    });
+    ok('a storm cast on a slope lies ON the slope', !stormLie.err && stormLie.worst < 0.5,
+       stormLie.err || `ground varies ${stormLie.rough} across the disc; worst vertex off by ${stormLie.worst} of ${stormLie.verts}`);
     await pg.goBack(); await until(pg, () => !window.Game.game.mode);
     ok('back with nothing open returns to the menu', !(await inMatch()));
     ok('and the game itself is still open',
