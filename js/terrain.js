@@ -65,7 +65,25 @@
         const cx = X + cw / 2, cy = Y + cw / 2;
         if (t === T.WATER) waters.push([cx, cy, cw]);
         else if (t === T.FOREST) { if (rng.next() < 0.72) trees.push([cx + rng.range(-7, 7), cy + rng.range(-7, 7), rng.range(7, 13), rng.next()]); }
-        else if (t === T.CLIFF) rocks.push([cx + rng.range(-5, 5), cy + rng.range(-5, 5), rng.range(11, 18), rng.next()]);
+        else if (t === T.CLIFF) {
+          /* A ROCK STAYS INSIDE ITS OWN CELL WHERE THE CELL HAS A PASSABLE NEIGHBOUR. The sim
+           * refuses a CLIFF cell exactly at its edge; a mesh at centre ±5 with radius up to 18
+           * reaches 23 from centre against a half-cell of 10 — thirteen units of stone hanging
+           * over ground men may lawfully stand on, which is a whole man deep. Reported from
+           * play as troops "entering the rock", and the sim was never wrong. Boundary cells
+           * (36% of cliff on a measured board) get a rock that fits; the interior keeps the
+           * big jumble, which is what a massif's silhouette is made of. Same RNG DRAW COUNT on
+           * both paths, or every tree and rock after the first ridge reshuffles. */
+          const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+            const nx = gx + dx, ny = gy + dy;
+            return nx >= 0 && ny >= 0 && nx < nav.W && ny < nav.H && nav.cost[ny * nav.W + nx] > 0;
+          });
+          const j = rng.range(-5, 5), j2 = rng.range(-5, 5), r = rng.range(11, 18);
+          if (edge) {
+            const fit = (cw / 2) / 23;   // scale centre-plus-radius 23 down to the half-cell
+            rocks.push([cx + j * fit, cy + j2 * fit, r * fit, rng.next()]);
+          } else rocks.push([cx + j, cy + j2, r, rng.next()]);
+        }
       }
     }
 
