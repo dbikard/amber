@@ -433,11 +433,10 @@
         companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally,
                                                      ...(co.paused ? { paused: 1 } : {}),
                                                      ...(co.trump ? { trump: 1 } : {}) })) : [],
-        /* A CURTAIN IS LONGER THAN ITS MIDDLE. Judging a wall by its centre hid a run whose
-         * near end stood in plain sight, so a wall shows the moment any part of it is seen —
-         * and carries its far end, since a line drawn to one point is not a line. */
-        buildings: pl.buildings.filter((b) => mine || see(b.x, b.y)
-          || (b.x2 != null && (see(b.x2, b.y2) || see(b.x * 2 - b.x2, b.y * 2 - b.y2)))).map((b) => ({
+        /* A CURTAIN IS LONGER THAN ITS MIDDLE — World.workSeen is the one place that rule
+         * is written, shared with the host's own screen so the two cannot drift — and the
+         * row carries the far end, since a line drawn to one point is not a line. */
+        buildings: pl.buildings.filter((b) => mine || World.workSeen(see, b)).map((b) => ({
           id: b.id, bt: b.bt, level: b.level, x: Math.round(b.x), y: Math.round(b.y),
           x2: b.x2 == null ? undefined : Math.round(b.x2),
           y2: b.y2 == null ? undefined : Math.round(b.y2),
@@ -466,12 +465,9 @@
           br: mine ? (b.br || null) : null,
           co: mine ? b.co : 0            // which company a hall musters into is yours to know
         })),
-        /* what the viewer remembers of works they can no longer see */
-        ghosts: mine ? [] : Object.entries(world.players[viewer].ghosts)
-          .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
-          .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: Math.round(g.x), y: Math.round(g.y),
-                               x2: g.x2 == null ? undefined : Math.round(g.x2),
-                               y2: g.y2 == null ? undefined : Math.round(g.y2) }))
+        /* what the viewer remembers of works they can no longer see — one projection,
+         * shared with the host's screen, so a field added to a ghost reaches both */
+        ghosts: mine ? [] : World.ghostsFor(world, viewer, pi, see)
       };
     });
     /* sites through the viewer's fog: live truth if visible, memory if explored, else absent */

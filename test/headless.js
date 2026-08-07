@@ -665,6 +665,18 @@ suite('a walk is a beacon')
   ok('and the Shrine itself is sent, being visible now',
      wire.players[1].buildings.some((b) => b.bt === 'shrine'));
 
+  /* THE GUEST'S FOG IS THIS FUNCTION TOO. A LAN guest does not keep its own copy of the
+   * vision rules — it hands the snapshot itself to World.visionSources — so the wire must
+   * stay world-shaped enough for that call: `walking` must ride, and the walking Shrine
+   * must ride with it (it always can: it stands inside its own Pattern-light, so the
+   * host's fog always sends it). If either stops riding, a guest's fog goes darker than
+   * the sim's and hides a walk the rules say is public. */
+  const gsrc = World.visionSources({ map: w.map, players: wire.players, units: wire.units }, 0);
+  const lit = (x, y) => gsrc.some(([sx, sy, r]) => (x - sx) * (x - sx) + (y - sy) * (y - sy) < r * r);
+  ok('a guest fed only the wire lights the walking Shrine', lit(sh.x, sh.y));
+  ok('...and the Pattern-light of ground around it', lit(sh.x + C.VISION.pattern * 0.7, sh.y));
+  ok('...but no further than the sim would', !lit(sh.x + C.VISION.pattern * 1.6, sh.y));
+
   World.applyCommand(w, 1, { c: 'walk', on: false });
   step(12);
   ok('stopping puts the light out', !World.canSee(w, 0, sh.x, sh.y));
@@ -1861,6 +1873,20 @@ suite('a shell can be knocked over');
     const b = pl.buildings.find((q) => q.bt === 'wall');
     step(w, C.BUILDINGS.wall.raise + 1);
     eq('the masons finish the run', b.raise, 0);
+    /* THE RUN WATCHES FROM ITS ENDS FOR A GUEST TOO. A LAN guest's fog is World.visionSources
+     * run against its own snapshot, so a finished curtain's ends must come out as vision
+     * sources from the WIRE exactly as they do from the world — this is the rule the guest's
+     * hand-rolled source list silently dropped, leaving its own far end in fog on a guest's
+     * screen while the host's showed it lit. */
+    {
+      const gw = JSON.parse(JSON.stringify(Net.snapFor(w, 0, [])));
+      const gs = World.visionSources({ map: w.map, players: gw.players, units: gw.units }, 0);
+      const ends = World.wallEnds(b), r = C.BUILDINGS.wall.vision || C.VISION.build;
+      for (const [ex, ey] of [[ends[0], ends[1]], [ends[2], ends[3]]])
+        ok('a guest fed only the wire sees from the run\'s end',
+           gs.some(([sx, sy, sr]) => Math.abs(sx - ex) <= 2 && Math.abs(sy - ey) <= 2 && sr === r),
+           `no source within 2 of ${Math.round(ex)},${Math.round(ey)}`);
+    }
     /* AND IT STANDS ON EVERY STONE IT WAS BILLED FOR. Filled out from the card rather than
      * from its own hit points, a two-and-a-half-crew run finished on the hit points of one. */
     eq('...standing on all the stone it was paid for', Math.round(b.hp), Math.round(b.maxHp));
@@ -4070,6 +4096,21 @@ suite('multiplayer snapshots');
      `${foe.buildings.filter((b) => !workSeen(b)).length} leaked`);
   ok('no ghost is of something currently visible', (foe.ghosts || []).every((g) => !canSee(g.x, g.y)));
   ok('units sent are own or seen', wire.units.every((u) => u.owner === 1 || canSee(u.x, u.y)));
+
+  /* THE GUEST RUNS THE SIM'S OWN EYES. guestView hands its snapshot to World.visionSources
+   * rather than keeping a copy of the vision rules — that copy is where the wall-ends rule
+   * and the public walk once went missing — so the snapshot must be world-shaped enough
+   * that the reconstruction comes out the SAME list the sim computes: source for source,
+   * in order, up to the wire's rounding (a coordinate rounds by half, a mirrored wall end
+   * by three halves). The day a vision rule reads world state that does not ride the wire,
+   * this is the test that says so. */
+  const hostSrc = World.visionSources(w, 1);
+  const guestSrc = World.visionSources({ map: w.map, players: wire.players, units: wire.units }, 1);
+  eq('a guest rebuilds as many vision sources as the sim', guestSrc.length, hostSrc.length);
+  ok('...and each is the same source, up to the wire rounding',
+     hostSrc.every((s, i) => guestSrc[i] && Math.abs(s[0] - guestSrc[i][0]) <= 1.5
+       && Math.abs(s[1] - guestSrc[i][1]) <= 1.5 && s[2] === guestSrc[i][2]),
+     hostSrc.map((s, i) => guestSrc[i] && s[2] === guestSrc[i][2] ? '' : `#${i}`).filter(Boolean).join(','));
 
   /* the shape the renderers read */
   ok('players carry a buildings array', Array.isArray(wire.players[1].buildings));

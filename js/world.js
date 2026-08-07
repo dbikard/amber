@@ -927,6 +927,11 @@
   }
 
   /* ---------------- vision & exploration ---------------- */
+  /* The ONE list of what seat `pi` sees from. The host reads it, the AI reads it, and a LAN
+   * guest reads it too — against a snapshot dressed as a world — so it may only lean on
+   * fields the wire carries: `map`, `players[*].buildings` / `.walking` / `.out`, `units`.
+   * A rule written here reaches every fog in the game at once; a rule written anywhere
+   * else reaches one screen and is a bug waiting for the other screens to find. */
   function visionSources(world, pi) {
     const src = [];
     const city = cityOf(world, pi);
@@ -1026,6 +1031,32 @@
   function canSee(world, pi, x, y) {
     if (!world.vis) refreshVision(world);
     return seen(world.vis[pi], x, y);
+  }
+  /* ---------------- one fog gate, written once ----------------
+   * The wire (Net.snapFor) and the host's own screen both have to answer "does this rival
+   * work show?" and "what does the viewer remember of the rest?" — and for a while they
+   * answered with two copies of the same expression. Two copies of a fog rule is one place
+   * to fix a leak and one place to forget it, so both answers live HERE, beside canSee,
+   * and everything else asks. `see` is passed in rather than derived because the callers
+   * already hold one bound to the right viewer. */
+  /* a work shows the moment ANY part of it is seen: its middle, or — when it is a run with
+   * a length — either end, the far one carried on the row and the near one mirrored
+   * through the midpoint. Judging a wall by its centre alone hid a run whose near end
+   * stood in plain sight. */
+  function workSeen(see, b) {
+    if (see(b.x, b.y)) return true;
+    return b.x2 != null && (see(b.x2, b.y2) || see(b.x * 2 - b.x2, b.y * 2 - b.y2));
+  }
+  /* the viewer's memory of seat `pi`'s works, projected the one way both consumers need:
+   * only where the viewer cannot currently see — the standing work shows there instead —
+   * and rounded, because the wire rounds, and a rounding the guest's screen has always
+   * lived with is fine for the host's too. One projection, not a rounded and a raw one. */
+  function ghostsFor(world, viewer, pi, see) {
+    return Object.entries(world.players[viewer].ghosts)
+      .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
+      .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: Math.round(g.x), y: Math.round(g.y),
+                           x2: g.x2 == null ? undefined : Math.round(g.x2),
+                           y2: g.y2 == null ? undefined : Math.round(g.y2) }));
   }
 
   /* ---------------- pathfinding: the nav grid does the walking ---------------- */
@@ -2468,7 +2499,7 @@
   }
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
-                   visionSources, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
+                   visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
                    wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.World;

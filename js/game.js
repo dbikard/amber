@@ -338,12 +338,11 @@
       players: world.players.map((pl, pi) => pi === viewer
         ? { ...pl, ghosts: [] }
         : { ...pl,
-            /* a curtain shows the moment any part of it is seen, not only its middle */
-            buildings: pl.buildings.filter((b) => see(b.x, b.y)
-              || (b.x2 != null && (see(b.x2, b.y2) || see(b.x * 2 - b.x2, b.y * 2 - b.y2)))),
-            ghosts: Object.entries(world.players[viewer].ghosts)
-              .filter(([, g]) => g.owner === pi && !see(g.x, g.y))
-              .map(([id, g]) => ({ id: +id, bt: g.bt, level: g.level, x: g.x, y: g.y, x2: g.x2, y2: g.y2 })) }),
+            /* the SAME gate and the SAME ghost projection the wire uses — both written once
+             * in world.js, so a fog rule cannot land on the host's screen and miss the wire
+             * (or the other way round, which is how the wall-ends rule once forked) */
+            buildings: pl.buildings.filter((b) => World.workSeen(see, b)),
+            ghosts: World.ghostsFor(world, viewer, pi, see) }),
       sites: world.map.sites.map((s) => {
         if (see(s.x, s.y)) return { id: s.id, live: true, holder: World.nodeHolder(world, s) };
         return mem[s.id] ? { id: s.id, live: false, holder: -1 } : null;
@@ -357,14 +356,7 @@
   }
   function guestView() {
     const snap = snapCur;
-    /* vision sources rebuilt client-side from own visible assets */
-    const src = [];
     const me = game.viewer;
-    const city = refWorld.map.sites[refWorld.map.cities[me]];
-    src.push([city.x, city.y, C.VISION.city]);
-    /* your own works see for you — the snapshot always carries them in full */
-    for (const b of snap.players[me].buildings)
-      src.push([b.x, b.y, (C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].vision) || C.VISION.build]);
     /* interpolate own+visible units between the last two snapshots */
     const alpha = Math.min(1, (performance.now() - snapAt) / 100);
     let units = snap.units;
@@ -375,7 +367,17 @@
         return q ? { ...u, x: q.x + (u.x - q.x) * alpha, y: q.y + (u.y - q.y) * alpha } : u;
       });
     }
-    for (const u of units) if (u.owner === me) src.push([u.x, u.y, C.VISION.unit]);
+    /* THE GUEST DOES NOT GET ITS OWN FOG RULES. This used to rebuild the source list by
+     * hand — Seat, own works, own men — and hand-copying is exactly how two of the sim's
+     * rules went missing here: a wall watches from its ENDS, and A WALK IS PUBLIC, so a
+     * guest's own fog was hiding a walking rival's Shrine that the rules say everyone can
+     * find. So the guest asks World.visionSources — the same answer the host and the AI
+     * get — against the snapshot dressed as a world, which is already world-shaped enough:
+     * own works ride in full, `walking` rides for every revealed walker, and a walking
+     * rival's Shrine always rides too, because it stands inside its own Pattern-light and
+     * the host's fog therefore always sends it. A fog rule added to the sim now reaches
+     * this screen without anyone remembering to copy it. */
+    const src = World.visionSources({ map: refWorld.map, players: snap.players, units }, me);
     const see = (x, y) => src.some(([sx2, sy2, r]) => (x - sx2) * (x - sx2) + (y - sy2) * (y - sy2) < r * r);
     /* the guest builds the same world from the same seed, so terrain needs no wire at all */
     /* the guest remembers the land itself. Nothing about it needs to cross the wire — it is
