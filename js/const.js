@@ -285,7 +285,7 @@
     spire:    { name: 'Sorcery Spire', icon: '🜏', cost: 240, up: [180, 300], hp: 640, raise: 36,
                 spawns: 'sorcerer', period: [11, 11, 11],
                 blurb: 'Sends Sorcerers — fragile, deadly at range, and no use at all against stone. At level 2 the Spire turns to ONE art, mending or binding, and there is no going back.' },
-    tower:    { name: 'Watchtower',    icon: '🏹', cost: 130, up: [100, 180], hp: 960, raise: 22,
+    tower:    { name: 'Watchtower',    icon: '🗼', cost: 130, up: [100, 180], hp: 960, raise: 22,
                 dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 forkHint: 'Rebuild the tower.',
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
