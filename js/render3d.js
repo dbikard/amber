@@ -1,6 +1,7 @@
 /* render3d.js — the Three.js renderer (v0.4 "The Raised World"): an AoE2/DOTA-style
- * pitched-perspective 3D battlefield. Same public surface as Render2D — game logic,
- * AI, sim and netcode never change. The painterly terrain bake (js/terrain.js) drapes
+ * pitched-perspective 3D battlefield, and the game's ONE renderer (render_select.js
+ * hands it to game.js, or null where WebGL is missing) — game logic, AI, sim and
+ * netcode never draw. The painterly terrain bake (js/terrain.js) drapes
  * over a rolling ground mesh; buildings and units are procedural low-poly models
  * (merged geometry, instanced units — phone-friendly draw calls). The guest doesn't
  * mirror the world: their camera simply stands on the other side of the table.
@@ -119,10 +120,6 @@
   const dum = typeof THREE !== 'undefined' ? new THREE.Object3D() : null;
   const colTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
   const penTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
-  /* no world flip: the map is asymmetric now, so both players read the same ground and
-   * simply start their camera over their own Seat */
-  const dx = (x) => x;
-  const dy = (y) => y;
 
   /* ---------------- low-poly model kit: merged geometry with vertex colors ---------------- */
   function colorize(geo, hex) {
@@ -484,7 +481,7 @@
     /* a reinforced curtain is LITERALLY thicker: its level buys hit points and nothing else,
      * so the stone is the only place that can show */
     const lv = Math.max(1, Math.min(3, b.level || 1));
-    const th = ((C.WALL && C.WALL.thick) || 13) * (1.6 + (lv - 1) * 0.34);
+    const th = C.WALL.thick * (1.6 + (lv - 1) * 0.34);
     const base = groundH(b.x, b.y);
     const st = 0x877c90, stD = 0x4a4258, stL = 0xc6bdd0;
     const seg = len / n + 2;
@@ -518,7 +515,7 @@
     /* ...but only on a run long enough to spare the stone for one. Below WALL.gateMin the
      * curtain is solid, and it has to LOOK solid or the player marches a column at a doorway
      * the sim does not have. */
-    const gate = b.gated ? ((C.WALL && C.WALL.gate) || 30) : 0;
+    const gate = b.gated ? C.WALL.gate : 0;
     const broken = !!b.breach;
     const p = [];
     for (let i = 0; i < n; i++) {
@@ -1169,7 +1166,6 @@
     worldG.add(g.group);
     return g;
   }
-  function curViewerRotOwn() { return 0; }
 
   /* ---------------- events → fx ---------------- */
   /* You are ALWAYS gold — nobody should have to remember which of four colours is theirs —
@@ -1523,7 +1519,6 @@
           /* a tower BUILT INTO a curtain stands on the parapet, not on the grass beside it —
            * it is the one work whose height is not the ground's */
           const onWall = b.onWall ? 27 : 0;
-          if (!isW) grp.rotation.y = curViewerRotOwn();   // a wall's facing is its own line
           const pad = isW
             ? new THREE.Mesh(new THREE.PlaneGeometry(Math.hypot(b.x2 - b.x, b.y2 - b.y) * 2 + 26, 34)
                 .rotateX(-Math.PI / 2).rotateY(-Math.atan2(b.y2 - b.y, b.x2 - b.x)),
@@ -1613,7 +1608,6 @@
     bannerG.visible = !!b;
     if (b) {
       bannerG.position.set(b.x + (viewer === 0 ? 26 : -26), groundH(b.x, b.y), b.y);
-      bannerG.rotation.y = curViewerRotOwn();
       bannerG._flag.rotation.y = Math.sin(T * 2.6) * 0.25;
     }
     /* company standards: one pennant per detached company, ringed around its post */
@@ -1636,7 +1630,6 @@
       const a2 = (i / Math.max(1, cos.length)) * Math.PI * 2;
       const fx2 = s.rally.x + Math.cos(a2) * 32, fz2 = s.rally.y + Math.sin(a2) * 32;
       f.position.set(fx2, groundH(fx2, fz2), fz2);
-      f.rotation.y = curViewerRotOwn();
       f._flag.rotation.y = Math.sin(T * 2.2 + i) * 0.3;
     });
     for (const [i, f] of [...coFlags]) if (!active.has(i)) { f.removeFromParent(); coFlags.delete(i); }
@@ -1937,7 +1930,7 @@
     const mpx = (x) => mx + (x / C.MAP.W) * mw, mpy = (y) => my + (y / C.MAP.H) * mh;
     for (const s of view.map.sites) {
       const st = view.sites[s.id];
-      const X = mpx(dx(s.x, viewer)), Y = mpy(dy(s.y, viewer));
+      const X = mpx(s.x), Y = mpy(s.y);
       if (s.kind === 'city') {
         const pi2 = view.map.cities.indexOf(s.id);
         if (!seatFound(view, pi2)) continue;
@@ -1961,8 +1954,8 @@
         if (b.x2 == null) continue;
         const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
         g.beginPath();
-        g.moveTo(mpx(dx(ax, viewer)), mpy(dy(ay, viewer)));
-        g.lineTo(mpx(dx(b.x2, viewer)), mpy(dy(b.y2, viewer)));
+        g.moveTo(mpx(ax), mpy(ay));
+        g.lineTo(mpx(b.x2), mpy(b.y2));
         g.stroke();
       }
     }
@@ -1970,7 +1963,7 @@
     for (const f of fx) if (f.ping) {
       g.globalAlpha = f.ttl / f.max;
       g.strokeStyle = '#' + f.ping.toString(16).padStart(6, '0');
-      g.beginPath(); g.arc(mpx(dx(f.x, viewer)), mpy(dy(f.z, viewer)), 5 + (1 - f.ttl / f.max) * 5, 0, 7); g.stroke();
+      g.beginPath(); g.arc(mpx(f.x), mpy(f.z), 5 + (1 - f.ttl / f.max) * 5, 0, 7); g.stroke();
       g.globalAlpha = 1;
     }
     g.strokeStyle = '#ffe9a8'; g.lineWidth = 1.5;

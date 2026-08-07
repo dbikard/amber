@@ -1,5 +1,5 @@
-/* terrain.js — the painterly bake, shared by BOTH renderers (Pixi drapes it flat; Three
- * drapes it over a relief mesh built from the SAME elevation the sim walks on).
+/* terrain.js — the painterly bake for the one renderer (js/render3d.js drapes it over a
+ * relief mesh built from the SAME elevation the sim walks on).
  *
  * There are no authored paths any more, so there is nothing here that invents geography:
  * every pixel is read off the world's own elevation and terrain grids. What you see is
@@ -11,11 +11,6 @@
   'use strict';
 
   const C = global.CONST;
-  /* Display space used to be the world rotated 180° for player 2. With a procedurally
-   * placed, asymmetric world there is no axis to flip about — both players read the same
-   * map and simply start their camera over their own Seat. */
-  const dx = (x) => x;
-  const dy = (y) => y;
 
   /* base colour per land type, at low and high elevation — lerped by the cell's height so
    * the relief reads even on the flat 2D map */
@@ -64,7 +59,7 @@
       for (let gx = 0; gx < nav.W; gx++) {
         const i = gy * nav.W + gx, t = nav.terra[i];
         const h = (nav.elev[i] - lo) / span;
-        const X = dx(gx * cw), Y = dy(gy * cw);
+        const X = gx * cw, Y = gy * cw;
         g.fillStyle = lerp(PAL[t][0], PAL[t][1], Math.max(0, Math.min(1, h)));
         g.fillRect(X - 0.6, Y - 0.6, cw + 1.2, cw + 1.2);
         const cx = X + cw / 2, cy = Y + cw / 2;
@@ -83,7 +78,7 @@
         if (Math.abs(slope) < 0.004) continue;
         g.globalAlpha = Math.min(0.5, Math.abs(slope) * 9);
         g.fillStyle = slope > 0 ? 'rgba(255,240,210,0.5)' : 'rgba(0,0,10,0.85)';
-        g.fillRect(dx(gx * cw) - 0.6, dy(gy * cw) - 0.6, cw + 1.2, cw + 1.2);
+        g.fillRect(gx * cw - 0.6, gy * cw - 0.6, cw + 1.2, cw + 1.2);
       }
     }
     g.restore();
@@ -151,7 +146,7 @@
 
     /* ---- the places worth a name ---- */
     for (const s of map.sites) {
-      const X = dx(s.x), Y = dy(s.y);
+      const X = s.x, Y = s.y;
       if (s.kind === 'node') {
         g.globalAlpha = 0.5; g.fillStyle = '#000';
         g.beginPath(); g.ellipse(X + 3, Y + 8, 42, 16, 0, 0, 7); g.fill(); g.globalAlpha = 1;
@@ -180,7 +175,7 @@
     /* ---- the courts of the two Seats ---- */
     for (let pi = 0; pi < 2; pi++) {
       const cs = map.sites[map.cities[pi]];
-      const X = dx(cs.x), Y = dy(cs.y);
+      const X = cs.x, Y = cs.y;
       const gr = g.createRadialGradient(X, Y, 20, X, Y, 330);
       gr.addColorStop(0, pi === viewer ? 'rgba(120,96,44,0.34)' : 'rgba(110,44,54,0.26)');
       gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -242,5 +237,5 @@
   }
   const claimKey = (anchors) => anchors.map((a) => (a.x | 0) + ',' + (a.y | 0) + ',' + a.r).join(';');
 
-  global.Terrain = { bake, dx, dy, claimOutline, claimAnchors, claimKey };
+  global.Terrain = { bake, claimOutline, claimAnchors, claimKey };
 })(typeof window !== 'undefined' ? window : globalThis);

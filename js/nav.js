@@ -54,13 +54,13 @@
      * or go round while the owner's own columns pass freely. This is the layer the removal
      * commit kept empty for exactly this. */
     const W = nav.W, H = nav.H, cw = nav.cw;
-    const t = (C.WALL && C.WALL.thick) || 13, rc = Math.ceil(t / cw);
+    const t = C.WALL.thick, rc = Math.ceil(t / cw);
     /* A WALL BARS ITS OWNER TOO, EXCEPT AT HIS GATE. Leaving the owner's layer clear meant
      * his columns walked through their own curtain as though it were paint — and then the
      * shove pushed them back, so they ground against it forever. The run is stamped into
      * EVERY layer; the owner's alone gets a hole punched at the gateway, and his flow fields
      * find it on their own. */
-    const gateR = (C.WALL && C.WALL.gate) || 30;
+    const gateR = C.WALL.gate;
     for (const w of world.walls || []) {
       const len = Math.hypot(w.bx - w.ax, w.by - w.ay);
       const steps = Math.max(2, Math.ceil(len / (cw * 0.5)));
