@@ -1285,7 +1285,23 @@
    * veil is still drawn from them. */
   function refreshVision(world) {
     world.visSrc = world.players.map((q, pi) => visionSources(world, pi));
-    world.vis = world.players.map((q, pi) => visMask(world, pi, world.visSrc[pi]));
+    /* A FALLEN HEIR WATCHES THE WHOLE BOARD. His Seat is rubble and his men are gone — there
+     * is no information left to protect from him and a free-for-all can run long after his
+     * fall, so the fog lifts and he spectates. POSITIONAL fog only: the wire's private
+     * fields (a rival's essence, branch, income) are withheld by ownership checks that never
+     * consult this mask, so spectating is not auditing. The all-ones mask is built once and
+     * shared — every downstream consumer (canSee, the snapshot filter, exploreAround, the
+     * veil) follows it with no rule of its own. */
+    world.vis = world.players.map((q, pi) => {
+      if (q.out) {
+        if (!world._allSeen) {
+          const sgt = world.sight;
+          world._allSeen = { g: new Uint8Array(sgt.gw * sgt.gh).fill(1), gw: sgt.gw, gh: sgt.gh, cell: sgt.cell };
+        }
+        return world._allSeen;
+      }
+      return visMask(world, pi, world.visSrc[pi]);
+    });
     for (let pi = 0; pi < world.players.length; pi++) exploreAround(world, pi);
   }
   function exploreAround(world, pi) {

@@ -110,6 +110,7 @@
    * changes and left alone when it does not */
   const hurtMem = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
+  let seatFalls = [];   // collapses in flight: { pi, t0 } — see R.seatFall
   /* have I found THIS seat? one flag per seat now; `foeSeen` is the old two-player spelling */
   const seatFound = (view, pi) => pi === curViewer ||
     (view.seatSeen ? view.seatSeen[pi] !== false : view.foeSeen !== false);
@@ -1009,6 +1010,38 @@
    * look the same without reaching into the scene graph */
   R.modelKey = modelKey;
   R.model = buildingModel;
+  /* THE SEAT IS SEEN TO FALL. The sim ends the match on the tick the last hit lands — the
+   * referee's clocks must not move — so the fall is presentation: the tower sinks, tilts and
+   * dims over about two and a half seconds while game.js holds the end screen back. Driven
+   * per frame from the same list for every seat at the table, so a host and a guest watch the
+   * same collapse. Idempotent per seat: the win and the fall both try to start it. */
+  R.seatFall = function (pi) {
+    if (!seatFalls.some((f) => f.pi === pi)) seatFalls.push({ pi, t0: performance.now() });
+  };
+  R.seatFallDone = (pi) => !seatFalls.some((f) => f.pi === pi && performance.now() - f.t0 < 2600);
+  R.debugSeatFall = () => seatFalls.length > 0;   // is a collapse in flight — for the suite
+  function driveSeatFalls() {
+    for (let i = seatFalls.length - 1; i >= 0; i--) {
+      const f = seatFalls[i], g = cityObjs && cityObjs[f.pi];
+      if (!g || !g.tower) { seatFalls.splice(i, 1); continue; }
+      const k = Math.min(1, (performance.now() - f.t0) / 2500);
+      /* ease-in: stone hesitates, then goes. Sink most of the shaft, lean hard, dim. */
+      const e = k * k;
+      g.tower.position.y = (g.tower._baseY == null ? (g.tower._baseY = g.tower.position.y) : g.tower._baseY) - e * 96;
+      g.tower.rotation.z = e * 0.38;
+      g.tower.traverse((o) => { if (o.material && o.material.color) {
+        if (!o._dimmed) { o._dimmed = true; o.material = o.material.clone(); }
+        o.material.opacity = 1 - e * 0.55; o.material.transparent = true;
+      } });
+      /* dust: a ring every third of the way down, widening as it goes */
+      if (!f.rings) f.rings = 0;
+      if (e * 3 > f.rings && f.rings < 3) {
+        f.rings++;
+        const c = g.tower._baseXZ || (g.tower._baseXZ = { x: g.tower.position.x, z: g.tower.position.z });
+        ringFx(c.x, c.z, 0xb8a890, 0.8, 40 + f.rings * 26);
+      }
+    }
+  }
   /* the raging storms as drawn — the suite asks whether a disc lies ON the ground it covers,
    * which is not answerable from outside without reaching into the scene graph */
   R.debugStorms = () => stormState;
@@ -1665,10 +1698,55 @@
       f.position.set(fx2, groundH(fx2, fz2), fz2);
       f._flag.rotation.y = Math.sin(T * 2.2 + i) * 0.3;
     });
+    /* AND THE STONE FLIES THE STANDARD OF WHOEVER HOLDS IT. A garrisoned tower shows shield
+     * badges and a manned wall shows the men — but neither says WHOSE they are without
+     * tapping, and on a board with three companies out that is the question. One pennant per
+     * held work, the company's own colour, keyed into the same pool as the rally standards
+     * (string keys, so a work id can never collide with a company id). Majority company wins
+     * a mixed roster: the flag says who HOLDS the stone, not everyone visiting it. Own works
+     * only — a rival's company identity is private on the wire, and the badge count is
+     * already everything a rival is entitled to read. */
+    const held = new Map();   // workId -> { counts: Map(co->n), b }
+    const ownWorks = new Map();
+    for (const b of (view.players[viewer].buildings || [])) ownWorks.set(b.id, b);
+    for (const u of view.units) {
+      if (u.owner !== viewer || !u.co) continue;
+      const wid = u.in || u.man || 0;
+      if (!wid || !ownWorks.has(wid)) continue;
+      let h = held.get(wid);
+      if (!h) { h = { counts: new Map(), b: ownWorks.get(wid) }; held.set(wid, h); }
+      h.counts.set(u.co, (h.counts.get(u.co) || 0) + 1);
+    }
+    for (const [wid, h] of held) {
+      let co = 0, n = 0;
+      for (const [c2, k] of h.counts) if (k > n) { n = k; co = c2; }
+      if (!co) continue;
+      const key = 'w' + wid;
+      active.add(key);
+      let f = coFlags.get(key);
+      if (!f) {
+        f = new THREE.Group();
+        const pole = meshOf([part(cyl(0.7, 0.7, 26, 5), 0xd8c8a8, 0, 13, 0)]);
+        const pf = new THREE.Mesh(new THREE.PlaneGeometry(12, 7).translate(6, 0, 0),
+          new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+        pf.position.set(0, 23, 0);
+        f.add(pole, pf); f._flag = pf;
+        worldG.add(f);
+        coFlags.set(key, f);
+      }
+      f._flag.material.color.setHex(PENNANT[(co - 1) % PENNANT.length]);
+      /* a tower's flag flies from the crown — the shaft grows with the level — and a wall's
+       * from the midpoint of the run, above the parapet */
+      const b = h.b;
+      const top = b.bt === 'tower' ? 62 + ((b.level || 1) - 1) * 9 : (b.x2 != null ? 30 : 24);
+      f.position.set(b.x, groundH(b.x, b.y) + top, b.y);
+      f._flag.rotation.y = Math.sin(T * 2.2 + wid) * 0.3;
+    }
     for (const [i, f] of [...coFlags]) if (!active.has(i)) { f.removeFromParent(); coFlags.delete(i); }
   }
 
   function updateStorms(view, viewer) {
+    driveSeatFalls();
     /* AS MANY AS ARE RAGING. The pool was a hard [0, 1] — two lights, two discs — which was
      * every storm a duel can hold and one fewer than a four-handed table can: the third
      * Jewel cast simply did not draw, sim and snapshot both carrying a storm the board never
@@ -1792,6 +1870,10 @@
     const g = octx;
     g.clearRect(0, 0, W, H);
     /* fog of war, projected: dark veil with soft elliptical holes at each vision source */
+    /* A FALLEN HEIR HAS NO VEIL — he spectates, and the cheapest fog is none: skip the dark
+     * fill, the mask march, the discs and the rim in one test rather than asking each pass
+     * to notice an all-ones mask. */
+    if (!view.allSeen) {
     g.fillStyle = 'rgba(6,4,12,0.86)';
     g.fillRect(0, 0, W, H);
     /* project every sight disc ONCE — the holes and the rim are both drawn from these */
@@ -1975,6 +2057,7 @@
       rc.fill();
       rc.globalCompositeOperation = 'source-over';
       g.drawImage(rimStore.cv, 0, 0, W, H);
+    }
     }
     /* unit hp slivers */
     for (const u of view.units) {

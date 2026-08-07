@@ -2315,7 +2315,10 @@ async function match(browser, base, renderer) {
         while (!fn() && Date.now() - t0 < ms) await new Promise((res) => requestAnimationFrame(res));
         return fn();
       };
-      const ends = () => till(() => Game.game.over);
+      /* a castle ending now HOLDS the end screen ~2.8s while the Seat is seen to fall, so the
+       * wait is that hold plus the old margin — and the first `ends` doubles as the feature's
+       * own assertion: the screen must NOT be up early, and the tower must be falling */
+      const ends = () => till(() => Game.game.over, 6500);
       const begins = () => till(() => !Game.game.over && !!Game.game.mode);
       /* `to` is which seat a message was addressed to; -1 is "everyone I am linked to" */
       const log = (arr) => (o, to) => arr.push({ ...o, to: to == null ? -1 : to });
@@ -2400,7 +2403,15 @@ async function match(browser, base, renderer) {
       sent.length = 0;
       Net.peers = [1, 2, 3].map((i) => ({ idx: i, dc: { readyState: 'open', send: () => {} }, pc: null }));
       Game.startMP(9007, 4, 0);
+      /* honest synthesis: the fall keys on a toppled seat, so topple one */
+      Game.game.world.players[0].castleHp = 0;
       Game.game.world.events.push({ e: 'win', winner: 2, reason: 'castle' });
+      /* the hold itself, measured once here rather than paid blind six times: a second after
+       * the killing blow the match must still be SHOWING (not over), and the loser's tower
+       * must be animating — then `ends` waits out the fall like every other block */
+      await wait(1000);
+      out.heldBack = !Game.game.over;
+      out.falling = !!(window.Render.debugSeatFall && window.Render.debugSeatFall());
       await ends();
       Net.onAgain(3);                            // the heir at seat 3 asks for another
       await begins();
@@ -2438,6 +2449,8 @@ async function match(browser, base, renderer) {
       out.refusedOver = Game.game.over;          // still on the end screen, not dumped out
       return out;
     });
+    ok('the end screen waits while the Seat is seen to fall', again.heldBack === true && again.falling === true,
+       `held ${again.heldBack}, falling ${again.falling}`);
     ok('a guest that loses is left on the end screen', again.guestEnded);
     ok('and is offered another match of its own', /ANOTHER MATCH/.test(again.guestLabel), again.guestLabel);
     ok('with a button it can actually press', again.guestLive);
@@ -2509,8 +2522,16 @@ async function match(browser, base, renderer) {
         window.__step(25);
         await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       }
+      /* an HONEST castle ending: real play never wins by castle with every Seat standing, and
+       * the fall presentation keys on the toppled seat — a fabricated win with nobody down
+       * would hold the screen with no tower falling. Then wait out the HOLD (2.8s) the way a
+       * player does, not a 200ms guess that the feature just made a lie. */
+      Game.game.world.players[1].castleHp = 0;
       Game.game.world.events.push({ e: 'win', winner: 0, reason: 'castle' });
-      await new Promise((res) => setTimeout(res, 200));
+      { const t0 = Date.now();
+        while (!Game.game.over && Date.now() - t0 < 6500)
+          await new Promise((res) => requestAnimationFrame(res)); }
+      await new Promise((res) => setTimeout(res, 120));
       out.ended = !document.getElementById('end').classList.contains('hidden');
       out.hasButtons = !!document.getElementById('end-copy') && !!document.getElementById('end-save');
       document.getElementById('end-copy').click();

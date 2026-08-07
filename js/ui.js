@@ -473,7 +473,11 @@
    * for a hall, now that WHICH man it raises is a thing the branch decides */
   function unitLine(kind, period, level) {
     const u = C.UNITS[kind], m = C.TIER[level - 1];
-    return `<span class="c-rate dn">−${(u.cost * m / period).toFixed(1)}◆/s muster</span>` +
+    /* `keep` on the line, because the drain beside it STOPS when the hall is full — a hall's
+     * standing cost is the muster rate only until its company stands complete, and a card
+     * that quoted the drain without the ceiling read as a bill that never ends */
+    return `<span class="c-rate dn">−${(u.cost * m / period).toFixed(1)}◆/s muster` +
+           (u.keep ? ` · keeps ${u.keep}` : '') + `</span>` +
            `<span class="c-rate up">${C.TIER_NAME[level - 1]}${u.name || cap(kind)}: ` +
            `${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow</span>`;
   }
@@ -849,6 +853,9 @@
     const dps = (u.dmg / u.atk).toFixed(1);
     const bits = [`${u.hp} hp`, `${u.dmg} blow · ${dps}/s`, `${u.range} reach`, `${u.speed} pace`];
     if (u.cost) bits.push(`◆ ${u.cost}`);
+    /* the hall's ceiling belongs beside the price: how many of this man ONE hall will keep
+     * in the field, refilling as they fall — the number that says what a hall is worth */
+    if (u.keep) bits.push(`${u.keep} to a hall`);
     /* the three flags decide what a man is FOR, so they are said in words rather than left
      * for a player to infer from a reach of 105 */
     const tags = [];

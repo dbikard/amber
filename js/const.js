@@ -714,17 +714,17 @@
    * opposite property: the surplus buys ANOTHER HALL, so it still has somewhere to go, and the
    * size of an army becomes a question of what you built rather than of how long you waited.
    *
-   * IT IS NOT FOR PERFORMANCE. That was the reason to fear it and it is measured: 1200 men cost
-   * 1.9 ms a tick, six per cent of realtime, and a fogged snapshot is 27 KB against a 120 KB
-   * budget. The real reason is the ECONOMY. There is no standing upkeep in this game — a
-   * recruit is paid for in instalments while he musters and costs nothing once he is out — so a
-   * hall draws `cost/period` for the whole match and the muster expands to swallow the entire
-   * income, permanently. Measured on a benedict mirror that ran to the 45-minute cap: both
-   * heirs finished on purses of 0 and 13, and NEITHER had set foot on the Pattern all match,
-   * because a walk costs about 6,900 essence and neither ever held any. A hall that fills stops
-   * drawing; income then exceeds drain; a treasury accumulates; and the Pattern becomes a road
-   * an heir can actually take. The anti-stall is the economy, exactly as pillar 4 says — this
-   * is what makes that true rather than aspirational.
+   * IT IS NOT FOR PERFORMANCE — that was measured (1200 men cost 1.9 ms a tick, six per cent
+   * of realtime) — AND, HONESTLY, IT IS NOT MUCH FOR THE ECONOMY EITHER. The paragraph that
+   * stood here claimed a full hall stops drawing, a treasury accumulates, and the Pattern
+   * opens. TRUE AT PEACE AND FALSE IN WAR, and war is the case that stalls: the ablation ran
+   * the referee with the cap in force and got the same table to the digit, because in a real
+   * match a hall sits at 3-9 of 32 REPLACING LOSSES, and a standing ceiling never binds on
+   * replacement. What actually opened the Pattern economy was the heirs holding Gates (the
+   * errand company): income, not thrift. What this cap genuinely buys: army size is bounded
+   * by what you BUILT rather than how long you waited (the pathological long-match blowup is
+   * gone), the per-type numbers give a branch its company size, and the number is now on the
+   * build card and in the Muster Roll — so it had better be true.
    *
    * ONE NUMBER, NOT TWELVE. A hall keeps a fixed VALUE of men, so cheap men come in numbers and
    * dear ones do not: a Barracks keeps 32 soldiers, a Ram Shed 5 rams. That falls out of the

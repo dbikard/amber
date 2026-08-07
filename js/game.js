@@ -187,7 +187,29 @@
   }
   function endMatch(winner, reason) {
     if (game.over) return;
+    /* THE SEAT IS SEEN TO FALL BEFORE THE SCREEN SAYS SO. A castle ending used to cut to the
+     * end screen on the same frame as the killing blow, so the one image the whole match
+     * builds toward — the throne coming down — was never seen. The sim is untouched (the
+     * referee's clocks must not move); the HOLD is here, at the one choke point every mode
+     * shares: host and guest each learn the winner their own way and each hold their own
+     * screen behind the same collapse. Reentry-guarded: the timeout calls back into this
+     * function with the fall already played. */
+    if (reason === 'castle' && Render.seatFall) {
+      if (!game._fellAt) {
+        game._fellAt = performance.now();
+        for (let pi = 0; pi < game.names.length; pi++) {
+          const p2 = game.mode === 'guest' ? (snapCur && snapCur.players[pi]) : (game.world && game.world.players[pi]);
+          if (p2 && (p2.out || p2.castleHp <= 0)) Render.seatFall(pi);
+        }
+        setTimeout(() => endMatch(winner, reason), 2800);
+        return;
+      }
+      /* a guest re-enters from every snapshot while the winner rides it — the hold is a
+       * TIMESTAMP, not a one-shot, or the second snapshot would cut past the fall */
+      if (performance.now() - game._fellAt < 2700) return;
+    }
     game.over = true;
+    game._fellAt = 0;
     Rec.end(winner, reason, game.world ? Rec.fromWorld(game.world)
                           : snapCur ? Rec.fromSnap(snapCur, game.viewer) : null);
     const won = winner === game.viewer;
@@ -356,6 +378,7 @@
        * when present, falling back to source ellipses when not. Tolerant of either shape the
        * sim might serve ({g,gw,gh,cell} directly, or wrapped as {mask}), because the two
        * halves of this feature land in separate changes and neither may break the other. */
+      allSeen: !!world.players[viewer].out,   // a fallen heir spectates: no veil at all
       visMask: (() => {
         const v = world.vis && world.vis[viewer];
         if (!v) return null;
@@ -398,7 +421,8 @@
      * guest receives is already fogged by the true set; its own veil is merely a shade
      * optimistic until the wall is found, which is the moment it starts blocking. */
     let vism = null;
-    if (World.bakeSight && World.visMask) {
+    const meOut = !!(snap.players[me] && snap.players[me].out);
+    if (!meOut && World.bakeSight && World.visMask) {
       if (!refWorld.sight) World.bakeSight(refWorld);
       const wallList = [];
       for (const p of snap.players) for (const b of (p.buildings || [])) {
@@ -413,7 +437,7 @@
       }
       vism = World.visMask({ sight: refWorld.sight }, 0, src);   // returns {g,gw,gh,cell}
     }
-    const see = vism
+    const see = meOut ? (() => true) : vism
       ? (x, y) => {
           const gx = (x / vism.cell) | 0, gy = (y / vism.cell) | 0;
           return gx >= 0 && gy >= 0 && gx < vism.gw && gy < vism.gh && vism.g[gy * vism.gw + gx] === 1;
@@ -429,7 +453,7 @@
              seatSeen: refWorld.map.cities.map((id, pi) => pi === Net.localIdx ||
                !!(snap.sites[id] && snap.sites[id].live !== undefined)),
              sites: snap.sites, units, storms: snap.storms, visSources: src, see,
-             visMask: vism };
+             visMask: vism, allSeen: meOut };
   }
 
   /* ---------------- event routing (banners + canvas fx; fog respected) ---------------- */
@@ -476,6 +500,7 @@
         ? '✴ Your Shrine is thrown down — the Pattern lets go of you (' + Math.round(ev.pattern) + '%)'
         : '✴ ' + game.names[ev.pi] + ' is torn off the Pattern — ' + Math.round(ev.pattern) + '% left',
         ev.pi === game.viewer ? 'warn' : 'alert')
+      else if (ev.e === 'fall' && Render.seatFall) Render.seatFall(ev.pi);
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
     }
   }
