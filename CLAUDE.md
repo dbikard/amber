@@ -109,6 +109,19 @@ progress. AI reads only what a human could see (see `AI.view()`).
 
 ## Development Practices
 
+- **Before believing a measurement, prove the control is alive.** Eight probes in one session
+  returned confident, wrong answers because the instrument silently did nothing: bots driven
+  with `think` when the API is `step` (a still world read as a stalled game), a `s.holder`
+  field that does not exist (read as "no springs held"), a click swallowed by the sheet's
+  320ms fat-finger guard (read as "the button is broken"), `en.hp -= 7` asserting subtraction
+  rather than the sim, probe attackers dead before their first blow — twice — a render pass
+  "disabled" by nulling a field the view rebuilds every frame, and a `grep|head` pipe that
+  never flushed a tally. All of them LOOKED like results. The discipline: make the rig show it
+  can move before trusting that it did not, write tests that FAIL on the old code, and treat
+  "no effect" as "the switch was never thrown" until shown otherwise. A suite run loads its
+  files at START — a tally is evidence about the code the process loaded, never about edits
+  that landed mid-run.
+
 - **Do not push after every commit.** Batch; push when the user asks.
 - Version in `index.html` as `GAME_VERSION` + `?v=X.Y.Z` cache-bust queries on all assets.
   `.githooks/pre-commit` (core.hooksPath) auto-bumps the PATCH version on shipping commits
