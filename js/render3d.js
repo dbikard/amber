@@ -1114,10 +1114,35 @@
       const holder = new THREE.Group();
       holder.position.set(s.x, groundH(s.x, s.y) + 0.5, s.y);
       if (s.kind === 'node') {
-        const water = new THREE.Mesh(new THREE.CircleGeometry(26, 18).rotateX(-Math.PI / 2),
-          new THREE.MeshLambertMaterial({ color: 0x2c5a7c, emissive: 0x14283c }));
-        water.position.y = 0.8; water._water = true;
-        holder.add(water);
+        /* A SPRING IS THE ECONOMY, and it was a plain blue coin on the grass — the single most
+         * contested thing on the board, drawn with less care than a tree. Reported from play.
+         * Still cheap and still the kit: a stone lip, water in two depths, a violet up-welling
+         * at the heart (Shadow is what a Gate draws out of it — the Gate's own orb is this
+         * colour), and a few worn stones round the rim. The shimmer pass already breathes on
+         * anything marked `_water`, so the heart pulses without a line of new animation. */
+        const lip = new THREE.Mesh(new THREE.CircleGeometry(30, 18).rotateX(-Math.PI / 2),
+          new THREE.MeshLambertMaterial({ color: 0x4a4048 }));
+        lip.position.y = 0.5;
+        const shallows = new THREE.Mesh(new THREE.CircleGeometry(26, 18).rotateX(-Math.PI / 2),
+          new THREE.MeshLambertMaterial({ color: 0x3c6e8e, emissive: 0x142834 }));
+        shallows.position.y = 0.9;
+        const deep = new THREE.Mesh(new THREE.CircleGeometry(16, 14).rotateX(-Math.PI / 2),
+          new THREE.MeshLambertMaterial({ color: 0x1e3c5c, emissive: 0x0e1c30 }));
+        deep.position.y = 1.15;
+        const heart = new THREE.Mesh(new THREE.CircleGeometry(6.5, 10).rotateX(-Math.PI / 2),
+          new THREE.MeshLambertMaterial({ color: 0x9a7ec0, emissive: 0x7a5a9c }));
+        heart.position.y = 1.4; heart._water = true;
+        holder.add(lip, shallows, deep, heart);
+        const stones = [];
+        for (let k = 0; k < 6; k++) {
+          /* seeded by the SITE, not by chance: every machine at a LAN table draws the same
+           * spring, and a rejoin does not reshuffle the stones */
+          const a = (k + 0.5) / 6 * Math.PI * 2 + (s.id % 7) * 0.4;
+          const r = 28 + ((s.id * 13 + k * 5) % 5);
+          stones.push(part(sph(2.4 + ((s.id + k) % 3)), k % 2 ? 0x5a5266 : 0x6a6276,
+                           Math.cos(a) * r, 1.6, Math.sin(a) * r));
+        }
+        holder.add(meshOf(stones));
       } else if (s.kind === 'vantage') {
         holder.add(meshOf([part(sph(12), 0x5a5266, -10, 6, 2), part(sph(9), 0x6a6276, 8, 5, -6), part(sph(6), 0x4a4258, 2, 4, 10)]));
       } else {
@@ -1312,9 +1337,9 @@
   function garrisons(view) {
     let g = null;
     for (const u of view.units) {
-      if (!u.tow) continue;
+      if (!u.in) continue;             // a shield on the crown means a man THROUGH the door
       if (!g) g = new Map();
-      g.set(u.tow, (g.get(u.tow) || 0) + 1);
+      g.set(u.in, (g.get(u.in) || 0) + 1);
     }
     return g;
   }
@@ -1380,8 +1405,10 @@
       /* A MAN INSIDE A TOWER IS INSIDE IT. Nothing can reach him and he is not standing in the
        * grass, so drawing him there would be a picture of a rule the sim no longer plays — the
        * tower wears one mark per man instead (see `garrisons`). He comes back the tick the
-       * stone does, which is the moment the badge is worth having watched. */
-      if (u.tow) continue;
+       * stone does, which is the moment the badge is worth having watched.
+       * `in`, not `tow`: an ASSIGNED man is still walking to the door, and the walk is the
+       * whole show — men file toward the tower and vanish one by one as the crown fills. */
+      if (u.in) continue;
       const key = u.kind + '#' + rankOf(u);
       if (byKind[key]) byKind[key].push(u);
     }
@@ -1481,8 +1508,15 @@
     for (let pi = 0; pi < cityObjs.length; pi++) {
       const g = cityObjs[pi];
       const pl = view.players[pi];
-      /* a rival's court stays out of the world until somebody has seen THAT one */
-      if (!g.own) { g.group.visible = seatFound(view, pi); if (!g.group.visible) continue; }
+      /* A RIVAL'S COURT STAYS OUT OF THE WORLD UNTIL SOMEBODY HAS SEEN THAT ONE — the court,
+       * not the realm. `continue` here skipped the whole works loop for an unfound seat, and
+       * since a work's group is only ever built by this loop, every OUTLYING work they owned
+       * was invisible however plainly it stood in sight: a forward Gate on a contested spring
+       * showed its hp bar (the overlay reads the snapshot directly) over bare ground.
+       * Reported from play. The snapshot is already fog-filtered per WORK — what rides it is
+       * what a man of yours can see — so the veil here has exactly one job: the city disc and
+       * the Seat tower, which worldgen placed and fog has not yet confirmed. */
+      if (!g.own) g.group.visible = seatFound(view, pi);
       /* works stand where they were placed. A rival's work you can no longer see is a
        * ghost — drawn faint, at the place you last saw it. */
       const want = new Map();

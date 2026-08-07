@@ -331,6 +331,11 @@
     for (const u of world.units) { if (u.man) u.man = 0; if (u.tow) u.tow = 0; }
     if (world.anyWall) postWalls(world);
     postTowers(world);
+    /* a man INSIDE holds his room only while the roster still deals him that tower — the flag
+     * moves on, or a place is given away, and he steps out where he stood. `in` is never set
+     * here; only crossing the threshold sets it (the march), and only losing the room or the
+     * tower (here, and the spill) clears it. */
+    for (const u of world.units) if (u.in && u.in !== u.tow) u.in = 0;
   }
   function postWalls(world) {
     const rosters = new Map();
@@ -736,7 +741,7 @@
     const R = C.CROWD.space, P = C.CROWD.pull, P2 = P * P, cw = P;
     const grid = new Map();
     for (const u of world.units) {
-      if (u.hp <= 0 || u.man || u.tow) continue;   // a berth on a parapet, or a room in a tower, is not a crowd
+      if (u.hp <= 0 || u.man || u.in) continue;   // a berth on a parapet, or a room in a tower, is not a crowd — a man still WALKING to his tower is both
       const k = Math.floor(u.y / cw) * 100003 + Math.floor(u.x / cw);
       const cell = grid.get(k);
       if (cell) cell.push(u); else grid.set(k, [u]);
@@ -1698,7 +1703,7 @@
      * attacker has to spend, and when it goes they are back in the field on the same tick with
      * whatever they had left. Guarded here rather than at each of the half-dozen places that
      * deal damage, because a splash pass added later would not have known to ask. */
-    if (victim.tow) return;
+    if (victim.in) return;
     victim.hp -= dmg;
     if (victim.hp <= 0 && !victim.dead) {
       victim.dead = true;
@@ -1792,7 +1797,7 @@
         /* a man inside a tower is not a target — the stone is. `hurt` refuses the blow anyway,
          * but a swordsman who aimed at him would stand at the foot of the tower swinging at
          * somebody he can never reach instead of going for the tower or moving on. */
-        if (v.tow) continue;
+        if (v.in) continue;
         if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
       }
     }
@@ -1949,13 +1954,15 @@
        * points they went up with: taking the tower is what the attacker paid for, not the men.
        * Spread around the ruin rather than stacked on it, so the crowd rule has somewhere to
        * put them and the company reads as a company. */
-      const spill = world.units.filter((u) => u.tow === b.id);
+      const spill = world.units.filter((u) => u.in === b.id);
       for (let k = 0; k < spill.length; k++) {
         const u = spill[k];
         const a = (k + 0.5) / spill.length * Math.PI * 2;
-        u.tow = 0; u.towSlot = 0;
+        u.tow = 0; u.towSlot = 0; u.in = 0;
         u.x = b.x + Math.cos(a) * C.TOWER.ring; u.y = b.y + Math.sin(a) * C.TOWER.ring;
       }
+      /* a man still WALKING to it was never in it — he keeps his feet and loses the errand */
+      for (const u of world.units) if (u.tow === b.id) { u.tow = 0; u.towSlot = 0; }
       pl.buildings.splice(i, 1);
       if (isWall(b)) { world.navVersion++; noteWalls(world); }   // a breach is a hole
       if (b.bt === 'shrine') {
@@ -2296,7 +2303,7 @@
       if (def.bind && u.cd <= 0 && bindNear(world, u, def)) u.cd = def.atk;
       /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
        * than he ever could on the ground, and everything that can see the tower can see him. */
-      const gar = u.tow ? C.TOWER.over : 0;
+      const gar = u.in ? C.TOWER.over : 0;   // the long throw is the room's, not the errand's
       const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
       if (foe) {
         const rng = Math.max(par ? Math.max(def.range, C.WALL.over) : def.range, gar);
@@ -2346,15 +2353,31 @@
         if (u.tow) {
           const tb = towerOf(world, u);
           if (tb) {
-            const ts = towerStation(tb, u);
-            const dg = Math.sqrt(d2(u.x, u.y, ts.x, ts.y));
-            if (dg > 3) {
-              const s5 = dg < C.NAV.arrive ? null : NAV.steer(world.nav, world, u.owner, ts.x, ts.y, u.x, u.y);
-              const L3 = s5 ? 1 : dg;
-              const vx3 = s5 ? s5.x : (ts.x - u.x) / L3, vy3 = s5 ? s5.y : (ts.y - u.y) / L3;
-              u.x += vx3 * def.speed * dt; u.y += vy3 * def.speed * dt;
-            }
-            continue;   // his place in the tower is exact: he is not jostled out of it
+            /* THE DOOR IS A PLACE, AND SHELTER STARTS AT IT — not at the order. Assignment
+             * used to be the whole story: the tick the roster dealt a man a room he became
+             * untouchable and invisible WHEREVER HE STOOD, so ten archers winked out of the
+             * middle of a field and a badge lit on a tower they had never reached. Reported
+             * from play as "show them entering". Assigned (`tow`) he is an ordinary marcher —
+             * drawn, mortal, a target, walking to the tower like anyone walks anywhere — and
+             * only crossing the threshold (`in`) trades the field for the room. The walk is
+             * the show: men file toward the door and vanish one by one as the crown fills. */
+            if (u.in === tb.id) continue;   // inside: he does not move, and nothing out here touches him
+            const dc = Math.sqrt(d2(u.x, u.y, tb.x, tb.y));
+            /* THE RIM IS THE DOOR. The first threshold was TOWER.ring + 8 — seventeen units in,
+             * comfortably inside the BUILD.pass ring that `stand` defends — so the walk below
+             * carried a man to the stone and `stand` set him back to twenty-six, thirty times a
+             * second, and nobody ever entered: measured 0 of 12, every man parked at exactly
+             * pass range. A man does not reach the middle of a tower before he is in it; he
+             * reaches the wall of it, and the wall is where `stand`'s writ starts. One step
+             * past the rim he steps THROUGH instead of off. */
+            if (dc <= C.BUILD.pass + 4) { u.in = tb.id; continue; }
+            const s5 = dc < C.NAV.arrive ? null : NAV.steer(world.nav, world, u.owner, tb.x, tb.y, u.x, u.y);
+            const L3 = s5 ? 1 : dc;
+            const vx3 = s5 ? s5.x : (tb.x - u.x) / L3, vy3 = s5 ? s5.y : (tb.y - u.y) / L3;
+            const tx0 = u.x, ty0 = u.y;
+            u.x += vx3 * def.speed * dt; u.y += vy3 * def.speed * dt;
+            stand(world, u, tx0, ty0);
+            continue;
           }
         }
         if (u.post) {
@@ -2515,7 +2538,7 @@
     for (const u of world.units) {
       /* a man holding a place on stone is not shoved off it — his station IS his position,
        * and a tower's garrison stands inside the ring `stand` would push him out of */
-      if (u.hp <= 0 || u.man || u.tow) continue;
+      if (u.hp <= 0 || u.man || u.in) continue;
       project(world, u, u._px, u._py);
     }
 

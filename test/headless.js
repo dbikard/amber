@@ -511,10 +511,10 @@ suite('stone is for shooters')
     for (let i = 0; i < C.TOWER.berths + 3; i++) crowd.push(mk2('archer'));
     const sword = mk2('soldier');
     World.update(w2, C.SIM_DT); w2.events.length = 0;
-    eq('a tower is a room, not a field', crowd.filter((u) => u.tow === tw.id).length, C.TOWER.berths);
-    ok('and the rest stay outside', crowd.filter((u) => !u.tow).length === 3);
+    eq('a tower is a room, not a field', crowd.filter((u) => u.in === tw.id).length, C.TOWER.berths);
+    ok('and the rest stay outside', crowd.filter((u) => !u.in).length === 3);
     ok('a swordsman never goes up one', !sword.tow);
-    ok('every man up it has his own place', new Set(crowd.filter((u) => u.tow).map((u) => u.towSlot)).size === C.TOWER.berths);
+    ok('every man up it has his own place', new Set(crowd.filter((u) => u.in).map((u) => u.towSlot)).size === C.TOWER.berths);
     ok('a man in a tower throws further than he could on the ground',
        C.TOWER.over > C.UNITS.archer.range, `${C.TOWER.over} vs ${C.UNITS.archer.range}`);
   }
@@ -2313,13 +2313,56 @@ suite('a tower shelters its garrison');
   for (let i = 0; i < over; i++) shooters.push(manAt(w, 0, 'archer', tower.x + 40 + i, tower.y + 40));
   for (let i = 0; i < 3; i++) swords.push(manAt(w, 0, 'soldier', tower.x + 40, tower.y + 60 + i));
   const run = (n) => { for (let i = 0; i < n; i++) World.update(w, 1 / 30); };
+  /* THE WALK IS THE SHOW. Assignment used to BE entry: the tick the roster dealt a man a room
+   * he became invisible and untouchable wherever he stood, ten archers winking out of the
+   * middle of a field — reported from play as "show them entering". Assigned (`tow`) and
+   * inside (`in`) are different states now, and the difference is measurable: a few ticks in,
+   * men hold the errand but not the room, they are still mortal, and they are WALKING —
+   * strictly nearer the door than they started. */
+  run(12);
+  const bound = shooters.filter((u) => u.tow === tower.id);
+  const walking = bound.filter((u) => !u.in);
+  /* assignment and entry are different STATES, which is the whole feature — not a claim about
+   * which tick the nearest man's boots cross the rim, which is timing trivia that broke the
+   * first draft of this line (three men who spawned near the door were already in) */
+  ok('a moment in, men hold the errand but not all hold the room',
+     bound.length > 0 && walking.length > 0,
+     `${walking.length} walking, ${bound.length - walking.length} already in`);
+  /* AND A WALKING MAN IS IN THE FIELD — a rival can single him out and cut him down on his
+   * way to the door, which is the tempo cost of garrisoning under fire. Asserted through the
+   * sim's own combat, because the first draft wrote `en.hp -= 7` and checked the arithmetic:
+   * an assertion that would have passed with the shelter wrongly covering every assigned man,
+   * i.e. with the one rule it exists to pin completely broken. */
+  /* the farthest walker, so the blade has the most ticks before his door — and a blade that
+   * cannot be shot down first: the probe's first draft spawned a 70 hp swordsman in the lap of
+   * the tower's gun, three garrisoned archers and nine walking ones, and he was dead before
+   * his first swing — 42 -> 42, the assault that never arrived, again. He is not the thing
+   * being measured; the walker's skin is. */
+  walking.sort((a, b) => Math.hypot(b.x - tower.x, b.y - tower.y) - Math.hypot(a.x - tower.x, a.y - tower.y));
+  const en = walking[0], hpEn = en.hp;
+  const cut = manAt(w, 1, 'soldier', en.x + 4, en.y);
+  cut.hp = cut.maxHp = 99999;
+  let sawIn = false;
+  for (let i = 0; i < 120 && en.hp >= hpEn && en.hp > 0; i++) { World.update(w, 1 / 30); w.events.length = 0; if (en.in) { sawIn = true; break; } }
+  ok('...and a man on his way to the door bleeds like anyone else', en.hp < hpEn,
+     `${hpEn} -> ${Math.round(en.hp)} with a blade on him` + (sawIn ? ' (reached the door untouched)' : ''));
+  cut.hp = 0; cut.dead = true;
+  const before2 = new Map(walking.filter((u) => u.hp > 0).map((u) => [u.id, Math.hypot(u.x - tower.x, u.y - tower.y)]));
+  run(30);
+  ok('...and every walking man is nearer the door than he was',
+     walking.filter((u) => u.hp > 0 && before2.has(u.id))
+       .every((u) => u.in || Math.hypot(u.x - tower.x, u.y - tower.y) < before2.get(u.id) - 1),
+     walking.filter((u) => u.hp > 0 && before2.has(u.id))
+       .map((u) => `${Math.round(before2.get(u.id))}->${u.in ? 'in' : Math.round(Math.hypot(u.x - tower.x, u.y - tower.y))}`).join(' '));
   run(500);
-  const inside = shooters.filter((u) => u.tow === tower.id);
+  const inside = shooters.filter((u) => u.in === tower.id);
   eq('it holds exactly what the table says it holds', inside.length, C.TOWER.berths,
      `${inside.length} of ${over} shooters got in`);
-  eq('...and no swordsman is one of them', swords.filter((u) => u.tow).length, 0);
-  ok('the men inside are AT the tower, not ringed round its foot',
-     inside.every((u) => Math.hypot(u.x - tower.x, u.y - tower.y) <= C.TOWER.ring + 2),
+  eq('...and no swordsman is one of them', swords.filter((u) => u.tow || u.in).length, 0);
+  ok('the men inside are AT the tower, not scattered where the deal found them',
+     /* at the RIM: the door is one step past `BUILD.pass`, and a man stops existing on the
+      * field the tick he crosses it — where he was standing then is where he waits */
+     inside.every((u) => Math.hypot(u.x - tower.x, u.y - tower.y) <= C.BUILD.pass + 6),
      inside.map((u) => Math.round(Math.hypot(u.x - tower.x, u.y - tower.y))).join(','));
 
   /* THE STONE IS THE SHIELD. A rival host standing in the tower's lap must not be able to
@@ -2373,7 +2416,7 @@ suite('a tower shelters its garrison');
   const id = tower.id, tx = tower.x, ty = tower.y;
   World.hurtBuilding(w, 0, id, tower.hp + 1, 1);
   ok('the tower is gone', !pl.buildings.some((q) => q.id === id));
-  eq('the garrison is out of it on the same tick', inside.filter((u) => u.tow).length, 0);
+  eq('the garrison is out of it on the same tick', inside.filter((u) => u.tow || u.in).length, 0);
   ok('...and standing where it stood',
      inside.every((u) => Math.hypot(u.x - tx, u.y - ty) <= C.TOWER.ring + 2),
      inside.map((u) => Math.round(Math.hypot(u.x - tx, u.y - ty))).join(','));
@@ -2409,13 +2452,13 @@ suite('a company holding a wall fills the towers on it');
   for (let i = 0; i < 14; i++) men.push(manAt(w, 0, 'archer', wall.x - 40 + i * 3, wall.y - 90));
   for (let i = 0; i < 500; i++) World.update(w, 1 / 30);
   const onStone = men.filter((u) => u.man === wall.id).length;
-  const inTower = men.filter((u) => u.tow === tower.id).length;
+  const inTower = men.filter((u) => u.in === tower.id).length;
   ok('the parapet is manned', onStone > 0, String(onStone));
   ok('...and so is the bastion on it, from the same order', inTower > 0, String(inTower));
   ok('the company is SPLIT, not poured into one of them',
      onStone > 0 && inTower > 0 && onStone + inTower === Math.min(14, onStone + inTower),
      `${onStone} on the stone, ${inTower} inside`);
-  eq('nobody holds a berth and a room at once', men.filter((u) => u.man && u.tow).length, 0);
+  eq('nobody holds a berth and a room at once', men.filter((u) => u.man && (u.tow || u.in)).length, 0);
 }
 
 /* MEN HAVE WIDTH. Nothing kept one soldier off another, so a column arrived stacked and a

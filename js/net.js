@@ -486,6 +486,9 @@
                         * he looks like, so neither is a secret worth keeping */
                        ...(u.man ? { man: u.man } : {}),
                        ...(u.tow ? { tow: u.tow, towSlot: u.towSlot || 0 } : {}),
+                      /* through the door or still walking to it — a guest draws the walk and
+                       * hides the room exactly as the host does */
+                      ...(u.in ? { in: u.in } : {}),
                        /* rank changes what he LOOKS like, so it is not a secret worth keeping */
                        ...(u.tier > 1 ? { tier: u.tier } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),
