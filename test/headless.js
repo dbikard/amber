@@ -423,18 +423,24 @@ suite('shooters, stone, and the arts')
     return a.hp === 20;
   })());
 
-  /* ---- the Binding ---- */
+  /* ---- the Binding: the fiend-rider on a throw that is now about chains ----
+   * This block used to stand a rival soldier 36 away from the binder and assert he was not
+   * taken, which was a real rule tested by accident: the old bindNear looked only for beaten
+   * FIENDS, so the soldier was never a candidate at all. He is now — he is the nearest enemy
+   * and he is chained first — so the throws are separated here, and 'a rival is chained and
+   * never converted' is proved properly in the 'Binding is chains' suite below. */
   w.units.length = 0;
   pin(0, c0.x, c0.y + 40);
   const bind = put(0, 'binder', c0.x, c0.y + 40);
   const beaten = put(C.CHAOS_ID, 'fiend', c0.x + 50, c0.y + 40, 0.3);
   const hale = put(C.CHAOS_ID, 'fiend', c0.x - 50, c0.y + 40, 1);
-  const rival = put(1, 'soldier', c0.x, c0.y + 76, 0.2);
   run(2);
   eq('a beaten fiend is bound', beaten.owner, 0);
   eq('a hale one is not — you fight for it first', hale.owner, C.CHAOS_ID);
-  eq('a rival\'s beaten man is NEVER taken', rival.owner, 1);
+  ok('...but a hale one is CHAINED, which is what the art is for now', hale.hexed > w.t,
+     `${(hale.hexed - w.t).toFixed(1)}s left`);
   eq('...and the bound fiend marches under the standard that took it', beaten.co, bind.co);
+  ok('...wearing no chains of its own — it is his man now', !beaten.hexed);
   ok('it serves for a while and no longer', beaten.bound > w.t && beaten.bound <= w.t + C.BIND_LIFE + 1,
      `${Math.round(beaten.bound - w.t)}s left of ${C.BIND_LIFE}`);
   /* AND SHADOW LETS IT GO. Every fiend bound frees a Chaos slot, so a permanent bind is a
@@ -704,19 +710,31 @@ suite('a walk is a beacon')
   ok('...and the Pattern-light of ground around it', lit(sh.x + C.VISION.pattern * 0.7, sh.y));
   ok('...but no further than the sim would', !lit(sh.x + C.VISION.pattern * 1.6, sh.y));
 
-  World.applyCommand(w, 1, { c: 'walk', on: false });
+  /* AND THE BEACON CANNOT BE SWITCHED OFF. This suite used to prove the light went out by
+   * giving `{c:'walk', on:false}` — an order that no longer exists. A walk ends by winning it
+   * or by losing the Shrine, so that is what puts the light out, and the refusal itself is
+   * part of what makes the beacon worth lighting an army for. */
+  eq('the walk cannot be called off', World.applyCommand(w, 1, { c: 'walk', on: false }).err, 'committed');
   step(12);
-  ok('stopping puts the light out', !World.canSee(w, 0, sh.x, sh.y));
+  ok('so the beacon still burns', World.canSee(w, 0, sh.x, sh.y));
+  eq('and the walker is still on the board', World.walkers(w).length, 1);
+
+  World.hurtBuilding(w, 1, sh.id, sh.hp + 1);
+  step(12);
+  ok('throwing the Shrine down puts the light out', !World.canSee(w, 0, sh.x, sh.y));
   eq('and clears the board', World.walkers(w).length, 0);
 
   /* a fallen heir is not walking, whatever it was doing when it fell */
+  pl.essence = 999999;
+  ok('a new Shrine can be raised', raise(w, 1, at.x, at.y, 'shrine').ok);
+  const sh2 = pl.buildings.find((b) => b.bt === 'shrine');
   World.applyCommand(w, 1, { c: 'walk', on: true });
   step(12);
   eq('walking again', World.walkers(w).length, 1);
   w.players[1].out = true;
   eq('a fallen heir leaves the board', World.walkers(w).length, 0);
   step(12);
-  ok('and their light goes out', !World.canSee(w, 0, sh.x, sh.y));
+  ok('and their light goes out', !World.canSee(w, 0, sh2.x, sh2.y));
 }
 
 suite('four on the wire')
@@ -815,22 +833,27 @@ suite('the Pattern is not upgraded')
   ok('...and the lines fade slower than they are drawn', shr.decay < shr.rate[0],
      `${shr.decay}%/s fade against ${shr.rate[0]}%/s drawn`);
 
-  /* A POOR PLAYER WALKS SLOWER, BUT NEVER STOPS. Partial payment alone had the same disease
-   * as all-or-nothing, only slower: at a sixth of a percent a minute the Pattern is not the
-   * game's clock, it is a stopped one — and every mirror measured running to the 45-minute
-   * cap had a walker broke for 90-95% of it. `minRate` is the floor. */
+  /* A POOR WALKER IS NOT SLOWED — HE IS UNARMED. This block used to assert PROPORTIONAL
+   * progress: pay what you can, advance `pay/want` of full speed, floored at `minRate` so the
+   * arithmetic could never quite stop the game's clock. That whole mechanism is gone, and with
+   * it the field, so the old assertions ('an empty treasury slows the walk', '...against a
+   * floor of') were checking a rule the sim no longer has. The rule that replaced it is
+   * simpler and harsher: the lines carry you at FULL rate whatever your treasury holds, and
+   * what poverty costs you is the army — see 'a walk is paid before the halls are'. */
   const def = C.BUILDINGS.shrine;
+  ok('there is no proportional floor left to read', def.minRate === undefined,
+     `minRate = ${def.minRate}`);
   pl.essence = 0;
   const at0 = pl.pattern;
   for (let i = 0; i < 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
   const crawled = pl.pattern - at0;
-  ok('an empty treasury slows the walk', crawled < def.rate[0] * 0.95, `${crawled.toFixed(3)}%/s`);
-  ok('...but it does not stop it', crawled >= def.rate[0] * def.minRate * 0.9,
-     `${crawled.toFixed(3)}%/s against a floor of ${(def.rate[0] * def.minRate).toFixed(3)}`);
-  /* which is what makes it a clock: a walk begun on nothing still arrives */
-  const worst = 100 / (def.rate[0] * def.minRate) / 60;
-  ok('so the slowest possible walk still finishes inside a match', worst < 25,
-     `${worst.toFixed(1)} minutes at the floor`);
+  near('an empty treasury does not slow the walk at all', crawled, def.rate[0], 0.01,
+       `${crawled.toFixed(4)}%/s against a full ${def.rate[0]}%/s`);
+  ok('...and the treasury is scraped to nothing paying for it', pl.essence < 1,
+     `${pl.essence.toFixed(2)} left`);
+  /* which is what makes it a clock: a walk begun on nothing arrives at the same hour */
+  ok('so the slowest possible walk is the only walk there is', 100 / def.rate[0] / 60 < 25,
+     `${(100 / def.rate[0] / 60).toFixed(1)} minutes, rich or broke`);
 }
 
 /* A WALK IS HELD, NOT BANKED. Progress used to be permanent the instant it was bought, which
@@ -857,26 +880,20 @@ suite('the lines fade')
   const walked = pl.pattern;
   ok('a minute of walking gets you somewhere', walked > 5, `${walked.toFixed(1)}%`);
 
-  /* stop, and the Pattern lets go */
-  World.applyCommand(w, 0, { c: 'walk', on: false });
-  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
-  const faded = walked - pl.pattern;
-  near('a minute of standing still gives some of it back', faded, def.decay * 60, 0.2,
-       `lost ${faded.toFixed(2)}% of ${walked.toFixed(1)}%`);
-  ok('but it does not evaporate — a pause is a cost, not a reset', pl.pattern > walked * 0.5,
-     `${pl.pattern.toFixed(1)}% left`);
-
-  /* and it never runs past zero */
-  pl.pattern = 0.01;
-  for (let i = 0; i < 30 * 10; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
-  eq('the walk cannot go negative', pl.pattern, 0);
+  /* AND THERE IS NO STEPPING OFF. This suite used to prove the fade by giving
+   * `{c:'walk', on:false}` and watching the lines let go — which measured the fade honestly
+   * and, in doing it that way, quietly asserted that a walker could stop whenever he liked.
+   * He cannot: that is the commitment. The fade is still real, and what it now answers is the
+   * ASSAULT — the only thing that takes an heir off the Pattern short of winning. */
+  eq('the walk cannot be called off', World.applyCommand(w, 0, { c: 'walk', on: false }).err, 'committed');
+  for (let i = 0; i < 30 * 5; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('...and the lines go on being drawn', pl.pattern > walked && pl.walking,
+     `${walked.toFixed(1)}% -> ${pl.pattern.toFixed(1)}%`);
 
   /* THE ASSAULT. Throwing the Shrine down tears the walker off the Pattern and costs them
    * ground they had already paid for — the whole reason to go after one. */
   pl.pattern = 60;
-  World.applyCommand(w, 0, { c: 'walk', on: true });
-  World.update(w, C.SIM_DT); w.events.length = 0;
-  ok('the walk is under way again', pl.walking);
+  ok('the walk is under way', pl.walking);
   World.hurtBuilding(w, 0, sh.id, sh.hp + 1);
   ok('the Shrine is thrown down', !pl.buildings.some((b) => b.bt === 'shrine'));
   ok('...which tears the walker off the Pattern', !pl.walking);
@@ -884,6 +901,21 @@ suite('the lines fade')
        `${pl.pattern.toFixed(1)}% left of 60%`);
   ok('the loss is announced', w.events.some((e) => e.e === 'shrinefell' && e.pi === 0),
      w.events.map((e) => e.e).join(','));
+
+  /* and NOW the lines fade, because nobody is walking them */
+  const held = pl.pattern;
+  for (let i = 0; i < 30 * 60; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const faded = held - pl.pattern;
+  near('a minute with nobody on them gives some of it back', faded, def.decay * 60, 0.2,
+       `lost ${faded.toFixed(2)}% of ${held.toFixed(1)}%`);
+  ok('but it does not evaporate — losing the Shrine is a cost, not a reset', pl.pattern > held * 0.5,
+     `${pl.pattern.toFixed(1)}% left`);
+
+  /* and it never runs past zero */
+  pl.pattern = 0.01;
+  for (let i = 0; i < 30 * 10; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  eq('the walk cannot go negative', pl.pattern, 0);
+  pl.pattern = 60 - def.breakLoss;
 
   /* rebuilding is not a full refund: the ground lost stays lost */
   w.events.length = 0;
@@ -2939,29 +2971,46 @@ suite('an heir does not walk himself broke');
   }
   ok('the heir raised a realm and at some point walked', sawWalk || pl.pattern > 0,
      `pattern ${pl.pattern.toFixed(1)}%`);
-  /* the whole point: he may walk, he may stop, but he must never sit on the Pattern with an
-   * empty treasury while his muster goes unpaid */
+  /* the whole point, and it is sharper than it was: he cannot stop any more, so sitting on the
+   * Pattern with an empty treasury is not a phase he passes through — it is the rest of his
+   * match with no soldier bought. The gate has to keep him off the lines in the first place. */
   ok('...and never held the Pattern with an empty treasury', brokeWhileWalking < 30,
      `${(brokeWhileWalking / 30).toFixed(1)}s walking at zero`);
 
-  /* and the rule stated directly: the two conditions the shared gate applies */
-  ok('a walk needs a realm that earns most of the drain', shrineDrain > 0);
+  /* AND THE RULE STATED DIRECTLY — WHICH IS NO LONGER AN INCOME TEST. The old shared gate
+   * asked only "does the ground earn most of the drain", and this block proved it by handing
+   * an heir a purse that never empties and checking he STILL refused. That was right while a
+   * walk could be called off the moment the money ran out. It cannot now, so the question is
+   * not "can I start this" but "can I FINISH it", and what pays for a finish is the bank PLUS
+   * whatever the ground earns across the whole walk. A hundred thousand banked is a perfectly
+   * good reason to walk — it covers the drain fourteen times over — so the old assertion was
+   * demanding the wrong refusal. What must still be refused is an heir who can pay for it
+   * NEITHER way. */
+  const shr = C.BUILDINGS.shrine, secs = 100 / shr.rate[0], full = shr.drain[0] * secs;
+  eq('the drain is the number the gate is built on', shrineDrain, shr.drain[0]);
+  const gate = (essence, income) => essence + income * secs >= full * 1.1;
+  ok('a thin purse on thin ground is refused', !gate(1200, 7),
+     `1200 banked + 7/s over ${(secs / 60).toFixed(1)} min against ${Math.round(full)}`);
+  ok('...income comfortably over the drain is enough on its own', gate(150, 26));
+  ok('...and so is a bank deep enough to ride it out', gate(full * 1.15, 0),
+     `${Math.round(full * 1.15)} banked`);
+
   const poor = World.createWorld(1000, 2), pp = poor.players[0];
   poor.chaosNext = 1e9;
   pp.buildings.push({ id: poor.nextId++, bt: 'shrine', level: 1, x: c.x + 200, y: c.y, cd: 0,
                       raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp, lastHurt: -99,
                       node: -1, co: 0 });
-  pp.essence = 100000;                 // rich for a moment, and earning almost nothing
+  const PURSE = 1200;                  // enough to open with, nothing like enough to finish
+  pp.essence = PURSE;
   const bot2 = AI.make('benedict');
   const iss2 = (cmd) => World.applyCommand(poor, 0, cmd);
   for (let i = 0; i < 30 * 60; i++) {
     bot2.step(poor, 0, iss2, C.SIM_DT);
     World.update(poor, C.SIM_DT); poor.events.length = 0;
-    pp.essence = 100000;               // a purse that never empties, so only INCOME can decide
+    pp.essence = PURSE;                // a purse that never empties and never grows
   }
-  ok('a full purse is not a reason to walk — the ground has to earn it',
-     !pp.walking || pp.incomeRate >= shrineDrain * 0.85,
-     `walking=${pp.walking} on ${(pp.incomeRate || 0).toFixed(1)}/s against a ${shrineDrain}/s drain`);
+  ok('an heir who can neither bank nor earn the whole walk refuses it', !pp.walking,
+     `walking=${pp.walking} on ${(pp.incomeRate || 0).toFixed(1)}/s and ${PURSE} banked, against ${Math.round(full)} needed`);
 }
 
 /* AN ORDER THE BOARD WILL REFUSE IS NOT AN ORDER, AND A WANT WITH NOWHERE TO GO IS NOT A WALL
@@ -4360,6 +4409,53 @@ suite('rock blocks the eye');
      World.rockBetween(w, scout.x, scout.y, mark.x, mark.y) === false);
 }
 
+/* A CRAG IS SEEN TO ITS CREST. The suite above paints a ridge one fog column thick, which
+ * has no middle to hide — the rule it proves (the face is seen, the ground past it is not)
+ * is silent about a rock that spans several cells. Reported from play: stopping the ray at
+ * the FIRST opaque cell left the body of every crag black, so its silhouette was chopped at
+ * the near face and the rock read as being inside the fog rather than casting it. */
+suite('a crag is seen to its crest');
+{
+  const w = World.createWorld(1000, 2);
+  w.chaosNext = 1e9;
+  const F = C.FOG.cell, cc = (g) => (g + 0.5) * F;
+  const spot = fogArena(w, 700);
+  ok('an arena far from both Seats exists', !!spot);
+  const CX = Math.round(spot.x / F), CY = Math.round(spot.y / F);
+  fogPaint(w, cc(CX) - 400, cc(CY) - 400, cc(CX) + 400, cc(CY) + 400, WG.T.PLAIN);
+  fogBake(w);
+  const scout = fogMan(w, 0, 'soldier', cc(CX - 5), cc(CY));
+  fogFresh(w);
+  ok('the rig is alive: open ground ahead of him is seen', World.canSee(w, 0, cc(CX), cc(CY)));
+  /* a MASSIF, five fog columns of it, square across his line of sight */
+  fogPaint(w, CX * F, (CY - 3) * F, (CX + 5) * F - 1, (CY + 4) * F - 1, WG.T.CLIFF);
+  fogBake(w);
+  fogFresh(w);
+  /* which columns actually took the rock is read off the bake, never assumed: the nav grid
+   * is 20 against the fog grid's 26, so a painted rect grows by up to a cell either side */
+  const sg = w.sight;
+  let face = -1;
+  for (let gx = CX - 4; gx <= CX + 6 && face < 0; gx++) if (sg.opq[CY * sg.gw + gx]) face = gx;
+  let run = 0;
+  while (sg.opq[CY * sg.gw + (face + run)]) run++;
+  ok('the crag is thick enough to have a middle', face > 0 && run >= 3, `face at ${face - CX}, ${run} cells thick`);
+  const crest = Math.ceil(run / 2);
+  /* the near half — the slope he can see up — every cell of it */
+  let nearSeen = 0;
+  for (let d = 0; d < crest; d++) if (World.canSee(w, 0, cc(face + d), cc(CY))) nearSeen++;
+  ok('every cell of the near slope is seen, not just the face', nearSeen === crest,
+     `${nearSeen}/${crest} of the near half seen`);
+  ok('...and that is MORE than the face alone', crest > 1);
+  /* and the far half is what the rock hides */
+  let farSeen = 0;
+  for (let d = crest; d < run; d++) if (World.canSee(w, 0, cc(face + d), cc(CY))) farSeen++;
+  ok('the far side of the crag is hidden', farSeen === 0, `${farSeen}/${run - crest} of the far half leaked`);
+  ok('and so is the ground beyond it', !World.canSee(w, 0, cc(face + run), cc(CY)));
+  /* THE EYE ONLY. The shot still refuses the whole massif — a man on the near slope may be
+   * seen and not shot, which is cover, and is the one place these two rules disagree. */
+  ok('the shot still refuses the crag entire', World.rockBetween(w, scout.x, scout.y, cc(face + 1), cc(CY)) === true);
+}
+
 suite('a curtain blocks the eye');
 {
   const w = World.createWorld(1000, 2);
@@ -4469,9 +4565,11 @@ suite('the walk outshines the ridge');
   ok('the walk lights the Shrine THROUGH the ridge', World.canSee(w, 0, sh.x, sh.y));
   ok('...for an heir with no eyes near it at all', World.canSee(w, 2, sh.x, sh.y));
   ok('...and the beacon ground west of the stone is lit too', World.canSee(w, 2, cc(SX - 4), cc(SY)));
-  World.applyCommand(w, 1, { c: 'walk', on: false });
+  /* and the only way to put it out is to throw the stone down — the order to stop is refused */
+  eq('the beacon cannot be switched off', World.applyCommand(w, 1, { c: 'walk', on: false }).err, 'committed');
+  World.hurtBuilding(w, 1, sh.id, sh.hp + 1);
   fogFresh(w);
-  ok('the light goes out with the walk', !World.canSee(w, 0, sh.x, sh.y));
+  ok('the light goes out with the Shrine', !World.canSee(w, 0, sh.x, sh.y));
 }
 
 suite('rock blocks the shot');
@@ -4552,6 +4650,303 @@ suite('the fog pays its way');
    * this test going flaky on a loaded machine */
   ok(`a 4-viewer refresh on a 300-unit board stays under 8ms (measured ${ms.toFixed(2)}ms)`,
      ms < 8, `measured ${ms.toFixed(2)}ms`);
+}
+
+/* ---------------- a rig for the men-only suites below ----------------
+ * `fogArena` only asks how far a spot is from the Seats. These suites need ground the flow
+ * fields will actually let men STAND on: a warden shoved out of a lake by the nav resolver is
+ * a warden who is not where the test put him, and the measurement would be of the resolver. */
+const walkArena = (w, halfW, halfH) => {
+  for (let y = 400; y < C.MAP.H - 400; y += 80) for (let x = 400; x < C.MAP.W - 400; x += 80) {
+    let clear = true;
+    for (let pi = 0; pi < w.players.length && clear; pi++) {
+      const c = World.cityOf(w, pi);
+      if (Math.hypot(x - c.x, y - c.y) < 620) clear = false;
+    }
+    for (let dy = -halfH; dy <= halfH && clear; dy += 40)
+      for (let dx = -halfW; dx <= halfW && clear; dx += 40) {
+        const ci = NAV.cellOf(w.nav, x + dx, y + dy);
+        if (ci < 0 || w.nav.cost[ci] <= 0) clear = false;
+      }
+    if (clear) return { x, y };
+  }
+  return null;
+};
+/* a quiet board: no black road, no throne guns, no muster, nobody but the men put here */
+function arenaWorld(seed) {
+  const w = World.createWorld(seed == null ? 1000 : seed, 2);
+  w.chaosNext = 1e9;
+  for (const p of w.players) { p.seatCd = 1e9; p.essence = 100000; }
+  World.applyCommand(w, 0, { c: 'muster', pause: true });
+  World.applyCommand(w, 1, { c: 'muster', pause: true });
+  w.units.length = 0;
+  return w;
+}
+const aPut = (w, owner, kind, x, y, hpFrac) => {
+  const d = C.UNITS[kind];
+  const u = { id: w.nextId++, owner, kind, x, y, ox: 0, oy: 0,
+              hp: d.hp * (hpFrac == null ? 1 : hpFrac), maxHp: d.hp, dmg: d.dmg,
+              cd: 0, goal: null, co: 0, from: -1, tier: 1 };
+  w.units.push(u); return u;
+};
+const aPin = (w, pi, x, y) => { w.players[pi].banner = { x, y, site: -1 }; };
+const aRun = (w, secs) => { for (let i = 0; i < Math.round(30 * secs); i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+
+/* THE WALK IS PAID BEFORE THE HALLS ARE, and that ordering IS the commitment. The walk used to
+ * run LAST, on whatever the muster had not already spent — so it was a thing an heir did with
+ * his spare essence, and a poor walker was merely slow (`pay/want` of full pace, floored so it
+ * could never quite stop). Now the Shrine takes its drain off the top: the lines carry him at
+ * full pace whatever he holds, and what he pays with is his ARMY. */
+suite('a walk is paid before the halls are')
+{
+  const w = World.createWorld(1000, 2);
+  w.chaosNext = 1e9;
+  for (const p of w.players) p.seatCd = 1e9;
+  const pl = w.players[0], en = w.players[1];
+  const c = World.cityOf(w, 0);
+  pl.essence = 999999;
+  let at = null;
+  for (let rad = 170; rad < C.CLAIM.seat - 40 && !at; rad += 20)
+    for (let a = 0; a < 40 && !at; a++) {
+      const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (World.placementError(w, 0, x, y, 'shrine') === null) at = { x, y };
+    }
+  ok('a Shrine stands', !!at && raise(w, 0, at.x, at.y, 'shrine').ok);
+  const hall = pl.buildings.find((b) => C.BUILDINGS[b.bt].spawns);
+  const enHall = en.buildings.find((b) => C.BUILDINGS[b.bt].spawns);
+  ok('and both heirs opened with a mustering hall', !!hall && !!enHall);
+  const kind = World.mustersOf(hall).kind, price = C.UNITS[kind].cost * C.TIER[hall.level - 1];
+
+  ok('the walk begins', World.applyCommand(w, 0, { c: 'walk', on: true }).ok);
+  eq('...and cannot be called off', World.applyCommand(w, 0, { c: 'walk', on: false }).err, 'committed');
+  ok('...so he is still on the lines', pl.walking);
+
+  /* TWO EMPTY TREASURIES, ONE OF THEM WALKING. The heirs earn the same way — an opening Gate
+   * on a spring apiece — and the only difference between them is the Shrine. Both halls start
+   * from nothing owed, so every man either of them raises is bought with money earned here. */
+  w.units.length = 0;
+  pl.essence = 0; en.essence = 0; hall.paid = 0;
+  const at0 = pl.pattern;
+  let mine = 0, theirs = 0;
+  const SECS = 90;
+  for (let i = 0; i < 30 * SECS; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    let a = 0, b = 0;
+    for (const u of w.units) { if (u.owner === 0) a++; else if (u.owner === 1) b++; }
+    if (a > mine) mine = a;
+    if (b > theirs) theirs = b;
+  }
+  near('a broke walker advances at FULL rate', (pl.pattern - at0) / SECS, C.BUILDINGS.shrine.rate[0], 0.01,
+       `${((pl.pattern - at0) / SECS).toFixed(4)}%/s against ${C.BUILDINGS.shrine.rate[0]}`);
+  ok('the rival, not walking, musters men off the same ground', theirs > 0, `${theirs} men`);
+  eq('...and the walker musters NOBODY: the Shrine drank it all', mine, 0);
+  ok('his hall never finishes paying for one', hall.paid < price * 0.5,
+     `${hall.paid.toFixed(2)} of ${price}`);
+  ok('and the HUD is told what it is costing him', pl.drainRate > 0, `${pl.drainRate.toFixed(1)}/s`);
+
+  /* BUT A MAN ALREADY BOUGHT AND PAID FOR STILL MARCHES. The treasury emptying afterwards
+   * does not un-buy him. */
+  hall.paid = price; hall.cd = 0; pl.essence = 0;
+  const before = w.units.filter((u) => u.owner === 0).length;
+  World.update(w, C.SIM_DT); w.events.length = 0;
+  ok('a recruit already paid for marches on the tick the treasury empties',
+     w.units.filter((u) => u.owner === 0).length > before);
+
+  /* THE ORDER ITSELF, PROVED ON A SINGLE TICK. The consequence above — a broke walker musters
+   * nobody — is the ordering's most visible effect but not its proof: when income is far below
+   * the drain the Shrine scrapes the treasury bare either way round, and the halls starve
+   * whichever went first. So: stop the ground earning at all, leave a purse holding LESS than
+   * the Shrine's tick-drain and MORE than the hall's, and step one tick. Paid first, the walk
+   * takes the lot and the hall gets nothing. Paid second, the hall gets its penny. */
+  pl.eco = 0;
+  hall.paid = 0; hall.cd = 5;
+  pl.essence = C.BUILDINGS.shrine.drain[0] * C.SIM_DT * 0.7;
+  World.applyCommand(w, 0, { c: 'walk', on: true });
+  World.update(w, C.SIM_DT); w.events.length = 0;
+  eq('the walk takes its cut BEFORE any hall is paid', hall.paid, 0);
+  ok('...having taken every penny there was', pl.essence < 1e-9, `${pl.essence} left`);
+  pl.eco = 1;
+
+  /* AND THE SHRINE FALLING IS STILL THE WAY OFF IT. */
+  const sh = pl.buildings.find((b) => b.bt === 'shrine');
+  World.hurtBuilding(w, 0, sh.id, sh.hp + 1);
+  ok('throwing the Shrine down still tears the walker off the Pattern', !pl.walking);
+  pl.essence = 999999;
+  World.update(w, C.SIM_DT); w.events.length = 0;
+  ok('...and with no Shrine he cannot set foot on it again',
+     World.applyCommand(w, 0, { c: 'walk', on: true }).err === 'shrine');
+}
+
+/* A WOUNDED MAN CAN ONLY ABSORB SO MUCH MENDING. Every Warden picks the worst-hurt friend in
+ * reach independently, so they all pick the SAME man — the one being focused — and a stack of
+ * them switched focus fire off entirely. The cap is on the RECEIVER, so one Warden walking a
+ * line of wounded men is untouched and only the pile is answered. */
+suite('the mending has a ceiling')
+{
+  const md = C.UNITS.warden, STACK = 8;
+  {
+    const w = arenaWorld(1000);
+    const spot = walkArena(w, 200, 200);
+    ok('an arena of standable ground exists', !!spot);
+    aPin(w, 0, spot.x, spot.y);
+    const man = aPut(w, 0, 'soldier', spot.x, spot.y, 0.2);
+    for (let i = 0; i < STACK; i++) {
+      const a = (i + 0.5) / STACK * Math.PI * 2;
+      aPut(w, 0, 'warden', spot.x + Math.cos(a) * 45, spot.y + Math.sin(a) * 45);
+    }
+    const was = man.hp;
+    /* HALF A SECOND, and the wound is 56 deep: long enough to measure and short enough that
+     * an UNCAPPED stack (8 x 7 = 56 hp/s) would not run out of wound to mend and flatter
+     * itself into looking capped. */
+    aRun(w, 0.5);
+    const rate = (man.hp - was) / 0.5;
+    ok('the rig is alive — the man is being mended', man.hp > was, `${was.toFixed(1)} -> ${man.hp.toFixed(1)}`);
+    near('eight Wardens on one man mend him at the CAP, not eight times over', rate, C.MEND_CAP, 1.2,
+         `${rate.toFixed(1)} hp/s against a cap of ${C.MEND_CAP}`);
+    ok('...which is a fraction of what eight of them could pour', rate < md.mend * STACK * 0.4,
+       `${rate.toFixed(1)} against ${md.mend * STACK} unrestrained`);
+  }
+
+  /* AND SO FOCUS FIRE STILL KILLS. Uncapped, eight Wardens put out 56 hp/s and four soldiers
+   * put out 40 — the man they were all hitting simply could not be killed. */
+  {
+    const w = arenaWorld(1000);
+    const spot = walkArena(w, 200, 200);
+    aPin(w, 0, spot.x, spot.y); aPin(w, 1, spot.x, spot.y);
+    const mark = aPut(w, 0, 'soldier', spot.x, spot.y);
+    for (let i = 0; i < STACK; i++) aPut(w, 0, 'warden', spot.x + (i - 3.5) * 22, spot.y + 62);
+    for (let i = 0; i < 4; i++) aPut(w, 1, 'soldier', spot.x + (i - 1.5) * 22, spot.y - 40);
+    aRun(w, 10);
+    ok('four men still kill the one they are all hitting', mark.hp <= 0, `${mark.hp.toFixed(1)} hp left`);
+  }
+
+  /* SPREAD, THEY ARE NOT CAPPED AT ALL. Five Wardens each on their own man pour 35 hp/s
+   * between them — three and a half times the ceiling — because the ceiling is a man's, not
+   * the field's. Measured over half a second, before anybody can march into anybody else. */
+  {
+    /* the noise makes the land, so a wide flat run of standable ground is not on every seed —
+     * ask several rather than assert one and read a generator's mood as a regression */
+    let w = null, spot = null, half = 0;
+    for (const seed of [1000, 7, 42, 1, 31337, 5, 12, 99]) {
+      const cand = arenaWorld(seed);
+      for (const h of [700, 600, 500, 420]) {
+        const s = walkArena(cand, h, 120);
+        if (s) { w = cand; spot = s; half = h; break; }
+      }
+      if (spot) break;
+    }
+    ok('a wide arena of standable ground exists', !!spot, `half-width ${half}`);
+    aPin(w, 0, spot.x, spot.y);
+    const PAIRS = 4, gap = 2 * half / (PAIRS - 1);
+    const men = [];
+    for (let i = 0; i < PAIRS; i++) {
+      const x = spot.x - half + i * gap;
+      men.push(aPut(w, 0, 'soldier', x, spot.y, 0.35));
+      aPut(w, 0, 'warden', x + 20, spot.y);
+    }
+    const was = men.map((m) => m.hp);
+    aRun(w, 0.5);
+    let total = 0;
+    men.forEach((m, i) => {
+      const r = (m.hp - was[i]) / 0.5;
+      total += r;
+      near(`the Warden on man ${i} works at his own full rate`, r, md.mend, 0.5, `${r.toFixed(1)} hp/s`);
+    });
+    ok('so spread Wardens far outdo the cap between them', total > C.MEND_CAP * 2.5,
+       `${total.toFixed(1)} hp/s across the field against a per-man cap of ${C.MEND_CAP}`);
+  }
+
+  /* A WARDEN WHOSE MAN IS FULL UP GOES AND FINDS ANOTHER — or the cap would answer stacking by
+   * wasting the stack, and the branch would collapse to "build exactly one". */
+  {
+    const w = arenaWorld(1000);
+    const spot = walkArena(w, 200, 200);
+    aPin(w, 0, spot.x, spot.y);
+    const worst = aPut(w, 0, 'soldier', spot.x, spot.y, 0.2);
+    const next = aPut(w, 0, 'soldier', spot.x + 34, spot.y, 0.6);
+    for (let i = 0; i < 3; i++) aPut(w, 0, 'warden', spot.x + 17, spot.y + 40 + i * 14);
+    const w0 = worst.hp, n0 = next.hp;
+    aRun(w, 1);
+    near('the worst-hurt man takes exactly his ceiling', worst.hp - w0, C.MEND_CAP, 1.2,
+         `${(worst.hp - w0).toFixed(1)} hp`);
+    ok('and the third Warden, finding him full, mends the next man instead', next.hp > n0 + 3,
+       `${n0.toFixed(1)} -> ${next.hp.toFixed(1)}`);
+  }
+}
+
+/* THE BINDING IS CHAINS, NOT A CONVERSION. It used to do one thing — flip a Chaos fiend
+ * already beaten below `bindHp` — which did nothing whatever in a match where the black road
+ * stayed quiet, so the branch was a dead pick. A binder now throws his binding on any enemy
+ * soldier: slower on the march, and every blow that lands on him lands harder. */
+suite('the Binding is chains')
+{
+  const bd = C.UNITS.binder;
+  ok('the binder carries the chains\' numbers', bd.hexT > 0 && bd.hexSlow < 1 && bd.hexAmp > 1 && bd.hexCd > 0,
+     `${bd.hexT}s, x${bd.hexSlow} speed, x${bd.hexAmp} damage, ${bd.hexCd}s`);
+  ok('and he still cannot touch stone', bd.menOnly === true);
+
+  /* A BINDER CHAINS A RIVAL'S MAN — and never takes him. */
+  {
+    const w = arenaWorld(1000);
+    const spot = walkArena(w, 200, 200);
+    aPin(w, 0, spot.x, spot.y); aPin(w, 1, spot.x, spot.y);
+    aPut(w, 0, 'binder', spot.x, spot.y);
+    const foe = aPut(w, 1, 'soldier', spot.x + 100, spot.y, 0.2);
+    let hexes = 0;
+    for (let i = 0; i < 30 * 2; i++) {
+      World.update(w, C.SIM_DT);
+      for (const e of w.events) if (e.e === 'hex') hexes++;
+      w.events.length = 0;
+    }
+    ok('a binder throws chains on a rival soldier', foe.hexed > w.t, `${(foe.hexed - w.t).toFixed(1)}s left`);
+    eq('and a rival\'s beaten man is NEVER converted', foe.owner, 1);
+    ok('the chains are announced for the renderer', hexes > 0, `${hexes} throws`);
+  }
+
+  /* A CHAINED MAN IS SLOWER. Measured on the same man over two equal marches down the same
+   * flow field, so the land and the route are the control and the chains are the variable. */
+  {
+    const w = arenaWorld(1000);
+    const spot = walkArena(w, 200, 200);
+    const home = World.cityOf(w, 1);
+    aPin(w, 1, home.x, home.y);
+    const u = aPut(w, 1, 'soldier', spot.x, spot.y);
+    const s0 = { x: u.x, y: u.y };
+    aRun(w, 1.5);
+    const free = Math.hypot(u.x - s0.x, u.y - s0.y);
+    ok('the rig is alive — an unchained man marches', free > 30, `${free.toFixed(0)} in 1.5s`);
+    const s1 = { x: u.x, y: u.y };
+    u.hexed = w.t + 30;
+    aRun(w, 1.5);
+    const bound = Math.hypot(u.x - s1.x, u.y - s1.y);
+    ok('a chained man marches slower', bound < free * (bd.hexSlow + 0.12) && bound > free * (bd.hexSlow - 0.12),
+       `${bound.toFixed(0)} against ${free.toFixed(0)} — x${(bound / free).toFixed(2)}`);
+    /* AND THE CHAINS LAPSE. Nothing sweeps them up: every reader compares against world.t. */
+    const s2 = { x: u.x, y: u.y };
+    u.hexed = w.t + 0.2;
+    aRun(w, 1.5);
+    const freed = Math.hypot(u.x - s2.x, u.y - s2.y);
+    ok('and a man whose chains lapse is a normal man again', freed > free * 0.82,
+       `${freed.toFixed(0)} against ${free.toFixed(0)}`);
+  }
+
+  /* A CHAINED MAN TAKES HEAVIER BLOWS — and the multiplier is inside `hurt`, so it applies to
+   * damage that never came from a swing at all. A storm is exactly that case. */
+  {
+    const w = arenaWorld(1000);
+    const spot = walkArena(w, 200, 200);
+    aPin(w, 0, spot.x, spot.y);
+    const plain = aPut(w, 0, 'soldier', spot.x - 20, spot.y);
+    const chained = aPut(w, 0, 'soldier', spot.x + 20, spot.y);
+    chained.hexed = w.t + 30;
+    w.storms.push({ x: spot.x, y: spot.y, owner: 1, delay: 0, tLeft: 1.0 });
+    aRun(w, 1.4);
+    const tookPlain = plain.maxHp - plain.hp, tookChained = chained.maxHp - chained.hp;
+    ok('the rig is alive — the storm hurt the unchained man', tookPlain > 5,
+       `${tookPlain.toFixed(1)} hp`);
+    near('a chained man takes the amplified blow', tookChained / tookPlain, bd.hexAmp, 0.06,
+         `${tookChained.toFixed(1)} against ${tookPlain.toFixed(1)} — x${(tookChained / tookPlain).toFixed(2)}`);
+  }
 }
 
 /* ---------------- */

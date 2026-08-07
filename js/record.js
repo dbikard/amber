@@ -119,7 +119,9 @@
         .find((q) => q.id === cmd.id) : null;
       /* called after the order took, so the level read here is the one just reached */
       line = 'upgrade ' + (b ? b.bt + ' → L' + b.level : '?') + (cmd.br ? ' (' + cmd.br + ')' : '');
-    } else if (cmd.c === 'walk') line = cmd.on ? 'BEGIN THE WALK' : 'halt the walk';
+    /* A WALK IS ONLY EVER BEGUN. `{c:'walk',on:false}` is refused with 'committed' and never
+     * takes, and this runs only for orders that took — so there is no halt left to record. */
+    } else if (cmd.c === 'walk') line = 'BEGIN THE WALK';
     else if (cmd.c === 'power') line = 'power: ' + (C.POWERS[cmd.k] ? C.POWERS[cmd.k].name : cmd.k);
     else if (cmd.c === 'banner') line = 'the Recall — every standard struck';
     else if (cmd.c === 'rally') line = 'company ' + cmd.co + ' standard';

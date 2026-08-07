@@ -495,6 +495,13 @@
                       ...(u.in ? { in: u.in } : {}),
                        /* rank changes what he LOOKS like, so it is not a secret worth keeping */
                        ...(u.tier > 1 ? { tier: u.tier } : {}),
+                       /* CHAINED, and until when. A binding slows him and makes every blow on
+                        * him land harder — it changes what he DOES, not only what he looks
+                        * like, so a guest that did not know would draw a column marching at a
+                        * speed it is not marching at. Absolute, against the snapshot's own `t`.
+                        * The mend cap's `_mendT`/`_mendGot` deliberately do NOT ride: those are
+                        * per-tick scratch belonging to the host's loop, not state. */
+                       ...(u.hexed > world.t ? { hexed: Math.round(u.hexed * 10) / 10 } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),
       /* the halt is the table's, not a seat's — every guest must see it and who called it */
       paused: world.paused ? { by: world.paused.by } : null,

@@ -187,6 +187,19 @@
 
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after STRUCT_REGEN_WAIT unharmed
   CONST.STRUCT_REGEN_WAIT = 10;   // s a work must go unhit before the mending starts
+  /* HOW MUCH MENDING ONE MAN CAN TAKE, hp/sec, however many Wardens are attending him.
+   * THE CAP IS ON THE RECEIVER, NOT ON THE HEALER, and that is the whole point. Every Warden
+   * independently picks the worst-hurt friend in reach, so they all pick the SAME man — the
+   * one being focused — and fifteen of them poured 105 hp/sec into him. Focus fire is the
+   * only answer an army has to a single hard target, and a stack of Wardens simply switched it
+   * off. Capping the Warden instead would have made him worse everywhere, including the case
+   * that was never broken: one Warden walking a line of wounded men. Capping the RECEIVER
+   * leaves that untouched and answers exactly the failure — stacking. At 10 the first Warden
+   * (7 hp/s) is not clipped at all, the second is already deep into diminishing returns, and
+   * the fifteenth is doing nothing, which is why a Warden whose target is capped goes and
+   * finds another: the branch stays worth building in numbers, it just cannot be piled on one
+   * man. Per-tick scratch (`_mendT`/`_mendGot`) — it is not state and does not ride the wire. */
+  CONST.MEND_CAP = 10;
   /* HOW LONG SHADOW HOLDS A BOUND FIEND. It has to end: the Chaos cap counts fiends by owner,
    * so every one taken frees a slot for the road to tear open another, and a permanent bind
    * would let a binder host farm the black road into a private army — the very failure that
@@ -300,16 +313,26 @@
      * raise another, and not one point of the walk. Now the lines FADE whenever nobody is
      * channelling (`decay`, %/sec), and throwing the Shrine down costs the walker `breakLoss`
      * points outright. An assault on a walker is now the answer it always looked like.
-     * AND IT IS THE CLOCK, SO IT MUST TICK. Paying what you can and walking that far was
-     * right — an all-or-nothing walk froze a poor heir at 1% forever — but proportional pay
-     * has the same disease more slowly: at income 5 against a drain of 32 the walk advances
-     * at a sixth of a percent a minute, which is not a clock, it is a stopped one. Measured
-     * across fourteen mirrors, every match that ran to the 45-minute cap had somebody walking
-     * for the whole of it and BROKE for 90-95% of that; every match that ended had a walker
-     * broke 0-27% of the time. `minRate` is the floor: channel what you have and the Pattern
-     * carries you at no less than this share of full speed. It is still ruinous — every
-     * penny you own goes into the lines and none into an army — it simply cannot stop.
-     * drain = essence/sec while walking, rate = %/sec: ~9.5 minutes and ~18k essence. */
+     *
+     * AND THE WALK CANNOT BE PAUSED, NOR STARVED. Two rules that pulled against each other
+     * are gone. The first was that `{c:'walk', on:false}` could be given at any moment, which
+     * made the Shrine a tap: step on when rich, step off when the muster wants the money, and
+     * the only cost of the whole flirtation was the fade. The second was PROPORTIONAL PAY —
+     * a poor walker advanced at `pay/want` of full speed, floored at a `minRate` invented to
+     * stop that arithmetic freezing the game's clock at a sixth of a percent a minute.
+     *
+     * What stands in their place is one rule with one price. Once an heir sets foot on the
+     * Pattern he is ON it — the command to stop is REFUSED ('committed'), and the only ways
+     * off are reaching 100 and losing the Shrine. And the lines carry him at FULL `rate`
+     * whatever his treasury holds, so the clock always ticks: `minRate` had nothing left to
+     * floor and was deleted rather than left lying about describing a mechanism that is gone.
+     *
+     * The cost did not go anywhere — it moved to the front of the queue. `drain` is taken
+     * before any mustering hall is paid, so a walker who cannot carry it does not walk
+     * slowly, he MUSTERS NOBODY: his halls find the treasury empty and his army stops growing
+     * for as long as the walk lasts. That is the commitment, stated in the only currency that
+     * matters. drain = essence/sec while walking, rate = %/sec: ~5.2 minutes and ~6.9k
+     * essence, and every penny of it is a soldier who was never raised. */
     shrine:   { name: 'Pattern Shrine', icon: '✴', cost: 380, unique: true, hp: 900, raise: 54,
                 /* WALKABLE ON FIVE GATES. At 32 a walk cost more than five Shadow Gates earn —
                  * five at level 1 draw 25 a second against the base 2.5, so the walker went
@@ -334,8 +357,8 @@
                  * what he had paid for. At 0.035 the lines fade slower than they are drawn, so
                  * committing and then defending is a plan rather than a waste. That rewards
                  * holding the ground you walk from, which is the shape the walk should have. */
-                drain: [22], rate: [0.32], minRate: 0.5, decay: 0.035, breakLoss: 22,
-                blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it is ruinously expensive, and the lines fade the moment you stop.' }
+                drain: [22], rate: [0.32], decay: 0.035, breakLoss: 22,
+                blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it CANNOT be called off, and it is paid before your halls are — a walker who cannot carry the drain musters nobody.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'wall', 'barracks', 'tower', 'spire', 'siege', 'shrine'];
   /* Manning a wall. `man` is how close you must come to be ON the parapet — inside it you can
@@ -524,7 +547,7 @@
               blurb: 'Sends Wardens, who MEND the men beside them. Nothing else in Amber heals a wound.' },
     binder: { name: 'The Binding',       short: 'Binders', icon: '🌘',
               cost: 190, up: [310], spawns: 'binder', period: [15, 15],
-              blurb: 'Sends Shadow-binders, who turn a beaten fiend against the road that bore it.' }
+              blurb: 'Sends Shadow-binders, who chain a rival\'s men: chained men march slower and take heavier blows. A beaten fiend they chain turns instead.' }
   };
   CONST.BUILDINGS.spire.branchUI = ['warden', 'binder'];
 
@@ -608,9 +631,27 @@
     warden:   { name: 'Warden',    icon: '✚', hp: 55,  dmg: 5,  atk: 1.5, range: 90,  speed: 47, aggro: 120, bounty: 12, size: 9,  cost: 34,
                 menOnly: true, mend: 7, mendR: 110,
                 blurb: 'The Warden\'s art: he mends the man beside him. Nothing else in Amber heals, which is what makes him worth the essence.' },
+    /* THE BINDING IS CHAINS NOW, NOT A CONVERSION. It used to do one thing: flip a Chaos
+     * fiend that had already been beaten below `bindHp`. There are not enough fiends on the
+     * board for that to decide anything, it did nothing whatever in a match where the black
+     * road stayed quiet, and the only way to make it matter would have been to put MORE Chaos
+     * on the board — which is the opposite of what the black road is capped for. So the branch
+     * was a dead pick, and an heir who took it had bought nothing.
+     * A binding is now thrown on an ENEMY SOLDIER, any enemy soldier, and it is a SLOW and an
+     * AMPLIFIER: `hexSlow` off his stride and `hexAmp` onto everything that hits him, for
+     * `hexT` seconds. That makes the art a fighting choice in every match against every
+     * opponent — a chained column arrives late and dies fast — rather than a niche one near a
+     * rift. The numbers: 0.6 is a stride slower than an Engine's, which is enough to break a
+     * charge without deleting it, and 1.35 is a third again on every blow, so a binder pays
+     * for himself beside two soldiers and not beside one. `hexCd` is the throw's cadence and
+     * it costs him his swing — he throws chains INSTEAD of shooting, which is what keeps him
+     * from being simply a better sorcerer. Reach is a sorcerer's, so he stands in the line.
+     * The fiend-binding survives as a RIDER on the same throw: chain a fiend already beaten
+     * below `bindHp` and it flips for `BIND_LIFE` exactly as before. Flavour, not identity. */
     binder:   { name: 'Shadow-binder', icon: '🌘', hp: 50, dmg: 9, atk: 1.3, range: 110, speed: 47, aggro: 150, bounty: 12, size: 9, cost: 32,
                 menOnly: true, bind: true, bindR: 130, bindHp: 0.5,
-                blurb: 'He turns a beaten fiend onto the road it came from. Shadow will not hold it long.' },
+                hexT: 8, hexSlow: 0.6, hexAmp: 1.35, hexCd: 1.3,
+                blurb: 'He throws chains of Shadow on a rival\'s men: they march slower and every blow lands harder while the chains hold. A Chaos fiend already beaten turns instead — Shadow will not hold it long.' },
     /* `siege` multiplies damage against a WORK or a Seat, and nothing else. An Engine swings
      * every 2.4s for 12 — five damage a second against men, which is half a soldier at four
      * times the price — and 168 against stone, which is seven soldiers' worth. It cannot

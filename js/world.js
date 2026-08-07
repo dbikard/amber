@@ -1205,8 +1205,18 @@
    * budget of B cells of reach. Distance itself is the base price (the precomputed hypot, so
    * open ground stays the same Euclidean circle the old source-list fog drew); a wooded cell
    * charges its extra ON ENTRY — the first rank of trees is seen, the country past it costs
-   * more than it used to. An OPAQUE cell (rock, or a standing wall) is marked and STOPS the
-   * ray: you see the ridge face, never past it. The source's own cell never blocks — a
+   * more than it used to. An OPAQUE cell is marked and STOPS the ray, but a LANDFORM is seen
+   * TO ITS CREST rather than to its near edge: a crag spans many cells, and stopping at the
+   * first left the whole body of the rock black, so the silhouette was chopped off at the
+   * near face and the rock read as something INSIDE the fog instead of the thing casting it.
+   * On meeting rock the ray looks ahead along the run, marks the near half of it — the slope
+   * you can actually see up — and then stops. The far side is what the rock hides. A WALL is
+   * not a landform and has no near slope: built stone stops the eye at its face, as before.
+   * (The crest cells are marked without charging the budget: they are the rock you are
+   * already looking at, and a cell or two of crag at the rim of sight is the point.)
+   * NOTE this is the EYE only. `rockBetween` — what stone does to a SHOT — is untouched and
+   * stays strict, so a man on the near slope may be seen and not shot. That is cover.
+   * The source's own cell never blocks — a
    * berthed man at the parapet, or a man on the ridge top, sees out. On a diagonal step the
    * two corner cells are consulted: both opaque means the ray is squeezing through a corner
    * no eye fits through. */
@@ -1227,7 +1237,24 @@
         const price = bun.h[k] + pen + (cost[i] - 1) * bun.sl[k];
         if (price > B) break;
         m[i] = 1;
-        if (opq[i] || wall[i]) break;
+        if (opq[i] || wall[i]) {
+          /* built stone stops the eye at its face; a landform is seen to its crest */
+          if (opq[i] && !wall[i]) {
+            let run = 1;
+            for (let j = k + 1; j < end; j++) {
+              const jx = sx + bun.dx[j], jy = sy + bun.dy[j];
+              if (jx < 0 || jy < 0 || jx >= gw || jy >= gh) break;
+              if (!opq[jy * gw + jx]) break;
+              run++;
+            }
+            /* the near HALF of the run, the first cell included: a lone boulder (run 1) is
+             * exactly as it was, and a four-cell crag shows two — the slope up to the top */
+            for (let c = Math.ceil(run / 2) - 1, j = k + 1; c > 0; c--, j++) {
+              m[(sy + bun.dy[j]) * gw + (sx + bun.dx[j])] = 1;
+            }
+          }
+          break;
+        }
         pen = price - bun.h[k];
         pgx = gx; pgy = gy;
       }
@@ -1601,8 +1628,17 @@
       if (on) s3.flip = 1; else delete s3.flip;
       return { ok: true };
     }
+    /* A WALK IS A COMMITMENT, AND A COMMITMENT YOU CAN PUT DOWN IS A CONVENIENCE. Stepping off
+     * used to be a free order, so the Shrine was a tap: open it when the treasury is fat, shut
+     * it the moment the muster wants the money, and pay nothing for the flirtation but the
+     * fade. Now the only ways off the Pattern are reaching 100 and losing the Shrine — the
+     * order to stop is REFUSED, and the drain goes on taking its cut before your halls are
+     * paid for as long as it takes. That is what makes setting foot on it a decision.
+     * Note it refuses rather than silently ignoring: the seat that gave the order is owed the
+     * reason, and 'committed' is a different answer from 'shrine'. */
     if (cmd.c === 'walk') {
       if (!pl.buildings.some((b) => b.bt === 'shrine')) return { ok: false, err: 'shrine' };
+      if (pl.walking && !cmd.on) return { ok: false, err: 'committed' };
       pl.walking = !!cmd.on;
       if (pl.walking && !pl.revealed) { pl.revealed = true; emit(world, { e: 'walk', pi }); }
       return { ok: true };
@@ -1942,6 +1978,15 @@
     }
   }
   const tierOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
+  /* ---------------- the chains ----------------
+   * ONE ART THROWS THEM, so their numbers live on the Shadow-binder's card and these three
+   * helpers are the only place anything else names him. `u.hexed` is an expiry TIME and it is
+   * checked at every read rather than swept up by a pass of its own: a man whose chains lapse
+   * is exactly a normal man again on the tick they lapse, and there is no teardown to forget.
+   * A chained man marches at `hexSlow` of his stride and takes `hexAmp` of every blow. */
+  function hexOn(world, u) { return !!u.hexed && world.t < u.hexed; }
+  function hexSlow(world, u) { return hexOn(world, u) ? C.UNITS.binder.hexSlow : 1; }
+  function hexAmp(world, u) { return hexOn(world, u) ? C.UNITS.binder.hexAmp : 1; }
   function hurt(world, victim, dmg, byOwner) {
     /* THE TOWER IS THE SHIELD. A garrison used to stand on the crown and be shot like a man on
      * a parapet, which made filling a tower a way to lose archers slightly further from home:
@@ -1951,7 +1996,11 @@
      * whatever they had left. Guarded here rather than at each of the half-dozen places that
      * deal damage, because a splash pass added later would not have known to ask. */
     if (victim.in) return;
-    victim.hp -= dmg;
+    /* THE CHAINS BITE HERE AND NOWHERE ELSE. A binding amplifies every blow that lands on the
+     * man, so the multiplier belongs at the one door damage comes through — guarded here for
+     * the same reason `in` is, because a splash pass or a new weapon added later would not
+     * have known to ask. */
+    victim.hp -= dmg * hexAmp(world, victim);
     if (victim.hp <= 0 && !victim.dead) {
       victim.dead = true;
       /* the bounty goes to whoever struck the blow — ANY heir. `=== 0 || === 1` was a duel's
@@ -2114,16 +2163,40 @@
    * not be a wall against attrition: he mends ONE man at a time, the worst hurt within reach,
    * and never himself — two Wardens standing together would otherwise be unkillable by
    * anything that cannot out-damage them both at once.
-   * He does not mend works: stone has `STRUCT_REGEN` and does not need a man. */
+   * He does not mend works: stone has `STRUCT_REGEN` and does not need a man.
+   *
+   * AND A WOUNDED MAN CAN ONLY ABSORB SO MUCH OF IT. Every Warden picks the worst-hurt friend
+   * in reach independently, which means they all pick the SAME man — whoever the enemy is
+   * concentrating on — so fifteen Wardens poured 105 hp/sec into one soldier and focus fire,
+   * the only answer an army has to a hard target, simply stopped working. The cap is on the
+   * RECEIVER (`C.MEND_CAP`, hp/sec, whoever is attending him) and not on the Warden, because
+   * the failure was stacking and nothing else: one Warden walking a line of wounded men was
+   * never broken and is not touched. `_mendT`/`_mendGot` are per-tick scratch stamped with
+   * `world.tick` — mendNear runs inside the one per-unit loop, so every Warden in a tick reads
+   * and writes the same stamp — and they are not state, so they never ride the wire.
+   *
+   * A WARDEN WHOSE MAN IS FULL UP GOES AND FINDS ANOTHER. Without that the cap would answer
+   * stacking by wasting the stack: fifteen Wardens would do one Warden's work, fourteen of
+   * them visibly idle, and the branch would collapse to "build exactly one". So an allowance
+   * already spent disqualifies a man both from the sticky cache and from the scan, and the
+   * next-worst-wounded in reach gets the Warden instead. Spread across many wounded men every
+   * Warden works at his full rate; piled on one they share his ceiling. */
+  function mendRoom(world, v, dt) {
+    return C.MEND_CAP * dt - (v._mendT === world.tick ? v._mendGot : 0);
+  }
   function mendNear(world, u, def, dt) {
+    const r2 = def.mendR * def.mendR;
     /* the same stagger `acquire` uses: the worst-hurt man is re-chosen a few times a second
-     * rather than every tick, and no two Wardens scan on the same one */
+     * rather than every tick, and no two Wardens scan on the same one — plus one trigger of
+     * its own, "my man has taken all he can take this tick", which cannot wait for a stagger */
     if ((world.tick + u.id) % RETARGET === 0 || !u._m || u._m.hp <= 0 ||
-        u._m.hp >= u._m.maxHp || d2(u.x, u.y, u._m.x, u._m.y) > def.mendR * def.mendR) {
+        u._m.hp >= u._m.maxHp || d2(u.x, u.y, u._m.x, u._m.y) > r2 ||
+        mendRoom(world, u._m, dt) <= 1e-9) {
       let worst = null, gap = 0;
       forNear(world, u.x, u.y, def.mendR, (v) => {
         if (v.owner !== u.owner || v === u || v.hp >= v.maxHp) return;
-        if (d2(u.x, u.y, v.x, v.y) > def.mendR * def.mendR) return;
+        if (d2(u.x, u.y, v.x, v.y) > r2) return;
+        if (mendRoom(world, v, dt) <= 1e-9) return;   // he is already taking all he can
         const g = v.maxHp - v.hp;
         if (g > gap) { gap = g; worst = v; }
       });
@@ -2131,42 +2204,67 @@
     }
     const m = u._m;
     if (!m || m.hp <= 0 || m.hp >= m.maxHp) return;
-    m.hp = Math.min(m.maxHp, m.hp + def.mend * dt);
+    const heal = Math.min(def.mend * dt, mendRoom(world, m, dt), m.maxHp - m.hp);
+    if (heal <= 1e-9) return;
+    m.hp += heal;
+    if (m._mendT !== world.tick) { m._mendT = world.tick; m._mendGot = 0; }
+    m._mendGot += heal;
     /* a thread of light, for the renderer — and it carries a position, so the fog filter
      * hides it from anyone who cannot see it without another rule */
     if (world.tick % 6 === 0) emit(world, { e: 'mend', pi: u.owner, x: u.x, y: u.y, to: { x: m.x, y: m.y } });
   }
   /* ---------------- the Binding ----------------
-   * ONLY CHAOS, AND ONLY WHEN IT IS ALREADY BEATEN. A binder turns a fiend that has been
-   * fought down below `bindHp` — you pay for it in the fight first, so it is a reward for
-   * holding the black road rather than a way of skipping it. It never takes a rival's troops:
-   * the test is `owner === CHAOS_ID` and nothing looser, because "not mine" would quietly
-   * become "anyone's" the first time somebody refactored it.
+   * CHAINS, NOT A CONVERSION. The Binding used to do exactly one thing — flip a Chaos fiend
+   * already fought below `bindHp` — and there are not enough fiends on the board for that to
+   * decide anything. In a match where the black road stayed quiet the branch did NOTHING, and
+   * the only way to make it matter would have been to put more Chaos on the board, which is
+   * the opposite of what capping the road was for. So a binder now throws his binding on an
+   * ENEMY SOLDIER: `hexSlow` off his stride and `hexAmp` onto every blow that lands on him,
+   * for `hexT` seconds. That is a fighting choice against every opponent in every match.
    *
-   * AND SHADOW WILL NOT HOLD IT. `CAP.chaos` counts fiends by owner, so every one bound frees
-   * a slot for the road to tear open another — left permanent, a binder host would farm Chaos
-   * into a private army and the match would be about the weather again, which is the exact
-   * failure capping the black road was meant to end. A bound fiend serves for `BIND_LIFE` and
-   * then dissolves. */
+   * `u.hexed` is the expiry TIME and the one name for it. Nothing sweeps it up: every reader
+   * asks `hexOn`, which compares against `world.t`, so a man whose chains lapse is a normal
+   * man again on the tick they lapse and there is no teardown pass to forget.
+   *
+   * THE FIEND-BINDING SURVIVES AS A RIDER ON THE SAME THROW. If the man chained happens to be
+   * a Chaos fiend already beaten below `bindHp` it flips instead, for `BIND_LIFE`, exactly as
+   * before — you still pay for it in the fight first. It is flavour on the art, not the art.
+   * The test stays `owner === CHAOS_ID` and nothing looser: a RIVAL's troops are chained and
+   * NEVER converted, and "not mine" would quietly become "anyone's" the first time somebody
+   * refactored it.
+   *
+   * AND SHADOW WILL NOT HOLD A FIEND. `CAP.chaos` counts fiends by owner, so every one bound
+   * frees a slot for the road to tear open another — left permanent, a binder host would farm
+   * Chaos into a private army and the match would be about the weather again, which is the
+   * exact failure capping the black road was meant to end. A bound fiend serves for
+   * `BIND_LIFE` and then dissolves. */
   function bindNear(world, u, def) {
     let best = null, bd = def.bindR * def.bindR;
     forNear(world, u.x, u.y, def.bindR, (v) => {
-      if (v.owner !== C.CHAOS_ID || v.hp > v.maxHp * def.bindHp) return;
+      if (v.owner === u.owner) return;
+      if (v.in) return;                       // inside a tower the stone is between them
+      if (hexOn(world, v)) return;            // already chained — do not spend the throw twice
       const d = d2(u.x, u.y, v.x, v.y);
       if (d < bd) { bd = d; best = v; }
     });
     if (!best) return false;
-    const pl = world.players[u.owner];
-    best.owner = u.owner;
-    best.co = u.co;                  // it marches under the standard that took it
-    best.from = -1;
-    best.tier = 1;
-    best.goal = pl.banner;
-    best._t = null;                  // it was hunting everyone; it is not any more
-    best.bound = world.t + C.BIND_LIFE;
-    /* it takes its place in the line at the next muster, like any other man: the ranks are
-     * dealt by who is standing at the flag, so joining the company IS joining the body */
-    emit(world, { e: 'bind', pi: u.owner, x: best.x, y: best.y });
+    best.hexed = world.t + def.hexT;
+    /* it carries a position, so the fog filter hides it from anyone who cannot see it */
+    emit(world, { e: 'hex', pi: u.owner, x: u.x, y: u.y, to: { x: best.x, y: best.y } });
+    if (best.owner === C.CHAOS_ID && best.hp <= best.maxHp * def.bindHp) {
+      const pl = world.players[u.owner];
+      best.owner = u.owner;
+      best.co = u.co;                  // it marches under the standard that took it
+      best.from = -1;
+      best.tier = 1;
+      best.goal = pl.banner;
+      best._t = null;                  // it was hunting everyone; it is not any more
+      best.bound = world.t + C.BIND_LIFE;
+      best.hexed = 0;                  // it is his man now; you do not chain your own
+      /* it takes its place in the line at the next muster, like any other man: the ranks are
+       * dealt by who is standing at the flag, so joining the company IS joining the body */
+      emit(world, { e: 'bind', pi: u.owner, x: best.x, y: best.y });
+    }
     return true;
   }
 
@@ -2316,6 +2414,61 @@
       const city = cityOf(world, pi);
       let income = C.BASE_INCOME;
       let drain = 0;   // ACTUAL spend rate this tick — the HUD never lies again
+
+      /* ---------------- THE PATTERN IS PAID FIRST ----------------
+       * THE WALK HAS FIRST CLAIM ON THE TREASURY, and that ordering IS the mechanic. It used
+       * to run last, after every mustering hall had taken what it wanted, so a walk was
+       * something an heir did with his SPARE essence: the halls kept turning out men and the
+       * Pattern advanced on the remainder — slowly, by `pay/want`, floored so it could never
+       * quite stop. Nothing about that was a commitment. Inverted, there is no remainder to
+       * walk on: the Shrine takes its `drain` off the top and the halls find whatever is left,
+       * which for a walker who cannot carry it is NOTHING. His `b.paid` stops advancing and
+       * his army stops growing for as long as he is on the lines. That is the price, and it is
+       * paid in the only currency that decides matches. A hall that has ALREADY paid a man off
+       * in full still marches him out — he is bought, and the treasury emptying afterwards
+       * does not un-buy him.
+       *
+       * AND THE LINES CARRY HIM AT FULL PACE whatever he holds. Proportional progress was an
+       * answer to a question that no longer exists: it existed so a poor walker was punished
+       * without the game's absolute clock stopping, and the punishment is now the empty
+       * barracks instead. `minRate` went with it.
+       *
+       * `income` is banked at the END of this block below, so the walk draws on the pool as it
+       * stood when the last tick finished. At 30Hz that one-tick offset is a thirtieth of a
+       * second of income and is deliberately not chased. */
+      const sdef = C.BUILDINGS.shrine;
+      let channelled = false;
+      if (pl.walking) {
+        const shrine = pl.buildings.find((b) => b.bt === 'shrine');
+        /* the ONLY two ways off the Pattern: reach 100, or lose the Shrine you walk from.
+         * `{c:'walk', on:false}` is refused — see applyCommand. */
+        if (!shrine) pl.walking = false;
+        else {
+          channelled = true;
+          const want = sdef.drain[shrine.level - 1] * dt;
+          const pay = Math.min(want, Math.max(0, pl.essence));
+          if (pay > 0) {
+            pl.essence -= pay;
+            drain += pay / dt;   // actual, not theoretical — and the muster adds to it below
+          }
+          pl.pattern += sdef.rate[shrine.level - 1] * dt;
+          while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
+            emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
+          }
+          if (pl.pattern >= 100) { win(world, pi, 'pattern'); return; }
+        }
+      }
+      /* THE LINES FADE WHEN NOBODY WALKS THEM. A walk is a thing you hold, not a balance you
+       * bank: lose the Shrine and the Pattern lets go of you. Without this the Shrine was a
+       * savings account and an assault on a walker bought the attacker nothing they could not
+       * simply rebuy. Poverty no longer stops a walk, and neither does the walker's own hand,
+       * so this is the teardown's counterpart and nothing else. */
+      if (!channelled && pl.pattern > 0) {
+        pl.pattern = Math.max(0, pl.pattern - sdef.decay * dt);
+        /* the alerts speak again if they climb back past the mark */
+        while (pl.alertIdx > 0 && pl.pattern < C.PATTERN_ALERTS[pl.alertIdx - 1].at) pl.alertIdx--;
+      }
+
       for (const b of pl.buildings) {
         const def = C.BUILDINGS[b.bt];
         const sp = b;
@@ -2446,45 +2599,6 @@
       pl.drainRate = drain;   // muster + walk upkeep — the HUD tells the truth
       if (pl.powers.storm > 0) pl.powers.storm -= dt;
       if (pl.powers.trump > 0) pl.powers.trump -= dt;
-
-      const sdef = C.BUILDINGS.shrine;
-      let channelled = false;
-      if (pl.walking) {
-        const shrine = pl.buildings.find((b) => b.bt === 'shrine');
-        if (!shrine) pl.walking = false;
-        else {
-          const want = sdef.drain[shrine.level - 1] * dt;
-          /* pay what you can and walk that far. All-or-nothing froze a poor walker at 1%
-           * forever — income 4/s against a drain of 12/s meant the Pattern, the game's
-           * absolute clock, simply stopped ticking. */
-          const pay = Math.min(want, pl.essence);
-          if (pay > 0) {
-            channelled = true;
-            pl.essence -= pay;
-            pl.drainRate += pay / dt;   // actual, not theoretical
-            /* THE CLOCK MUST TICK. Paying proportionally is right, but at income 5 against a
-             * drain of 32 it advances a walk by a sixth of a percent a minute, and a clock
-             * that slow is a stopped one — every match measured running to the 45-minute cap
-             * had a walker broke for 90-95% of it. Below `minRate` the Pattern carries you
-             * anyway. You still pay every penny you have; you simply cannot be frozen. */
-            const share = Math.max(sdef.minRate, pay / want);
-            pl.pattern += sdef.rate[shrine.level - 1] * dt * share;
-            while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
-              emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
-            }
-            if (pl.pattern >= 100) { win(world, pi, 'pattern'); return; }
-          }
-        }
-      }
-      /* THE LINES FADE WHEN NOBODY WALKS THEM. A walk is a thing you hold, not a balance you
-       * bank: stop channelling — by choice, by poverty, or because somebody threw your Shrine
-       * down — and the Pattern lets go of you. Without this the Shrine was a savings account
-       * and an assault on a walker bought the attacker nothing they could not simply rebuy. */
-      if (!channelled && pl.pattern > 0) {
-        pl.pattern = Math.max(0, pl.pattern - sdef.decay * dt);
-        /* the alerts speak again if they climb back past the mark */
-        while (pl.alertIdx > 0 && pl.pattern < C.PATTERN_ALERTS[pl.alertIdx - 1].at) pl.alertIdx--;
-      }
     }
 
     /* chaos director: rifts at road sites (springs too, once surging) */
@@ -2533,6 +2647,10 @@
       const u = world.units[fwd ? ii : n - 1 - ii];
       if (u.hp <= 0) continue;
       const def = C.UNITS[u.kind];
+      /* HIS STRIDE THIS TICK. A binding drags at it — read once here so every way a man can
+       * move (the chase, the walk to a tower, the parapet shuffle, the march) is slowed by
+       * the same number, rather than four call sites each remembering to ask. */
+      const speed = def.speed * hexSlow(world, u);
       /* SHADOW WILL NOT HOLD IT. A bound fiend serves its time and goes back to whatever it
        * came out of — see bindNear for why it cannot be allowed to stay. */
       if (u.bound && world.t >= u.bound) {
@@ -2559,7 +2677,11 @@
        * place mending matters. Neither uses `u.cd` — that is his weapon's swing, and a Warden
        * who had to choose between shooting and mending would do neither well. */
       if (def.mend) mendNear(world, u, def, dt);
-      if (def.bind && u.cd <= 0 && bindNear(world, u, def)) u.cd = def.atk;
+      /* THE THROW COSTS HIM HIS SWING. `hexCd` is the binding's own cadence, but it is spent
+       * out of `u.cd` on purpose: a binder who could chain AND shoot in the same breath would
+       * simply be a better sorcerer, and the art is meant to be a choice about what he does
+       * with the man in front of him. */
+      if (def.bind && u.cd <= 0 && bindNear(world, u, def)) u.cd = def.hexCd;
       /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
        * than he ever could on the ground, and everything that can see the tower can see him. */
       const gar = u.in ? C.TOWER.over : 0;   // the long throw is the room's, not the errand's
@@ -2583,10 +2705,13 @@
               if (tp.castleHp <= 0 && !tp.out) { if (topple(world, foe.t.pi, u.owner)) return; }
             }
             u.cd = def.atk;
-            if (rng > 40) emit(world, { e: 'bolt', from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
+            /* WHO THREW IT. A bolt was a bolt whoever loosed it, so an archer's arrow and a
+             * sorcerer's fire were drawn as the same streak. The kind rides along and the
+             * renderer decides what a shot from that man looks like. */
+            if (rng > 40) emit(world, { e: 'bolt', kind: u.kind, from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
           }
         } else {
-          const mv = def.speed * dt / (foe.d || 1);
+          const mv = speed * dt / (foe.d || 1);
           const cx0 = u.x, cy0 = u.y;
           u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
           project(world, u, cx0, cy0);   // the chase is not slowed by the press, but it is projected like everything else
@@ -2634,7 +2759,7 @@
             const L3 = s5 ? 1 : dc;
             const vx3 = s5 ? s5.x : (tb.x - u.x) / L3, vy3 = s5 ? s5.y : (tb.y - u.y) / L3;
             const tx0 = u.x, ty0 = u.y;
-            u.x += vx3 * def.speed * dt; u.y += vy3 * def.speed * dt;
+            u.x += vx3 * speed * dt; u.y += vy3 * speed * dt;
             stand(world, u, tx0, ty0);
             continue;
           }
@@ -2664,14 +2789,14 @@
              * changes his mind. */
             if (dg < C.NAV.arrive && (u.man === post.b.id ||
                                       !crosses(u.x, u.y, gx, gy, post.ax, post.ay, post.bx, post.by))) {
-              if (dg > 3) { u.x += (gx - u.x) / dg * def.speed * dt; u.y += (gy - u.y) / dg * def.speed * dt; }
+              if (dg > 3) { u.x += (gx - u.x) / dg * speed * dt; u.y += (gy - u.y) / dg * speed * dt; }
               continue;   // a berth on a parapet is exact: he is not jostled off it
             }
             const s4 = NAV.steer(world.nav, world, u.owner, gx, gy, u.x, u.y);
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
             const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
             const wx0 = u.x, wy0 = u.y;
-            const sp2 = def.speed * crush(u.press) * dt;   // a march to a wall queues like any other
+            const sp2 = speed * crush(u.press) * dt;   // a march to a wall queues like any other
             u.x += vx2 * sp2; u.y += vy2 * sp2;
             project(world, u, wx0, wy0);
             continue;
@@ -2759,7 +2884,7 @@
          * below the crowd's own noise: the shiver detector read 33 of 63 men reversing, and
          * the ranks never closed in time when men fell. The chase above is exempt the same
          * way — a man closing on something he means to kill shoulders through. */
-        const sp = def.speed * (inColumn ? crush(u.press) : 1) * dt;
+        const sp = speed * (inColumn ? crush(u.press) : 1) * dt;
         /* THE BANK TURNS THE STEP BEFORE THE GROUND REFUSES IT. `steerClear`'s own lesson:
          * a position projection alone is repulsion-after-contact, and with a place across a
          * water inlet the beeline steps in and the resolver steps out along the same line,

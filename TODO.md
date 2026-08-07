@@ -431,6 +431,11 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
       stopped one. `shrine.minRate` is the floor: channel what you have and the Pattern carries
       you at no less than half speed. It is still ruinous — every penny goes into the lines and
       none into an army — it simply cannot stop. Worst possible walk now arrives in 19 minutes.
+      **SUPERSEDED 2026-08-07** — `minRate` no longer exists. The owner's rule went further: a
+      walk advances at FULL rate whatever the treasury holds, and pays for it by taking first
+      claim on the essence, ahead of every hall. The half-speed floor was a compromise between
+      "frozen" and "free"; the answer turned out to be that the walk is free of the treasury's
+      opinion and the ARMY pays instead. Kept here because it is what the numbers below measured.
       **Every work has twice the hit points** (Gate 300→600, Barracks 360→720, Watchtower
       480→960, Spire 320→640, Siege Works 380→760, Shrine 450→900). A realm was a sandcastle:
       59 razes in one reported match, 26 in another, and a raze-and-rebuild treadmill at one
@@ -716,9 +721,20 @@ landed (first entry below), headless 1205/1205.
       phone's pixel density" in test/browser.js, which drives a DPR-3 page and reads the
       overlay's pixels across the boundary (109 alpha/px before, ~11 after). `R.debugFog =
       {mem,discs,rim}` still switches each veil pass off.
-- [ ] **The unpausable walk** (the user's decision, reaffirmed): refuse `{c:'walk', on:false}`
-      once started, drop the pause card, retire `pauseWalk` from every doctrine. Safe because
-      `minRate` 0.5 carries a broke walker. **The AI's start gate must be tightened in the SAME
+- [x] **The unpausable walk** — SHIPPED 2026-08-07, with an amendment from the owner that
+      changed its shape. `{c:'walk',on:false}` is refused with `'committed'`; only winning it or
+      losing the Shrine ends a walk. **The amendment: the walk advances at FULL rate however
+      poor the heir is.** `share`/`minRate` are deleted. It still drains, and the drain now takes
+      FIRST CLAIM on the essence — the walk block moved ahead of the buildings loop — so a heir
+      who commits while poor makes NO TROOPS at all: his halls reach for a treasury the lines
+      already emptied. A recruit already fully paid still marches. The price of the Pattern is
+      the army you do not raise, which is a real cost that leaves the clock alone; the old rule
+      punished commitment by making nothing happen, and nothing happening is never interesting.
+      `pauseWalk` and the broke-unwalk branch are retired; the gate is now `canFinish`
+      (`essence + income*312.5 >= 6875*1.1`), so a deep bank is a valid reason to walk where
+      before only income counted. STILL OPEN: the Shrine sheet's "⏸ Pause the walk" card
+      (`js/ui.js:640`) now issues an order the sim refuses — make it a readout or drop it.
+      Original note follows. **The AI's start gate must be tightened in the SAME
       change** — the code already records that a weaker form of this trebled timeouts — and the
       heirs should halt the muster to bank first (no doctrine has ever issued `{c:'muster'}`).
       Now much more attractive: heirs holding 5-6 springs earn 32-37/s against a walk's 22/s.

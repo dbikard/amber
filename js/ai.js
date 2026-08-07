@@ -287,8 +287,12 @@
    * comfortably pay for. Measured over six skilled matches: of the moments an heir held a
    * Shrine and earned enough to walk, its own purse test refused five in seven, and the
    * Pattern decided 12% of skilled matches against a 25-75 target.
-   * What is left is a WAR CHEST, and it is one number instead of four: do not set foot on the
-   * Pattern holding less than the shared rule will abandon it for (`broke`, 140). */
+   * What is left is a WAR CHEST, and it is one number instead of four: a floor under the purse
+   * before an heir sets foot on the lines at all. It used to be justified as "never start
+   * holding less than the shared rule will abandon it for" — there is no abandoning any more,
+   * a walk cannot be called off, so what it now buys is simply a little air between the first
+   * tick of the drain and the first tick with no soldier bought. `canFinish` in `decide` is
+   * the real gate; this is the doctrines' own, and it stays cheap on purpose. */
   const CHEST = 150;
 
   /* WHICH WAY AN HEIR FORKS. A persona names its doctrine per building in `branch`; anything it
@@ -353,7 +357,6 @@
        * minutes is still after everyone else's opening move on it, which is the whole point of
        * the clause. */
       walk: (v) => v.have.shrine && v.t > 540 && v.rivals <= 2 && v.essence > CHEST,
-      pauseWalk: (v) => v.myPattern < 70 && v.rivals >= 4,
       storm: stormDefend(3),
       trump: (v) => v.threats.length >= 4 || v.myCastle < 500
     },
@@ -371,7 +374,7 @@
       branch: { tower: () => 'bolt', barracks: () => 'raid', spire: () => 'binder', siege: () => 'ram' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 1)],   // one forward spring, not the middle
       banner: (v) => v.army >= 6 ? strike(v) : seek(v),   // scout, stage, then storm the gates
-      walk: () => false, pauseWalk: () => false,
+      walk: () => false,
       storm: stormPush(4),
       trump: (v) => v.push >= 2 || v.threats.length >= 5
     },
@@ -393,7 +396,6 @@
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2)],
       banner: (v) => (v.unexplored > 3 && v.army >= 5 ? seek(v) : v.myCity.id),   // the army buys him time, but must still find the springs
       walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > CHEST,
-      pauseWalk: () => false,
       storm: stormDefend(2),
       trump: (v) => v.threats.length >= 3
     },
@@ -412,7 +414,6 @@
        * that is a condition that occurs between engagements and nowhere else. A scout or two
        * in sight of the court is not a reason to give up the throne. */
       walk: (v) => v.have.shrine && v.essence > CHEST && (v.enemyCastle < v.myCastle || v.rivals <= 1),
-      pauseWalk: (v) => v.myPattern < 70 && v.rivals >= 4,
       storm: stormPush(3),
       trump: (v) => v.push >= 2 || v.threats.length >= 4
     },
@@ -459,7 +460,6 @@
        * actually fought is almost never met */
       walk: (v) => v.have.shrine && v.essence > CHEST &&
                    (v.rivals <= 2 || (v.enemyWalking && v.enemyPattern > v.myPattern)),
-      pauseWalk: (v) => v.myPattern < 70 && v.rivals >= 3,
       storm: stormPush(3),
       trump: (v) => v.threats.length >= 3 || v.enemyWalking || v.push >= 3
     }
@@ -488,7 +488,7 @@
       plan: () => ['gate', 'gate', 'gate', 'gate', 'barracks', 'barracks', 'barracks', 'barracks'],
       upPref: ['gate', 'barracks'],
       missions: () => [], banner: (v) => strike(v),
-      walk: () => false, pauseWalk: () => false,
+      walk: () => false,
       storm: () => null, trump: () => false
     }
   };
@@ -521,29 +521,34 @@
        * against benedict went from 2-1 to three timeouts, because two heirs who both commit at
        * the same hour and both then defend are the stall this clause exists to end. */
       const late = v.t > 1500;
-      /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE. Every doctrine gates the walk on a
-       * SNAPSHOT of the treasury — 'essence > 200' — which says nothing about whether the
-       * realm can carry the drain for the nine and a half minutes the walk takes. Reported
-       * from play, at PRINCE: Benedict set foot on the Pattern at 4:03 with seven works, ran
-       * his treasury to zero and held it there, could not pay his muster, watched his army
-       * fall from thirty-nine to three, and spent the next six minutes being dismantled. He
-       * reached 21% and then DECAYED back to 16%. He did not lose the race; he lost the game
-       * to have entered it.
-       * So the shared rule, under every doctrine: start only if the ground earns most of what
-       * the Shrine will take, and STOP if the treasury runs dry. Stopping costs the lines
-       * their progress, which is exactly the trade — a walk resumed from 16% beats a realm
-       * that starved to reach 21%. */
-      /* A WALK ALREADY PAID FOR AS ITS OWN REASON TO RESUME — "past 20% the shared rule alone
-       * decides" — reads well and MEASURED BADLY: heirs cling to a walk they cannot finish
-       * instead of fighting, and the timeouts trebled (julian and brand against benedict went
-       * from one draw each to three). The doctrine's own clause stays the door back in. */
-      const shrineDrain = C.BUILDINGS.shrine.drain[0];
-      const canAfford = v.income >= shrineDrain * 0.85;
-      const broke = v.essence < 140;
-      if (!v.walking && (P.walk(v) || (late && v.have.shrine)) && (canAfford || late)) {
+      /* A WALK YOU CANNOT PAY FOR IS A LOSS YOU CHOSE — AND THERE IS NO LONGER A WAY OUT OF
+       * ONE. The old shared rule was "start if the ground earns most of the drain, and STOP if
+       * the treasury runs dry", with every doctrine carrying a `pauseWalk` clause of its own.
+       * Both halves describe a game that no longer exists. `{c:'walk', on:false}` is REFUSED
+       * now ('committed'): the only ways off the Pattern are reaching 100 and losing the
+       * Shrine. And the Shrine's drain is taken BEFORE any hall is paid, so a walker who
+       * cannot carry it does not walk slowly — he musters NOBODY for as long as he is on the
+       * lines. Reported from play at PRINCE under the old rules, Benedict stepped on at 4:03,
+       * ran his treasury to zero, watched his army fall from thirty-nine to three and was
+       * dismantled; under these rules that heir also cannot step off.
+       *
+       * So the only question left is not "can I START this" but "can I FINISH it". The whole
+       * walk costs `full` essence over `secs` seconds, and what pays for it is the bank plus
+       * whatever the ground earns across that time. Require a margin on top, because a realm
+       * that exactly covers the Shrine raises exactly no soldiers while it walks. One test,
+       * and it subsumes both of the owner's numbers: income comfortably over the drain (~24/s
+       * against 22 with an empty treasury) OR a bank deep enough to ride it out (~7.5k with no
+       * income at all), and every mixture in between.
+       *
+       * `late` still overrides it. The Pattern is the game's absolute clock and it only ticks
+       * if somebody walks: two defensive lines with no walker drew 15 of 30 at the cap. It is
+       * a stall-breaker and nothing else, and past that hour a starved muster costs less than
+       * a timeout. */
+      const shr = C.BUILDINGS.shrine;
+      const secs = 100 / shr.rate[0], full = shr.drain[0] * secs;
+      const canFinish = v.essence + v.income * secs >= full * 1.1;
+      if (!v.walking && (P.walk(v) || (late && v.have.shrine)) && (canFinish || late)) {
         issue({ c: 'walk', on: true });
-      } else if (v.walking && (broke || (!late && P.pauseWalk(v)))) {
-        issue({ c: 'walk', on: false });
       }
 
       /* THE CITY. Two standing wants that no plan lists come first — a spring under his feet
