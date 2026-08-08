@@ -5095,4 +5095,70 @@ if (QUICK_RUN) {
   console.log(`\x1b[33mQUICK RUN — PARTIAL: skipped ${skipped.length} suite(s): ${skipped.join(' · ')}\x1b[0m`);
   console.log(`\x1b[33mthe full \`node test/headless.js\` (no flag) is the gate before any push\x1b[0m`);
 }
+/* ---------------- a company's colours are carried by a man ----------------
+ * A company existed on the board as a post at its rally and a pennant on the hall that
+ * raises it — nothing among the MEN said which company a column was. The standard is borne
+ * now, and the rule has to hold three ways: the same man on every machine (no wire agrees
+ * it), the next man the instant the bearer falls, and nobody at all when the company has
+ * nobody left. */
+suite('a company\'s colours are carried by a man')
+{
+  const w = World.createWorld(9, 2);
+  w.chaosNext = 1e9;
+  const pl = w.players[0];
+  pl.companies = [{ id: 4, rally: null }, { id: 5, rally: null }];
+  w.units.length = 0;
+  const put = (id, owner, co, extra) => {
+    const u = { id, owner, co, kind: 'soldier', x: 900 + id, y: 900, hp: 70, maxHp: 70, cd: 0, goal: null };
+    if (extra) Object.assign(u, extra);
+    w.units.push(u);
+    return u;
+  };
+  const c7 = put(7, 0, 4), c3 = put(3, 0, 4), c9 = put(9, 0, 4);
+  put(11, 0, 5);
+  put(2, 1, 4);                                   // a RIVAL's man, in a company numbered the same
+  World.bearers(w);
+  eq('the senior man of the company carries it', pl.companies[0].bearer, 3);
+  eq('...and each company has its own', pl.companies[1].bearer, 11);
+  ok('a rival\'s man is not eligible for our standard', pl.companies[0].bearer !== 2);
+
+  c3.hp = 0;
+  World.bearers(w);
+  eq('the bearer falls and the next man in seniority has it', pl.companies[0].bearer, 7);
+  c7.hp = 0;
+  World.bearers(w);
+  eq('...and again', pl.companies[0].bearer, 9);
+  c9.hp = 0;
+  World.bearers(w);
+  eq('a company with nobody left flies nothing', pl.companies[0].bearer, null);
+
+  /* A MAN SHUT IN A TOWER IS NOT DRAWN, so a standard over him is a flag belonging to
+   * nobody. He is passed over while anyone else is standing — and taken when nobody is. */
+  c3.hp = 70; c3.tow = 55;
+  c7.hp = 70;
+  World.bearers(w);
+  eq('a man in a tower is passed over while anyone stands in the open', pl.companies[0].bearer, 7);
+  c7.hp = 0; c9.hp = 0;
+  World.bearers(w);
+  eq('...and carries it when he is all that is left', pl.companies[0].bearer, 3);
+}
+
+suite('a company\'s bearer is the owner\'s secret')
+{
+  const w = World.createWorld(11, 2);
+  w.chaosNext = 1e9;
+  w.players[0].companies = [{ id: 2, rally: null }];
+  w.players[1].companies = [{ id: 3, rally: null }];
+  w.units.length = 0;
+  const c = World.cityOf(w, 0);
+  w.units.push({ id: 6, owner: 0, co: 2, kind: 'soldier', x: c.x, y: c.y, hp: 70, maxHp: 70, cd: 0, goal: null });
+  const c1 = World.cityOf(w, 1);
+  w.units.push({ id: 8, owner: 1, co: 3, kind: 'soldier', x: c1.x, y: c1.y, hp: 70, maxHp: 70, cd: 0, goal: null });
+  World.bearers(w);
+  const snap = Net.snapFor(w, 0, []);
+  eq('my own company carries its bearer on the wire', snap.players[0].companies[0].bearer, 6);
+  eq('a rival\'s companies are not on the wire at all', snap.players[1].companies.length, 0);
+}
+
+
 process.exit(bad);

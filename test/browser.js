@@ -3257,6 +3257,52 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- a hall's standard follows its company ----------------
+   * `{c:'assign'}` moves a hall to another company and the sim does everything right: the
+   * hall's `co` changes, the men it raised change with it, the flag tray re-chips. The one
+   * thing that did NOT change was the FLAG OVER THE HALL, which is the only place on the
+   * board a player actually reads it — the pennant is built into the work's group and the
+   * group's cache key carried the branch, the level, the garrison, the damage, a wall's ends
+   * and its breach, but not the company. So the hall went on flying its old colours until
+   * something else happened to rebuild it.
+   * This asserts the COLOUR, not the field. Asserting `b.co` would have passed throughout. */
+  {
+    suite('a hall\'s standard follows its company');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 5 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const r = await pg.evaluate(async () => {
+      const w = window.Game.game.world, C = window.CONST;
+      const hall = w.players[0].buildings.find((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns);
+      if (!hall) return { err: 'the heir opens with no mustering hall' };
+      const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      await frame();
+      const was = { co: hall.co, flag: window.Render.debugStandard(hall.id) };
+      /* joinCo makes a NEW company for an id nobody holds, so this is a real move */
+      const res = window.World.applyCommand(w, 0, { c: 'assign', id: hall.id, co: 'new' });
+      await frame();
+      return { ok: res.ok, was, now: { co: hall.co, flag: window.Render.debugStandard(hall.id) },
+               pen: C.PENNANT || null };
+    });
+    ok('the rig is alive: the heir has a hall flying a standard', !r.err && !!(r.was && r.was.flag),
+       r.err || `flag ${r.was && r.was.flag}`);
+    if (!r.err && r.was.flag) {
+      ok('the order was taken and the hall really changed company', r.ok && r.now.co !== r.was.co,
+         `co ${r.was.co} -> ${r.now.co}`);
+      /* THE ASSERTION THAT FAILS ON THE OLD CODE */
+      ok('...and the flag over it changed with it', r.now.flag && r.now.flag !== r.was.flag,
+         `flag ${r.was.flag} -> ${r.now.flag}`);
+    }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   /* ---------------- a new match opens on a Seat that is standing ----------------
    * Reported from play, from a phone, thirty seconds into a LAN match: the Seat drawn as a
    * broken stump while the sim said it was at full health. The collapse animation is module

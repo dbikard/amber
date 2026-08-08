@@ -457,7 +457,11 @@
         musterPaused: mine ? pl.musterPaused : false,
         /* your own companies and where their standards stand; a rival's are a secret */
         /* the Trump's own standard is flagged, so a guest's tray can draw it as what it is */
+        /* the BEARER rides with the company and is the owner's alone, like the rest of it —
+         * which company a rival's men belong to has never crossed the wire, and a flag is the
+         * plainest possible statement of it */
         companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally,
+                                                     ...(co.bearer ? { bearer: co.bearer } : {}),
                                                      ...(co.paused ? { paused: 1 } : {}),
                                                      ...(co.trump ? { trump: 1 } : {}) })) : [],
         /* A CURTAIN IS LONGER THAN ITS MIDDLE — World.workSeen is the one place that rule

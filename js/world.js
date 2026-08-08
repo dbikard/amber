@@ -331,6 +331,38 @@
    * cleared `u.tow` at their own start, so whichever ran second wiped what the first had just
    * decided. Cleared once here, then the runs are dealt (bastions included), then the towers
    * standing on open ground take whoever is still free. */
+  /* ---------------- THE STANDARD IS CARRIED BY A MAN ----------------
+   * A company's colours existed on a post at its rally and on the hall that raises it, and
+   * nowhere in the field — so a column on the march, which is the thing you actually look
+   * at, said nothing about which company it was. Now one man in each company carries it.
+   *
+   * WHO: the man out in the open with the lowest id. Lowest id is seniority — ids never
+   * change, so the flag does not wander between men every tick — and it is arithmetic, so
+   * every machine at a LAN table names the same bearer without a byte on the wire agreeing
+   * it. When he falls the next man in seniority has it on the same tick, which is the whole
+   * of "the flag goes to someone else". A man shut inside a tower is passed over while
+   * anyone else is standing: the renderer does not draw him, and a standard flying out of a
+   * wall the eye cannot see the men in is a flag belonging to nobody.
+   *
+   * IT IS A PICTURE, NOT A RULE. A bearer fights, dies and is replaced like anyone and
+   * losing him costs nothing. Making the flag worth killing — morale, a rout, a capture —
+   * is a different design and would have to go to the referee before it went in. */
+  function bearers(world) {
+    const best = new Map();                       // owner*1e6+co -> the man who should hold it
+    for (const u of world.units) {
+      if (!u.co || u.owner < 0 || u.hp <= 0) continue;
+      const k = u.owner * 1e6 + u.co, cur = best.get(k);
+      if (!cur) { best.set(k, u); continue; }
+      const a2 = u.tow ? 1 : 0, b2 = cur.tow ? 1 : 0;
+      if (a2 < b2 || (a2 === b2 && u.id < cur.id)) best.set(k, u);
+    }
+    for (let pi = 0; pi < world.players.length; pi++)
+      for (const co of world.players[pi].companies) {
+        const u = best.get(pi * 1e6 + co.id);
+        co.bearer = u ? u.id : null;
+      }
+  }
+
   function postAll(world) {
     for (const u of world.units) { if (u.man) u.man = 0; if (u.tow) u.tow = 0; }
     if (world.anyWall) postWalls(world);
@@ -2633,6 +2665,9 @@
     /* the parapet roster, before anyone moves or shoots: who is ON the wall this tick decides
      * both where he walks and whether he can shoot over it */
     postAll(world);
+    /* and who carries each company's colours — settled here, with postAll, because both are
+     * answers about the roster as it stands at the top of the tick */
+    bearers(world);
     /* ...and then the ranks: whose order is where, and who is standing where in the body it
      * gathers. Both are settled before a man moves, so every place in a company is dealt
      * against the same picture of who is alive. */
@@ -2989,6 +3024,7 @@
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
                    wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush,
+                   bearers,
                    /* the fog's working parts, exported for the tests, the probes and the
                     * GUEST: refresh on demand, re-bake after painting terrain, the shot's
                     * rock test — and the two a guest needs to cast its own occluded veil

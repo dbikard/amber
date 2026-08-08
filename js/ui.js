@@ -170,7 +170,12 @@
     const halls = (id) => me.buildings.filter((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.co === id).length;
     const rows = cos.map((co) => [co.id, !!co.rally, halls(co.id), !!co.trump, !!co.paused]);
     const hash = armed + '|' + rows.map((r) => r.join(':')).join(',');
-    if (hash === trayHash) return;
+    /* THE CHIPS AND THE ROSTER ARE REBUILT ON DIFFERENT CLOCKS. A chip changes when a company
+     * is raised, posted or silenced — rarely. What is UNDER it changes every time a man falls,
+     * which in a fight is several times a second, and rebuilding the buttons at that rate
+     * throws away the browser's own touch tracking mid-tap. So the early-out guards the chips
+     * only, and the roster below runs every frame it is asked to. */
+    if (hash !== trayHash) {
     trayHash = hash;
     tray.innerHTML = '';
     const mk = (id, glyph, cls, color) => {
@@ -216,6 +221,32 @@
       rj.addEventListener('click', () => H.onRejoin(armed));
       tray.appendChild(rj);
     }
+    }
+    /* WHAT IS ACTUALLY UNDER THE FLAG. A chip says a company exists and whether it is afield.
+     * It says nothing about what is IN it — and "should I send this one" is a question about
+     * archers or rams, never about a colour. So the armed standard shows its roster beside it:
+     * one icon per kind with a count, the biggest first, read straight off the view. The icons
+     * are the table's own (`CONST.UNITS[k].icon`), so a kind added later appears here with no
+     * code at all — the same contract the Muster Roll runs on. */
+    let roster = $('flag-roster');
+    if (!roster) {
+      roster = document.createElement('span');
+      roster.id = 'flag-roster';
+    }
+    let rtxt = '';
+    if (typeof armed === 'number') {
+      const n = new Map();
+      for (const u of view.units) if (u.owner === viewer && u.co === armed) n.set(u.kind, (n.get(u.kind) || 0) + 1);
+      rtxt = [...n].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1))
+        .map(([k, c]) => ((C.UNITS[k] && C.UNITS[k].icon) || '•') + c).join('  ');
+      /* a standard with nobody under it is worth saying out loud — it is the difference
+       * between "they are on their way" and "there is nobody to send" */
+      if (!rtxt) rtxt = '— no men';
+    }
+    if (roster.textContent !== rtxt) roster.textContent = rtxt;
+    roster.style.display = rtxt ? '' : 'none';
+    if (rtxt) tray.appendChild(roster);            // and always last, after any chip rebuild
+    else if (roster.parentNode) roster.remove();
   };
 
   /* ---------------- HUD ---------------- */

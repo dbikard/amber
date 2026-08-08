@@ -390,6 +390,16 @@ body {
   scrollbar-width: none;
 }
 #flag-tray::-webkit-scrollbar { display: none; }
+/* the roster under the armed standard: what is in the company, beside the flag that commands
+   it. A pill rather than bare text — the tray sits over the board, and a count you cannot read
+   against a lit meadow is a count you do not have. */
+#flag-roster {
+  flex: 0 0 auto; align-self: center;
+  padding: 5px 10px; border-radius: 12px;
+  background: rgba(10, 8, 18, 0.78); border: 1px solid rgba(200, 164, 79, 0.42);
+  color: #ffe9a8; font-size: 15px; line-height: 1.1; white-space: nowrap;
+  text-shadow: 0 1px 2px #000; pointer-events: none;
+}
 .fbtn {
   width: 42px; height: 42px; border-radius: 50%; flex: 0 0 auto;
   border: 2px solid #c9a44f; background: radial-gradient(circle at 35% 30%, #3a2f1a, #14100a);

@@ -1533,6 +1533,19 @@
   /* what a work is drawn as, and how it is drawn — the suite's way of asking whether two works
    * look the same without reaching into the scene graph */
   R.modelKey = modelKey;
+  /* test handle: the colour actually flying over a hall. Which company a hall belongs to is
+   * in the snapshot and easy to assert; what the PLAYER reads is the flag, and that lives in
+   * a material inside a cached group where nothing outside can see it. */
+  R.debugStandard = (id) => {
+    for (const g of cityObjs || []) {
+      const w = g.works.get(id);
+      if (!w) continue;
+      let hex = null;
+      w.grp.traverse((o) => { if (o.name === 'standard' && o.material) hex = o.material.color.getHexString(); });
+      return hex;
+    }
+    return null;
+  };
   R.model = buildingModel;
   /* THE SEAT IS SEEN TO FALL. The sim ends the match on the tick the last hit lands — the
    * referee's clocks must not move — so the fall is presentation: the tower sinks, tilts and
@@ -2306,6 +2319,13 @@
         const key = mkey
           + (b.x2 != null ? ':' + Math.round(b.x2) + ',' + Math.round(b.y2) + ',' + Math.round(b.x) + ',' + Math.round(b.y) : '')
           + (b.breach ? '!' : '') + (b.onWall ? '=' : '')
+          /* ...AND THE COMPANY WHOSE STANDARD IT FLIES. A hall's pennant is built into its
+           * group, so it is as much a part of what is drawn as a level or a breach — and it
+           * was the one such thing missing from this key. `{c:'assign'}` moved a hall to
+           * another company, the men changed colour, the tray chip changed, and the flag over
+           * the hall went on being the old company's until something ELSE (a level, a wound,
+           * a mason) happened to rebuild the group. */
+          + (b.co ? '/' + b.co : '')
           + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
@@ -2340,11 +2360,12 @@
           if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
             /* the hall flies its COMPANY's colour, and every hall has one */
-            const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
-            const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
+            const pole = meshOf([part(cyl(0.6, 0.6, 28, 4), 0xd8c8a8, 14, 33, 8)]);
+            const pf = new THREE.Mesh(new THREE.PlaneGeometry(15, 9).translate(7.5, 0, 0),
               fogPatch(new THREE.MeshBasicMaterial({ color: b.co ? PENNANT[(b.co - 1) % PENNANT.length] : 0xffd98a,
                                             side: THREE.DoubleSide })));
-            pf.position.set(14, 38, 8);
+            pf.position.set(14, 42, 8);
+            pf.name = 'standard';
             grp.add(pole, pf);
           }
           if (b.bt === 'shrine') {
@@ -2427,19 +2448,51 @@
       bannerG.position.set(b.x + (viewer === 0 ? 26 : -26), groundH(b.x, b.y), b.y);
       bannerG._flag.rotation.y = Math.sin(T * 2.6) * 0.25;
     }
-    /* company standards: one pennant per detached company, ringed around its post */
+    /* THE COLOURS ARE CARRIED, and that is the one that matters. A post at the rally says
+     * where you SENT a company; a standard over the column says which company you are looking
+     * at, which is the question a board with three of them out actually asks. The sim names
+     * the bearer (World.bearers) — the senior man in the open — so every machine at a LAN
+     * table flies it over the same soldier without a byte agreeing it, and when he falls the
+     * next man has it on the same tick.
+     * Drawn BIG on purpose: this is read at a glance, across a fight, on a phone. The pole
+     * stands well clear of a man's head and the flag is more than twice the rally post's. */
     const me = view.players[viewer];
     const active = new Set();
+    const byId = new Map();
+    for (const u of view.units) if (u.owner === viewer) byId.set(u.id, u);
+    for (const co of (me.companies || [])) {
+      const u = co.bearer != null && byId.get(co.bearer);
+      /* a bearer inside a tower is not drawn and neither is his flag — the sim already passes
+       * the standard over him while anyone is standing in the open, so this is only the case
+       * where the WHOLE company is shut in */
+      if (!u || u.tow) continue;
+      const key = 'b' + co.id;
+      active.add(key);
+      let f = coFlags.get(key);
+      if (!f) {
+        f = new THREE.Group();
+        const pole = meshOf([part(cyl(0.8, 0.8, 46, 5), 0xd8c8a8, 0, 23, 0)]);
+        const pf = new THREE.Mesh(new THREE.PlaneGeometry(22, 13).translate(11, 0, 0),
+          fogPatch(new THREE.MeshBasicMaterial({ color: PENNANT[(co.id - 1) % PENNANT.length],
+                                                 side: THREE.DoubleSide })));
+        pf.position.set(0, 39, 0);
+        f.add(pole, pf); f._flag = pf;
+        worldG.add(f);
+        coFlags.set(key, f);
+      }
+      f.position.set(u.x, groundH(u.x, u.y), u.y);
+      f._flag.rotation.y = Math.sin(T * 2.2 + co.id) * 0.3;
+    }
     const cos = (me.companies || []).filter((co) => co.rally);
     cos.forEach((s, i) => {
       active.add(s.id);
       let f = coFlags.get(s.id);
       if (!f) {
         f = new THREE.Group();
-        const pole = meshOf([part(cyl(0.7, 0.7, 30, 5), 0xd8c8a8, 0, 15, 0)]);
-        const pf = new THREE.Mesh(new THREE.PlaneGeometry(13, 8).translate(6.5, 0, 0),
+        const pole = meshOf([part(cyl(0.7, 0.7, 34, 5), 0xd8c8a8, 0, 17, 0)]);
+        const pf = new THREE.Mesh(new THREE.PlaneGeometry(17, 10).translate(8.5, 0, 0),
           fogPatch(new THREE.MeshBasicMaterial({ color: PENNANT[(s.id - 1) % PENNANT.length], side: THREE.DoubleSide })));
-        pf.position.set(0, 26, 0);
+        pf.position.set(0, 29, 0);
         f.add(pole, pf); f._flag = pf;
         worldG.add(f);
         coFlags.set(s.id, f);
@@ -3024,6 +3077,31 @@
         g.moveTo(mpx(ax), mpy(ay));
         g.lineTo(mpx(b.x2), mpy(b.y2));
         g.stroke();
+      }
+    }
+    /* AND THE STANDARDS. The minimap is where you find your army on a phone — the board is
+     * two thousand by two thousand four hundred and the screen shows a corner of it — and
+     * until now it showed springs, Seats and curtains but nothing about where your own men
+     * were. One mark per company, at its BEARER (where the men ARE), in that company's own
+     * colour, drawn as a pennant on a staff so it reads as a flag at four pixels rather than
+     * as another dot. Own companies only: whose men are where is the owner's alone. */
+    const meCo = view.players[viewer];
+    if (meCo && meCo.companies && meCo.companies.length) {
+      const own = new Map();
+      for (const u of view.units) if (u.owner === viewer) own.set(u.id, u);
+      for (const co of meCo.companies) {
+        const u = co.bearer != null && own.get(co.bearer);
+        if (!u) continue;
+        const X = mpx(u.x), Y = mpy(u.y);
+        g.strokeStyle = 'rgba(0,0,0,0.85)'; g.lineWidth = 2.4;
+        g.beginPath(); g.moveTo(X, Y); g.lineTo(X, Y - 9); g.stroke();
+        g.strokeStyle = '#ffe9a8'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(X, Y); g.lineTo(X, Y - 9); g.stroke();
+        g.fillStyle = '#' + PENNANT[(co.id - 1) % PENNANT.length].toString(16).padStart(6, '0');
+        g.beginPath();
+        g.moveTo(X + 0.5, Y - 9); g.lineTo(X + 7.5, Y - 6.5); g.lineTo(X + 0.5, Y - 4);
+        g.closePath(); g.fill();
+        g.strokeStyle = 'rgba(0,0,0,0.6)'; g.stroke();
       }
     }
     g.lineWidth = 1;

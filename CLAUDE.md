@@ -182,6 +182,21 @@ standard and turns the army home. The AI still uses it as its general muster, wh
 removing it outright would mean rewriting every heir's doctrine.
 Tapping your own troops arms their company (`Render.hitUnit`, tight 24 reach on purpose).
 
+**A COMPANY'S COLOURS ARE CARRIED BY A MAN.** `World.bearers` names one per company each tick:
+the senior man (lowest id) who is out in the open — a man shut in a tower is passed over while
+anyone else stands, since the renderer does not draw him. Lowest id is arithmetic, so every
+machine at a LAN table flies the standard over the same soldier without a byte agreeing it, and
+when he falls the next man has it on the SAME tick. `co.bearer` rides the wire for the owner
+only, like the rest of a company. It is a picture, not a rule: a bearer fights and dies like
+anyone and losing him costs nothing — making the flag worth killing would have to go to the
+referee first. The tray shows the armed company's ROSTER beside its chip (icons straight off
+`CONST.UNITS[k].icon`, so a new kind needs no code), and the minimap carries one pennant per
+company at its bearer, which is the only thing on that map that says where your army is.
+A work's group is cached by a key that must carry **everything drawn into it** — the branch, the
+level, the garrison, the damage, a wall's ends and breach, *and the company whose standard it
+flies*. The company was the one thing missing, so `{c:'assign'}` moved a hall and its flag went
+on flying the old colours until something else rebuilt the group.
+
 Building is CHOOSE-THEN-PLACE: the 🔨 BUILD button opens the sheet, a card arms
 `game.placing`, and the next tap on the map places it (a wall takes two — anchor, then far
 end). Bare ground does nothing. A refusal leaves the work armed so another spot can be tried.
