@@ -55,6 +55,7 @@
   /* ---------------- match lifecycle ---------------- */
   function startSP(kind, opts, isCampaign) {
     game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
+    if (Render.clearSeatFalls) Render.clearSeatFalls();   // no throne is falling in a new match
     /* THE BOARD MAY BE CHOSEN RATHER THAN GROWN. `opts.spec` hands createWorld a hand-made
      * world (WorldGen.fromSpec) instead of leaving it to noise, and `opts.seed` pins the
      * match's own RNG so a board plays out the same way twice. This is the seam a campaign
@@ -96,6 +97,7 @@
     game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
     Net.localIdx = game.viewer;
     game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
+    if (Render.clearSeatFalls) Render.clearSeatFalls();   // no throne is falling in a new match
     game.span = null; game.placing = null; Render.span = null;
     /* a call for another match belongs to the match that ended, not to this one */
     game.called = false; game.noMore = false;

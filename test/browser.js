@@ -3257,6 +3257,56 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- a new match opens on a Seat that is standing ----------------
+   * Reported from play, from a phone, thirty seconds into a LAN match: the Seat drawn as a
+   * broken stump while the sim said it was at full health. The collapse animation is module
+   * state in the renderer and nothing emptied it — it was spliced only when a seat had no
+   * tower, and a world rebuild gives every seat a NEW tower. So the entry outlived its match,
+   * its t0 was minutes stale, and the fresh throne opened at the END of a fall it had never
+   * begun. Nothing to do with LAN: LAN is where you rematch without reloading the page.
+   * The suite plays the fall, waits for it to finish, starts a SECOND match on the same page
+   * and asks the renderer where the tower is. */
+  {
+    suite('a new match opens on a Seat that is standing');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 1 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const fell = await pg.evaluate(async () => {
+      window.Render.seatFall(0);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return window.Render.debugSeatTower(0);
+    });
+    /* THE RIG HAS TO SHOW IT CAN TOPPLE A TOWER before "the tower is upright" means anything */
+    ok('the rig is alive: a called-for collapse really moves the Seat',
+       !!fell && (fell.base - fell.y > 0.5 || fell.lean > 0.001),
+       fell ? `y ${fell.y.toFixed(1)} of base ${fell.base.toFixed(1)}, lean ${fell.lean.toFixed(3)}` : 'no tower');
+    await pg.waitForTimeout(2900);                    // let the fall finish and go stale
+    await pg.evaluate((spec) => window.Game.startSP('bleys', { spec, seed: 2 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const now = await pg.evaluate(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return { t: window.Render.debugSeatTower(0), falls: window.Render.debugSeatFall() };
+    });
+    ok('the second match has no collapse left over from the first', !now.falls, 'a fall is still in flight');
+    if (now.t) {
+      ok('...and its Seat stands at full height', Math.abs(now.t.y - now.t.base) < 0.5,
+         `y ${now.t.y.toFixed(1)} of base ${now.t.base.toFixed(1)}`);
+      ok('...upright', Math.abs(now.t.lean) < 0.001, `lean ${now.t.lean.toFixed(3)}`);
+      ok('...and solid', now.t.opacity > 0.99, `opacity ${now.t.opacity.toFixed(2)}`);
+    } else {
+      ok('the new match has a Seat tower at all', false, 'no tower');
+    }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   /* ---------------- nothing in the world escapes the veil ----------------
    * THE ONE HAZARD OF PUTTING THE VEIL IN THE MATERIALS. The 2D canvas covered the whole
    * screen and so covered everything on it by construction; the shader covers what it was

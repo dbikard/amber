@@ -1543,11 +1543,38 @@
     if (!seatFalls.some((f) => f.pi === pi)) seatFalls.push({ pi, t0: performance.now() });
   };
   R.seatFallDone = (pi) => !seatFalls.some((f) => f.pi === pi && performance.now() - f.t0 < 2600);
+  /* A COLLAPSE BELONGS TO THE MATCH IT HAPPENED IN. `seatFalls` is module state and nothing
+   * emptied it: it was spliced only when a seat had no tower at all, and starting another
+   * match gives every seat a NEW tower, so the entry survived. Its t0 was then minutes old,
+   * k was 1 on the very first frame, and the fresh Seat opened SUNK ninety-six units, leaning
+   * and dimmed — a throne drawn as rubble while the sim said full health. Reported from play,
+   * from a phone, thirty seconds into a LAN match; nothing to do with LAN, which is simply
+   * where you start another match without reloading the page.
+   * Cleared from the two places a match BEGINS, which is the only moment that can say with
+   * authority that nothing is falling. Deliberately NOT on a world rebuild: a rebuild also
+   * happens when the viewer changes seats, and in a free-for-all a toppled Seat must STAY
+   * down for the heirs still playing. */
+  R.clearSeatFalls = function () { seatFalls.length = 0; };
   R.debugSeatFall = () => seatFalls.length > 0;   // is a collapse in flight — for the suite
+  /* test handle: the Seat as the renderer is actually drawing it. "Is the throne standing?"
+   * is not answerable from outside without reaching into the scene graph, and the one bug
+   * this has had was a tower drawn toppled while the sim said it was at full health. */
+  R.debugSeatTower = (pi) => {
+    const g = cityObjs && cityObjs[pi];
+    if (!g || !g.tower) return null;
+    let op = 1;
+    g.tower.traverse((o) => { if (o.material && o.material.opacity != null) op = o.material.opacity; });
+    return { y: g.tower.position.y, base: g.tower._baseY == null ? g.tower.position.y : g.tower._baseY,
+             lean: g.tower.rotation.z, opacity: op };
+  };
   function driveSeatFalls() {
     for (let i = seatFalls.length - 1; i >= 0; i--) {
       const f = seatFalls[i], g = cityObjs && cityObjs[f.pi];
       if (!g || !g.tower) { seatFalls.splice(i, 1); continue; }
+      /* and a fall drives the tower it STARTED on, never a later one — the belt to
+       * clearSeatFalls' braces, for any path that builds a new world without saying so. */
+      if (f.tower && f.tower !== g.tower) { seatFalls.splice(i, 1); continue; }
+      f.tower = g.tower;
       const k = Math.min(1, (performance.now() - f.t0) / 2500);
       /* ease-in: stone hesitates, then goes. Sink most of the shaft, lean hard, dim. */
       const e = k * k;
@@ -1583,7 +1610,7 @@
       worldG.remove(c2);
     }
     siteObjs.clear(); unitIM = {}; unitFace.clear(); coFlags.clear();
-    /* and the veil forgets what it was easing towards: a new board's first frame must open on
+    /* the veil forgets what it was easing towards: a new board's first frame must open on
      * THIS match's fog, not fade out of the last one's */
     for (const k in veilT) delete veilT[k];
     /* the halo hangs in worldG, which was just emptied — forget the handle or the next frame
