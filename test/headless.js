@@ -114,6 +114,85 @@ for (const seed of SEEDS) {
   }
 }
 
+/* ---------------- a board built by hand ----------------
+ * The land is noise by default. A spec is the other road in: a declarative board that comes
+ * out as EXACTLY what G.build produces, so nothing downstream can tell which made it. It is
+ * for tests that need a particular feature in shot, for campaign chapters that have to tell a
+ * story, and eventually for players building their own.
+ * VALIDATION IS THE FEATURE. Procedural generation quietly guarantees things the rest of the
+ * game leans on; a hand-made board breaks them casually, and a player-made one certainly will.
+ * So most of this suite is about what a bad spec is REFUSED for — by name, with a reason. */
+suite('a board built by hand');
+{
+  const good = () => ({
+    name: 'the Wall Demo', seed: 7, ground: 'PLAIN', height: 0.5,
+    paint: [{ rect: [200, 1050, 1800, 1250], terra: 'FOREST' },
+            { circle: [1450, 760, 240], terra: 'CLIFF', height: 0.95 }],
+    seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+    springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }]
+  });
+  ok('there is a spec road into worldgen at all', typeof WG.fromSpec === 'function');
+
+  const w = World.createWorld(1, 2, good());
+  ok('a hand-made board builds', !!w && !!w.map, 'no world');
+  ok('...with the seats it was given', w.map.cities.length === 2);
+  ok('...and the springs', w.map.nodes.length === 3);
+  ok('nothing on it is stranded', NAV.audit(w.nav, w.map).length === 0,
+     NAV.audit(w.nav, w.map).join(','));
+  /* THE OPENING IS THE REAL TEST. A board that cannot open leaves an heir with no Gate, no
+   * mason and no hall, and the failure shows up far from the board that caused it. */
+  for (let pi = 0; pi < 2; pi++) {
+    const bts = w.players[pi].buildings.map((b) => b.bt);
+    ok(`seat ${pi} opens with a finished Gate and a hall`,
+       bts.includes('gate') && bts.includes('barracks'), bts.join(',') || 'nothing');
+  }
+  const gate = w.players[0].buildings.find((b) => b.bt === 'gate');
+  const spring = w.map.sites[w.map.nodes.find((i) => Math.hypot(w.map.sites[i].x - gate.x, w.map.sites[i].y - gate.y) < 120)];
+  ok('the opening Gate stands on a spring', !!spring &&
+     Math.hypot(spring.x - gate.x, spring.y - gate.y) < C.NODE.r,
+     spring ? `${Math.round(Math.hypot(spring.x - gate.x, spring.y - gate.y))} off centre` : 'no spring near it');
+
+  /* the terrain the spec asked for is the terrain the sim reads */
+  const at = (x, y) => w.map.gen.terra[Math.floor(y / w.map.gen.cw) * w.map.gen.W + Math.floor(x / w.map.gen.cw)];
+  ok('a painted forest is forest', at(1000, 1150) === WG.T.FOREST, String(at(1000, 1150)));
+  ok('a painted crag is cliff', at(1450, 760) === WG.T.CLIFF, String(at(1450, 760)));
+  ok('and unpainted ground is the base', at(300, 300) === WG.T.PLAIN, String(at(300, 300)));
+
+  /* DETERMINISM, or replays, the chronicle and LAN all come apart */
+  const a = World.createWorld(1, 2, good()), b = World.createWorld(1, 2, good());
+  let same = a.map.gen.terra.length === b.map.gen.terra.length;
+  for (let i = 0; same && i < a.map.gen.terra.length; i++) if (a.map.gen.terra[i] !== b.map.gen.terra[i]) same = false;
+  ok('the same spec twice is the same ground', same);
+  ok('...and the same sites, named the same', JSON.stringify(a.map.sites) === JSON.stringify(b.map.sites));
+
+  /* ---- what a bad board is refused for ---- */
+  const refuse = (why, mut) => {
+    const sp = good(); mut(sp);
+    let msg = null;
+    try { World.createWorld(1, 2, sp); } catch (e) { msg = e.message; }
+    ok(`refused: ${why}`, !!msg, msg === null ? 'it BUILT — a broken board got through' : '');
+    return msg;
+  };
+  const m1 = refuse('a second spring inside the writ', (sp) => sp.springs.push({ x: 700, y: 300 }));
+  ok('...and says which seat and how many', /seat 0 has 2 springs/.test(m1 || ''), m1 || '');
+  refuse('no spring inside the writ', (sp) => { sp.springs[0] = { x: 980, y: 700 }; });
+  refuse('a seat on ground no one can build on', (sp) => {
+    sp.paint.push({ circle: [520, 420, 90], terra: 'WATER', height: 0.05 });
+  });
+  const m2 = refuse('seats too close together', (sp) => { sp.seats[1] = { x: 700, y: 700 }; });
+  ok('...and says how far apart they are', /apart/.test(m2 || ''), m2 || '');
+  refuse('a terrain name that does not exist', (sp) => { sp.paint[0].terra = 'LAVA'; });
+  refuse('a spring off the map', (sp) => { sp.springs[0] = { x: -50, y: 560 }; });
+  refuse('fewer seats than players', (sp) => { sp.seats.length = 1; });
+  refuse('no springs at all', (sp) => { sp.springs = []; });
+
+  /* the two roads produce the same SHAPE — that is what lets everything downstream not care */
+  const proc = World.createWorld(1000, 2);
+  const keys = (o) => Object.keys(o).sort().join(',');
+  ok('a hand-made map has the same fields as a grown one',
+     keys(w.map) === keys(proc.map), `${keys(w.map)}  vs  ${keys(proc.map)}`);
+}
+
 suite('movement');
 for (const seed of SEEDS.slice(0, 3)) {
   const w = World.createWorld(seed);

@@ -64,8 +64,10 @@
   /* ---------------- the world ----------------
    * Generated fresh, every match, by js/worldgen.js. No template, no mirror, no corridors —
    * and therefore no way to know where the other Seat stands until somebody walks there. */
-  function buildMap(seed, players) {
-    const gen = WG.build(seed, RNG, players);
+  function buildMap(seed, players, spec) {
+    /* a board somebody CHOSE, or the land made new from noise — everything downstream reads
+     * the same structure either way, which is the whole point of routing both through here */
+    const gen = spec ? WG.fromSpec(spec, players) : WG.build(seed, RNG, players);
     if (!gen) return null;
     for (const s of gen.sites) { s.lastHurt = -99; }
     return { sites: gen.sites, cities: gen.cities, nodes: gen.nodes,
@@ -75,9 +77,9 @@
   /* `players` is 2..4. Two is a duel and behaves exactly as it always did; more is a
    * free-for-all, where toppling a Seat ELIMINATES that heir rather than ending the match,
    * and the last one left takes the throne. */
-  function createWorld(seed, players) {
+  function createWorld(seed, players, spec) {
     const rng = RNG.make(seed >>> 0);
-    const map = buildMap(seed >>> 0, players);
+    const map = buildMap(seed >>> 0, players, spec);
     const seats = map.cities;
     const world = {
       seed: seed >>> 0, rng,

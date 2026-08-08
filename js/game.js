@@ -55,7 +55,14 @@
   /* ---------------- match lifecycle ---------------- */
   function startSP(kind, opts, isCampaign) {
     game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
-    game.world = World.createWorld((Math.random() * 0xffffffff) >>> 0);
+    /* THE BOARD MAY BE CHOSEN RATHER THAN GROWN. `opts.spec` hands createWorld a hand-made
+     * world (WorldGen.fromSpec) instead of leaving it to noise, and `opts.seed` pins the
+     * match's own RNG so a board plays out the same way twice. This is the seam a campaign
+     * chapter needs — a story wants its own ground, not whatever the noise produced — and it
+     * is what lets a test put a wall, a crag or a wood exactly where the camera is looking.
+     * Everything downstream reads the same world either way. */
+    const seed = (opts && opts.seed != null) ? (opts.seed >>> 0) : ((Math.random() * 0xffffffff) >>> 0);
+    game.world = World.createWorld(seed, opts && opts.players, opts && opts.spec);
     game.bot = AI.make(kind, opts);
     /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
     game.world.players[1].eco = (opts && opts.eco) || 1;

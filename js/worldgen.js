@@ -180,6 +180,29 @@
   /* ---------------- choosing the two Seats ----------------
    * This is where fairness lives now. Score many far-apart pairs on what each side has in
    * reach and keep the pair whose two sides differ least. */
+  /* ---------------- where a realm's opening Gate stands ----------------
+   * Every heir starts with exactly one spring inside his writ and a FINISHED Shadow Gate on
+   * it, so any board — noise-grown or hand-built — must be able to say where that Gate goes.
+   * Procedural generation asks while it is scoring Seats; a spec asks once the ground is
+   * already laid. One implementation for both. `buildableAt(x, y)` is the only part that
+   * differs: it is the caller's own land test. */
+  G.homeGateOn = function (p, nodes, buildableAt) {
+    for (let qi = 0; qi < nodes.length; qi++) {
+      const q = nodes[qi];
+      const dq = Math.hypot(p.x - q.x, p.y - q.y);
+      if (dq < C.WORLD.springNear || dq > C.WORLD.springFar) continue;
+      for (let rr = 18; rr <= C.NODE.r - 8; rr += 22)
+        for (let a = 0; a < 16; a++) {
+          const th = a / 16 * Math.PI * 2;
+          const gx = q.x + Math.cos(th) * rr, gy = q.y + Math.sin(th) * rr;
+          const ds = Math.hypot(gx - p.x, gy - p.y);
+          if (ds <= C.CITY.seatR + C.BUILD.foot || ds >= C.CLAIM.seat) continue;
+          if (buildableAt(gx, gy)) return { x: gx, y: gy, node: qi };
+        }
+    }
+    return null;
+  };
+
   function placeCities(land, reach, nodes, rng, want) {
     const { W, H, cw, terra } = land, n = W * H;
     const seats = [];
@@ -254,24 +277,14 @@
       return [u, near(p, 900), roomAt(land, i, 460)];
     };
     /* the spring that spring IS, and the spot on its ring a Gate can stand on — the same
-     * search `usable` runs to count it, kept this time instead of thrown away */
-    placeCities.homeGate = (p) => {
-      for (let qi = 0; qi < nodes.length; qi++) {
-        const q = nodes[qi];
-        const dq = Math.hypot(p.x - q.x, p.y - q.y);
-        if (dq < C.WORLD.springNear || dq > C.WORLD.springFar) continue;
-        for (let rr = 18; rr <= C.NODE.r - 8; rr += 22)
-          for (let a = 0; a < 16; a++) {
-            const th = a / 16 * Math.PI * 2;
-            const gx = q.x + Math.cos(th) * rr, gy = q.y + Math.sin(th) * rr;
-            const ds = Math.hypot(gx - p.x, gy - p.y);
-            if (ds <= C.CITY.seatR + C.BUILD.foot || ds >= C.CLAIM.seat) continue;
-            const ci = cellAt(gx, gy);
-            if (ci >= 0 && G.BUILDABLE[terra[ci]]) return { x: gx, y: gy, node: qi };
-          }
-      }
-      return null;
-    };
+     * search `usable` runs to count it, kept this time instead of thrown away.
+     * The search itself lives at module level (G.homeGateOn) because a board built by HAND
+     * has to answer the same question, and two copies of it would drift — with the drift
+     * showing up only as a realm that cannot open. */
+    placeCities.homeGate = (p) => G.homeGateOn(p, nodes, (x, y) => {
+      const ci = cellAt(x, y);
+      return ci >= 0 && !!G.BUILDABLE[terra[ci]];
+    });
     const spread = (xs) => Math.max(...xs) - Math.min(...xs);
     let best = null;
     for (let tries = 0; tries < 900; tries++) {
@@ -400,6 +413,150 @@
       };
     }
     return null;
+  };
+
+  /* ================= a board built by hand =================
+   * The land is noise by default, and that is right for a duel: a mirrored world tells you
+   * where the rival stands. But three things want a board somebody CHOSE — a test that needs
+   * a wall in shot, a campaign chapter that has to tell a particular story, and eventually a
+   * player who wants to build one. All three need the same thing: a declarative spec that
+   * produces EXACTLY what G.build produces, so nothing downstream can tell the difference.
+   *
+   * VALIDATION IS THE FEATURE, NOT THE BUILDER. Procedural generation quietly guarantees
+   * invariants the rest of the game leans on, and a hand-made board breaks them casually:
+   * a Seat with no usable spring gives an heir no opening Gate and no mason, and the failure
+   * surfaces a long way from its cause. A spec that cannot hold up is REFUSED, by name, with
+   * the reason — never half-built.
+   *
+   * A spec is plain JSON so it can be saved, shared and sent over the wire:
+   *   { name, seed, ground:'PLAIN', height:0.5,
+   *     paint:[ {rect:[x0,y0,x1,y1], terra:'FOREST'},
+   *             {circle:[x,y,r],     terra:'CLIFF', height:0.95} ],
+   *     seats:[{x,y},…], springs:[{x,y},…], vantages:[{x,y},…] }
+   * Terrain names are the keys of G.T. Paints apply in order, so later ones overwrite. */
+  G.SPEC_VERSION = 1;
+
+  G.fromSpec = function (spec, players) {
+    const fail = (why) => { const e = new Error('world spec: ' + why); e.spec = true; throw e; };
+    if (!spec || typeof spec !== 'object') fail('not an object');
+    const want = players || (spec.seats && spec.seats.length) || 2;
+    if (!Array.isArray(spec.seats) || spec.seats.length < want)
+      fail(`needs ${want} seats, has ${(spec.seats || []).length}`);
+    if (!Array.isArray(spec.springs) || !spec.springs.length) fail('needs at least one spring');
+
+    const cw = C.NAV.cell;
+    const W = Math.round(C.MAP.W / cw), H = Math.round(C.MAP.H / cw), n = W * H;
+    const terraOf = (name) => {
+      const v = T[String(name || '').toUpperCase()];
+      if (v === undefined) fail(`unknown terrain "${name}" (want one of ${Object.keys(T).join(', ')})`);
+      return v;
+    };
+    const base = terraOf(spec.ground || 'PLAIN');
+    const elev = new Float32Array(n), terra = new Uint8Array(n);
+    elev.fill(typeof spec.height === 'number' ? spec.height : 0.5);
+    terra.fill(base);
+
+    /* paints, in order: the later one wins, which is what makes a spec readable top to bottom */
+    for (const q of (spec.paint || [])) {
+      const t = terraOf(q.terra);
+      const hh = typeof q.height === 'number' ? q.height : null;
+      const put = (gx, gy) => {
+        if (gx < 0 || gy < 0 || gx >= W || gy >= H) return;
+        const i = gy * W + gx;
+        terra[i] = t;
+        if (hh !== null) elev[i] = hh;
+      };
+      if (q.rect) {
+        const [x0, y0, x1, y1] = q.rect;
+        for (let gy = Math.floor(Math.min(y0, y1) / cw); gy <= Math.floor(Math.max(y0, y1) / cw); gy++)
+          for (let gx = Math.floor(Math.min(x0, x1) / cw); gx <= Math.floor(Math.max(x0, x1) / cw); gx++) put(gx, gy);
+      } else if (q.circle) {
+        const [cx, cy, r] = q.circle, r2 = r * r;
+        for (let gy = Math.floor((cy - r) / cw); gy <= Math.floor((cy + r) / cw); gy++)
+          for (let gx = Math.floor((cx - r) / cw); gx <= Math.floor((cx + r) / cw); gx++) {
+            const wx = (gx + 0.5) * cw - cx, wy = (gy + 0.5) * cw - cy;
+            if (wx * wx + wy * wy <= r2) put(gx, gy);
+          }
+      } else fail('a paint needs a rect or a circle');
+    }
+
+    const land = { W, H, cw, elev, terra };
+    const idx = (x, y) => {
+      const gx = Math.floor(x / cw), gy = Math.floor(y / cw);
+      return (gx < 0 || gy < 0 || gx >= W || gy >= H) ? -1 : gy * W + gx;
+    };
+    const buildableAt = (x, y) => { const i = idx(x, y); return i >= 0 && !!G.BUILDABLE[terra[i]]; };
+
+    /* the sites, springs first so their ids are stable and readable in a saved spec */
+    const sites = [];
+    const push = (kind, p) => {
+      if (typeof p.x !== 'number' || typeof p.y !== 'number') fail(`a ${kind} has no x,y`);
+      if (p.x < 0 || p.y < 0 || p.x > C.MAP.W || p.y > C.MAP.H) fail(`a ${kind} lies off the map at ${p.x | 0},${p.y | 0}`);
+      sites.push({ id: sites.length, kind, x: p.x, y: p.y, lastHurt: -99 });
+      return sites[sites.length - 1];
+    };
+    for (const q of spec.springs) push('node', q);
+    for (const q of (spec.vantages || [])) push('vantage', q);
+    const cityIds = [];
+    for (let k = 0; k < want; k++) cityIds.push(push('city', spec.seats[k]).id);
+    const nodeIds = sites.filter((x) => x.kind === 'node').map((x) => x.id);
+    const nodes = nodeIds.map((i) => sites[i]);
+
+    /* ---- the invariants a board has to hold up, each refused by name ---- */
+    const reach = mainland(land);
+    for (const st of sites) {
+      const i = idx(st.x, st.y);
+      if (i < 0) fail(`${st.kind} ${st.id} is off the grid`);
+      if (st.kind === 'city' && !G.BUILDABLE[terra[i]])
+        fail(`seat ${cityIds.indexOf(st.id)} stands on ground no one can build on`);
+      if (reach && !reach.seen[i])
+        fail(`${st.kind} ${st.id} at ${st.x | 0},${st.y | 0} is cut off from the mainland`);
+    }
+    const apart = C.WORLD.seatApart * (want > 2 ? C.WORLD.seatApartMulti : 1);
+    for (let a = 0; a < cityIds.length; a++)
+      for (let b = a + 1; b < cityIds.length; b++) {
+        const p = sites[cityIds[a]], q = sites[cityIds[b]];
+        const d = Math.hypot(p.x - q.x, p.y - q.y);
+        if (d < apart * 0.95) fail(`seats ${a} and ${b} are ${d | 0} apart, want ${apart | 0}`);
+      }
+    /* EXACTLY ONE SPRING IN THE WRIT — the rule the opening rests on. Not "at least one": two
+     * springs inside a claim is twice the economy and twice the masons before a shot is fired,
+     * and no amount of scoring elsewhere closes that. */
+    const homeGates = [];
+    for (let k = 0; k < cityIds.length; k++) {
+      const p = sites[cityIds[k]];
+      const inWrit = nodes.filter((q) => Math.hypot(p.x - q.x, p.y - q.y) < C.CLAIM.seat).length;
+      if (inWrit !== 1) fail(`seat ${k} has ${inWrit} springs inside its writ, wants exactly 1`);
+      const g = G.homeGateOn(p, nodes, buildableAt);
+      if (!g) fail(`seat ${k} has no buildable spot for its opening Gate on its spring's ring`);
+      homeGates.push(g);
+    }
+
+    /* names, so a hand-built board reads like the game rather than like a test fixture */
+    const bags = {};
+    for (const k of Object.keys(C.SITE_NAMES)) bags[k] = C.SITE_NAMES[k].slice();
+    let nameSeed = (spec.seed >>> 0) || 1;
+    const pick = (bag) => {
+      nameSeed = (nameSeed * 1103515245 + 12345) >>> 0;   // named without an RNG in hand
+      return bag.splice(nameSeed % bag.length, 1)[0];
+    };
+    for (const st of sites) {
+      if (st.kind === 'city') continue;
+      const bag = bags[st.kind];
+      st.name = (bag && bag.length) ? pick(bag)
+        : (st.kind === 'node' ? 'a Spring of Shadow' : 'a High Place');
+    }
+    cityIds.forEach((id, k) => { sites[id].name = 'the City of ' + C.SEAT_NAMES[k]; });
+
+    return {
+      sites, cities: cityIds, nodes: nodeIds,
+      W, H, cw, elev, terra,
+      homeGates,
+      seed: (spec.seed >>> 0) || 1, skew: 0,
+      apart: Math.round(cityIds.length > 1
+        ? Math.hypot(sites[cityIds[0]].x - sites[cityIds[1]].x, sites[cityIds[0]].y - sites[cityIds[1]].y) : 0),
+      attempt: 0, spec: spec.name || 'unnamed'
+    };
   };
 
   global.WorldGen = G;
