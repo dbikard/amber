@@ -897,11 +897,24 @@
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0d0b16);
-    scene.fog = new THREE.Fog(0x120d1a, 1150, 2600);
-    scene.add(new THREE.HemisphereLight(0xa8a2d8, 0x5a4830, 1.5));
-    const sun = new THREE.DirectionalLight(0xffe8c0, 1.75);
+    /* THE DISTANCE FOG WAS TAXING THE PLAYABLE ZOOM RANGE, not just the horizon. Linear fog
+     * is a function of camera distance, and at 1150 it started biting inside the range the
+     * player actually uses: lit ground measured 20 at zoom 0.80 against 30 at 1.30 and 29 at
+     * 2.60 — pulling out to see the board cost a THIRD of the light, which reads as the game
+     * dimming when you need to look at it. Pushed out to 2000/4600 the world still dissolves
+     * into Shadow at its true rim and the brightness stops depending on the zoom. */
+    scene.fog = new THREE.Fog(0x120d1a, 2000, 4600);
+    /* and the whole picture lifted about a quarter. Reported from play as simply too dark,
+     * and the measurements agree: sighted ground sat at 29 of 255. 36 across every zoom. */
+    const hemi = new THREE.HemisphereLight(0xa8a2d8, 0x5a4830, 2.15);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffe8c0, 2.5);
     sun.position.set(-420, 760, 380);
     scene.add(sun);
+    /* test handle: the three things that decide how bright the world is. A rig asking "why is
+     * it dark — the fog, the lights, or the palette?" has to be able to switch each off and
+     * measure, and every other answer to that question is a guess. */
+    R.debugScene = () => ({ scene, hemi, sun, renderer });
     /* far plane has to clear the whole board from the furthest zoom, or the world clips
      * to black at the edges when you pull out */
     cam = new THREE.PerspectiveCamera(55, 1, 10, 9000);
