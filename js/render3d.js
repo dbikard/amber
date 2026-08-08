@@ -181,7 +181,12 @@
     nor[1] = 1;
     for (let i = 0; i <= n; i++) {
       const a2 = i / n * Math.PI * 2;
-      const r = r0 * (1 + 0.15 * Math.sin(a2 * 1.0 + seed) + 0.10 * Math.sin(a2 * 3.0 - seed * 1.7)
+      /* HARMONICS 2 AND UP, NEVER 1. A first harmonic in r(theta) does not deform a circle,
+       * it TRANSLATES it — one side comes in by 15% and the opposite side goes out by 15% —
+       * so the pool drifted off the site it belongs to and the Gate standing at the site's
+       * exact centre looked planted at the water's edge. Every higher harmonic pushes in and
+       * out in pairs and leaves the centre exactly where it was. */
+      const r = r0 * (1 + 0.13 * Math.sin(a2 * 2.0 + seed) + 0.09 * Math.sin(a2 * 3.0 - seed * 1.7)
                         + 0.055 * Math.sin(a2 * 5.0 + seed * 0.6));
       const j = (i + 1) * 3;
       pos[j] = Math.cos(a2) * r; pos[j + 2] = Math.sin(a2) * r; nor[j + 1] = 1;
@@ -343,7 +348,9 @@
       if (lv > 2) {
         p.push(part(cyl(3, 3.6, 20, 5), st, -26, 10, 0));                 // outer piers
         p.push(part(cyl(3, 3.6, 20, 5), st, 26, 10, 0));
-        p.push(part(sph(4.5), 0xc48eff, 0, h + 16, 0));                   // the drawn Shadow itself
+        /* NO ORB. A violet ball hanging over the lintel was the loudest thing on the board and
+         * read as a power-up, not as a deep-drawn Gate. A third level still says so — it has
+         * the lintel course and the outer piers — without a lamp on the roof. */
       }
     } else if (bt === 'barracks') {
       /* a hall that musters veterans is a bigger hall: it gains a drill yard wall at 2 and a
@@ -1721,17 +1728,10 @@
         lip.position.y = 0.45;
         const water = new THREE.Mesh(poolGeo(seed, 26), poolWaterMat);
         water.position.y = 1.0;
+        /* NO STONES ROUND THE RIM. Six spheres in the kit's lavender ringed the pool and read
+         * as purple orbs floating on the bank — jewellery, not landscape. The bank itself is
+         * the detail now, and it is the right kind: it belongs to the water. */
         holder.add(lip, water);
-        const stones = [];
-        for (let k = 0; k < 6; k++) {
-          /* seeded by the SITE, not by chance: every machine at a LAN table draws the same
-           * spring, and a rejoin does not reshuffle the stones */
-          const a = (k + 0.5) / 6 * Math.PI * 2 + (s.id % 7) * 0.4;
-          const r = 32 + ((s.id * 13 + k * 5) % 6);
-          stones.push(part(sph(2.4 + ((s.id + k) % 3)), k % 2 ? 0x5a5266 : 0x6a6276,
-                           Math.cos(a) * r, 1.4, Math.sin(a) * r));
-        }
-        holder.add(meshOf(stones));
       } else if (s.kind === 'vantage') {
         holder.add(meshOf([part(sph(12), 0x5a5266, -10, 6, 2), part(sph(9), 0x6a6276, 8, 5, -6), part(sph(6), 0x4a4258, 2, 4, 10)]));
       } else {
