@@ -142,6 +142,28 @@ progress. AI reads only what a human could see (see `AI.view()`).
   died on a black screen when it was called on. WebGL is now a stated requirement, said
   plainly at boot. `runRenderer` still buffers its own rows/timings, which is what a second
   renderer or viewport size would need to run alongside.
+- **THE VEIL IS SAMPLED IN THE MATERIALS, not drawn on a canvas** (`R.shaderFog`, on).
+  `fogPatch(mat[, slope])` injects into every material in `worldG`: the eased mask rides up as
+  a small texture (one texel per fog cell, R = sight, G = ever-seen) and each fragment reads it
+  by its own world XZ. There is no projection to disagree about, which is what the 2D pass
+  could never fix — it drew a WORLD-space field as SCREEN-space polygons and every veil defect
+  of 2026 lived in that gap. Fog is DRAINED of colour, not tinted, and the three states are
+  ONE CHAIN (shroud → fog as memory arrives, fog → the land as sight does), so there is no
+  seam and no rim to draw. The 2D path is kept and still works — `Render.shaderFog = false`
+  — and two suites still measure it, so it cannot rot silently.
+  **The hazard is the other side of the same coin: it veils only what it was handed.** Three
+  ways to lose it, all of which have actually happened:
+  (1) a new mesh created without `fogPatch` — the writ was an unpatched `LineBasicMaterial`
+  and read as the writ and the sight disagreeing about where the ground was;
+  (2) `material.clone()` — `onBeforeCompile` is a PROTOTYPE method and an assigned one is not
+  in the whitelist `Material.copy()` walks, so a clone falls back to the no-op. Ghosts,
+  scaffolding and a toppling tower all clone, and all three escaped;
+  (3) a second arm of the patch without a `customProgramCacheKey` — Three keys a patched
+  program on `onBeforeCompile.toString()`, identical for both arms when the difference is a
+  closed-over variable, so every patched material shares one program.
+  `R.debugUnpatched()` walks `worldG` and names what escapes; "nothing in the world escapes
+  the veil" asserts it is empty. The only things allowed out are meshes named `affordance` —
+  the selection ring and the armed-company halo — which answer the PLAYER, not the land.
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page for input, camera, the writ, HUD layering, the back

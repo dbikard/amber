@@ -11,7 +11,15 @@
 
   const C = global.CONST;
   const R = { targeting: false, span: null, selected: -1, pointer: null, armed: null,
-              camX: 0, camY: 0, zoom: 1, ready: false };
+              camX: 0, camY: 0, zoom: 1, ready: false,
+              /* THE VEIL IS SAMPLED IN THE MATERIALS. See the note above `fogPatch` for what
+               * that buys; the short of it is that the 2D path draws a WORLD-space field as
+               * SCREEN-space polygons and every veil defect this year lived in that gap.
+               * The 2D path is still here and still works — set this false and it draws —
+               * because a look this central should be revertible in one field, not a git
+               * archaeology exercise. It is the only switch: overlayPass reads it, and so do
+               * the suites that still measure the old veil. */
+              shaderFog: true };
   let renderer = null, scene, cam, rig, worldG;
   let overlay = null, octx = null;
   let W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
@@ -1393,6 +1401,22 @@
   R.debugFogU = FOGU;   // so a rig can force the shader off and measure the raw scene
   R.debugFogMats = () => [MAT, MATB, ground && ground.material, writG && writG.material].map((m) => m && ({
     type: m.type, patched: !!m._fogPatched, vert: !!m.userData.fogVert, frag: !!m.userData.fogFrag }));
+  /* THE ONE HAZARD OF PUTTING THE VEIL IN THE MATERIALS: it only veils the materials it was
+   * given. The 2D canvas covered everything by construction; this covers what it is told to,
+   * and anything added later without `fogPatch` shines at full strength across black shroud.
+   * That has already happened once — the writ was an unpatched LineBasicMaterial, and it read
+   * as the writ and the sight disagreeing about where the ground was. So the scene can be
+   * asked, and a suite asks it: every material under worldG, by name, that nothing darkens. */
+  R.debugUnpatched = () => {
+    const out = [];
+    if (worldG) worldG.traverse((o) => {
+      if (!o.material || o.name === 'affordance') return;
+      for (const m of [].concat(o.material))
+        if (m && !m._fogPatched)
+          out.push((o.name || o.type) + ':' + m.type + ':' + ((o.geometry && o.geometry.type) || '?'));
+    });
+    return out;
+  };
 
 
   /* ---------------- the veil lifts over TIME, not in jumps ----------------
@@ -1451,7 +1475,11 @@
       g.tower.position.y = (g.tower._baseY == null ? (g.tower._baseY = g.tower.position.y) : g.tower._baseY) - e * 96;
       g.tower.rotation.z = e * 0.38;
       g.tower.traverse((o) => { if (o.material && o.material.color) {
-        if (!o._dimmed) { o._dimmed = true; o.material = o.material.clone(); }
+        /* A CLONE LOSES THE VEIL. `onBeforeCompile` is a prototype method and an assigned
+         * one is not in the whitelist `Material.copy()` walks, so a cloned material falls
+         * back to the no-op and renders at full strength — and a toppling tower, a ghost and
+         * a scaffold are exactly the things most likely to be standing in fog. Re-patch. */
+        if (!o._dimmed) { o._dimmed = true; o.material = fogPatch(o.material.clone()); }
         o.material.opacity = 1 - e * 0.55; o.material.transparent = true;
       } });
       /* dust: a ring every third of the way down, widening as it goes */
@@ -1634,7 +1662,12 @@
       } else {
         holder.add(meshOf([part(box(8, 30, 8), 0x2c2433, 0, 15, 0), part(box(10, 3, 10), 0x5ad584, 0, 31, 0)]));
       }
+      /* AN AFFORDANCE IS NOT THE WORLD. This ring says "you have this selected" and the halo
+       * below says "these men are yours and armed" — both answer the player, not the land, and
+       * a veil over an answer to the player is a bug, not fidelity. Named so the patched-scene
+       * guard can allow exactly these two and nothing else. */
       const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 }));
+      ring.name = 'affordance';
       ring.position.y = 1.2; ring.visible = false;
       holder.add(ring);
       worldG.add(holder);
@@ -1648,7 +1681,7 @@
     bannerG = new THREE.Group();
     const pole = meshOf([part(cyl(0.9, 0.9, 42, 5), 0xd8c8a8, 0, 21, 0)]);
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(20, 11).translate(10, 0, 0),
-      new THREE.MeshBasicMaterial({ color: 0xd8b04e, side: THREE.DoubleSide }));
+      fogPatch(new THREE.MeshBasicMaterial({ color: 0xd8b04e, side: THREE.DoubleSide })));
     flag.position.set(0, 36, 0);
     bannerG.add(pole, flag); bannerG._flag = flag;
     worldG.add(bannerG);
@@ -1690,7 +1723,7 @@
   };
   function ringFx(x, z, color, ttl, big, ping) {
     const m = new THREE.Mesh(new THREE.RingGeometry(6, 9, 20).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+      fogPatch(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 })));
     m.position.set(x, groundH(x, z) + 2, z);
     worldG.add(m);
     fx.push({ k: 'ring', obj: m, ttl, max: ttl, big: big || 40, x, z, ping });
@@ -1701,7 +1734,7 @@
    * read as a man in the streets rather than the castle answering. */
   function boltFx(x1, z1, x2, z2, color, ttl, h) {
     const gline = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, groundH(x1, z1) + (h || 16), z1), new THREE.Vector3(x2, groundH(x2, z2) + 12, z2)]);
-    const m = new THREE.Line(gline, new THREE.LineBasicMaterial({ color, transparent: true }));
+    const m = new THREE.Line(gline, fogPatch(new THREE.LineBasicMaterial({ color, transparent: true })));
     worldG.add(m);
     fx.push({ k: 'bolt', obj: m, ttl, max: ttl, x: x1, z: z1 });
   }
@@ -1804,7 +1837,7 @@
       let room = 64;
       while (room < on.length) room *= 2;
       hexIM = new THREE.InstancedMesh(hexGeo(),
-        new THREE.MeshBasicMaterial({ color: 0xc48eff, transparent: true, opacity: 0.55, depthWrite: false }),
+        fogPatch(new THREE.MeshBasicMaterial({ color: 0xc48eff, transparent: true, opacity: 0.55, depthWrite: false })),
         room);
       hexIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       hexIM.frustumCulled = false;
@@ -2000,6 +2033,7 @@
       haloIM = new THREE.InstancedMesh(haloGeo(),
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }),
         room);
+      haloIM.name = 'affordance';
       haloIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       haloIM.frustumCulled = false;      // rewritten every frame — see makeIM
       haloIM.renderOrder = 1;
@@ -2207,20 +2241,21 @@
             /* the hall flies its COMPANY's colour, and every hall has one */
             const pole = meshOf([part(cyl(0.6, 0.6, 22, 4), 0xd8c8a8, 14, 30, 8)]);
             const pf = new THREE.Mesh(new THREE.PlaneGeometry(10, 6).translate(5, 0, 0),
-              new THREE.MeshBasicMaterial({ color: b.co ? PENNANT[(b.co - 1) % PENNANT.length] : 0xffd98a,
-                                            side: THREE.DoubleSide }));
+              fogPatch(new THREE.MeshBasicMaterial({ color: b.co ? PENNANT[(b.co - 1) % PENNANT.length] : 0xffd98a,
+                                            side: THREE.DoubleSide })));
             pf.position.set(14, 38, 8);
             grp.add(pole, pf);
           }
           if (b.bt === 'shrine') {
             const spiral = new THREE.Mesh(new THREE.CircleGeometry(17, 18).rotateX(-Math.PI / 2),
-              new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 }));
+              fogPatch(new THREE.MeshBasicMaterial({ color: 0x9cc8ff, transparent: true, opacity: 0.5 })));
             spiral.position.y = 11;
             grp.add(spiral);
           }
           if (ghost) grp.traverse((o) => {
             if (!o.material) return;
-            o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.34;
+            o.material = fogPatch(o.material.clone());   // a clone loses the veil — see the note in the fall
+            o.material.transparent = true; o.material.opacity = 0.34;
           });
           /* scaffolding: pale and see-through, and it grows out of the ground as it rises.
            * A work having its LEVEL raised wears the same scaffolding — it is standing and
@@ -2228,7 +2263,8 @@
            * to be visible from across the board or the pause in the muster is a mystery. */
           else if (b.raise > 0 || b.work > 0) grp.traverse((o) => {
             if (!o.material) return;
-            o.material = o.material.clone(); o.material.transparent = true;
+            o.material = fogPatch(o.material.clone());   // a clone loses the veil — see the note in the fall
+            o.material.transparent = true;
             o.material.opacity = b.raise > 0 ? 0.55 : 0.72;
             if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), b.raise > 0 ? 0.5 : 0.3);
           });
@@ -2301,7 +2337,7 @@
         f = new THREE.Group();
         const pole = meshOf([part(cyl(0.7, 0.7, 30, 5), 0xd8c8a8, 0, 15, 0)]);
         const pf = new THREE.Mesh(new THREE.PlaneGeometry(13, 8).translate(6.5, 0, 0),
-          new THREE.MeshBasicMaterial({ color: PENNANT[(s.id - 1) % PENNANT.length], side: THREE.DoubleSide }));
+          fogPatch(new THREE.MeshBasicMaterial({ color: PENNANT[(s.id - 1) % PENNANT.length], side: THREE.DoubleSide })));
         pf.position.set(0, 26, 0);
         f.add(pole, pf); f._flag = pf;
         worldG.add(f);
@@ -2342,7 +2378,7 @@
         f = new THREE.Group();
         const pole = meshOf([part(cyl(0.7, 0.7, 26, 5), 0xd8c8a8, 0, 13, 0)]);
         const pf = new THREE.Mesh(new THREE.PlaneGeometry(12, 7).translate(6, 0, 0),
-          new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+          fogPatch(new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
         pf.position.set(0, 23, 0);
         f.add(pole, pf); f._flag = pf;
         worldG.add(f);
@@ -2381,10 +2417,10 @@
       }
       if (!ss.disc) {
         ss.disc = new THREE.Mesh(new THREE.CircleGeometry(C.POWERS.storm.radius, 26).rotateX(-Math.PI / 2),
-          new THREE.MeshBasicMaterial({ color: 0x1e0a14, transparent: true, opacity: 0.45, depthWrite: false }));
+          fogPatch(new THREE.MeshBasicMaterial({ color: 0x1e0a14, transparent: true, opacity: 0.45, depthWrite: false })));
         worldG.add(ss.disc);
         ss.lines = new THREE.LineSegments(new THREE.BufferGeometry(),
-          new THREE.LineBasicMaterial({ color: 0xffdcdc, transparent: true }));
+          fogPatch(new THREE.LineBasicMaterial({ color: 0xffdcdc, transparent: true })));
         worldG.add(ss.lines);
       }
       ss.disc.visible = true;

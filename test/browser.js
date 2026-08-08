@@ -92,7 +92,11 @@ async function veilPage(browser, base, opts) {
       window.World.refreshVision(w, true);
     };
     eye(1500); eye(1240);
-    window.World.update = () => {};                 // freeze AFTER the vision refresh
+    /* freeze AFTER the vision refresh — and keep the real one, because `delete` would not
+     * uncover it: `update` is an own property of the World module object, so overwriting it
+     * is the only copy there ever was. */
+    window.__realUpdate = window.World.update;
+    window.World.update = () => {};
     window.Game.game.hints = [];
     const vi = window.Game.game.viewer, vis = w.vis[vi], seen = w.players[vi].seen;
     let s = 0, f = 0, d = 0;
@@ -2982,6 +2986,9 @@ async function match(browser, base, renderer) {
       { viewport: { width: 360, height: 780 }, deviceScaleFactor: 3 });
     const veil = await pg.evaluate(async () => {
       const R = window.Render, C = window.CONST, g = window.Game.game;
+      /* THE 2D VEIL IS NO LONGER WHAT THE GAME DRAWS. It is kept, and this suite is what keeps
+       * it honest, so it asks for it by name rather than inheriting it from the default. */
+      R.shaderFog = false;
       R.debugFog = { discs: false, rim: false };   // the mask alone, so the mask is what is measured
       /* the board fixes where the boundary is, so the camera can be aimed at it rather than
        * zoomed all the way out and hoped over — and at this zoom a fog cell is comfortably
@@ -3069,6 +3076,7 @@ async function match(browser, base, renderer) {
     const { pg, errs } = await veilPage(browser, base, { viewport: { width: 420, height: 860 } });
     const m = await pg.evaluate(async () => {
       const w = window.Game.game.world;
+      window.Render.shaderFog = false;      // this suite measures the KEPT 2D veil, not the shipped one
       /* FOG ONLY EXISTS WHERE SIGHT HAS BEEN AND GONE, and the board above builds it: the
          eye's march to y=1500 is what is remembered, its fall back to y=1240 is what is
          watched, and past its high-water mark nothing was ever seen. This used to run the
@@ -3212,7 +3220,7 @@ async function match(browser, base, renderer) {
       window.Render.shaderFog = false; await wait(); await wait(); const raw = read();
       window.Render.shaderFog = true; await wait(); await wait(); const veiled = read();
       const ink = inkOver();
-      window.Render.shaderFog = false; await wait();
+      window.Render.shaderFog = true; await wait();
       return { ink, walk: pts.map((p, i) => ({ wy: p.wy, cls: p.cls, raw: raw[i], ink: ink[i],
                                   r: raw[i] > 12 ? veiled[i] / raw[i] : null })) };
     });
@@ -3245,6 +3253,46 @@ async function match(browser, base, renderer) {
          rises.length === 0, rises.slice(0, 3).join(', '));
       ok('shroud is black, not merely dim', med(D) < 0.18, `x${med(D).toFixed(2)}`);
     }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- nothing in the world escapes the veil ----------------
+   * THE ONE HAZARD OF PUTTING THE VEIL IN THE MATERIALS. The 2D canvas covered the whole
+   * screen and so covered everything on it by construction; the shader covers what it was
+   * handed, and a mesh added later without `fogPatch` shines at full strength across black
+   * shroud. That is not hypothetical — the writ was an unpatched LineBasicMaterial and read
+   * as the writ and the sight disagreeing about where the ground was.
+   * So: play a match out far enough that ghosts, standards, storms, hexes, event rings and
+   * every kind of work exist, then ask the scene. The only things allowed to escape are the
+   * two named AFFORDANCES — the selection ring and the armed-company halo — which answer the
+   * player rather than describe the land, and veiling an answer to the player is a bug. */
+  {
+    suite('nothing in the world escapes the veil');
+    const { pg, errs } = await veilPage(browser, base, { viewport: { width: 420, height: 860 } });
+    const found = await pg.evaluate(async () => {
+      const w = window.Game.game.world;
+      /* veilPage freezes the sim; put it back, because half these meshes only exist once
+       * somebody has shot at somebody. A guard that runs on an empty board guards nothing. */
+      window.World.update = window.__realUpdate;
+      const step = window.World.update;
+      let ok2 = false;
+      if (typeof step === 'function') {
+        const t0 = w.tick;
+        for (let i = 0; i < 9000; i++) { step(w, 1 / 30); w.winner = null; }
+        ok2 = w.tick > t0;                          // the sim really ran, it was not a no-op
+      }
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return { list: window.Render.debugUnpatched(), stepped: ok2,
+               works: w.players.reduce((n, p) => n + p.buildings.length, 0), units: w.units.length };
+    });
+    ok('the rig is alive: the sim really ran and there is a world with things in it',
+       found.stepped && found.works >= 2 && found.units >= 10,
+       `stepped ${found.stepped}, works ${found.works}, units ${found.units}`);
+    const tally = {};
+    for (const k of found.list) tally[k] = (tally[k] || 0) + 1;
+    ok('every material in the world is under the veil', found.list.length === 0,
+       Object.entries(tally).map(([k, n]) => `${k} x${n}`).join(', '));
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

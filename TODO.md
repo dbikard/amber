@@ -746,7 +746,7 @@ landed (first entry below), headless 1205/1205.
       design working; the walk gate and the defend-the-Gates doctrine are what failed. The
       chronicle was requested and should be attached here when it arrives.
 
-- [ ] **The veil in the SHADER, behind `Render.shaderFog` (off by default).** The 2D overlay
+- [x] **The veil is SAMPLED IN THE MATERIALS — shipped as the default (`Render.shaderFog`).** The 2D overlay
       draws a WORLD-SPACE field as SCREEN-SPACE polygons, and every veil artifact chased this
       year came out of that gap. The experiment uploads the same eased field as a small texture
       (one texel per fog cell, ~77×93, R = sight, G = ever-seen) and samples it by world XZ in
@@ -781,7 +781,19 @@ landed (first entry below), headless 1205/1205.
       fog ≈ ×0.5, shroud < ×0.18 and — the one that fails on the old code — that the ratio never
       goes back UP on the way out. Sample the traverse at 3 world units, not 20: proven, a rim is
       six units wide on the ground and a coarse traverse steps clean over it.
-      OPEN: whether it becomes the default. Both paths are live and switchable in one field.
+      SHIPPED as the default. The 2D path is kept in full and switchable in one field, and two
+      suites still measure it so it cannot rot silently. Frame cost measured before the switch,
+      160 men on a phone-shaped page, alternating blocks so warm-up is not credited to one side:
+      current 273.6ms median against the shader's 244.9 at DPR 2, and 272.4 against 244.4 at
+      DPR 3 — about 10% cheaper. NOT a GPU number: this box runs SwiftShader, so every one of
+      those milliseconds is CPU. That is the pessimistic case for a per-fragment approach and it
+      still wins; the real number wants a phone.
+      THE HAZARD IS THAT IT VEILS ONLY WHAT IT WAS HANDED, and three separate ways of losing the
+      patch have all really happened — a new mesh with no `fogPatch`, a `material.clone()` (which
+      drops an assigned `onBeforeCompile`, so ghosts, scaffolding and a toppling tower all
+      escaped), and a second patch arm with no `customProgramCacheKey`. `R.debugUnpatched()` and
+      the suite "nothing in the world escapes the veil" are the guard; the only things allowed
+      out are meshes named `affordance`.
 
 ## Housekeeping — from an architecture review (2026-08)
 
