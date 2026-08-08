@@ -1536,6 +1536,21 @@
   /* test handle: the colour actually flying over a hall. Which company a hall belongs to is
    * in the snapshot and easy to assert; what the PLAYER reads is the flag, and that lives in
    * a material inside a cached group where nothing outside can see it. */
+  /* test handle: how tall the renderer thinks a work is, where it put that work's standard,
+   * and how far the pennant clears the stone. "Is the flag inside the roof" is not answerable
+   * from outside without reaching into the scene graph, and it has been wrong once. */
+  R.debugWorkTop = (id) => {
+    for (const g of cityObjs || []) {
+      const w = g.works.get(id);
+      if (!w) continue;
+      const f = coFlags.get('w' + id);
+      const stone = w.grp.position.y + w.top * (w.grp.scale.y || 1);
+      if (!f) return `top ${stone.toFixed(1)} — no flag`;
+      const pen = f._flag.getWorldPosition(new THREE.Vector3()).y;
+      return `stone-top ${stone.toFixed(1)}  pennant ${pen.toFixed(1)}  clearance ${(pen - stone).toFixed(1)}`;
+    }
+    return null;
+  };
   R.debugStandard = (id) => {
     for (const g of cityObjs || []) {
       const w = g.works.get(id);
@@ -2391,7 +2406,16 @@
             if (o.material.color) o.material.color.lerp(new THREE.Color(0x6a5f4a), b.raise > 0 ? 0.5 : 0.3);
           });
           worldG.add(grp);
-          w = { grp, key, pad, onWall, gate: w2gate };
+          /* HOW TALL THIS WORK ACTUALLY IS, asked of the model rather than guessed from its
+           * type. The standard over a held work was placed at `62 + (level-1)*9` for a tower,
+           * which is one branch of one work at one moment: a Watchtower's shaft grows with its
+           * level, each branch piles its own deck on top, a garrison hangs shields on the
+           * crown, and a bastion is lifted again by the curtain under it. Reported from play
+           * as a flag buried in the tower roof. Measured once, when the group is built and
+           * before it is placed or scaled, so it costs nothing per frame and cannot drift from
+           * the geometry — a new branch or a taller level carries its flag up with it. */
+          const bb = new THREE.Box3().setFromObject(grp);
+          w = { grp, key, pad, onWall, gate: w2gate, top: isFinite(bb.max.y) ? bb.max.y : 0 };
           g.works.set(id, w);
         }
         w.grp.position.set(b.x, groundH(b.x, b.y) + 1.5 + (w.onWall || 0), b.y);
@@ -2511,6 +2535,7 @@
      * only — a rival's company identity is private on the wire, and the badge count is
      * already everything a rival is entitled to read. */
     const held = new Map();   // workId -> { counts: Map(co->n), b }
+    const ownG = cityObjs && cityObjs[viewer];
     const ownWorks = new Map();
     for (const b of (view.players[viewer].buildings || [])) ownWorks.set(b.id, b);
     for (const u of view.units) {
@@ -2539,11 +2564,16 @@
         coFlags.set(key, f);
       }
       f._flag.material.color.setHex(PENNANT[(co - 1) % PENNANT.length]);
-      /* a tower's flag flies from the crown — the shaft grows with the level — and a wall's
-       * from the midpoint of the run, above the parapet */
+      /* the flag is planted just under the work's own crown, whatever that work is: the pole
+       * is 26 and the pennant sits at 23 of it, so it clears the roof by a good margin. The
+       * height is the model's measured top (see `w.top` where the group is built), lifted by
+       * whatever the group itself is lifted by — a bastion rides its curtain — and scaled with
+       * it, so a work still going up flies its standard at the height it has reached. */
       const b = h.b;
-      const top = b.bt === 'tower' ? 62 + ((b.level || 1) - 1) * 9 : (b.x2 != null ? 30 : 24);
-      f.position.set(b.x, groundH(b.x, b.y) + top, b.y);
+      const wk = ownG && ownG.works.get(wid);
+      const lift = wk ? wk.top * (wk.grp.scale.y || 1) + 1.5 + (wk.onWall || 0) - 6
+                      : (b.bt === 'tower' ? 62 : b.x2 != null ? 30 : 24);
+      f.position.set(b.x, groundH(b.x, b.y) + lift, b.y);
       f._flag.rotation.y = Math.sin(T * 2.2 + wid) * 0.3;
     }
     for (const [i, f] of [...coFlags]) if (!active.has(i)) { f.removeFromParent(); coFlags.delete(i); }

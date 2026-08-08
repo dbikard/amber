@@ -3303,6 +3303,111 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- a standard flies clear of its own roof ----------------
+   * Reported from play, with a picture: a tower's pennant buried in the tower's roof. The
+   * height of a held work's standard was `62 + (level-1)*9` for a tower and two other
+   * constants for everything else — a guess about one branch of one work at one moment. A
+   * Watchtower's shaft grows with its level, each branch piles its own deck on the crown, a
+   * garrison hangs shields off it, and a BASTION — a tower built into a curtain — is lifted
+   * again by the stone underneath. That last term is the one the old expression could not
+   * have known about, and it is the case in the photograph: measured, the bastion's pennant
+   * sat 13.5 units INSIDE its own roof while every free-standing tower cleared.
+   * So the suite builds the photographed case and asks the renderer where both are. */
+  {
+    suite('a standard flies clear of its own roof');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 7 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const r = await pg.evaluate(async () => {
+      const w = window.Game.game.world, C = window.CONST, pl = w.players[0];
+      const c = window.World.cityOf(w, 0);
+      const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      /* run the masons out rather than sleeping: a raise is essence and crews, not seconds */
+      const finish = () => {
+        for (let i = 0; i < 40000; i++) {
+          window.World.update(w, C.SIM_DT);
+          w.events.length = 0; w.winner = null; w.storms.length = 0;
+          for (let k = w.units.length - 1; k >= 0; k--)
+            if (w.units[k].owner === C.CHAOS_ID) w.units.splice(k, 1);
+          if (!pl.buildings.some((z) => z.raise > 0 || z.work > 0)) return;
+        }
+      };
+      const cases = [];
+      /* a tall free-standing tower — the shape the old constant was fitted to */
+      pl.essence = 1e7;
+      let at = null;
+      for (let rad = 150; rad < C.CLAIM.seat - 40 && !at; rad += 14)
+        for (let a = 0; a < 48 && !at; a++) {
+          const th = (a / 48) * Math.PI * 2;
+          const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+          if (window.World.placementError(w, 0, x, y, 'tower') === null) at = { x, y };
+        }
+      if (at && window.World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y }).ok) {
+        const t = pl.buildings[pl.buildings.length - 1];
+        finish();
+        for (let k = 1; k < 3; k++) {
+          pl.essence = 1e7;
+          if (!window.World.applyCommand(w, 0, { c: 'up', id: t.id, br: 'cannon' }).ok) break;
+          finish();
+        }
+        cases.push({ name: 'a cannon tower at its full height', t, onWall: 0 });
+      }
+      /* AND THE BASTION: a curtain, then a tower on its midpoint */
+      pl.essence = 1e7;
+      const L = C.WALL.unit;
+      let run = null;
+      for (let rad = 200; rad < C.CLAIM.seat - 60 && !run; rad += 16)
+        for (let a = 0; a < 40 && !run; a++) {
+          const th = (a / 40) * Math.PI * 2;
+          const ax = c.x + Math.cos(th) * rad, ay = c.y + Math.sin(th) * rad;
+          if (!window.World.wallError(w, 0, ax, ay, ax + L, ay)) run = { ax, ay, bx: ax + L, by: ay };
+        }
+      if (run && window.World.applyCommand(w, 0,
+          { c: 'build', bt: 'wall', x: run.ax, y: run.ay, x2: run.bx, y2: run.by }).ok) {
+        finish();
+        pl.essence = 1e7;
+        const mx = (run.ax + run.bx) / 2, my = (run.ay + run.by) / 2;
+        if (window.World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: mx, y: my }).ok) {
+          const t = pl.buildings[pl.buildings.length - 1];
+          finish();
+          cases.push({ name: 'a bastion built into a curtain', t, onWall: 1 });
+        }
+      }
+      /* THE MEN GO IN LAST. postAll() recomputes `man`/`tow` from orders at the top of every
+       * tick, so a garrison placed by hand before another build's fast-forward is wiped by
+       * it — an earlier rig read "no flag" for eleven of twelve cases and called it a
+       * renderer bug. It was the rig. */
+      w.units.length = 0;
+      for (const cse of cases)
+        for (let i = 0; i < 4; i++)
+          w.units.push({ id: 8000 + w.units.length, owner: 0, co: 1, kind: 'archer',
+                         x: cse.t.x, y: cse.t.y, hp: 40, maxHp: 40, cd: 0, goal: null,
+                         tow: cse.t.id, in: cse.t.id });
+      if (!pl.companies.length) pl.companies = [{ id: 1, rally: null }];
+      window.World.bearers(w); window.World.refreshVision(w, true);
+      window.World.update = () => {};
+      await frame(); await frame();
+      return cases.map((cse) => ({ name: cse.name, onWall: cse.onWall,
+                                   read: window.Render.debugWorkTop(cse.t.id) }));
+    });
+    const num = (s, k) => { const m = s && s.match(new RegExp(k + ' (-?[\\d.]+)')); return m ? +m[1] : null; };
+    ok('the rig is alive: it raised a tower and a bastion, both flying a standard',
+       r.length === 2 && r.every((z) => z.read && /pennant/.test(z.read)),
+       r.map((z) => `${z.name}: ${z.read}`).join(' | ') || 'nothing built');
+    for (const z of r) {
+      /* THE ASSERTION THAT FAILS ON THE OLD CODE (for the bastion) */
+      ok(`${z.name} flies its standard above the stone`, num(z.read, 'clearance') > 0, z.read);
+    }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   /* ---------------- a new match opens on a Seat that is standing ----------------
    * Reported from play, from a phone, thirty seconds into a LAN match: the Seat drawn as a
    * broken stump while the sim said it was at full health. The collapse animation is module
