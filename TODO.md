@@ -746,6 +746,35 @@ landed (first entry below), headless 1205/1205.
       design working; the walk gate and the defend-the-Gates doctrine are what failed. The
       chronicle was requested and should be attached here when it arrives.
 
+- [ ] **The veil in the SHADER, behind `Render.shaderFog` (off by default).** The 2D overlay
+      draws a WORLD-SPACE field as SCREEN-SPACE polygons, and every veil artifact chased this
+      year came out of that gap. The experiment uploads the same eased field as a small texture
+      (one texel per fog cell, ~77×93, R = sight, G = ever-seen) and samples it by world XZ in
+      the materials that were being darkened anyway: no polygons, so no chord divergence;
+      bilinear is the smoothing, free, in a fetch the GPU was making regardless; and fog can be
+      DRAINED of colour rather than merely tinted, which a canvas over a canvas cannot reach.
+      Shipped state, all measured on a hand-made board with paired same-frame readouts
+      (`uFogDbg` shows the mask as (shroud, fog, sight) without a rebuild):
+      **one chain, not two mixes** — shroud → fog as memory arrives, fog → the land as sight
+      does, so there is no value anywhere belonging to neither and no seam to see; the warm
+      iso-band that marked the edge of sight is GONE, on the owner's call that he wants no
+      delimitation at all. **`FOG.soften` is 2, not 4** — a blur is a low-pass filter and the
+      mask's OCCLUSION is its high frequencies, so four passes (a hundred units of reach) filled
+      a wall's shadow in from both sides and read as "the ground behind the wall is lighter than
+      it should be": measured shroud 0.69 at the wedge, now 0.98. The rest of the softness is
+      bought on the TONE curve (`smoothstep(0.20, 0.90)`), which also eats the blur's tail so
+      never-seen ground is true black. **The writ line is fog-patched too** — a `LineBasicMaterial`
+      was the one thing nothing darkened, and a bright gold arc over shroud reads as the writ and
+      the sight disagreeing about where the ground is. They never disagreed. (The real gap at the
+      opening is that `CLAIM.seat` is a hard 430 while the Seat's sight, nominally 420, is eaten
+      by wood down to a median 344 — that is the design, not a projection error.)
+      Pinned by "the shader veil is a ladder with no edge in it": the veil measured as a RATIO,
+      veiled over raw, from the same session with the world frozen, asserting sight ≈ ×1.0,
+      fog ≈ ×0.5, shroud < ×0.18 and — the one that fails on the old code — that the ratio never
+      goes back UP on the way out. Sample the traverse at 3 world units, not 20: proven, a rim is
+      six units wide on the ground and a coarse traverse steps clean over it.
+      OPEN: whether it becomes the default. Both paths are live and switchable in one field.
+
 ## Housekeeping — from an architecture review (2026-08)
 
 - [ ] **`update()` wants breaking up.** It is ~480 lines (world.js 1955–2432) with a ~215-line

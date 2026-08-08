@@ -1224,8 +1224,13 @@
   /* uFogSpan must be a real Vector2 from the START: the uniform is uploaded whenever the
    * material compiles, long before the first fogUpload, and Three reads .x off it — a null
    * here throws on the very first frame whether the experiment is switched on or not. */
-  const FOGU = { uFogTex: { value: null }, uFogSpan: { value: new THREE.Vector2(1, 1) }, uFogOn: { value: 0 } };
-  let fogTex = null, fogPix = null;
+  const FOGU = { uFogTex: { value: null }, uFogSpan: { value: new THREE.Vector2(1, 1) }, uFogOn: { value: 0 },
+    /* diagnostic output, switchable WITHOUT a rebuild: comparing two separate runs and
+     * assuming they are the same frame has misled this investigation twice. 1 = show the
+     * mask as (shroud, fog, sight) so the real colour and the reason for it can be read off
+     * the SAME world in the SAME session. */
+    uFogDbg: { value: 0 } };
+  let fogTex = null, fogPix = null, fogL = null, fogM = null, fogT = null;
   function fogUpload(gw, gh, cell, liveA, memA) {
     const n = gw * gh;
     if (!fogTex || fogPix.length !== n * 4) {
@@ -1240,9 +1245,40 @@
       FOGU.uFogTex.value = fogTex;
       FOGU.uFogSpan.value.set(gw * cell, gh * cell);
     }
+    /* SOFTEN THE FIELD, NOT THE PICTURE. Bilinear alone ramps across ONE texel — a single
+     * 26-unit cell — which at any real zoom is a hard line, and the veil is meant to read as
+     * a veil rather than a stencil. The overlay got its softness from drawing small and
+     * blowing the result back up; here the same thing is done once, on the field itself,
+     * before it is ever uploaded: a separable [1,2,1] pass in each axis, twice, which is a
+     * Gaussian of about a cell. It costs a few thousand adds at the mask's 5Hz refresh, and
+     * because it happens in WORLD space it softens equally at every zoom — the screen-space
+     * blur had to be re-tuned against `cellPx` every frame to manage that. */
+    if (!fogL || fogL.length !== n) { fogL = new Float32Array(n); fogM = new Float32Array(n); fogT = new Float32Array(n); }
+    /* separable [1,2,1] in each axis. Safe to call with src === dst: the across pass lands in
+     * the scratch first, so nothing is read after it has been overwritten. */
+    const blur1 = (src, dst) => {
+      for (let y = 0; y < gh; y++) {
+        const r = y * gw;
+        for (let x = 0; x < gw; x++) {
+          const l = src[r + (x > 0 ? x - 1 : 0)], c = src[r + x], q = src[r + (x < gw - 1 ? x + 1 : gw - 1)];
+          fogT[r + x] = (l + 2 * c + q) * 0.25;
+        }
+      }
+      for (let x = 0; x < gw; x++) {
+        for (let y = 0; y < gh; y++) {
+          const u = fogT[(y > 0 ? y - 1 : 0) * gw + x], c = fogT[y * gw + x],
+                d = fogT[(y < gh - 1 ? y + 1 : gh - 1) * gw + x];
+          dst[y * gw + x] = (u + 2 * c + d) * 0.25;
+        }
+      }
+    };
+    /* FOUR passes, not two. Two is about a cell of softening, and against a near-black
+     * shroud most of that ramp is already dark, so the edge still reads as a line. Four is
+     * ~1.4 cells of Gaussian and matches the softness the overlay got from its upscale. */
+    for (let k = 0; k < C.FOG.soften; k++) { blur1(k ? fogL : liveA, fogL); blur1(k ? fogM : memA, fogM); }
     for (let i = 0, j = 0; i < n; i++, j += 4) {
-      fogPix[j] = liveA[i] * 255;
-      fogPix[j + 1] = memA[i] * 255;
+      fogPix[j] = fogL[i] * 255;
+      fogPix[j + 1] = fogM[i] * 255;
     }
     fogTex.needsUpdate = true;
   }
@@ -1253,6 +1289,7 @@
       sh.uniforms.uFogTex = FOGU.uFogTex;
       sh.uniforms.uFogSpan = FOGU.uFogSpan;
       sh.uniforms.uFogOn = FOGU.uFogOn;
+      sh.uniforms.uFogDbg = FOGU.uFogDbg;
       sh.vertexShader = 'varying vec2 vFogXZ;\n' + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
@@ -1261,24 +1298,33 @@
           fogW = instanceMatrix * fogW;
         #endif
         vFogXZ = (modelMatrix * fogW).xz;`);
-      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nvarying vec2 vFogXZ;\n'
+      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nuniform float uFogDbg;\nvarying vec2 vFogXZ;\n'
         + sh.fragmentShader.replace('#include <dithering_fragment>',
         `#include <dithering_fragment>
         if (uFogOn > 0.5) {
           vec2 m = texture2D(uFogTex, vFogXZ / uFogSpan).rg;
-          float sight = m.r;
-          float seen = max(m.g, m.r);
-          float fogAmt = clamp(seen - sight, 0.0, 1.0);
-          float shroud = clamp(1.0 - seen, 0.0, 1.0);
+          /* THE FIELD IS BLURRED BEFORE IT IS UPLOADED, so a hard mask edge arrives as a
+             ramp CENTRED on it and half that ramp lies on the unseen side. Read straight,
+             ground the eye has never touched comes out a quarter lit — which is exactly
+             what "the ground behind the wall is lighter than it should be" was: the wall's
+             shadow is a narrow wedge and the blur was filling it from both sides. The lower
+             smoothstep edge eats that tail: under 0.20 is unseen, full stop. */
+          float lit = smoothstep(0.20, 0.90, m.r);
+          float mem = smoothstep(0.20, 0.90, max(m.g, m.r));
           vec3 c = gl_FragColor.rgb;
           /* FOG IS DRAINED, NOT DIMMED — the thing the overlay could never do. Colour goes
              to luma, then a cold cast and half the light: you remember the land, you cannot
              see what stands on it. */
           float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-          vec3 drained = mix(c, vec3(l), 0.88) * vec3(0.60, 0.70, 0.98) * 0.52;
-          c = mix(c, drained, fogAmt);
-          c = mix(c, vec3(0.023, 0.016, 0.047), shroud * 0.94);
-          gl_FragColor.rgb = c;
+          vec3 fogC = mix(c, vec3(l), 0.88) * vec3(0.72, 0.80, 1.06) * 0.62;
+          /* ONE CHAIN, NOT TWO MIXES, and NO LINE ANYWHERE. shroud -> fog as memory comes
+             in, fog -> the land as sight does. Mixing the two darknesses independently off
+             the same base gave the meeting of fog and shroud a value that belonged to
+             neither, and that seam was visible as a border between them. Chained, the three
+             states are one ramp: there is nothing left to draw an edge ON. The warm iso-band
+             that used to mark the edge of sight is gone with it — an edge is an edge. */
+          vec3 o = mix(mix(vec3(0.021, 0.015, 0.043), fogC, mem), c, lit);
+          gl_FragColor.rgb = (uFogDbg > 0.5) ? vec3(1.0 - mem, mem - lit, lit) : o;
         }`);
       /* PROVE THE INJECTION LANDED. A `.replace` whose needle is absent returns the string
        * unchanged and throws nothing — the patch then silently does nothing and the render
@@ -1291,7 +1337,7 @@
   }
   R.fogPatch = fogPatch;
   R.debugFogU = FOGU;   // so a rig can force the shader off and measure the raw scene
-  R.debugFogMats = () => [MAT, MATB, ground && ground.material].map((m) => m && ({
+  R.debugFogMats = () => [MAT, MATB, ground && ground.material, writG && writG.material].map((m) => m && ({
     type: m.type, patched: !!m._fogPatched, vert: !!m.userData.fogVert, frag: !!m.userData.fogFrag }));
 
 
@@ -1482,16 +1528,16 @@
          * colour), and a few worn stones round the rim. The shimmer pass already breathes on
          * anything marked `_water`, so the heart pulses without a line of new animation. */
         const lip = new THREE.Mesh(new THREE.CircleGeometry(30, 18).rotateX(-Math.PI / 2),
-          new THREE.MeshLambertMaterial({ color: 0x4a4048 }));
+          fogPatch(new THREE.MeshLambertMaterial({ color: 0x4a4048 })));
         lip.position.y = 0.5;
         const shallows = new THREE.Mesh(new THREE.CircleGeometry(26, 18).rotateX(-Math.PI / 2),
-          new THREE.MeshLambertMaterial({ color: 0x3c6e8e, emissive: 0x142834 }));
+          fogPatch(new THREE.MeshLambertMaterial({ color: 0x3c6e8e, emissive: 0x142834 })));
         shallows.position.y = 0.9;
         const deep = new THREE.Mesh(new THREE.CircleGeometry(16, 14).rotateX(-Math.PI / 2),
-          new THREE.MeshLambertMaterial({ color: 0x1e3c5c, emissive: 0x0e1c30 }));
+          fogPatch(new THREE.MeshLambertMaterial({ color: 0x1e3c5c, emissive: 0x0e1c30 })));
         deep.position.y = 1.15;
         const heart = new THREE.Mesh(new THREE.CircleGeometry(6.5, 10).rotateX(-Math.PI / 2),
-          new THREE.MeshLambertMaterial({ color: 0x9a7ec0, emissive: 0x7a5a9c }));
+          fogPatch(new THREE.MeshLambertMaterial({ color: 0x9a7ec0, emissive: 0x7a5a9c })));
         heart.position.y = 1.4; heart._water = true;
         holder.add(lip, shallows, deep, heart);
         const stones = [];
@@ -2059,9 +2105,9 @@
           const pad = isW
             ? new THREE.Mesh(new THREE.PlaneGeometry(Math.hypot(b.x2 - b.x, b.y2 - b.y) * 2 + 26, 34)
                 .rotateX(-Math.PI / 2).rotateY(-Math.atan2(b.y2 - b.y, b.x2 - b.x)),
-                new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }))
+                fogPatch(new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 })))
             : new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
-                new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 }));
+                fogPatch(new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 })));
           pad.position.y = -0.4;
           grp.add(pad, isW ? wallModel(b, hurt) : buildingModel(mkey));
           /* THE GATE HANGS ON THE FINISHED RUN. A breached run is rubble and has no gateway to
@@ -2146,9 +2192,15 @@
       pts.push(new THREE.Vector3(x1, groundH(x1, y1) + 3, y1));
       pts.push(new THREE.Vector3(x2, groundH(x2, y2) + 3, y2));
     }
+    /* THE WRIT GOES UNDER THE VEIL LIKE THE GROUND IT IS DRAWN ON. It is a line, not a mesh,
+     * and a line's material was the one thing in the frame nothing darkened: the 2D overlay
+     * paints across the whole canvas and dimmed it by accident, the shader only touches the
+     * materials it is given, and the difference showed up as a bright gold arc lying across
+     * black shroud — read, fairly, as the writ and the sight disagreeing about where the
+     * ground is. They never disagreed; one of them was simply not being darkened. */
     writG = new THREE.LineSegments(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.85 }));
+      fogPatch(new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.85 })));
     worldG.add(writG);
   }
 

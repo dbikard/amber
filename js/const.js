@@ -228,7 +228,15 @@
    * ahead of a marching column in visible lurches. The mask stays a hard 0/1 (the AI and the
    * snapshot read it); only the drawing eases. Long enough to hide the 200ms step, short
    * enough that the lit ground still keeps up with the men who are lighting it. */
-  CONST.FOG = { cell: 26, keep: 0.45, ease: 0.22 };
+  /* `soften` is how many [1,2,1] passes the shader-fog field takes before it is uploaded
+   * — how wide the veil's edge is, in cells, and the one knob for how painterly it reads.
+   * TWO, not four. A blur is a low-pass filter and the mask's OCCLUSION is its high
+   * frequencies: the wedge behind a wall, the fingers of shadow a wood throws. At four
+   * passes the kernel reaches four cells — a hundred units — and it filled those shadows in
+   * from both sides, so the wall's shadow came out a quarter lit and the treeline's shape
+   * came out a smooth blob. Two passes is a Gaussian of about a cell; the rest of the
+   * softness is bought in the shader, on the TONE curve, which costs no reach at all. */
+  CONST.FOG = { cell: 26, keep: 0.45, ease: 0.22, soften: 2 };
 
   /* ---- Navigation (open world, stage 2): units move continuously over a cost grid ----
    * The site web is baked in as corridors — free within freeR of a path or site, ramping

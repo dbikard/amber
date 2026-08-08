@@ -54,6 +54,54 @@ async function until(pg, fn, ms = 2500) {
 const ready = (pg) => until(pg, () => window.Render && window.Render.ready && window.UI && window.Game);
 const inMatchNow = (pg) => until(pg, () => !!(window.Game && window.Game.game.mode && window.Game.game.world));
 
+/* ---------------- the board the veil is measured on ----------------
+ * SHROUD is ground never seen, FOG is ground seen once and not seen now, SIGHT is ground
+ * watched this instant — and a suite about the veil is worthless unless all three are on
+ * the screen it reads. Grown worlds would not reliably give them: three suites each hunted
+ * a random board for a window holding all three, and each intermittently could not find
+ * one — 264 fog cells on one pass, 4 on the next, 0 on a third. That is the SEED deciding
+ * whether a suite tests anything, which is not a test.
+ *
+ * So the board is written down, and so is the eye that lights it: a hand-made spec, an eye
+ * that marches to y=1500 and falls back to y=1240, and the world frozen the instant the
+ * vision is refreshed. What it saw on the way in is fog, where it stands is sight, past its
+ * high-water mark is shroud — at the same coordinates, every run, on every machine. */
+const VEIL_BOARD = {
+  name: 'the Veil Range', seed: 11, ground: 'PLAIN', height: 0.5,
+  paint: [{ rect: [900, 900, 2000, 2400], terra: 'MEADOW' }],
+  seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+  springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 1500, y: 1150 }]
+};
+async function veilPage(browser, base, opts) {
+  const pg = await browser.newPage(opts);
+  const errs = [];
+  pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+  pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await ready(pg);
+  await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 1 }), VEIL_BOARD);
+  await inMatchNow(pg);
+  await until(pg, () => window.Render.ready);
+  const scene = await pg.evaluate(() => {
+    const w = window.Game.game.world;
+    const eye = (yy) => {
+      w.units.length = 0;
+      for (let i = 0; i < 10; i++)
+        w.units.push({ id: 900 + i, owner: 0, kind: 'soldier', x: 1080 + i * 80, y: yy,
+                       hp: 70, maxHp: 70, co: 0, cd: 0, goal: null });
+      window.World.refreshVision(w, true);
+    };
+    eye(1500); eye(1240);
+    window.World.update = () => {};                 // freeze AFTER the vision refresh
+    window.Game.game.hints = [];
+    const vi = window.Game.game.viewer, vis = w.vis[vi], seen = w.players[vi].seen;
+    let s = 0, f = 0, d = 0;
+    for (let i = 0; i < vis.g.length; i++) (vis.g[i] ? s++ : seen.g[i] ? f++ : d++);
+    return { sight: s, fog: f, shroud: d };
+  });
+  return { pg, errs, scene };
+}
+
 /* open a page, walk the menu, and land in a skirmish against a fixed heir */
 async function match(browser, base, renderer) {
   const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
@@ -2928,21 +2976,18 @@ async function match(browser, base, renderer) {
    * so if even one crossing is gentle the mask is being softened. */
   {
     suite('the veil at a phone\'s pixel density');
-    const pg = await browser.newPage({ viewport: { width: 360, height: 780 }, deviceScaleFactor: 3 });
-    const errs = [];
-    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
-    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
-    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-    await ready(pg);
-    await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
-    await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
-      .find((e) => /julian/i.test(e.textContent)).click());
-    await inMatchNow(pg);
-    await until(pg, () => window.Render.ready);
+    /* on the hand-made board: the crossing this looks for has to EXIST before its softness
+     * can be judged, and on a grown world it intermittently did not. */
+    const { pg, errs } = await veilPage(browser, base,
+      { viewport: { width: 360, height: 780 }, deviceScaleFactor: 3 });
     const veil = await pg.evaluate(async () => {
       const R = window.Render, C = window.CONST, g = window.Game.game;
       R.debugFog = { discs: false, rim: false };   // the mask alone, so the mask is what is measured
-      R.setZoom(C.VIEW.min);                       // far enough out that the boundary is on screen
+      /* the board fixes where the boundary is, so the camera can be aimed at it rather than
+       * zoomed all the way out and hoped over — and at this zoom a fog cell is comfortably
+       * more than the six device pixels the next assertion needs to see a raw edge at all. */
+      R.setZoom(1.0);
+      R.lookAt(880, 1300);                         // hard by the western edge of what was seen
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       const sm = g.world.players[0].seen;
       const at = (x, y) => {
@@ -3021,81 +3066,20 @@ async function match(browser, base, renderer) {
    * the one that fails on the old code, where both came from the same fill. */
   {
     suite('shroud, fog and sight read differently');
-    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
-    const errs = [];
-    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
-    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
-    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
-    await ready(pg);
-    await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
-    await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
-      .find((e) => /julian/i.test(e.textContent)).click());
-    await inMatchNow(pg);
-    await until(pg, () => window.Render.ready);
+    const { pg, errs } = await veilPage(browser, base, { viewport: { width: 420, height: 860 } });
     const m = await pg.evaluate(async () => {
       const w = window.Game.game.world;
-      /* FOG ONLY EXISTS WHERE SIGHT HAS BEEN AND GONE. A fresh match has none at all — every
-       * cell you have seen you can still see — so the men have to march first or this suite
-       * measures an empty bucket and passes without testing anything. */
-      /* to a FIXED TICK, not for a fixed number of steps. The page reaches this line at
-         whatever tick the real-time loop happened to have run to, so "advance 5400" lands on a
-         different world every run — one pass saw 264 fog cells and the next saw 4, which makes
-         the sample count, not the veil, decide whether the suite passes. The timestep is fixed,
-         so running UNTIL tick 6000 lands on the same world every time. */
-      /* RUN UNTIL THE SCENARIO EXISTS, not for a fixed span. Fog is ground sight has been and
-         LEFT, and how much of it a match has produced by any given tick is not reproducible
-         here: the page advances a variable number of ticks with the AI driving before this
-         line takes over without it, so no two runs reach tick 6000 by the same road. Asking
-         for a tick count therefore measured a different world every time — 264 fog cells one
-         pass, 4 the next, 1 on a third. Ask for the CONDITION instead and run until it holds. */
-      const wv0 = w.vis[window.Game.game.viewer], ws0 = w.players[window.Game.game.viewer].seen;
-      const fogCells = () => {
-        let n = 0;
-        for (let i = 0; i < ws0.g.length; i++) if (ws0.g[i] && !wv0.g[i]) n++;
-        return n;
-      };
-      while (w.tick < 60000 && (w.tick < 6000 || fogCells() < 700)) {
-        for (let i = 0; i < 600; i++) { window.World.update(w, 1 / 30); w.events.length = 0; w.winner = null; }
-      }
-      /* AND POINT THE CAMERA AT THE THING BEING MEASURED. Zooming out and hoping is not
-         enough: how much fog lands on screen swings wildly between runs (264 cells one pass,
-         4 the next, 0 on a third), because the world advances a VARIABLE number of ticks with
-         the AI driving before the fast-forward takes over without it — so no two runs reach
-         tick 6000 by the same road. Search the grid for a window that actually holds all
-         three states and look there. The suite then measures the veil rather than the luck of
-         the camera. */
-      const wv = w.vis[window.Game.game.viewer], ws = w.players[window.Game.game.viewer].seen;
-      const cand = [];
-      for (let cy = 8; cy < wv.gh - 8; cy += 2) for (let cx = 8; cx < wv.gw - 8; cx += 2) {
-        let a = 0, b2 = 0, c2 = 0;
-        for (let dy = -16; dy <= 16; dy += 2) for (let dx = -8; dx <= 8; dx += 2) {
-          const gy2 = cy + dy, gx2 = cx + dx;
-          if (gy2 < 0 || gx2 < 0 || gy2 >= wv.gh || gx2 >= wv.gw) continue;
-          const k = gy2 * wv.gw + gx2;
-          if (wv.g[k]) a++; else if (ws.g[k]) b2++; else c2++;
-        }
-        cand.push({ cx, cy, sc: Math.min(a, b2, c2) });
-      }
-      cand.sort((p2, q2) => q2.sc - p2.sc);
-      /* and CHECK the framing rather than trusting the score: the search window is a guess at
-         what the pitched camera shows, so walk the best candidates until one really does put
-         all three states on screen. Counting what projects is the only honest test of that. */
-      window.Render.setZoom(1.15);
-      const onScreen = () => {
-        const c3 = { s: 0, f: 0, u: 0 };
-        for (let gy2 = 0; gy2 < wv.gh; gy2++) for (let gx2 = 0; gx2 < wv.gw; gx2++) {
-          const k = gy2 * wv.gw + gx2;
-          const q2 = window.Render.project((gx2 + 0.5) * wv.cell, (gy2 + 0.5) * wv.cell);
-          if (!q2.ok || q2.x < 8 || q2.y < 130 || q2.x > window.innerWidth - 8 || q2.y > window.innerHeight - 130) continue;
-          if (wv.g[k]) c3.s++; else if (ws.g[k]) c3.f++; else c3.u++;
-        }
-        return c3;
-      };
-      for (let i = 0; i < 12 && i < cand.length; i++) {
-        window.Render.lookAt((cand[i].cx + 0.5) * wv.cell, (cand[i].cy + 0.5) * wv.cell);
-        const c3 = onScreen();
-        if (c3.s >= 60 && c3.f >= 30 && c3.u >= 60) break;
-      }
+      /* FOG ONLY EXISTS WHERE SIGHT HAS BEEN AND GONE, and the board above builds it: the
+         eye's march to y=1500 is what is remembered, its fall back to y=1240 is what is
+         watched, and past its high-water mark nothing was ever seen. This used to run the
+         match forward with the AI driving and then hunt the grid for a window holding all
+         three, which measured a different world every pass — 264 fog cells one run, 4 the
+         next, 0 on a third — so the sample count, not the veil, decided whether it passed. */
+      /* the sight band sits BELOW the camera's mark on a pitched view, where the ground is
+       * nearest and largest; aimed at the band itself it is squeezed toward the horizon and
+       * barely a dozen of its cells reach the screen. */
+      window.Render.setZoom(0.8);
+      window.Render.lookAt(1420, 1150);
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       const cv = document.getElementById('overlay');
       const ctx = cv.getContext('2d', { willReadFrequently: true });
@@ -3145,6 +3129,94 @@ async function match(browser, base, renderer) {
       /* the axis the old veil did not have: fog is COLD, the shroud is merely black */
       ok('fog is a colder colour than the shroud, not a weaker copy of it', m.fog.cool > m.shroud.cool + 4,
          `blue-over-red: fog ${m.fog.cool.toFixed(1)}, shroud ${m.shroud.cool.toFixed(1)}`);
+    }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- the shader veil: a ladder, and NO LINE ANYWHERE ----------------
+   * The veil sampled in the materials (R.shaderFog) is judged on two things, and only the
+   * second is hard. The ladder — sight bright, fog half-lit, shroud black — is easy to hit
+   * by accident. What is NOT easy is having no EDGE: the first version drew a warm iso-band
+   * where sight met its surroundings, and mixed the two darknesses independently off the
+   * same base, which left the meeting of fog and shroud a value belonging to neither. Both
+   * read as a drawn line across the ground and both are what this suite refuses.
+   *
+   * Measured as a RATIO, veiled over raw, from the SAME session with the world frozen and
+   * the camera untouched: the shader is switched on and off between two reads of the very
+   * same pixels, so the terrain's own colour, the lighting and the pitch all cancel and
+   * what is left is the veil's transfer and nothing else. Comparing two runs and calling
+   * them the same frame has misled this investigation more than once.
+   *
+   * And it is pinned to the HAND-MADE BOARD above, so the scenario exists by construction
+   * rather than by luck of the seed. */
+  {
+    suite('the shader veil is a ladder with no edge in it');
+    const { pg, errs, scene } = await veilPage(browser, base, { viewport: { width: 420, height: 860 } });
+    await pg.evaluate(() => new Promise((r) => {
+      window.Render.setZoom(0.8); window.Render.lookAt(1420, 1560);
+      requestAnimationFrame(() => requestAnimationFrame(r));
+    }));
+    ok('the hand-made board really holds all three states', scene.sight > 200 && scene.fog > 100 && scene.shroud > 500,
+       `sight ${scene.sight}, fog ${scene.fog}, shroud ${scene.shroud}`);
+    /* the traverse runs outward from the men, through what they left behind, into the dark */
+    const walk = await pg.evaluate(async () => {
+      const w = window.Game.game.world, vi = window.Game.game.viewer;
+      const vis = w.vis[vi], seen = w.players[vi].seen;
+      const cv = document.querySelector('canvas');
+      const gl = cv.getContext('webgl2') || cv.getContext('webgl');
+      const dpr = cv.width / cv.clientWidth;
+      const pts = [];
+      /* THREE WORLD UNITS, not twenty. A rim is a THIN thing — an iso-band 0.44..0.58 of a
+       * field that ramps over about thirty units is six units wide on the ground — and a
+       * coarse traverse steps straight over it and reports a clean picture. Proven, not
+       * assumed: with the rim put back this suite passed at a 20-unit step and failed at 3.
+       * The whole framebuffer is read ONCE per pass and indexed, so the density is free —
+       * a per-point readPixels is a pipeline stall and three hundred of them are not.
+       * The GL canvas carries no HUD (the bars, the sheet and the veil's old 2D pass all
+       * live on the #overlay canvas above it), so the only clip is the edge of the picture. */
+      for (let wy = 1180; wy <= 2100; wy += 3) {
+        const q = window.Render.project(1420, wy);
+        if (!q.ok || q.y < 4 || q.y > cv.clientHeight - 4) continue;
+        const gx = 1420 / vis.cell | 0, gy = wy / vis.cell | 0, k = gy * vis.gw + gx;
+        pts.push({ wy, x: Math.round(q.x * dpr), y: Math.round(q.y * dpr),
+                   cls: vis.g[k] ? 'sight' : seen.g[k] ? 'fog' : 'shroud' });
+      }
+      const wait = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const buf = new Uint8Array(cv.width * cv.height * 4);
+      const read = () => {
+        gl.readPixels(0, 0, cv.width, cv.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        return pts.map((p) => {
+          const i = ((cv.height - p.y) * cv.width + p.x) * 4;
+          return 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
+        });
+      };
+      window.Render.shaderFog = false; await wait(); await wait(); const raw = read();
+      window.Render.shaderFog = true; await wait(); await wait(); const veiled = read();
+      window.Render.shaderFog = false; await wait();
+      return pts.map((p, i) => ({ wy: p.wy, cls: p.cls, raw: raw[i],
+                                  r: raw[i] > 12 ? veiled[i] / raw[i] : null }));
+    });
+    const seen3 = (c) => walk.filter((p) => p.cls === c && p.r !== null).map((p) => p.r);
+    const med = (a) => { const s = a.slice().sort((u, v) => u - v); return s.length ? s[s.length >> 1] : NaN; };
+    const S = seen3('sight'), F = seen3('fog'), D = seen3('shroud');
+    ok('the traverse is alive: it crosses all three states', S.length >= 3 && F.length >= 3 && D.length >= 3,
+       `sight ${S.length}, fog ${F.length}, shroud ${D.length}`);
+    if (S.length >= 3 && F.length >= 3 && D.length >= 3) {
+      ok('sighted ground is handed back unveiled', med(S) > 0.9, `x${med(S).toFixed(2)}`);
+      ok('fog is plainly darker than sight', med(F) < med(S) - 0.2, `sight x${med(S).toFixed(2)} vs fog x${med(F).toFixed(2)}`);
+      ok('...and plainly lighter than shroud', med(D) < med(F) - 0.2, `fog x${med(F).toFixed(2)} vs shroud x${med(D).toFixed(2)}`);
+      /* THE ASSERTION THAT FAILS ON THE OLD CODE. Walking outward the veil may only ever
+       * take light away. A rim, an iso-band, or a seam where two darknesses meet all show
+       * up here as the ratio going back UP, and there is nowhere else for them to hide. */
+      const rises = [];
+      for (let i = 1; i < walk.length; i++) {
+        if (walk[i].r === null || walk[i - 1].r === null) continue;
+        if (walk[i].r > walk[i - 1].r + 0.04) rises.push(`y=${walk[i].wy} x${walk[i - 1].r.toFixed(2)}->x${walk[i].r.toFixed(2)}`);
+      }
+      ok('the veil never brightens on the way out — no rim, no seam, no line',
+         rises.length === 0, rises.slice(0, 3).join(', '));
+      ok('shroud is black, not merely dim', med(D) < 0.18, `x${med(D).toFixed(2)}`);
     }
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
