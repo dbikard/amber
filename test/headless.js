@@ -5087,14 +5087,6 @@ suite('the Binding is chains')
   }
 }
 
-/* ---------------- */
-const bad = report("headless");
-if (QUICK_RUN) {
-  /* after the tally, each on its own line: nothing that greps the "headless: N/N passing"
-   * line breaks, and nobody can quote the tally without this staring at them */
-  console.log(`\x1b[33mQUICK RUN — PARTIAL: skipped ${skipped.length} suite(s): ${skipped.join(' · ')}\x1b[0m`);
-  console.log(`\x1b[33mthe full \`node test/headless.js\` (no flag) is the gate before any push\x1b[0m`);
-}
 /* ---------------- a company's colours are carried by a man ----------------
  * A company existed on the board as a post at its rally and a pennant on the hall that
  * raises it — nothing among the MEN said which company a column was. The standard is borne
@@ -5161,4 +5153,134 @@ suite('a company\'s bearer is the owner\'s secret')
 }
 
 
+/* ---------------- the shooters march behind the line ----------------
+ * A body used to be one disc with no facing in it, which was honest while every man in it did
+ * the same job. It is not honest for a company holding both kinds: an archer dealt rank 3
+ * stood in the MIDDLE of the swordsmen and an outrider dealt rank 40 stood on the rim, so the
+ * shooters were scattered through the line and shot from inside it. And on the road it was
+ * worse than untidy — the column steers at the ORDER, so a 50-speed archer simply walked
+ * through a 44-speed shieldwall and the company met the enemy shooters first.
+ *
+ * Both halves are asserted, because either one alone leaves the bug: a place at the back that
+ * a fast man reaches early is not a back line, and a pace cap that puts him in the middle of
+ * the ranks is not one either. The board is hand-made and flat so the march is a straight
+ * line and the reading is about the ranks rather than about a hill. */
+suite('the shooters march behind the line');
+{
+  const FLAT = { name: 'the Parade Ground', seed: 3, ground: 'PLAIN', height: 0.5,
+                 seats: [{ x: 400, y: 400 }, { x: 1600, y: 2000 }],
+                 springs: [{ x: 600, y: 560 }, { x: 1400, y: 1840 }, { x: 1000, y: 1200 }] };
+  const w = World.createWorld(5, 2, FLAT);
+  w.chaosNext = 1e9;
+  const pl = w.players[0];
+  pl.companies = [{ id: 3, rally: null }];
+  w.units.length = 0;
+  const START = { x: 700, y: 700 }, GOAL = { x: 700, y: 1700 }, c0 = World.cityOf(w, 0);
+  /* SHIELDMEN AT 44 AND ARCHERS AT 50 — the archer is the faster man, which is the whole
+   * point: if he ends up behind, it is because he was held there. */
+  /* INTERLEAVED, and the two kinds start on exactly the same line. Laid out by id instead —
+   * the first version of this rig — the archers began 84 units further up the road, and both
+   * the old code and the new one then read "shooters in front" for a reason that had nothing
+   * to do with either. */
+  const mk = (id, kind, hp, i) => {
+    const u = { id, owner: 0, co: 3, kind, x: START.x + (i % 7) * 24 - 84, y: START.y + ((i / 7) | 0) * 24,
+                hp, maxHp: hp, cd: 0, goal: null };
+    w.units.push(u);
+    return u;
+  };
+  const line = [], shot = [];
+  for (let i = 0; i < 14; i++) { line.push(mk(100 + i, 'shieldman', 128, i)); shot.push(mk(200 + i, 'archer', 42, i)); }
+  ok('the rig is alive: both kinds set off from the same line',
+     Math.abs(line.reduce((a, u) => a + u.y, 0) / 14 - shot.reduce((a, u) => a + u.y, 0) / 14) < 1,
+     'one kind was handed a head start');
+  ok('the rig is alive: the archer really is the faster man',
+     C.UNITS.archer.speed > C.UNITS.shieldman.speed,
+     `archer ${C.UNITS.archer.speed} vs shieldman ${C.UNITS.shieldman.speed}`);
+  ok('...and the table sorts them without naming either',
+     C.UNITS.archer.shoots === true && C.UNITS.shieldman.shoots === false &&
+     C.UNITS.ram.shoots === false && C.UNITS.bombard.shoots === true,
+     'a reach did not decide which line a man stands in');
+
+  World.applyCommand(w, 0, { c: 'rally', co: 3, x: GOAL.x, y: GOAL.y });
+  const mean = (l, f) => l.reduce((a, u) => a + f(u), 0) / l.length;
+  /* the march is +y, so a bigger y is further forward */
+  const step = (secs) => { for (let i = 0; i < secs * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; } };
+  step(6);
+  const onRoad = { line: mean(line, (u) => u.y), shot: mean(shot, (u) => u.y) };
+  ok('the company really set off', onRoad.line > START.y + 60,
+     `the line is at ${onRoad.line.toFixed(0)}, started at ${START.y}`);
+  /* THE ASSERTION THAT FAILS ON THE OLD CODE — the faster men used to be out in front */
+  ok('on the road the shooters are behind the fighting men',
+     onRoad.shot < onRoad.line,
+     `shooters ${onRoad.shot.toFixed(0)}, line ${onRoad.line.toFixed(0)}`);
+
+  /* ...AND A HALL THAT NEVER STOPS MUSTERING DOES NOT STALL THE COLUMN. This is why the rule
+   * is asked of the men standing NEAR a shooter rather than of his company: ten recruits who
+   * stepped out of the yard while the column was half way down the road are a thousand units
+   * behind it, and any company-wide reckoning of "where the line is" is dragged back to them.
+   * Measured with the company-average version of exactly this rule, at the same moment: the
+   * column's shooters fell 192 units behind their own line — they had stopped to wait for men
+   * they will not meet for a minute — against 26 for the rule that ships. */
+  const late = [];
+  for (let i = 0; i < 10; i++) {
+    late.push(mk(400 + i, 'shieldman', 128, i));
+    late.push(mk(420 + i, 'archer', 42, i));
+  }
+  for (const u of late) { u.x = c0.x + (u.id % 5) * 24 - 48; u.y = c0.y + ((u.id / 5) | 0) % 3 * 24; }
+  step(14);
+  const trail = mean(line, (u) => u.y) - mean(shot, (u) => u.y);
+  ok('the rig is alive: the recruits really are far behind the column',
+     mean(line, (u) => u.y) - mean(late.filter((u) => u.kind === 'shieldman'), (u) => u.y) > 100,
+     `the column is at ${mean(line, (u) => u.y).toFixed(0)}, the recruits at ` +
+     `${mean(late.filter((u) => u.kind === 'shieldman'), (u) => u.y).toFixed(0)}`);
+  ok('...and the column\'s shooters still march with their own line, not with the yard',
+     trail > 0 && trail < C.CROWD.space * 5,
+     `the column's shooters trail their line by ${trail.toFixed(0)}; a body's own depth is ` +
+     `about ${C.CROWD.space * 5}`);
+
+  step(30);                                        // let the whole body arrive and settle
+  const at = { line: mean(line, (u) => u.y), shot: mean(shot, (u) => u.y) };
+  ok('the body arrived at its order', Math.abs(at.line - GOAL.y) < 200,
+     `the line settled at ${at.line.toFixed(0)}, ordered to ${GOAL.y}`);
+  ok('...and formed up with the shooters behind it', at.shot < at.line,
+     `shooters ${at.shot.toFixed(0)}, line ${at.line.toFixed(0)}`);
+  /* the two lines are two BODIES, not a mixture: every shooter is behind every fighting man's
+   * centre and the gap is wider than the noise of a man settling into his place */
+  ok('...as a body of its own, not scattered through the ranks',
+     at.line - at.shot > C.CROWD.space,
+     `the lines are ${(at.line - at.shot).toFixed(0)} apart, a berth is ${C.CROWD.space}`);
+
+  /* A COMPANY OF ONE KIND IS THE DISC IT ALWAYS WAS — the shift is zero when either line is
+   * empty, which is what keeps every other formation suite honest. */
+  const w2 = World.createWorld(5, 2, FLAT);
+  w2.chaosNext = 1e9;
+  w2.players[0].companies = [{ id: 3, rally: null }];
+  w2.units.length = 0;
+  /* HOLD THE MEN THIS SUITE IS ABOUT. The heir's own hall goes on mustering through a
+   * thirty-six second march — measured, fourteen men become twenty-eight — and those
+   * recruits belong to the HALL's company and gather at the Seat. Averaged over
+   * `w2.units` they drag the reading a hundred and sixty units back down the road, which
+   * reads exactly like a company that failed to arrive. */
+  const solos = [];
+  for (let i = 0; i < 14; i++) {
+    const u = { id: 300 + i, owner: 0, co: 3, kind: 'archer', x: START.x + (i % 7) * 24 - 84,
+                y: START.y + ((i / 7) | 0) * 24, hp: 42, maxHp: 42, cd: 0, goal: null };
+    w2.units.push(u); solos.push(u);
+  }
+  World.applyCommand(w2, 0, { c: 'rally', co: 3, x: GOAL.x, y: GOAL.y });
+  for (let i = 0; i < 36 * 30; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  const solo = solos.reduce((a, u) => a + u.y, 0) / solos.length;
+  ok('a company with no fighting men in it gathers on its flag as it always did',
+     Math.abs(solo - GOAL.y) < C.CROWD.space * 2,
+     `settled at ${solo.toFixed(0)}, ordered to ${GOAL.y}`);
+}
+
+/* ---------------- */
+const bad = report("headless");
+if (QUICK_RUN) {
+  /* after the tally, each on its own line: nothing that greps the "headless: N/N passing"
+   * line breaks, and nobody can quote the tally without this staring at them */
+  console.log(`\x1b[33mQUICK RUN — PARTIAL: skipped ${skipped.length} suite(s): ${skipped.join(' · ')}\x1b[0m`);
+  console.log(`\x1b[33mthe full \`node test/headless.js\` (no flag) is the gate before any push\x1b[0m`);
+}
 process.exit(bad);

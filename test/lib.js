@@ -31,12 +31,26 @@ let group = '';
  * without anyone having to bisect it by hand */
 const timing = [];
 let markAt = Date.now();
+/* NOTHING IS ADDED AFTER THE TALLY IS TAKEN. `report()` prints the rows it has and returns
+ * the failure count the runner exits on, so a suite written BELOW the report block runs, is
+ * never printed, is never counted, and cannot fail the build — the file grows at the bottom
+ * and the report was ninety lines above it. Three suites lived down there before this was
+ * noticed, two of them shipped, none of them having ever asserted anything: they read as a
+ * green run because a green run is exactly what they produced. It is the instrument doing
+ * nothing while looking alive, which this project has paid for enough times. So it throws. */
+let tallied = false;
+function guard(what) {
+  if (tallied) throw new Error(`${what} was registered AFTER report() — it would never be ` +
+    'printed, counted, or able to fail the run. Move it above the report block.');
+}
 function suite(name) {
+  guard(`suite('${name}')`);
   if (group) timing.push([group, Date.now() - markAt]);
   markAt = Date.now();
   group = name;
 }
 function ok(name, cond, detail) {
+  guard(`ok('${name}')`);
   results.push({ group, name, pass: !!cond, detail: detail == null ? '' : String(detail) });
   return !!cond;
 }
@@ -68,11 +82,13 @@ function report(label) {
                                 `the tally below does not cover that edit\x1b[0m`);
   console.log(`\n${label}: ${results.length - fails.length}/${results.length} passing` +
               (fails.length ? `  \x1b[31m${fails.length} FAILING\x1b[0m` : ''));
+  tallied = true;
   return fails.length;
 }
 /* A parallel branch collects its own rows and timings and splices them in afterwards, so a
  * concurrent run still reports in a stable order instead of interleaving two renderers. */
 function record(rows, times) {
+  guard(`${rows.length} row(s) from a parallel branch`);
   for (const r of rows) results.push(r);
   for (const t of (times || [])) timing.push(t);
   markAt = Date.now();

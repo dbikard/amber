@@ -127,7 +127,13 @@
                    * This is what makes a gap between works or curtains meter an army through
                    * instead of teleporting the queue: the press at the mouth slows, the men
                    * behind pile into it, and the column pours. */
-                  crush: 0.15, crushFree: 3, crushFloor: 0.45 };
+                  crush: 0.15, crushFree: 3, crushFloor: 0.45,
+                  /* HOW FAR A SHOOTER LOOKS FOR THE LINE HE IS MARCHING WITH. Wide enough to
+                   * see across a body of a hundred men, narrow enough that a company on the
+                   * far side of a spring is somebody else's march. See the pacing rule in
+                   * world.js: it is asked locally BECAUSE a hall never stops mustering, and
+                   * anything company-wide is dragged about by whoever left the yard last. */
+                  lead: 170 };
 
   /* ---- The Shadow map (v0.2): a mirrored site graph, 700×2400 world units ----
    * Player 0's city is at the bottom; the template lists player-0's half + the middle
@@ -789,8 +795,17 @@
    * the two can never drift apart — and a branch changes the number by changing who is mustered,
    * with no entry of its own. The floor keeps the dearest engine a company rather than a pair. */
   CONST.HALL_KEEP = 512;
+  /* WHO STANDS IN THE LINE AND WHO STANDS BEHIND IT. A man's reach already says which he is,
+   * and the table is not close: everything that fights at arm's length reaches 16 to 26, and
+   * everything that throws reaches 90 or better. So the answer is DERIVED from the reach
+   * rather than written down twelve times — a new kind lands on the right side of the line by
+   * having a reach, and nobody has to remember a flag. It is deliberately not `menOnly`: an
+   * Engine and a Bombard shoot stone for a living and still belong at the back, and a Ram at
+   * reach 26 belongs at the front however slowly it walks. */
+  CONST.LINE_REACH = 60;
   for (const k of Object.keys(CONST.UNITS)) {
     const u = CONST.UNITS[k];
+    u.shoots = u.range >= CONST.LINE_REACH;
     /* the Champion and the fiend are free and no hall musters them — a cap on them would be a
      * cap on a Trump and on the black road, which is `CAP.chaos`'s business and not this one */
     if (u.cost > 0) u.keep = Math.max(3, Math.round(CONST.HALL_KEEP / u.cost));

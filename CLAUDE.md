@@ -197,6 +197,29 @@ level, the garrison, the damage, a wall's ends and breach, *and the company whos
 flies*. The company was the one thing missing, so `{c:'assign'}` moved a hall and its flag went
 on flying the old colours until something else rebuilt the group.
 
+**A MIXED COMPANY IS TWO LINES, AND THE SHOOTERS ARE THE BACK ONE.** `CONST.UNITS[k].shoots` is
+DERIVED from reach (`range >= CONST.LINE_REACH`), so nothing names a kind and a new one lands on
+the right side by having a reach — an Engine and a Bombard belong at the back for all that they
+shoot stone, and a Ram at 26 belongs at the front for all that he crawls. `musterAll` deals the
+two lines separately (each dense, neither holing the other), and a body holding both is two
+discs: the fighting men on the flag, the shooters set back by the depth of both plus a berth.
+The bearing is the way the body is MARCHING, remembered in `world._face` for as long as the
+order stands — recomputed at rest it would swing the back line round the flag the instant the
+last man stopped. A body of one kind is one disc on the flag exactly as it always was.
+
+**AND THE PACING IS ASKED LOCALLY — that is the whole difficulty of the rule.** A place at the
+back is not enough: the column steers at the ORDER, so a 50-speed archer walked straight through
+a 44-speed shieldwall and the company met the enemy shooters-first. But the obvious cure — hold
+every shooter behind his company's average — is wrong in a game where a hall NEVER STOPS
+MUSTERING: ten recruits who left the yard a minute after the column is ten men a thousand units
+back dragging that average with them, and the archers already at the front stop dead waiting for
+men they will not meet. So a shooter looks at the fighting men of his own company standing near
+HIM (`CROWD.lead`) and keeps `want` — the formation's own depth — behind the most advanced of
+them, at full stride when further back and easing to nothing as he draws level. The standoff must
+be that depth and not a berth, or the shooters park on the ground the line still has to cross and
+the march ends with the fighting men shoving through their own archers. Re-asked on the
+`RETARGET` stagger, the COLUMN only: a shooter kiting a foe moves at his own legs.
+
 Building is CHOOSE-THEN-PLACE: the 🔨 BUILD button opens the sheet, a card arms
 `game.placing`, and the next tap on the map places it (a wall takes two — anchor, then far
 end). Bare ground does nothing. A refusal leaves the work armed so another spot can be tried.

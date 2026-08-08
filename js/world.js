@@ -1999,6 +1999,7 @@
         const want = foldOrder(world, co && co.rally ? co.rally : pl.banner);
         if (u.goal !== want) u.goal = want;
       }
+      u.rear = 0; u._line = null;
       /* a berth on a parapet and a room in a tower are STATIONS, and a station is exact. Neither
        * takes a place in the body, and neither is counted for one — a tower's garrison holding
        * ranks 3 to 12 would leave ten empty places in the middle of the company outside. */
@@ -2006,10 +2007,77 @@
       /* a NUMBER for a key, not a string: this runs for every man every tick and building
        * "0:1234:567" thirty times a second for an army is a measurable share of the sim */
       const k = (u.owner + 2) * 33554432 + Math.round(u.goal.y) * 4096 + Math.round(u.goal.x);
-      const n = at.get(k) || 0;
-      at.set(k, n + 1);
-      u.rank = n;
+      let g = at.get(k);
+      if (!g) at.set(k, g = { n: 0, m: 0, want: 0, sx: 0, sy: 0, bx: 0, by: 0,
+                              goal: u.goal, owner: u.owner });
+      g.sx += u.x; g.sy += u.y;
+      u._line = g;
+      /* TWO LINES, DEALT SEPARATELY. A shooter is ranked among shooters and a fighting man
+       * among fighting men, so each body is dense and neither leaves holes in the other. */
+      if (C.UNITS[u.kind].shoots) { u.rear = 1; u.rank = g.m++; }
+      else u.rank = g.n++;
     }
+    /* ---- and where the back line stands: BEHIND, which needs a front ----
+     * A body was a disc with no facing at all, which was honest while every man in it did the
+     * same job. It is not honest for a company holding both: an archer dealt rank 3 stood in
+     * the middle of the swordsmen and an outrider dealt rank 40 stood on the rim, so the
+     * shooters were scattered through the line and shot from inside it — and worse, on the
+     * march a faster shooter simply arrived first and the company met the enemy shooters-first.
+     * So a mixed body is two discs: the fighting men on the flag, the shooters set back behind
+     * them by the depth of both discs and a berth of daylight. A body of one kind is one disc
+     * on the flag exactly as before — the shift is zero when either line is empty. */
+    const face = world._face || (world._face = new Map());
+    for (const [k, g] of at) {
+      if (!g.n || !g.m) continue;
+      /* THE FRONT IS THE WAY HE IS GOING. A body still on the road faces its order, and that
+       * bearing is REMEMBERED for as long as the order stands: once the body arrives its
+       * centroid IS the order's point and the direction is noise, and recomputing it there
+       * would swing the back line round the flag the instant the last man came to rest. So a
+       * company that marched north stands facing north, which is the only answer continuous
+       * with the march that put it there. A body that has never moved — mustered at home and
+       * ordered nowhere — falls back to the nearest rival Seat, and a lone heir on the board
+       * to a fixed bearing. */
+      const cnt = g.n + g.m;
+      let fx = g.goal.x - g.sx / cnt, fy = g.goal.y - g.sy / cnt;
+      if (fx * fx + fy * fy >= C.NAV.arrive * C.NAV.arrive) {
+        face.set(k, { x: fx, y: fy });
+      } else {
+        const f = face.get(k);
+        fx = f ? f.x : 0; fy = f ? f.y : 0;
+        if (!f) {
+          let bd = Infinity;
+          for (let pi = 0; pi < world.players.length; pi++) {
+            if (pi === g.owner || world.players[pi].out) continue;
+            const cs = cityOf(world, pi);
+            if (!cs) continue;
+            const d = d2(g.goal.x, g.goal.y, cs.x, cs.y);
+            if (d < bd) { bd = d; fx = cs.x - g.goal.x; fy = cs.y - g.goal.y; }
+          }
+        }
+      }
+      const L = Math.sqrt(fx * fx + fy * fy);
+      if (!(L > 0.001)) { fx = 0; fy = 1; }               // no answer at all: any fixed bearing
+      const home = g.owner !== C.CHAOS_ID && (() => {
+        const cs = cityOf(world, g.owner);
+        return cs && d2(g.goal.x, g.goal.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR;
+      })();
+      const r0 = home ? C.CITY.seatR + 24 : 0;
+      const back = bodyPlace(g.n - 1, r0, C.CROWD.space).r
+                 + bodyPlace(g.m - 1, 0, C.CROWD.space).r + C.CROWD.space;
+      const inv = L > 0.001 ? back / L : back;
+      g.bx = -fx * inv; g.by = -fy * inv;
+      /* and the standoff the march reads. It is the SAME number that sets the back line's
+       * place — the depth of both bodies — and it has to be, or the shooters arrive a berth
+       * behind the line, park on the ground the fighting men still have a hundred units to
+       * cross, and the line finishes the march trying to push through its own archers.
+       * Measured before this was understood: ten of eighteen fighting men still adrift
+       * thirty seconds after the company came to rest. A body of one kind never sets it and
+       * is paced by nothing. */
+      g.want = back;
+    }
+    /* a banner that moves mints a new key every time it is planted, so the remembered bearings
+     * are swept of every order nobody is standing at any more */
+    if (face.size > at.size) for (const k of [...face.keys()]) if (!at.has(k)) face.delete(k);
   }
   const tierOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
   /* ---------------- the chains ----------------
@@ -2859,7 +2927,14 @@
            * gives 73%. A body that stays a body through a war is the bigger change (the old one
            * dispersed as it fought: 44%). If the referee says the Jewel is too strong now, widen
            * this berth — nothing else in here needs to move. */
-          const off = bodyPlace(u.rank || 0, home ? C.CITY.seatR + 24 : 0, C.CROWD.space);
+          /* THE BACK LINE IS A DISC OF ITS OWN, set behind the fighting men — see musterAll,
+           * which deals the two ranks and works out the shift once for the whole body. Its own
+           * disc starts at nought even at home: it is not a ring around the tower, it is the
+           * shooters standing behind the ring. Both terms are zero for a body of one kind, and
+           * this is then the disc it has always been. */
+          const o0 = bodyPlace(u.rank || 0, u.rear ? 0 : (home ? C.CITY.seatR + 24 : 0), C.CROWD.space);
+          const ln = u.rear && u._line ? u._line : null;
+          const off = ln ? { x: o0.x + ln.bx, y: o0.y + ln.by, r: Math.sqrt((o0.x + ln.bx) * (o0.x + ln.bx) + (o0.y + ln.by) * (o0.y + ln.by)) } : o0;
           const pt = placeAt(world, home ? cs.x : gs.x, home ? cs.y : gs.y, off);
           gx = pt.x; gy = pt.y;
           /* THE WHOLE BODY IS MUSTER GROUND, not just the last few strides — and this is the
@@ -2921,7 +2996,45 @@
          * below the crowd's own noise: the shiver detector read 33 of 63 men reversing, and
          * the ranks never closed in time when men fell. The chase above is exempt the same
          * way — a man closing on something he means to kill shoulders through. */
-        const sp = speed * (inColumn ? crush(u.press) : 1) * dt;
+        /* AND A SHOOTER DOES NOT WALK PAST THE MEN HE IS WALKING WITH. A place at the back of
+         * the muster is not enough on its own: the column steers at the ORDER, so an archer at
+         * 50 simply walked through a shieldwall at 44 and the company met the enemy
+         * shooters-first — the exact arrangement the back line exists to prevent.
+         *
+         * IT IS ASKED LOCALLY, and that is the whole difficulty of the rule. The obvious
+         * version — hold every shooter behind his company's average — is wrong in a game where
+         * a hall never stops mustering: one shieldman who stepped out of the barracks a second
+         * ago is a thousand units down the road, he drags the average back with him, and every
+         * archer already at the front stops dead waiting for a man they will never see. So a
+         * shooter looks at the fighting men of his OWN company standing near HIM (`CROWD.lead`,
+         * a couple of berths further than a body is wide) and keeps behind the most advanced of
+         * them. Men who are marching together are the ones who pace each other; a recruit
+         * walking up alone from the yard is paced by nobody, and paces nobody, until he
+         * arrives — which is exactly "troops standing together move together".
+         *
+         * A STANDOFF RATHER THAN A STOP, so it settles instead of stuttering: he is at full
+         * stride a berth and a half back and eases to nothing as he draws level, and since the
+         * line keeps walking the gap re-opens and he starts again the same tick.
+         * The COLUMN only: a shooter kiting a foe or falling back to a wall moves at his own
+         * legs. Re-asked on the `RETARGET` stagger like every other neighbour scan — in half a
+         * second nobody has moved a berth — so it costs a fraction of what `acquire` does. */
+        let led = 1;
+        if (inColumn && u.rear && u._line && u._line.want > 0) {
+          if ((world.tick + u.id) % RETARGET === 0 || u._lead === undefined) {
+            let best = Infinity;
+            forNear(world, u.x, u.y, C.CROWD.lead, (o) => {
+              if (o.owner !== u.owner || o.co !== u.co || C.UNITS[o.kind].shoots) return;
+              const dd = d2(o.x, o.y, gs.x, gs.y);
+              if (dd < best) best = dd;
+            });
+            u._lead = best === Infinity ? -1 : Math.sqrt(best);
+          }
+          if (u._lead >= 0) {
+            const gap = Math.sqrt(d2(u.x, u.y, gs.x, gs.y)) - u._lead;
+            led = Math.max(0, Math.min(1, gap / u._line.want));
+          }
+        }
+        const sp = speed * led * (inColumn ? crush(u.press) : 1) * dt;
         /* THE BANK TURNS THE STEP BEFORE THE GROUND REFUSES IT. `steerClear`'s own lesson:
          * a position projection alone is repulsion-after-contact, and with a place across a
          * water inlet the beeline steps in and the resolver steps out along the same line,
