@@ -3160,7 +3160,7 @@ async function match(browser, base, renderer) {
     ok('the hand-made board really holds all three states', scene.sight > 200 && scene.fog > 100 && scene.shroud > 500,
        `sight ${scene.sight}, fog ${scene.fog}, shroud ${scene.shroud}`);
     /* the traverse runs outward from the men, through what they left behind, into the dark */
-    const walk = await pg.evaluate(async () => {
+    const probe = await pg.evaluate(async () => {
       const w = window.Game.game.world, vi = window.Game.game.viewer;
       const vis = w.vis[vi], seen = w.players[vi].seen;
       const cv = document.querySelector('canvas');
@@ -3191,15 +3191,42 @@ async function match(browser, base, renderer) {
           return 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
         });
       };
+      /* AND WHAT THE 2D CANVAS IS DOING WHILE THE SHADER HAS THE JOB. The GL buffer is only
+       * half the picture — the veil canvas sits ON TOP of it, and reading one and calling it
+       * the frame is how "the shader brightens sighted ground" survived a whole round of
+       * screenshots. It did not: the masked rim was guarded by !shaderFog and the guard sent
+       * the shader path into the ELSE, where the old disc-union rim washed every lit disc in
+       * cream at about a=57. Composited, lit ground read (82,74,52) against the overlay's
+       * (33,29,19). With the shader on the veil canvas must be BLANK over the ground. */
+      const oc = document.getElementById('overlay');
+      const octx = oc.getContext('2d', { willReadFrequently: true });
+      const odpr = oc.width / oc.clientWidth, gdpr = cv.width / cv.clientWidth;
+      /* MEN ARE NOT THE VEIL. Every man carries an hp sliver on this same canvas, drawn in
+       * solid ink, and the traverse walks right through the company it started from — ten of
+       * its points came back a=242 with the veil doing nothing at all. Skip the ground under
+       * a soldier; what is left is ground, where only the veil has any business. */
+      const men = w.units.map((u) => window.Render.project(u.x, u.y)).filter((q) => q.ok);
+      const onMan = (p) => men.some((q) => Math.abs(q.x - p.x / gdpr) < 26 && Math.abs(q.y - p.y / gdpr) < 34);
+      const inkOver = () => pts.map((p) => (onMan(p) ? 0 : octx.getImageData(
+        Math.round(p.x / gdpr * odpr), Math.round(p.y / gdpr * odpr), 1, 1).data[3]));
       window.Render.shaderFog = false; await wait(); await wait(); const raw = read();
       window.Render.shaderFog = true; await wait(); await wait(); const veiled = read();
+      const ink = inkOver();
       window.Render.shaderFog = false; await wait();
-      return pts.map((p, i) => ({ wy: p.wy, cls: p.cls, raw: raw[i],
-                                  r: raw[i] > 12 ? veiled[i] / raw[i] : null }));
+      return { ink, walk: pts.map((p, i) => ({ wy: p.wy, cls: p.cls, raw: raw[i], ink: ink[i],
+                                  r: raw[i] > 12 ? veiled[i] / raw[i] : null })) };
     });
+    const { ink, walk } = probe;
     const seen3 = (c) => walk.filter((p) => p.cls === c && p.r !== null).map((p) => p.r);
     const med = (a) => { const s = a.slice().sort((u, v) => u - v); return s.length ? s[s.length >> 1] : NaN; };
     const S = seen3('sight'), F = seen3('fog'), D = seen3('shroud');
+    /* WITH THE SHADER ON, THE OLD VEIL MUST BE OFF — all of it, not the branch someone
+     * remembered to guard. The disc-union rim lived in an `else` and so ran only when the
+     * shader was on, which is the worst possible place for it. */
+    const inked = walk.filter((p) => p.ink > 6);
+    ok('the 2D veil paints nothing over the ground while the shader has the job',
+       inked.length === 0,
+       inked.length ? `${inked.length} of ${walk.length} points inked, worst a=${Math.max(...ink)} at y=${inked[0].wy}` : '');
     ok('the traverse is alive: it crosses all three states', S.length >= 3 && F.length >= 3 && D.length >= 3,
        `sight ${S.length}, fog ${F.length}, shroud ${D.length}`);
     if (S.length >= 3 && F.length >= 3 && D.length >= 3) {

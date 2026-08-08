@@ -2668,7 +2668,15 @@
         rc.globalCompositeOperation = 'source-over';
         g.drawImage(rimStore.cv, 0, 0, W, H);
       }
-    } else if (rc && discs.length && !(dbg && dbg.rim === false)) {
+    /* AND THE FALLBACK MUST OBEY THE SWITCH TOO. The masked rim above is guarded by
+     * `!R.shaderFog`, which sent the shader path straight into this ELSE — the old
+     * disc-union rim, drawn from every sight source on the board. Sighted ground came back
+     * wearing a warm cream wash at about a=57, and since the shader hands sight back
+     * untouched by design, that wash was the entire difference between the two pictures:
+     * lit ground read (82,74,52) under the shader against (33,29,19) under the overlay, and
+     * it looked like the shader was brightening the world when the shader had not touched
+     * it at all. A guard on the `if` alone is not a guard. */
+    } else if (rc && discs.length && !R.shaderFog && !(dbg && dbg.rim === false)) {
       rc.clearRect(0, 0, W, H);
       rc.fillStyle = 'rgba(255,233,168,0.34)';
       rc.beginPath();

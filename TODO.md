@@ -768,6 +768,14 @@ landed (first entry below), headless 1205/1205.
       the sight disagreeing about where the ground is. They never disagreed. (The real gap at the
       opening is that `CLAIM.seat` is a hard 430 while the Seat's sight, nominally 420, is eaten
       by wood down to a median 344 — that is the design, not a projection error.)
+      **And the 2D veil must be OFF, all of it.** The masked rim was guarded by `!shaderFog`,
+      which sent the shader path into the `else` — the old disc-union rim, drawn from every
+      sight source on the board — so sighted ground came back wearing a cream wash at about
+      a=57. Composited it read (82,74,52) against the overlay's (33,29,19), and for a whole
+      round of screenshots that looked like the shader brightening the world when the shader
+      had not touched it: `lit=1` returns the fragment untouched. A guard on the `if` alone is
+      not a guard. Sight now measures 29.1 against 29.1 in the two approaches, on the same
+      board at the same camera, so an A/B is finally about the veil and not about exposure.
       Pinned by "the shader veil is a ladder with no edge in it": the veil measured as a RATIO,
       veiled over raw, from the same session with the world frozen, asserting sight ≈ ×1.0,
       fog ≈ ×0.5, shroud < ×0.18 and — the one that fails on the old code — that the ratio never
