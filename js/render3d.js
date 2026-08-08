@@ -1295,7 +1295,17 @@
     }
     fogTex.needsUpdate = true;
   }
-  function fogPatch(mat) {
+  /* THE GREY WASH BELOW A CRAG. The ground's colour is a TOP-DOWN bake, and a crag is not a
+   * gentle hill: measured through one, the land goes from 0 to 150 units over twenty of
+   * ground — an 82-degree face — so a twenty-unit strip of texture is stretched down a
+   * hundred and fifty pixels of screen. Whatever is painted at the lip smears the whole way
+   * down, which reads as a pale featureless skirt hanging under every rock.
+   * There is no fixing that by painting: a top-down map has NOTHING to say about a vertical
+   * face. So the face stops pretending to be ground and becomes what it is — rock in its own
+   * shadow, keeping a quarter of the land's colour so a crag in a wood is not the same slate
+   * as a crag on the meadow. `slope` is the geometry's own normal, so it costs one varying
+   * and applies exactly where the stretch is. Only the ground asks for it. */
+  function fogPatch(mat, slope) {
     if (!mat || mat._fogPatched) return mat;
     mat._fogPatched = true;
     mat.onBeforeCompile = (sh) => {
@@ -1339,12 +1349,43 @@
           vec3 o = mix(mix(vec3(0.021, 0.015, 0.043), fogC, mem), c, lit);
           gl_FragColor.rgb = (uFogDbg > 0.5) ? vec3(1.0 - mem, mem - lit, lit) : o;
         }`);
+      /* AFTER the fog block is written, and therefore BEFORE it in the shader — both anchor on
+       * the same include, so the last one injected ends up nearest it. Order matters: the
+       * rock face is the ground's colour, and the veil has to darken what is finally there. */
+      if (slope) {
+        sh.vertexShader = 'varying float vUpness;\nvarying float vWorldY;\n' + sh.vertexShader.replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+          vUpness = normalize(mat3(modelMatrix) * objectNormal).y;
+          vWorldY = (modelMatrix * vec4(transformed, 1.0)).y;`);
+        sh.fragmentShader = 'varying float vUpness;\nvarying float vWorldY;\n' + sh.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          `#include <dithering_fragment>
+          {
+            float steep = smoothstep(0.30, 0.78, clamp(1.0 - vUpness, 0.0, 1.0));
+            /* STRATA, or the face is still a smooth curtain — darker, but a curtain. A
+               vertical wall has no detail of its own in a top-down bake, so it gets some:
+               bands across the fall of the rock, jittered per column so a long scarp does
+               not read as a barcode. Cheap, and only where the ground is nearly a wall. */
+            float jitter = fract(sin(dot(floor(vFogXZ * 0.09), vec2(12.9898, 78.233))) * 43758.5);
+            float band = 0.88 + 0.22 * fract(vWorldY * 0.035 + jitter * 0.6);
+            vec3 rock = (vec3(0.055, 0.048, 0.070) + gl_FragColor.rgb * 0.26) * band;
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, rock, steep);
+          }`);
+        mat.userData.slopeFrag = sh.fragmentShader.indexOf('vUpness') >= 0;
+      }
       /* PROVE THE INJECTION LANDED. A `.replace` whose needle is absent returns the string
        * unchanged and throws nothing — the patch then silently does nothing and the render
        * looks like a plausible result rather than a broken one. */
       mat.userData.fogVert = sh.vertexShader.indexOf('vFogXZ = ') >= 0;
       mat.userData.fogFrag = sh.fragmentShader.indexOf('uFogOn > 0.5') >= 0;
     };
+    /* AND THE CACHE KEY MUST KNOW WHICH PATCH THIS IS. Three keys a patched program on
+     * `onBeforeCompile.toString()` by default, and that string is IDENTICAL for both arms —
+     * `slope` is a closed-over variable, not part of the source. Without this the ground and
+     * every other patched material share one compiled program, and which one they all get
+     * depends on nothing but which compiled first. */
+    mat.customProgramCacheKey = () => (slope ? 'amber-fog-slope' : 'amber-fog');
     mat.needsUpdate = true;
     return mat;
   }
@@ -1487,7 +1528,7 @@
         groundGrid[gz * gridW + gx] = hFn(gx * GRES, gz * GRES);
     const tex2 = new THREE.CanvasTexture(bake.canvas);
     tex2.colorSpace = THREE.SRGBColorSpace;
-    ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 })));
+    ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 }), true));
     worldG.add(ground);
 
     /* forests: 3 instanced palettes (display-space bands → world positions) */
@@ -1514,11 +1555,36 @@
     /* crags: the impassable cells, raised so the eye reads the corridor the units path down */
     if (bake.rocks && bake.rocks.length) {
       const rim = new THREE.InstancedMesh(rockGeo(), MAT, bake.rocks.length);
+      /* A ROCK MAY NOT HANG OVER THE LIP. Every rock was seated at the height of its own
+       * CENTRE, which is right in the middle of a crag and wrong at its edge: a crag's top is
+       * a plateau and its side is an 82-degree face, so a rock whose centre is the last high
+       * cell has half its width standing on air. A ring of them all round the rim reads as a
+       * mushroom cap on a stalk — reported from play in exactly those words.
+       * So each one is asked what the ground does across its own FOOTPRINT. Where that answer
+       * is a cliff, the rock steps back uphill and gives up some size until it fits, which is
+       * the same rule terrain.js already applies in 2D to boundary cells. It is not seated on
+       * the lower ground instead: that would drop rim rocks down the scarp onto ground men can
+       * walk, and a rock mesh standing where the sim says a man may stand is the bug this
+       * renderer has already had once. */
       bake.rocks.forEach(([rx, ry, rr, rv], i) => {
-        const x = rx, z = ry;
+        let x = rx, z = ry, s2 = 0.8 + rr * 0.075;
+        const hC = groundH(x, z);
+        for (let pass = 0; pass < 3; pass++) {
+          const rad = 12 * s2;
+          let lo = hC, ux = 0, uz = 0;
+          for (let k = 0; k < 8; k++) {
+            const a = k / 8 * Math.PI * 2, cx = Math.cos(a), cz = Math.sin(a);
+            const h = groundH(x + cx * rad, z + cz * rad) - hC;
+            if (hC + h < lo) lo = hC + h;
+            ux += cx * h; uz += cz * h;      // sums to a vector pointing UPHILL
+          }
+          if (hC - lo < 8) break;            // the ground under it is level enough to stand on
+          const n = Math.hypot(ux, uz) || 1;
+          x += ux / n * rad * 0.5; z += uz / n * rad * 0.5;
+          s2 *= 0.74;
+        }
         dum.position.set(x, groundH(x, z) - 1, z);
         dum.rotation.set(0, rv * Math.PI * 2, 0);
-        const s2 = 0.8 + rr * 0.075;
         dum.scale.set(s2, s2 * (0.7 + rv * 0.7), s2);
         dum.updateMatrix();
         rim.setMatrixAt(i, dum.matrix);
