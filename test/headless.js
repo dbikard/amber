@@ -4250,6 +4250,65 @@ suite('the chronicle')
 }
 
 /* ---------------- multiplayer: the snapshot contract ---------------- */
+/* ---------------- a snapshot may be dropped, an order may not ----------------
+ * Reported from play: strong lag in big LAN fights, worsening as the fight grows — the
+ * signature of a queue that never drains. `dc.send` does not block; anything it cannot push
+ * now sits in `bufferedAmount`, so once a snapshot costs more than its 100ms budget the next
+ * queues behind it and the guest falls permanently further behind.
+ * The fix rests on an asymmetry worth stating in a test: a snapshot is ABSOLUTE STATE and the
+ * next one supersedes it, so dropping one costs a frame of staleness; a command is a DELTA and
+ * dropping one loses an order forever. Hence a guard on snapshots ONLY. */
+suite('a backed-up channel is skipped, not queued');
+{
+  const mk = (buffered) => {
+    const sent = [];
+    return { sent, peer: { idx: 1, dc: { readyState: 'open', bufferedAmount: buffered,
+                                         send(t) { sent.push(t); } } } };
+  };
+  const wasHost = Net.isHost, wasPeers = Net.peers;
+  Net.isHost = true;
+  ok('there is a snapshot-only send at all', typeof Net.sendSnap === 'function');
+  ok('...and a cap it judges against', Net.SNAP_CAP > 0, String(Net.SNAP_CAP));
+
+  const healthy = mk(0);
+  Net.peers = [healthy.peer];
+  Net.snapDrops = 0;
+  const okSend = Net.sendSnap({ t: 'snap', s: { hello: 1 } }, 1);
+  ok('the rig is alive: a clear channel takes the snapshot', okSend === true && healthy.sent.length === 1,
+     `sent ${healthy.sent.length}`);
+  ok('...and nothing was counted as dropped', Net.snapDrops === 0);
+
+  const clogged = mk(Net.SNAP_CAP + 1);
+  Net.peers = [clogged.peer];
+  const bad = Net.sendSnap({ t: 'snap', s: { hello: 2 } }, 1);
+  ok('a backed-up channel is NOT sent to', bad === false && clogged.sent.length === 0,
+     `sent ${clogged.sent.length}`);
+  ok('...and the drop is counted where a rig can see it', Net.snapDrops === 1, String(Net.snapDrops));
+
+  /* the boundary, so the cap is a real threshold and not a coincidence */
+  const edge = mk(Net.SNAP_CAP);
+  Net.peers = [edge.peer];
+  ok('exactly at the cap still goes', Net.sendSnap({ t: 'snap' }, 1) === true && edge.sent.length === 1);
+
+  /* AN ORDER IS NOT A SNAPSHOT. Net.send is the command path and must be untouched by any of
+   * this — a dropped order is an order the player gave and the game never carried out. */
+  const clog2 = mk(Net.SNAP_CAP * 10);
+  Net.peers = [clog2.peer];
+  Net.send({ t: 'cmd', c: { c: 'walk', on: true } }, 1);
+  ok('a command still goes out through a clogged channel', clog2.sent.length === 1,
+     `sent ${clog2.sent.length}`);
+
+  /* and it only ever serves the seat it was asked for */
+  const a = mk(0), b2 = mk(0);
+  a.peer.idx = 1; b2.peer.idx = 2;
+  Net.peers = [a.peer, b2.peer];
+  Net.sendSnap({ t: 'snap' }, 2);
+  ok('a snapshot goes to its own seat and no other', a.sent.length === 0 && b2.sent.length === 1,
+     `seat1 ${a.sent.length}, seat2 ${b2.sent.length}`);
+
+  Net.isHost = wasHost; Net.peers = wasPeers;
+}
+
 suite('multiplayer snapshots');
 {
   const w = World.createWorld(1000);

@@ -379,6 +379,33 @@
     diag('answer accepted — waiting for the link to open');
   };
 
+  /* ---------------- backpressure: a snapshot may be DROPPED, an order may not ----------------
+   * Reported from play: "strong lags when fighting with big armies over LAN", and getting
+   * WORSE the bigger the fight — the signature of a queue that never drains. `dc.send` does
+   * not block: if a message cannot go out now it sits in `bufferedAmount`, so once a snapshot
+   * takes longer to push than the 100ms budget the next one queues behind it and the guest
+   * falls further behind on every tick, for the rest of the match.
+   * THE ASYMMETRY IS THE WHOLE FIX. A snapshot is ABSOLUTE STATE — the next one supersedes it
+   * entirely, so a dropped snapshot costs one frame of staleness and nothing else. A command
+   * is a DELTA and may never be dropped. So the guard belongs on snapshots alone, and it turns
+   * unbounded, permanent latency into an occasional skipped frame.
+   * The cap is a few snapshots' worth: measured ~10 KB at 91 visible units and rising roughly
+   * linearly, so 64 KB is about two of a big fight's and one of a very big one's. Past that
+   * the channel is already behind and the freshest thing we can do for the guest is stop
+   * adding to the pile. */
+  Net.SNAP_CAP = 64 * 1024;
+  Net.snapDrops = 0;   // observable: a rig can prove the guard actually fired
+  Net.sendSnap = function (o, to) {
+    if (!Net.isHost) return false;
+    for (const p of Net.peers) {
+      if (p.idx !== to || !p.dc || p.dc.readyState !== 'open') continue;
+      if (p.dc.bufferedAmount > Net.SNAP_CAP) { Net.snapDrops++; return false; }
+      p.dc.send(JSON.stringify(o));
+      return true;
+    }
+    return false;
+  };
+
   /* `to` names a seat; without it this goes to everyone the sender is linked to */
   Net.send = function (o, to) {
     const txt = JSON.stringify(o);

@@ -30,6 +30,12 @@
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
+  /* one event queue PER GUEST, and whose turn it is to be sent to. Both belong to the stagger
+   * below: with a single shared queue the first guest served would splice away the events the
+   * others had not been sent yet, and they would simply never see them. */
+  let snapTurn = 0, evQ = Object.create(null);
+  const EV_CAP = 400;   // a guest that is being skipped must not grow an unbounded backlog
+  let snapGap = 100;   // observed ms between the last two snapshots — see the interpolation
   let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null, guestSeen = null, guestWallKey = '';
 
   /* ---------------- campaign ladder ---------------- */
@@ -88,6 +94,7 @@
     game.called = false; game.noMore = false;
     game.names = C.SEAT_NAMES.slice(0, n);
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
+    snapTurn = 0; evQ = Object.create(null); snapGap = 100;
     game.world = Net.isHost ? World.createWorld(seed, n) : null;
     refWorld = Net.isHost ? null : World.createWorld(seed, n);   // guest: map geometry only
     Render.resize();
@@ -392,8 +399,14 @@
   function guestView() {
     const snap = snapCur;
     const me = game.viewer;
-    /* interpolate own+visible units between the last two snapshots */
-    const alpha = Math.min(1, (performance.now() - snapAt) / 100);
+    /* INTERPOLATE OVER THE GAP WE ARE ACTUALLY SEEING, not the one we hoped for. This was a
+     * hardcoded 100 to match the host's 10Hz, which is fine while snapshots arrive on time and
+     * awful when they do not: alpha saturates at 1 and the men FREEZE, then jump when the late
+     * snapshot lands. That stutter is most of what "lag" looks like from the guest's seat, and
+     * it bites hardest in exactly the big fights where snapshots are slowest. Tracking the
+     * observed interval stretches the motion to fill the gap instead. Clamped so one hiccup
+     * cannot put the whole match into slow motion, nor a burst into fast-forward. */
+    const alpha = Math.min(1, (performance.now() - snapAt) / snapGap);
     let units = snap.units;
     if (snapPrev) {
       const prev = new Map(snapPrev.units.map((u) => [u.id, u]));
@@ -537,20 +550,42 @@
       /* the chronicle sees the WORLD here, not the view — a record you read afterwards has no
        * business being fogged, and the sim is right there */
       if (!game.over) { Rec.sample(Rec.fromWorld(game.world)); Rec.note(evs, game.world); }
-      if (evs.length) { routeEvents(evs, view); if (game.mode === 'host') pendingGuestEvents.push(...evs); }
+      if (evs.length) {
+        routeEvents(evs, view);
+        if (game.mode === 'host') {
+          for (const p of Net.peers) {
+            if (!p.dc || p.dc.readyState !== 'open') continue;
+            const q = evQ[p.idx] || (evQ[p.idx] = []);
+            q.push(...evs);
+            if (q.length > EV_CAP) q.splice(0, q.length - EV_CAP);
+          }
+        }
+      }
       if (game.hints && game.hints.length && game.world.t >= game.hints[0][0]) {
         const h = game.hints.shift();
         UI.banner(h[1], h[2]);
       }
       if (game.mode === 'host') {
-        snapTimer -= dtReal;
-        if (snapTimer <= 0) {
-          snapTimer = 0.1;
-          /* one snapshot per guest: each is fog-filtered for THAT seat, so they cannot share */
-          const evs2 = pendingGuestEvents.splice(0);
-          for (const p of Net.peers)
-            if (p.dc && p.dc.readyState === 'open')
-              Net.send({ t: 'snap', s: Net.snapFor(game.world, p.idx, evs2) }, p.idx);
+        /* ONE GUEST PER SLOT, NOT ALL OF THEM AT ONCE. Each snapshot is fog-filtered for its
+         * own seat so they can never be shared, and building all of them in the same tick put
+         * the whole cost in one frame: measured 1.30ms to build and stringify at 91 visible
+         * units, rising roughly linearly, so three guests in a big fight is a blown frame ten
+         * times a second — on a host that is usually a phone. Serving one guest per slot at a
+         * slot of period/n gives every guest the SAME ~10Hz for the same bandwidth, with a
+         * third of the spike. */
+        const open = [];
+        for (const p of Net.peers) if (p.dc && p.dc.readyState === 'open') open.push(p);
+        if (open.length) {
+          snapTimer -= dtReal;
+          if (snapTimer <= 0) {
+            snapTimer = 0.1 / open.length;
+            snapTurn = (snapTurn + 1) % open.length;
+            const p = open[snapTurn];
+            const q = evQ[p.idx] || (evQ[p.idx] = []);
+            /* the events are only consumed if the snapshot actually GOES — a dropped snapshot
+             * must not eat the shots and deaths the guest has still never been told about */
+            if (Net.sendSnap({ t: 'snap', s: Net.snapFor(game.world, p.idx, q) }, p.idx)) q.length = 0;
+          }
         }
       }
       Render.frame(view, game.viewer, dtReal);
@@ -987,7 +1022,9 @@
       endScreen();
     };
     Net.onSnap = (s) => {
-      snapPrev = snapCur; snapCur = s; snapAt = performance.now();
+      const now = performance.now();
+      if (snapAt) snapGap = snapGap * 0.7 + Math.max(50, Math.min(400, now - snapAt)) * 0.3;
+      snapPrev = snapCur; snapCur = s; snapAt = now;
       if (!game.over) {
         Rec.sample(Rec.fromSnap(s, game.viewer));
         if (s.events && s.events.length) Rec.note(s.events, refWorld ? { t: s.t, map: refWorld.map } : null);
