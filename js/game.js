@@ -1118,7 +1118,10 @@
         if (game.armedFlag != null)
           UI.banner('⚐ Tap where this company should stand', 'alert');
       },
-      onRejoin: (co) => { game.armedFlag = null; issue({ c: 'rally', co, site: -1 }); },
+      /* NO PER-COMPANY HOLD BUTTON. It sat beside the armed flag and was the only way to
+       * un-post one company; taken out of the bar on the owner's call to keep the row for
+       * the flag and its roster. The order it sent, if it is ever wanted again anywhere, is
+       * `{ c: 'rally', co, site: -1 }` — a rally with nowhere to go clears the standard. */
       onAssign: (id, co) => issue({ c: 'assign', id, co }),
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();

@@ -178,13 +178,24 @@
     if (hash !== trayHash) {
     trayHash = hash;
     tray.innerHTML = '';
+    /* ONE ROW PER COMPANY, STACKING UP THE LEFT EDGE. The chips used to be a wrapping row:
+     * with three standards out the second line pushed the essence readout around, the HOLD
+     * button landed wherever the wrap happened to leave it, and the roster sat after the last
+     * chip rather than beside the one it described. A column answers all three — every
+     * company keeps a fixed place, a new one appears ABOVE the old ones instead of moving
+     * them, and the row is a natural home for the things that belong to the armed standard
+     * and nothing else. `column-reverse` in the CSS is what puts the first company nearest
+     * the thumb while the DOM stays in company order. */
     const mk = (id, glyph, cls, color) => {
+      const row = document.createElement('div');
+      row.className = 'frow' + (armed === id ? ' armed' : '');
       const b = document.createElement('button');
       b.className = 'fbtn ' + cls + (armed === id ? ' armed' : '');
       b.innerHTML = glyph;
       if (color) b.style.color = color;
       b.addEventListener('click', () => H.onFlagArm(id));
-      tray.appendChild(b);
+      row.appendChild(b);
+      tray.appendChild(row);
       return b;
     };
     /* NO GOLD FLAG. There was one chip that moved everything and a chip per company, and the
@@ -214,13 +225,6 @@
         b.appendChild(d);
       }
     }
-    if (typeof armed === 'number') {
-      const rj = document.createElement('button');
-      rj.id = 'flag-rejoin';
-      rj.textContent = '⟲ HOLD';
-      rj.addEventListener('click', () => H.onRejoin(armed));
-      tray.appendChild(rj);
-    }
     }
     /* WHAT IS ACTUALLY UNDER THE FLAG. A chip says a company exists and whether it is afield.
      * It says nothing about what is IN it — and "should I send this one" is a question about
@@ -233,19 +237,25 @@
       roster = document.createElement('span');
       roster.id = 'flag-roster';
     }
+    const row = tray.querySelector('.frow.armed');
     let rtxt = '';
-    if (typeof armed === 'number') {
+    if (typeof armed === 'number' && row) {
       const n = new Map();
       for (const u of view.units) if (u.owner === viewer && u.co === armed) n.set(u.kind, (n.get(u.kind) || 0) + 1);
       rtxt = [...n].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1))
-        .map(([k, c]) => ((C.UNITS[k] && C.UNITS[k].icon) || '•') + c).join('  ');
+        /* U+2060 between the icon and its count. The roster wraps, and a browser will break
+         * between an emoji and a digit given the chance — "💣" at the end of one line and its
+         * "1" at the start of the next reads as two different facts. A word joiner is the one
+         * character that says these two are a word. */
+        .map(([k, c]) => ((C.UNITS[k] && C.UNITS[k].icon) || '•') + '\u2060' + c).join(' ');
       /* a standard with nobody under it is worth saying out loud — it is the difference
        * between "they are on their way" and "there is nobody to send" */
       if (!rtxt) rtxt = '— no men';
     }
     if (roster.textContent !== rtxt) roster.textContent = rtxt;
-    roster.style.display = rtxt ? '' : 'none';
-    if (rtxt) tray.appendChild(roster);            // and always last, after any chip rebuild
+    /* BESIDE THE FLAG IT DESCRIBES, not at the end of the tray. Re-parented rather than
+     * rebuilt: the text changes every time a man falls and the node is the same node. */
+    if (rtxt && row) { if (roster.parentNode !== row) row.appendChild(roster); }
     else if (roster.parentNode) roster.remove();
   };
 

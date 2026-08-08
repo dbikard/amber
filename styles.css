@@ -384,20 +384,37 @@ body {
  * inside whatever width is left, and the powers keep their own space */
 #hud-left { display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
             flex: 1 1 auto; min-width: 0; max-width: calc(100% - 138px); }
+/* THE STANDARDS STACK UP THE LEFT EDGE, one row each, the first company nearest the thumb
+   and every new one ABOVE it rather than shoving the old ones sideways. A wrapping row put
+   the second line wherever it fitted, moved the essence readout when a company was raised,
+   and left the HOLD button and the roster stranded after the LAST chip instead of beside the
+   armed one. column-reverse keeps the DOM in company order while drawing bottom-up. */
 #flag-tray {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; pointer-events: auto;
-  max-width: 100%; max-height: 100px; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column-reverse; gap: 6px; align-items: flex-start;
+  pointer-events: auto; max-width: 100%;
+  max-height: min(44vh, 300px); overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: none;
+}
+/* one company: its flag, and — when it is the armed one — what is under it and the order to
+   bring it home, both to the RIGHT of the flag they belong to */
+.frow {
+  display: flex; align-items: center; gap: 8px;
+  flex: 0 0 auto; max-width: 100%; min-width: 0;
 }
 #flag-tray::-webkit-scrollbar { display: none; }
 /* the roster under the armed standard: what is in the company, beside the flag that commands
    it. A pill rather than bare text — the tray sits over the board, and a count you cannot read
    against a lit meadow is a count you do not have. */
+/* IT WRAPS RATHER THAN TRUNCATES. The row has about 190 pixels on a 420-wide phone and a
+   company of five kinds wants 145 of them for its roster alone — held to one line that lost
+   two kinds behind an ellipsis, which is exactly the information the readout exists to give.
+   Two lines beside the flag cost a few pixels of height on ONE row and lose nothing. */
 #flag-roster {
-  flex: 0 0 auto; align-self: center;
-  padding: 5px 10px; border-radius: 12px;
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  padding: 4px 9px; border-radius: 12px;
   background: rgba(10, 8, 18, 0.78); border: 1px solid rgba(200, 164, 79, 0.42);
-  color: #ffe9a8; font-size: 15px; line-height: 1.1; white-space: nowrap;
+  color: #ffe9a8; font-size: 14px; line-height: 1.35; max-height: 40px;
+  white-space: normal; word-spacing: 2px;
   text-shadow: 0 1px 2px #000; pointer-events: none;
 }
 .fbtn {
@@ -418,11 +435,6 @@ body {
 .fbtn .dot {
   position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 50%;
   border: 1.5px solid #0d0b18;
-}
-#flag-rejoin {
-  pointer-events: auto; font-family: inherit; font-size: 12px; letter-spacing: 1px;
-  color: #ffe9a8; background: #1c1626ee; border: 1px solid #c9a44f88; border-radius: 14px;
-  padding: 6px 12px;
 }
 
 /* live treasury readout inside sheets */
