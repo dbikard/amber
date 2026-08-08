@@ -169,6 +169,38 @@
   const sph = (r2) => new THREE.SphereGeometry(r2, 7, 5);
   function meshOf(parts) { return new THREE.Mesh(merge(parts), MAT); }
 
+  /* A POOL IS NOT A CIRCLE. Three perfect concentric discs is the one thing that made a
+   * spring read as machinery: nothing in a landscape is that round. The outline is a fan
+   * whose radius wobbles on three harmonics, seeded by the SITE id — so every spring on the
+   * board has its own shape, every machine at a LAN table draws the same one, and a rejoin
+   * does not reshuffle it. Two-sided because a flat fan's winding is not worth reasoning
+   * about and getting wrong once is a pool that vanishes when the camera swings. */
+  function poolGeo(seed, r0) {
+    const n = 34, pos = new Float32Array((n + 2) * 3), nor = new Float32Array((n + 2) * 3);
+    const idx = [];
+    nor[1] = 1;
+    for (let i = 0; i <= n; i++) {
+      const a2 = i / n * Math.PI * 2;
+      const r = r0 * (1 + 0.15 * Math.sin(a2 * 1.0 + seed) + 0.10 * Math.sin(a2 * 3.0 - seed * 1.7)
+                        + 0.055 * Math.sin(a2 * 5.0 + seed * 0.6));
+      const j = (i + 1) * 3;
+      pos[j] = Math.cos(a2) * r; pos[j + 2] = Math.sin(a2) * r; nor[j + 1] = 1;
+      /* WINDING, and it is not cosmetic. Two-sided is not a licence to ignore it: for a BACK
+       * face Three flips the normal in the fragment shader, so a fan wound the wrong way is
+       * lit by the hemisphere's GROUND colour instead of its sky and comes out near-black —
+       * which is exactly how the pool's stone bank read as a hole in the world. */
+      if (i < n) idx.push(0, i + 2, i + 1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    g.setIndex(idx);
+    return g;
+  }
+  /* one lip material and one water material for every spring on the board — the SHAPE is per
+   * site, the surface is not, so this is one program and two draw calls a pool */
+  let poolLipMat = null, poolWaterMat = null;
+
   /* ---------------- damage ----------------
    * A WORK'S HP WAS INVISIBLE UNTIL IT FELL. You could watch a hall you had paid for be taken
    * apart and the only sign was the moment it stopped existing — so there was no such thing as
@@ -1250,7 +1282,10 @@
      * assuming they are the same frame has misled this investigation twice. 1 = show the
      * mask as (shroud, fog, sight) so the real colour and the reason for it can be read off
      * the SAME world in the SAME session. */
-    uFogDbg: { value: 0 } };
+    uFogDbg: { value: 0 },
+    /* the clock the water ripples on. One uniform, shared, advanced with T in the frame loop
+     * — a pool that animates by rebuilding geometry would cost a draw call per ring. */
+    uTime: { value: 0 } };
   let fogTex = null, fogPix = null, fogL = null, fogM = null, fogT = null;
   function fogUpload(gw, gh, cell, liveA, memA) {
     const n = gw * gh;
@@ -1313,7 +1348,7 @@
    * shadow, keeping a quarter of the land's colour so a crag in a wood is not the same slate
    * as a crag on the meadow. `slope` is the geometry's own normal, so it costs one varying
    * and applies exactly where the stretch is. Only the ground asks for it. */
-  function fogPatch(mat, slope) {
+  function fogPatch(mat, mode) {
     if (!mat || mat._fogPatched) return mat;
     mat._fogPatched = true;
     mat.onBeforeCompile = (sh) => {
@@ -1321,6 +1356,7 @@
       sh.uniforms.uFogSpan = FOGU.uFogSpan;
       sh.uniforms.uFogOn = FOGU.uFogOn;
       sh.uniforms.uFogDbg = FOGU.uFogDbg;
+      sh.uniforms.uTime = FOGU.uTime;
       sh.vertexShader = 'varying vec2 vFogXZ;\n' + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
@@ -1329,7 +1365,7 @@
           fogW = instanceMatrix * fogW;
         #endif
         vFogXZ = (modelMatrix * fogW).xz;`);
-      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nuniform float uFogDbg;\nvarying vec2 vFogXZ;\n'
+      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nuniform float uFogDbg;\nuniform float uTime;\nvarying vec2 vFogXZ;\n'
         + sh.fragmentShader.replace('#include <dithering_fragment>',
         `#include <dithering_fragment>
         if (uFogOn > 0.5) {
@@ -1360,7 +1396,43 @@
       /* AFTER the fog block is written, and therefore BEFORE it in the shader — both anchor on
        * the same include, so the last one injected ends up nearest it. Order matters: the
        * rock face is the ground's colour, and the veil has to darken what is finally there. */
-      if (slope) {
+      /* WATER IS NOT A COLOUR, IT IS A SURFACE. A spring was three concentric discs and a
+       * glowing violet lozenge at the middle — perfect circles and an emissive core, which is
+       * the visual grammar of a portal, not of a pool. Reported from play as looking like
+       * something from the future. What makes water read as water is DEPTH (dark in the
+       * middle, pale at the shoal) and MOVEMENT, and both are a few lines here rather than a
+       * pile of geometry: three trains of rings drifting outward at different speeds, bent by
+       * the angle so none of them is a perfect circle, with the crests catching the light.
+       * The deep keeps a faint violet — Shadow is what a Gate draws out of a spring, and the
+       * Gate's orb is that colour — but it is a cast in dark water now, not a lamp. */
+      if (mode === 'water') {
+        sh.vertexShader = 'varying vec2 vPoolXZ;\n' + sh.vertexShader.replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+          vPoolXZ = transformed.xz;`);
+        sh.fragmentShader = 'varying vec2 vPoolXZ;\n' + sh.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          `#include <dithering_fragment>
+          {
+            float r = length(vPoolXZ);
+            float rn = clamp(r / 30.0, 0.0, 1.0);
+            float ang = atan(vPoolXZ.y, vPoolXZ.x);
+            float tt = uTime;
+            float w = sin(r * 0.42 - tt * 1.35 + sin(ang * 3.0) * 0.9)
+                    + 0.62 * sin(r * 0.78 + tt * 0.95 + cos(ang * 2.0 + 1.1) * 1.2)
+                    + 0.38 * sin(r * 1.45 - tt * 2.10 + sin(ang * 5.0) * 0.5);
+            w *= 0.45;
+            vec3 deepC  = vec3(0.055, 0.070, 0.115);
+            vec3 shoalC = vec3(0.150, 0.255, 0.275);
+            vec3 c = mix(deepC, shoalC, smoothstep(0.12, 1.0, rn));
+            c += vec3(0.110, 0.160, 0.180) * max(w, 0.0) * (0.30 + 0.70 * rn);
+            c += vec3(0.42, 0.50, 0.52) * pow(max(w, 0.0), 7.0) * (0.25 + 0.75 * rn);
+            gl_FragColor.rgb = c;
+            gl_FragColor.a = (0.80 + 0.18 * (1.0 - rn)) * (1.0 - smoothstep(0.86, 1.0, rn));
+          }`);
+        mat.userData.waterFrag = sh.fragmentShader.indexOf('vPoolXZ') >= 0;
+      }
+      if (mode === 'slope') {
         sh.vertexShader = 'varying float vUpness;\nvarying float vWorldY;\n' + sh.vertexShader.replace(
           '#include <project_vertex>',
           `#include <project_vertex>
@@ -1393,7 +1465,7 @@
      * `slope` is a closed-over variable, not part of the source. Without this the ground and
      * every other patched material share one compiled program, and which one they all get
      * depends on nothing but which compiled first. */
-    mat.customProgramCacheKey = () => (slope ? 'amber-fog-slope' : 'amber-fog');
+    mat.customProgramCacheKey = () => 'amber-fog' + (mode ? '-' + mode : '');
     mat.needsUpdate = true;
     return mat;
   }
@@ -1556,7 +1628,7 @@
         groundGrid[gz * gridW + gx] = hFn(gx * GRES, gz * GRES);
     const tex2 = new THREE.CanvasTexture(bake.canvas);
     tex2.colorSpace = THREE.SRGBColorSpace;
-    ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 }), true));
+    ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 }), 'slope'));
     worldG.add(ground);
 
     /* forests: 3 instanced palettes (display-space bands → world positions) */
@@ -1628,33 +1700,36 @@
       const holder = new THREE.Group();
       holder.position.set(s.x, groundH(s.x, s.y) + 0.5, s.y);
       if (s.kind === 'node') {
-        /* A SPRING IS THE ECONOMY, and it was a plain blue coin on the grass — the single most
-         * contested thing on the board, drawn with less care than a tree. Reported from play.
-         * Still cheap and still the kit: a stone lip, water in two depths, a violet up-welling
-         * at the heart (Shadow is what a Gate draws out of it — the Gate's own orb is this
-         * colour), and a few worn stones round the rim. The shimmer pass already breathes on
-         * anything marked `_water`, so the heart pulses without a line of new animation. */
-        const lip = new THREE.Mesh(new THREE.CircleGeometry(30, 18).rotateX(-Math.PI / 2),
-          fogPatch(new THREE.MeshLambertMaterial({ color: 0x4a4048 })));
-        lip.position.y = 0.5;
-        const shallows = new THREE.Mesh(new THREE.CircleGeometry(26, 18).rotateX(-Math.PI / 2),
-          fogPatch(new THREE.MeshLambertMaterial({ color: 0x3c6e8e, emissive: 0x142834 })));
-        shallows.position.y = 0.9;
-        const deep = new THREE.Mesh(new THREE.CircleGeometry(16, 14).rotateX(-Math.PI / 2),
-          fogPatch(new THREE.MeshLambertMaterial({ color: 0x1e3c5c, emissive: 0x0e1c30 })));
-        deep.position.y = 1.15;
-        const heart = new THREE.Mesh(new THREE.CircleGeometry(6.5, 10).rotateX(-Math.PI / 2),
-          fogPatch(new THREE.MeshLambertMaterial({ color: 0x9a7ec0, emissive: 0x7a5a9c })));
-        heart.position.y = 1.4; heart._water = true;
-        holder.add(lip, shallows, deep, heart);
+        /* A SPRING IS THE ECONOMY — the most contested thing on the board — and it has now
+         * been drawn wrong twice. First as a plain blue coin on the grass. Then as three
+         * PERFECT CONCENTRIC DISCS with an emissive violet lozenge at the middle, which is
+         * the visual grammar of a portal or a targeting reticle: reported from play as
+         * looking like something from the future.
+         * A pool reads as a pool on two things, and neither of them is detail. Its OUTLINE is
+         * irregular (nothing in a landscape is that round — see poolGeo), and its surface
+         * MOVES. Both are cheap: one wobbled fan per site, and a ripple written in the
+         * fragment shader so the animation costs a uniform rather than a draw call. */
+        const seed = (s.id % 17) * 0.7 + 0.3;
+        if (!poolLipMat) poolLipMat = fogPatch(new THREE.MeshLambertMaterial(
+          { color: 0x584c43, side: THREE.DoubleSide }));
+        if (!poolWaterMat) poolWaterMat = fogPatch(new THREE.MeshBasicMaterial(
+          { transparent: true, side: THREE.DoubleSide, depthWrite: false }), 'water');
+        /* WET STONE FIRST, then the water inside it and a little short of it, so the pool has
+         * a bank rather than an edge. The two outlines are the same wobble at two radii, which
+         * is what makes the bank look worn by the water rather than drawn around it. */
+        const lip = new THREE.Mesh(poolGeo(seed, 34), poolLipMat);
+        lip.position.y = 0.45;
+        const water = new THREE.Mesh(poolGeo(seed, 26), poolWaterMat);
+        water.position.y = 1.0;
+        holder.add(lip, water);
         const stones = [];
         for (let k = 0; k < 6; k++) {
           /* seeded by the SITE, not by chance: every machine at a LAN table draws the same
            * spring, and a rejoin does not reshuffle the stones */
           const a = (k + 0.5) / 6 * Math.PI * 2 + (s.id % 7) * 0.4;
-          const r = 28 + ((s.id * 13 + k * 5) % 5);
+          const r = 32 + ((s.id * 13 + k * 5) % 6);
           stones.push(part(sph(2.4 + ((s.id + k) % 3)), k % 2 ? 0x5a5266 : 0x6a6276,
-                           Math.cos(a) * r, 1.6, Math.sin(a) * r));
+                           Math.cos(a) * r, 1.4, Math.sin(a) * r));
         }
         holder.add(meshOf(stones));
       } else if (s.kind === 'vantage') {
@@ -1928,8 +2003,7 @@
     updateArrows(dt);
     updateHex(view);
     updateFxs(dt);
-    for (const so of siteObjs.values())
-      for (const ch of so.holder.children) if (ch._water) ch.material.emissiveIntensity = 0.7 + 0.4 * Math.sin(T * 2 + so.holder.position.z);
+    FOGU.uTime.value = T;      // the water ripples on this; see the `water` arm of fogPatch
 
     renderer.render(scene, cam);
     overlayPass(view, viewer);

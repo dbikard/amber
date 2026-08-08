@@ -166,14 +166,17 @@
     for (const s of map.sites) {
       const X = s.x, Y = s.y;
       if (s.kind === 'node') {
-        g.globalAlpha = 0.5; g.fillStyle = '#000';
-        g.beginPath(); g.ellipse(X + 3, Y + 8, 42, 16, 0, 0, 7); g.fill(); g.globalAlpha = 1;
-        const gr = g.createRadialGradient(X, Y, 2, X, Y, 36);
-        gr.addColorStop(0, '#4a86b0'); gr.addColorStop(0.55, '#1c3448'); gr.addColorStop(1, 'rgba(12,22,34,0)');
-        g.fillStyle = gr; g.beginPath(); g.ellipse(X, Y, 35, 15, 0, 0, 7); g.fill();
-        g.strokeStyle = 'rgba(150,200,240,0.4)'; g.lineWidth = 1.4;
-        g.beginPath(); g.ellipse(X, Y, 34, 14, 0, 0, 7); g.stroke();
-        g.beginPath(); g.ellipse(X, Y, 20, 8, 0, 0, 7); g.stroke();
+        /* THE GROUND ONLY HAS TO BE DAMP. A whole 2D spring used to be painted here — a black
+         * drop-shadow ellipse, a blue gradient disc and two pale rings — from the days when
+         * the bake WAS the spring. The pool is three-dimensional now and stands on top of all
+         * of it, so the shadow read as a black moat round the water and the blue disc read as
+         * nothing at all, being hidden. What a pool actually leaves on the ground it sits in
+         * is wet earth, darker close in and fading out, and that is all this paints now. */
+        const gr = g.createRadialGradient(X, Y, 16, X, Y, 58);
+        gr.addColorStop(0, 'rgba(24,20,17,0.50)');
+        gr.addColorStop(0.5, 'rgba(28,24,20,0.26)');
+        gr.addColorStop(1, 'rgba(28,24,20,0)');
+        g.fillStyle = gr; g.beginPath(); g.ellipse(X, Y, 58, 34, 0, 0, 7); g.fill();
       } else if (s.kind === 'vantage') {
         g.globalAlpha = 0.5; g.fillStyle = '#000';
         g.beginPath(); g.ellipse(X + 6, Y + 24, 50, 15, 0, 0, 7); g.fill(); g.globalAlpha = 1;
