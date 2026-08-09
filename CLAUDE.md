@@ -232,6 +232,18 @@ end). Bare ground does nothing. A refusal leaves the work armed so another spot 
 The cards cannot say why a particular spot refuses them any more — the sheet no longer belongs
 to one — so they show cost and affordability only.
 
+**A BANNER IS FOR A REFUSAL OR A SURPRISE, NEVER FOR AN ECHO.** The corner stack holds three
+lines for 3.4 seconds each, so every banner that says what the player has just done shoves out
+one that says what the *rival* is doing. Three tests, all of which have to pass: does it tell
+him something he did not just cause? is there no readout already saying it? and would he act
+differently for knowing? An order confirmed is none of the three — the armed ring, the lit BUILD
+button, the company chip and the essence rate each say their own thing for as long as it is
+true. So planting a standard, arming one, sounding the Recall, halting the muster and cancelling
+a placement are all SILENT; a refusal (`r.err`, in `issue`) always speaks, and so does anything
+a rival or Chaos did. The Recall made the case on its own: it clears every company's rally, so a
+four-company realm emitted four identical banners for one tap and the stack held nothing else.
+Orders are still in the chronicle (`record.js`) — that is where "what did I do" belongs.
+
 The mason readout must mirror `World.rising` EXACTLY: a crew is busy when `raise > 0` **or**
 `work > 0` (an upgrade or a mend). It once counted only `raise` and cheerfully reported a free
 crew that every order then bounced off as 'busy'.

@@ -142,7 +142,9 @@
       game.targeting = false; game.armedFlag = null;
       game.span = null; Render.span = null;
       clearPlacing();
-      UI.banner('Cancelled', 'warn');
+      /* NO 'CANCELLED'. The player pressed back to cancel; the armed ring, the lit BUILD
+       * button and the run's preview all go out on this same line, which is the answer. A
+       * 'warn' banner for a thing the player deliberately did also read as a refusal. */
       armBack(); return;
     }
     toMenu();                                     // in a match: back leaves to the menu
@@ -482,7 +484,6 @@
   function routeEvents(evs, view) {
     const seen = evs.filter((ev) => ev.pi === game.viewer || ev.x == null || !view.see || view.see(ev.x, ev.y));
     Render.addEvents(seen, view, game.viewer);
-    const siteName = (id) => view.map.sites[id] ? view.map.sites[id].name : 'a far place';
     for (const ev of seen) {
       /* A RIVAL ON THE PATTERN GETS THE KNELL, not a banner. Your own walk stays a banner —
        * you know you started it, and you have the count on the board — but a rival's is the
@@ -499,14 +500,20 @@
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
       else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
       else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
-      else if (ev.e === 'muster') { if (ev.pi === game.viewer) UI.banner(ev.pause ? '⏸ The muster is halted — essence gathers' : '▶ The muster resumes', ''); }
-      else if (ev.e === 'rally') {
-        /* site >= 0 names a place; a bare point still carries x, so only a rally with
-         * neither is the order to come home */
-        if (ev.pi === game.viewer) UI.banner(ev.site >= 0 ? '⚐ The company posts its standard at ' + siteName(ev.site)
-          : ev.x != null ? '⚐ The company posts its standard in open country'
-          : '⚐ The company holds at home', '');
-      }
+      /* NO BANNER FOR THE MUSTER VALVE EITHER. It is a STATE, and a state has a readout: the
+       * essence rate carries ⏸ for as long as the realm is quiet, and a company's own chip
+       * goes `quiet` for as long as that standard is. A banner says it once, for 3.4 seconds,
+       * about a thing that is still true a minute later — and the per-company valve made it
+       * four banners for one order. */
+      /* NO MESSAGE FOR PLANTING A FLAG. It told the player only what he had just done, and
+       * named the place he had just tapped — and there IS no failure to report: an order is
+       * never refused for its ground. `aimAt` clamps a tap to the board and `foldOrder` folds
+       * an unreachable point onto the nearest standing ground at the moment it is consumed, so
+       * a company sent at a lake walks to the bank. The one refusal a flag can draw is the
+       * halt, and that still speaks (see `issue`).
+       * It was worse than redundant: the Recall clears EVERY company's rally, so a four-company
+       * realm emitted four of these, and the corner stack holds three — the useful line was
+       * shoved out by the echoes of its own order. */
       else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
       /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
        * read exactly like a rival's assault — and a player watching for the rival never saw
@@ -746,8 +753,8 @@
     const bid = Render.hitBuilding(x, y, bAt);
     if (uco > 0 && !(bid >= 0 && bAt.d <= uAt.d)) {
       game.armedFlag = game.armedFlag === uco ? null : uco;
-      UI.banner(game.armedFlag ? '⚐ Standard ' + uco + ' — tap where they should stand' : 'Cancelled',
-                game.armedFlag ? 'alert' : 'warn');
+      /* the ring the renderer draws round the armed company, and the lit chip in the tray,
+       * already say this — and say it for as long as it is true rather than for 3.4 seconds */
       return;
     }
     /* one of your own works first (they overlap everything), then sites, then bare ground */
@@ -1092,7 +1099,7 @@
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
       onBuildMenu: () => {
         if (game.over) return;
-        if (game.placing) { clearPlacing(); UI.banner('Cancelled', 'warn'); return; }
+        if (game.placing) { clearPlacing(); return; }   // the button un-arms; that is the answer
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
         game.targeting = false; game.armedFlag = null;
@@ -1114,9 +1121,7 @@
         game.targeting = false;
         clearPlacing();   // picking up a standard is not placing a work
 
-        game.armedFlag = game.armedFlag === id ? null : id;
-        if (game.armedFlag != null)
-          UI.banner('⚐ Tap where this company should stand', 'alert');
+        game.armedFlag = game.armedFlag === id ? null : id;   // the chip lights; that is the caption
       },
       /* NO PER-COMPANY HOLD BUTTON. It sat beside the armed flag and was the only way to
        * un-post one company; taken out of the bar on the owner's call to keep the row for
@@ -1131,7 +1136,6 @@
          * turns the whole army for home. `banner` is still that command — it simply has no
          * chip in the tray any more. */
         issue({ c: 'banner', site: view.map.cities[game.viewer] });
-        UI.banner('🛡 The Recall sounds — every blade turns for home', 'alert');
       },
       onMuster: (pause) => issue({ c: 'muster', pause }),
       onMusterCo: (co, pause) => issue({ c: 'muster', co, pause }),

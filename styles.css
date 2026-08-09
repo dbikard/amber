@@ -70,6 +70,10 @@ body {
   border: 1px solid #9cc8ff44;
 }
 .walker.mine { border-color: #ffe9a8aa; }
+/* ground banked but nobody on the lines — a Shrine thrown down. Still owed to the table,
+ * still his the moment he raises another, but it is not a walk in progress and must not
+ * read like one. */
+.walker.stalled { opacity: 0.55; font-weight: normal; border-style: dashed; }
 #timer { color: #b8a878; font-variant-numeric: tabular-nums; }
 #hud-bottom {
   position: absolute; bottom: calc(env(safe-area-inset-bottom, 0) + 2px); left: 0; right: 0;

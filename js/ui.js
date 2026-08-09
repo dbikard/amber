@@ -313,20 +313,30 @@
     er.style.color = incomeRate >= 0 ? '' : '#ff8a96';
     $('timer').textContent = mmss(view.t);
     /* THE RACE. Every heir on the Pattern, however far along, in their own colour — a walk
-     * is a public act and the whole table is owed the count. Yours is marked. */
+     * is a public act and the whole table is owed the count. Yours is marked.
+     * GROUND ALREADY PAID FOR STAYS ON THE BOARD. This filtered on `q.walking`, and the one
+     * thing that can turn that off is a Shrine thrown down — so the heir who had banked 60%
+     * and just lost his Shrine to an assault DISAPPEARED from every board at the table,
+     * reading as though he had never set foot on it. He has not: `breakLoss` takes its cut and
+     * the rest is his, and the moment he raises another Shrine he carries on from there. So a
+     * revealed heir is listed while he has ANY ground, and the ✴ goes dim when he is off the
+     * lines. Nothing new crosses the wire for it — `pattern` already rides for a revealed
+     * heir whether he is walking or not (`net.js`), which is precisely why the board could
+     * afford to be wrong about it in silence. */
     const race = $('walkers');
     const on = view.players.map((q, pi) => ({ q, pi }))
-      .filter(({ q, pi }) => !q.out && q.walking && (pi === viewer || q.revealed))
+      .filter(({ q, pi }) => !q.out && (q.walking || q.pattern > 0) && (pi === viewer || q.revealed))
       .sort((a, b) => b.q.pattern - a.q.pattern);
-    const key = on.map(({ q, pi }) => pi + ':' + q.pattern.toFixed(0)).join(',');
+    const key = on.map(({ q, pi }) => pi + ':' + q.pattern.toFixed(0) + (q.walking ? 'w' : 's')).join(',');
     if (key !== race._key) {
       race._key = key;
       race.innerHTML = '';
       for (const { q, pi } of on) {
         const d = document.createElement('div');
-        d.className = 'walker' + (pi === viewer ? ' mine' : '');
+        d.className = 'walker' + (pi === viewer ? ' mine' : '') + (q.walking ? '' : ' stalled');
         d.style.color = UI.seatColor(pi, viewer);
-        d.textContent = '✴ ' + (pi === viewer ? 'YOU' : (C.SEAT_NAMES[pi] || 'a rival').toUpperCase()) +
+        d.textContent = (q.walking ? '✴ ' : '✧ ') +
+                        (pi === viewer ? 'YOU' : (C.SEAT_NAMES[pi] || 'a rival').toUpperCase()) +
                         ' ' + q.pattern.toFixed(0) + '%';
         race.appendChild(d);
       }

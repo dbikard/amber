@@ -1636,8 +1636,16 @@
   /* ---------------- world (re)build ---------------- */
   const mapKey = (view, viewer) => (view.mapSeed || 0) + ':' + viewer;
   function buildWorld(view, viewer) {
+    /* `remove` DOES THE SPLICING, so popping first was doing it twice and undoing the half
+     * that matters: `pop()` takes the child out of the array, `remove()` then cannot find it
+     * and returns without clearing `child.parent` — so every discarded mesh walked away still
+     * pointing at the group it had been thrown out of. Nothing drew it, so nothing complained;
+     * what it cost was the ability to ASK. `o.parent` is the natural probe for "is this handle
+     * an orphan of the last world", a suite written against it passed on the broken code, and
+     * that is how a whole class of stale-handle bug hides. Index 0 each time so the array is
+     * walked once. */
     while (worldG.children.length) {
-      const c2 = worldG.children.pop();
+      const c2 = worldG.children[0];
       c2.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
       worldG.remove(c2);
     }
@@ -1651,7 +1659,16 @@
     /* the darts and the chains hang in worldG too, and it was just emptied — their geometry is
      * disposed with everything else, so the handles must go with it or the next frame writes
      * instances into a mesh that is no longer in the scene */
-    arrowIM = null; hexIM = null; arrows.length = 0; gateState.clear();
+    arrowIM = null; ballIM = null; hexIM = null; arrows.length = 0; gateState.clear();
+    /* ...AND SO DOES THE JEWEL'S STORM, which was the one thing missed off this list. Every
+     * slot of `stormState` holds a disc and a bolt of lightning that hang in `worldG` and were
+     * just disposed with it, and the pool re-creates them lazily behind `if (!ss.disc)` — which
+     * is FALSE for an orphan. So from the second match of a session onward every cast set
+     * `visible = true` on a mesh that is not in the scene and rewrote vertices nobody would
+     * ever draw. The only thing still rendering was the point light, because that is added to
+     * `scene` rather than `worldG` and `buildWorld` never touches it: a faint flicker over
+     * dark ground and no storm at all. Reported from play as the Jewel having no effect. */
+    stormState.length = 0;
     hurtMem.clear(); hpMem.clear(); flash.clear(); barRec.clear();
     writG = null; writKey = '';
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
@@ -1883,7 +1900,7 @@
    * ONE geometry and ONE instanced mesh for every dart on the board. Dozens are in the air at
    * once, this runs on phones, and a Line per shot was an allocation, a BufferGeometry, a
    * material and a draw call EACH. The pool grows in doublings and never shrinks. */
-  let arrowIM = null;
+  let arrowIM = null, ballIM = null;
   const arrows = [];
   const ARROW = { speed: 620, min: 0.13, max: 0.7, arc: 0.17, room0: 64 };
   /* the dart itself, built pointing along +Z so `Object3D.lookAt` can aim it down its own
@@ -1895,13 +1912,18 @@
     const fl2 = colorize(box(4.6, 0.5, 4.6).toNonIndexed().translate(0, 0, -8), 0xe6dcf0);
     return merge([shaft, head, fl1, fl2]);
   }
-  function arrowFx(x1, z1, x2, z2, color) {
+  function arrowFx(x1, z1, x2, z2, color, o) {
     const d = Math.hypot(x2 - x1, z2 - z1);
     if (d < 1) return;                       // nowhere to fly; a degenerate lookAt has no answer
+    /* `o` is the gunnery: a launch height for a shot that leaves a tower's deck rather than a
+     * man's shoulder, a size for a ballista's dart against an archer's arrow, and a heavier
+     * arc for a ball that is thrown rather than loosed. A man's shot passes none of it. */
+    o = o || {};
     arrows.push({ x1, z1, x2, z2, t: 0,
-                  dur: Math.max(ARROW.min, Math.min(ARROW.max, d / ARROW.speed)),
-                  y1: groundH(x1, z1) + 16, y2: groundH(x2, z2) + 11,
-                  rise: Math.min(52, d * ARROW.arc), color });
+                  dur: Math.max(ARROW.min, Math.min(ARROW.max, d / (o.speed || ARROW.speed))),
+                  y1: groundH(x1, z1) + (o.y1 != null ? o.y1 : 16), y2: groundH(x2, z2) + 11,
+                  rise: Math.min(o.rise || 52, d * (o.arc || ARROW.arc)),
+                  s: o.s || 1, ball: o.ball ? 1 : 0, color });
   }
   /* the parabola, sampled twice: where the dart is, and where it will be a moment later, which
    * is the direction it points. Cheaper and shorter than differentiating the arc by hand, and
@@ -1929,24 +1951,61 @@
       arrowIM._room = room;
       worldG.add(arrowIM);
     }
+/* ONE LIST, TWO MESHES. A dart and a cannonball are different geometry and so cannot share
+     * an instanced mesh, but they are the same flight: launched, arcing, arriving. The ball pool
+     * is built exactly like the dart pool and only when something round is actually in the air,
+     * so a match with no cannon in it never allocates one. */
+    if (ballIM && arrows.length > ballIM._room) {
+      ballIM.removeFromParent(); ballIM.geometry.dispose(); ballIM.dispose(); ballIM = null;
+    }
+    let na = 0, nb = 0;
     for (let i = 0; i < arrows.length; i++) {
       const a = arrows[i], k = a.t / a.dur;
       const p = arcAt(a, k), q = arcAt(a, Math.min(1, k + 0.06));
       dum.position.set(p.x, p.y, p.z);
-      dum.scale.set(1, 1, 1);
+      dum.scale.set(a.s, a.s, a.s);
       dum.lookAt(q.x, q.y, q.z);
       dum.updateMatrix();
-      arrowIM.setMatrixAt(i, dum.matrix);
       colTmp.setHex(a.color);
-      arrowIM.setColorAt(i, colTmp);
+      if (a.ball) {
+        if (!ballIM) {
+          let room = ARROW.room0;
+          while (room < arrows.length) room *= 2;
+          /* WHITE, so the instance colour is the ball's colour. `MATB` is `vertexColors: true`
+           * and a geometry with no `color` attribute reads as (0,0,0) in the shader — which
+           * multiplies the instance colour away and lands every ball on pure black. The dart
+           * pool never hit this because `arrowGeo` colorizes each of its four parts. */
+          ballIM = new THREE.InstancedMesh(colorize(sph(3.4), 0xffffff), MATB, room);
+          ballIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          ballIM.frustumCulled = false;
+          ballIM._room = room;
+          worldG.add(ballIM);
+        }
+        ballIM.setMatrixAt(nb, dum.matrix); ballIM.setColorAt(nb, colTmp); nb++;
+      } else {
+        arrowIM.setMatrixAt(na, dum.matrix); arrowIM.setColorAt(na, colTmp); na++;
+      }
     }
-    arrowIM.count = arrows.length;
+    if (ballIM) {
+      ballIM.count = nb;
+      ballIM.instanceMatrix.needsUpdate = true;
+      if (ballIM.instanceColor) ballIM.instanceColor.needsUpdate = true;
+    }
+    arrowIM.count = na;
     arrowIM.instanceMatrix.needsUpdate = true;
     if (arrowIM.instanceColor) arrowIM.instanceColor.needsUpdate = true;
   }
   /* test handle: how many darts are in the air. They live in ONE instanced mesh with no object
    * per shot, so a suite has nothing else to count. */
   R.debugArrows = () => arrows.length;
+  /* ...and WHAT is in the air, which `debugArrows` cannot say: a tower's shot is a dart or a
+   * ball, and it must leave the GUN and not the masonry around its foot. There is no object per
+   * shot — they live in two instanced meshes — so a suite has nothing else to read. */
+  R.debugFlights = () => arrows.map((a) => ({ y1: a.y1, ball: !!a.ball, s: a.s, x1: a.x1, z1: a.z1 }));
+  /* ...and that the ball pool can carry a colour at all. `MATB` is `vertexColors: true`, so a
+   * geometry with no `color` attribute reads (0,0,0) in the shader and multiplies the instance
+   * colour to pure black — a bug with no exception, no warning and no shape to it on screen. */
+  R.debugBallGeo = () => !!(ballIM && ballIM.geometry && ballIM.geometry.attributes.color);
 
   /* ---------------- THE CHAINS ----------------
    * FEATURE-DETECTED, and silent until the sim carries it. A man the Binding has caught wears
@@ -2000,10 +2059,27 @@
     if (!R.ready) return;
     for (const ev of events) {
       if (ev.e === 'shot' && ev.pi === viewer) {
-        /* the Seat's own gun carries no work id — it is the castle firing, and it fires from
-         * the top of it */
-        boltFx(ev.x, ev.y, ev.to.x, ev.to.y, ev.br === 'cannon' ? 0xffcf9a : 0xe8d8a8, 0.22,
-               ev.id ? 16 : 74);
+        /* ---- A TOWER THROWS SOMETHING, AND IT COMES OUT OF THE GUN ----
+         * This drew the old hairline tracer — the very thing the arrow rewrite replaced for
+         * men, because a straight line between two points for a fifth of a second is what a
+         * laser looks like — and it drew it from `groundH + 16`, which is INSIDE the tower's
+         * own masonry about forty units below the ballista arms. So a Watchtower firing looked
+         * like nothing at all. Reported from play as no arrows from the ballista and no
+         * cannonballs from the towers.
+         * The muzzle is the work's own measured crown (`w.top`, the same number the standard is
+         * planted under), so a taller level and each branch's deck carry the shot up with them
+         * and no constant can drift from the model. The Seat carries no work id — it is the
+         * castle firing — and keeps its own height. */
+        const wk = ev.id && cityObjs && cityObjs[ev.pi] && cityObjs[ev.pi].works.get(ev.id);
+        const muzzle = wk ? wk.top * (wk.grp.scale.y || 1) + 1.5 + (wk.onWall || 0) - 4 : 74;
+        /* a BALL from the cannon and the Seat, a DART from the ballista and the unforked
+         * tower: one is thrown and bursts, the other is loosed and sticks. */
+        if (ev.splash > 0)
+          arrowFx(ev.x, ev.y, ev.to.x, ev.to.y, 0x2a2018,
+                  { y1: muzzle, ball: 1, s: 1, speed: 430, arc: 0.30, rise: 90 });
+        else
+          arrowFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xf0e2bc,
+                  { y1: muzzle, s: 1.7, speed: 780, arc: 0.10, rise: 40 });
         if (ev.splash > 0) ringFx(ev.to.x, ev.to.y, 0xffb070, 0.32, ev.splash * 0.9);   // the burst
       } else if (ev.e === 'wshot') boltFx(ev.x, ev.y, ev.to.x, ev.to.y, 0xe8d8a8, 0.22);
       else if (ev.e === 'bolt') {

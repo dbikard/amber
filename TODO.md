@@ -659,10 +659,18 @@ essence race; match length moves to 15–30 min. Staged, sim-green at every step
 
 ## IN FLIGHT — read this first if you are picking the work up
 
-`main` is v0.9.5 and green (headless 1200/1200, browser 276/276, referee green on
-every target). The branch `claude/game-design-open-world-5mzdhz` sits three commits ahead
-of it and is whole again: the INCOMPLETE commit it used to end on has had its other half
-landed (first entry below), headless 1205/1205.
+`main` and `claude/game-design-open-world-5mzdhz` are level and green: headless 1417/1417,
+browser 359/359.
+
+**The heirs are the open work.** A read of `js/ai.js` against the eleven-verb grammar found
+five verbs no heir has ever issued (`fix`, `flip`, `assign`, `muster`, and `rally` by
+coordinate), two difficulty knobs that are decorative by the file's own admission (`slow`,
+`noise` — a skipped think is simply re-taken), several branch doctrines that are unreachable
+code because their building is absent from that heir's `upPref`, and `v.nodes.enemy` — half
+the board's springs — referenced nowhere at all. PRINCE is already very nearly the referee
+heir, so there is no knob left to turn: **making the top footing harder has to be doctrine
+work.** The findings are itemised under "The heirs play one army and one and a half orders"
+below.
 
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
       yet answered for the ORDER, so a banner planted past a shoreline pressed the company
@@ -695,6 +703,74 @@ landed (first entry below), headless 1205/1205.
       (Watch the rig, still: the first curtain version counted anyone crossing the wall's
       LINE and so read men walking round it as a torrent through the gap — classify by
       offset along the line, never by the line alone.)
+- [ ] **The heirs play one army and one and a half orders.** Surveyed against the grammar and
+      the content tables, with the claims measured over real headless matches (seeds 1000-1005).
+      Ordered by impact over effort; `[REF]` needs `node sim.js` before and after, `[SAFE]` does
+      not touch a balance surface.
+      1. **The wall is priced wrong and the misprice eats the plan.** `[REF]` `spanFor` sizes a
+         run at up to `WALL.unit * 2` — two crews, 220 — but the affordability test compares
+         against `BUILDINGS.wall.cost`, 110. So `saving` is never set, the order goes out, it is
+         refused for essence, the plan `break`s on it anyway, and because `saving` is false the
+         upgrade scan then spends the treasury below the wall price again. Measured, benedict
+         seed 1000: **18 wall orders, 17 refused, every one a 300-length run tested against a
+         one-crew price** — for minutes at a time, blocking everything behind it in the plan.
+         Have `spanFor` return the run's real price, clamp the candidate length to the purse,
+         and set `saving` when even the shortest legal run is unaffordable. This is why the
+         curtain work has no referee signal: the two heirs who ask for walls mostly fail to get
+         them.
+      2. **Nobody marches on a walker's Shrine.** `[REF]` `v.walkers` carries every walker's
+         **Shrine coordinates**, and it is read at exactly one place — to refuse a race already
+         lost. Three of five heirs have no response to a rival's walk whatsoever; the two that
+         do send the army at his *Seat*. A Shrine is one of the few works `menOnly` shooters may
+         attack, so the `breakers >= 3` gate in `strike` is precisely backwards here. Two
+         mechanical cautions when wiring it: a banner by coordinate needs its own memo (the
+         current one compares site ids and would re-issue every think), and **every `banner`
+         clears every company's rally**.
+      3. **The shooter deadlock.** `[REF]` `strike` refuses to march without three breakers, and
+         julian's own doctrine forks every hall to archers once two towers stand — which its
+         plan guarantees by minute three. Measured: julian ending a match with **74 archers and
+         one champion**; benedict with 7 binders + 14 archers and **zero breakers**, winning
+         only by walking. Fixes: fork only half the halls to shooters, drop `army >= 5` from the
+         Siege Works want when `breakers === 0`, and add the missing buildings to `upPref` (next
+         item) so the Works can actually fork.
+      4. **Dead branch doctrines.** `[REF]` A fork happens only inside the `upPref` loop, so a
+         building absent from that heir's `upPref` never levels and never forks. julian's
+         `branch.spire` is unreachable (no spire in the plan *or* the list); brand builds two
+         Spires and can raise a Works, but its `upPref` is `['tower','gate','barracks']`, so
+         **brand's Spires and Works never fork** and it fields Sorcerers and Engines all match.
+         The Warden branch is reachable by benedict alone, and only under two threats.
+      5. **`homeThreat` recalls the whole army for one fiend.** `[REF]` `atGate > 0` is a single
+         hostile within 116 of the Seat — Chaos included, though `rivals` exists for exactly
+         that distinction. Measured: benedict's banner sat on its own Seat **51% of samples**.
+         Recall a *company* rather than the banner, and only turn the banner home at `atGate >= 3`
+         or a falling Seat.
+      6. **The assault has no hysteresis.** `[REF]` `ready` is a flat `army >= 22` re-read every
+         think; a marching column that dips to 21 turns around. Start at 22, continue at ~13,
+         and remember which it is doing.
+      7. **The errand company is chosen by accident and does not stay.** `[SAFE]` It is
+         `cos[cos.length - 1]` — the youngest standard. Measured: seed 1000 that was the Spire's
+         company, **7 Binders, every one `menOnly`**, sent to take springs they cannot hold;
+         seed 1004 it was the Siege Works' company with **zero men in it**. And it leaves the
+         moment the Gate finishes, because `nodeHolder` answers the instant the raise completes
+         — so **nothing garrisons a taken spring, ever**. Pick by content, cache the choice, and
+         hold the rally until the ground is quiet.
+      8. **The Jewel is spent on the weather.** `[SAFE]` Both storm clusters include Chaos
+         fiends, and neither cast checks the purse: **166 `power:essence` refusals and 24
+         `power:alive` refusals in one 11-minute match.** Three lines.
+      9. **Walls are one-shot and face the wrong way.** `[SAFE]` No heir has ever issued
+         `{c:'fix'}` — a breach is never mended — or `{c:'flip'}`, though `spanFor` already has
+         the perpendicular in hand at build time and a flip costs nothing and takes no crew.
+      10. **Half the springs are invisible.** `[REF]` `v.nodes.enemy` — the far seven of
+          fourteen — is referenced nowhere in the file. Measured finished Gates per match: 1.2
+          to 4.6 of 14.
+      11. **One strike force, not five followers.** `[REF]` `{c:'assign'}` would fold every
+          fighting hall onto one company and leave the errand hall on its own. With items 5 and
+          7 this is the "troop management" the brief asks for.
+      Latent: the upgrade affordability test omits `sizeOf`, exactly as item 1 does. It cannot
+      bite only because no `upPref` contains `'wall'` — the moment items 1 or 9 make walls worth
+      levelling, it is the same bug again.
+      Decorative, worth deleting or implementing rather than leaving to be tuned: `wantGates`'s
+      and `wantWatch`'s `n` argument (`slice(0, n)[0]` is `[0]` for every n >= 1).
 - [ ] **The Pattern is at the top of its tolerance.** Opening the economy moved it from
       deciding 10% of matches to 45%, and 67-75% of CONTESTED ones against a 25-75 band. If a
       full `node sim.js` pushes it past 75, the lever is the Shrine's `drain` or `rate` — NOT

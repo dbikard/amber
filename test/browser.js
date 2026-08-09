@@ -1877,6 +1877,42 @@ async function match(browser, base, renderer) {
       ok('and each shows a percentage', board.texts.every((t) => /\d+%/.test(t)), board.texts.join(' | '));
       ok('the minimap makes room for it rather than overlapping',
          board.miniTop >= board.lastBottom, `map top ${board.miniTop}, board bottom ${Math.round(board.lastBottom)}`);
+
+      /* ---- GROUND ALREADY PAID FOR STAYS ON THE BOARD ----
+       * The one thing that turns `walking` off is a Shrine thrown down, and the panel filtered
+       * on `walking` — so an heir who had banked most of a walk and just lost his Shrine
+       * VANISHED from every board at the table, reading as though he had never set foot on it.
+       * He keeps everything past `breakLoss` and carries on from there the moment he raises
+       * another Shrine, so the count is still owed. Nothing new crosses the wire for it:
+       * `pattern` already rides for a revealed heir walking or not, which is exactly why the
+       * board could afford to be wrong about it in silence. */
+      const fell = await pg.evaluate(async () => {
+        const W = window.World, C = window.CONST, g = window.Game.game, pl = g.world.players[1];
+        /* far enough along that `breakLoss` cannot sweep the whole count away — the assertion
+         * below is about ground he KEEPS, so there has to be some */
+        for (let i = 0; i < 30 * 400 && pl.pattern < C.BUILDINGS.shrine.breakLoss * 2.2; i++) {
+          for (const p of g.world.players) { p.essence = Math.max(p.essence, 50000); p.castleHp = C.CASTLE_HP; }
+          W.update(g.world, C.SIM_DT); g.world.events.length = 0;
+        }
+        const before = pl.pattern;
+        const sh = pl.buildings.find((b) => b.bt === 'shrine');
+        W.hurtBuilding(g.world, 1, sh.id, sh.hp + 1, 0);
+        g.world.events.length = 0;
+        await new Promise((res) => setTimeout(res, 450));
+        const rows = [...document.querySelectorAll('#walkers .walker')];
+        return { before, after: pl.pattern, walking: pl.walking, revealed: pl.revealed,
+                 n: rows.length, texts: rows.map((e) => e.textContent),
+                 dim: rows.filter((e) => e.classList.contains('stalled')).length };
+      });
+      ok('the rig is alive: the Shrine fell and tore him off the Pattern',
+         fell.walking === false && fell.after > 0 && fell.after < fell.before,
+         `walking=${fell.walking}, ${fell.before.toFixed(0)}% → ${fell.after.toFixed(0)}%`);
+      /* THE ASSERTION THAT FAILS ON THE OLD CODE — the row disappeared entirely */
+      ok('...and his banked ground is still on the board', fell.n === 2, fell.texts.join(' | '));
+      ok('marked as off the lines, not as a walk in progress', fell.dim === 1,
+         `${fell.dim} of ${fell.n} rows dimmed`);
+      ok('and it reads his REDUCED count', fell.texts.some((t) => t.includes(fell.after.toFixed(0) + '%')),
+         `${fell.after.toFixed(0)}% expected in ${fell.texts.join(' | ')}`);
     }
 
     /* ---------------- companies ---------------- *
@@ -3360,6 +3396,151 @@ async function match(browser, base, renderer) {
       ok('...and the flag over it changed with it', r.now.flag && r.now.flag !== r.was.flag,
          `flag ${r.was.flag} -> ${r.now.flag}`);
     }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- a tower throws something, and it comes out of the gun ----------------
+   * Reported from play: no arrows from the ballista, no cannonballs from the towers. The sim
+   * has always emitted a shot and the renderer has always had a branch for it — but the branch
+   * drew the old hairline tracer, the very thing the arrow rewrite replaced for men because a
+   * straight line between two points for a fifth of a second is what a laser looks like. Worse,
+   * it launched from `groundH + 16`, which is inside the tower's own masonry about forty units
+   * BELOW the ballista arms. So a firing Watchtower looked like nothing at all. */
+  {
+    suite('a tower throws something, and it comes out of the gun');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 31 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const r = await pg.evaluate(async () => {
+      const w = window.Game.game.world, C = window.CONST, pl = w.players[0];
+      const c = window.World.cityOf(w, 0);
+      const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const finish = () => {
+        for (let i = 0; i < 40000; i++) {
+          window.World.update(w, C.SIM_DT); w.events.length = 0; w.winner = null;
+          for (let k = w.units.length - 1; k >= 0; k--)
+            if (w.units[k].owner === C.CHAOS_ID) w.units.splice(k, 1);
+          if (!pl.buildings.some((z) => z.raise > 0 || z.work > 0)) return;
+        }
+      };
+      const out = {};
+      let turn = 0;
+      for (const br of ['bolt', 'cannon']) {
+        pl.essence = 1e7;
+        let at = null;
+        for (let rad = 150; rad < C.CLAIM.seat - 40 && !at; rad += 14)
+          for (let a = 0; a < 48 && !at; a++) {
+            const th = (a / 48 + turn * 0.5) * Math.PI * 2;
+            const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+            if (window.World.placementError(w, 0, x, y, 'tower') === null) at = { x, y };
+          }
+        turn++;
+        if (!at) { out[br] = { err: 'nowhere to build' }; continue; }
+        window.World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: at.x, y: at.y });
+        const t = pl.buildings[pl.buildings.length - 1];
+        finish();
+        pl.essence = 1e7;
+        window.World.applyCommand(w, 0, { c: 'up', id: t.id, br });
+        finish();
+        await frame();
+        const top = window.Render.debugWorkTop(t.id);   // 'stone-top N  ...' or 'top N — no flag'
+        const stone = top && +(top.match(/(?:stone-)?top ([\d.]+)/) || [])[1];
+        /* a victim just inside its reach, and the gun ready */
+        const st = window.World.towerStats(t);
+        w.units.push({ id: 9000 + turn, owner: 1, kind: 'soldier', x: t.x + st.range * 0.6,
+                       y: t.y, hp: 1e6, maxHp: 1e6, cd: 0, goal: null, co: 0 });
+        t.cd = 0;
+        w.events.length = 0;
+        for (let i = 0; i < 8; i++) window.World.update(w, C.SIM_DT);
+        const shots = w.events.filter((e) => e.e === 'shot');
+        window.Render.addEvents(shots, null, 0);
+        const fl = window.Render.debugFlights().filter((f) => Math.hypot(f.x1 - t.x, f.z1 - t.y) < 30);
+        /* the pools are built in the DRAW, not in `addEvents` — a ball has to be on screen
+         * once before there is a mesh to ask about */
+        await frame();
+        out[br] = { shots: shots.length, flights: fl.length, ball: fl.length ? fl[0].ball : null,
+                    y1: fl.length ? fl[0].y1 : null, stone, ballGeo: window.Render.debugBallGeo(),
+                    ground: window.Render.groundH(t.x, t.y) };
+        w.events.length = 0;
+        window.Render.debugFlights().length;
+      }
+      return out;
+    });
+    const B = r.bolt || {}, K = r.cannon || {};
+    ok('the rig is alive: both towers fired', B.shots > 0 && K.shots > 0,
+       `ballista ${B.shots} shots, cannon ${K.shots}`);
+    /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — it drew a hairline and nothing else */
+    ok('a ballista puts a dart in the air', B.flights > 0 && B.ball === false,
+       `${B.flights} in flight, ball=${B.ball}`);
+    ok('a cannon puts a ball in the air', K.flights > 0 && K.ball === true,
+       `${K.flights} in flight, ball=${K.ball}`);
+    /* ...and it leaves the GUN. The old tracer was born at ground + 16, inside the shaft. */
+    ok('the shot leaves the tower\'s crown, not its foundations',
+       B.y1 != null && B.stone && B.y1 > B.stone - 12,
+       `launched at ${B.y1 && B.y1.toFixed(0)}, the stone tops out at ${B.stone}`);
+    ok('...and the cannon likewise', K.y1 != null && K.stone && K.y1 > K.stone - 12,
+       `launched at ${K.y1 && K.y1.toFixed(0)}, the stone tops out at ${K.stone}`);
+    /* the ball's own geometry must carry vertex colours or the shared `vertexColors` material
+     * multiplies its instance colour to black — invisible, with nothing thrown to say so */
+    ok('the ball can carry a colour', K.ballGeo === true, `ballGeo=${K.ballGeo}`);
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- the Jewel's storm survives a second match ----------------
+   * `buildWorld` empties and disposes everything in `worldG` and then nulls every cached handle
+   * into it — the halo, the darts, the chains, the writ, the fx list — because a handle that
+   * outlives its mesh is a frame written into a mesh that is no longer in the scene. The storm
+   * pool was the one thing missed off that list, and its slots re-create lazily behind
+   * `if (!ss.disc)`, which is FALSE for an orphan. So from the second match of a session onward
+   * every cast set `visible = true` on a disc nobody would ever draw, and the only thing still
+   * rendering was the point light — which is added to `scene`, not `worldG`. Reported from play
+   * as the Jewel having no visual effect at all.
+   * The existing storm suite checks `.visible` and would pass throughout; this one asks whether
+   * the disc is IN THE SCENE, and it plays a second match to get there. */
+  {
+    suite('the Jewel\'s storm survives a second match');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    const cast = async () => pg.evaluate(async () => {
+      const w = window.Game.game.world, C = window.CONST;
+      const c = window.World.cityOf(w, 0);
+      w.players[0].essence = 1e7;
+      w.players[0].powers.storm = 0;
+      const r = window.World.applyCommand(w, 0, { c: 'power', k: 'storm', x: c.x + 60, y: c.y });
+      for (let i = 0; i < 6; i++) window.World.update(w, C.SIM_DT);
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const st = (window.Render.debugStorms() || []).filter((q) => q.disc);
+      return { ok: r.ok, err: r.err, storms: w.storms.length,
+               shown: st.filter((q) => q.disc.visible).length,
+               inScene: st.filter((q) => q.disc.visible && q.disc.parent).length };
+    });
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 3 }), VEIL_BOARD);
+    await inMatchNow(pg); await until(pg, () => window.Render.ready);
+    const first = await cast();
+    ok('the rig is alive: the storm is cast and drawn in the first match',
+       first.ok && first.storms > 0 && first.shown > 0,
+       `ok=${first.ok} err=${first.err} storms=${first.storms} shown=${first.shown}`);
+    /* a SECOND match on the same page: a new seed rebuilds the world and empties worldG */
+    await pg.evaluate((spec) => window.Game.startSP('bleys', { spec, seed: 9 }), VEIL_BOARD);
+    await inMatchNow(pg); await until(pg, () => window.Render.ready);
+    const second = await cast();
+    ok('the storm is cast in the second match too', second.ok && second.storms > 0,
+       `ok=${second.ok} err=${second.err}`);
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE — the disc was visible and not in the scene */
+    ok('...and its disc is IN THE SCENE, not an orphan of the last world',
+       second.inScene > 0, `${second.shown} visible, ${second.inScene} actually in the scene`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }
