@@ -3303,7 +3303,19 @@
   function rollTick() {
     rollFrames++;
     const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
-    const w = window.innerWidth, h = window.innerHeight;
+    /* THE CANVAS IS THE FRAME OF REFERENCE, NOT THE WINDOW. Both numbers here — the size of
+     * the drawing buffer and the origin every row's rectangle is measured from — are asked of
+     * the canvas's own box, so the mapping is self-consistent whatever the browser thinks its
+     * viewport is. Taken from `window.innerWidth/innerHeight` they are not: on a phone the
+     * layout viewport a `position:fixed; inset:0` canvas fills and the visual viewport
+     * `innerHeight` reports differ by the height of the address bar, so the buffer was made
+     * SHORTER than the box it was stretched into. Reported from play with a picture, and both
+     * symptoms fall out of that one line: every man drawn a good half again too tall, and each
+     * one displaced down the page by the difference. Nothing else can drift either — a canvas
+     * that is inset, letterboxed, or given a border lands right for free. */
+    const cr = rollCanvas.getBoundingClientRect();
+    const w = Math.round(cr.width), h = Math.round(cr.height);
+    if (w < 4 || h < 4) return;
     if (rollW !== w || rollH !== h) { rollW = w; rollH = h; rollR.setSize(w, h, false); }
     rollR.setScissorTest(false);
     rollR.clear(true, true, false);
@@ -3315,9 +3327,12 @@
        * nothing beside a figure drawn where its row used to be. */
       const r = row.el.getBoundingClientRect();
       if (r.width < 4 || r.height < 4) continue;
-      if (r.bottom <= 0 || r.top >= h || r.right <= 0 || r.left >= w) continue;   // scrolled away
-      const x = Math.round(r.left), yb = Math.round(h - r.bottom);
+      if (r.bottom <= cr.top || r.top >= cr.bottom || r.right <= cr.left || r.left >= cr.right) {
+        row.vp = null; continue;                                                 // scrolled away
+      }
+      const x = Math.round(r.left - cr.left), yb = Math.round(cr.bottom - r.bottom);
       const rw = Math.round(r.width), rh = Math.round(r.height);
+      row.vp = { x, yb, w: rw, h: rh };
       rollR.setViewport(x, yb, rw, rh);
       rollR.setScissor(x, yb, rw, rh);
       const f = row.fig;
@@ -3342,6 +3357,13 @@
   R.debugRollLoop = () => rollFrames;
   R.debugRollDraws = () => rollDrawn;
   R.debugRollRunning = () => !!rollRAF;
+  /* ...and WHERE the last frame put each man: the GL viewport it was drawn into, in CSS pixels
+   * with GL's bottom-left origin, relative to the canvas. A figure drawn in the wrong place is
+   * the one defect of this screen a player will actually see, and until this handle existed
+   * there was no way to ask about it from outside — the canvas is WebGL with no preserved
+   * drawing buffer, so the pixels cannot be read back after the frame. The test converts an
+   * element's rect itself and compares, rather than being handed the answer. */
+  R.debugRollRects = () => rollRows.map((r) => (r.vp ? { kind: r.el.dataset.kind, ...r.vp } : null));
 
   global.Render3D = R;
 })(typeof window !== 'undefined' ? window : globalThis);

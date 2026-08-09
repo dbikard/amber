@@ -341,7 +341,16 @@ body {
    a phone out of live contexts halfway down the codex. It is fixed rather than in the flow, so
    it does not scroll with the text — the rows' screen rectangles are asked for every frame —
    and it never takes a tap, so the Roll under it still scrolls and CLOSE still closes. */
-#roll-figs { position: fixed; inset: 0; z-index: 41; pointer-events: none; }
+/* THE SIZE IS STATED, and it has to be. A <canvas> is a REPLACED element, so an absolutely
+   positioned one with `height: auto` takes its INTRINSIC height — the drawing-buffer attribute
+   — and `bottom` is simply ignored. `inset: 0` therefore never sized this canvas at all: its
+   box was however many pixels tall the buffer was, which on a 2x screen is twice the viewport,
+   and since the loop then measures the box to size the next buffer it ran away a factor of the
+   pixel ratio every frame — 830 to 19200 in eight frames, with every man drawn stretched and
+   sliding further down the page. Reported from play with a picture. Percentages resolve
+   against the containing block, which for a fixed element is the viewport, so these two lines
+   are what actually holds it. */
+#roll-figs { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 41; pointer-events: none; }
 /* a man drawn in the icon's 34px column is a smudge; the unit rows get a wider berth for him,
    and the glyph sits in the same box so nothing moves when the glass refuses and it is all
    there is to show */

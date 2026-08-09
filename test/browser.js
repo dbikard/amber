@@ -365,6 +365,63 @@ async function match(browser, base, renderer) {
     if (figs.live) {
       ok('the loop runs while the roll is open', figs.frames > 2, `${figs.frames} frames`);
       ok('...and puts a figure on the glass', figs.drew > 0, `${figs.drew} drawn`);
+      /* ---- AND HE IS DRAWN IN HIS OWN CARD ----
+       * Reported from play with a picture: one man half again too tall, straddling a card two
+       * rows below his own. The mapping from a row's DOM rectangle to a GL viewport was made
+       * against `window.innerWidth/innerHeight` while the canvas's box comes from CSS
+       * (`position:fixed; inset:0`) — on a phone those are two different heights, because the
+       * address bar is inside one of them and not the other. The buffer was then made SHORTER
+       * than the box it is stretched into, which both magnifies every figure and slides it
+       * down the page. A desktop viewport hides the whole thing: there the two agree exactly.
+       * So the suite MAKES them disagree, which is the only way to test this at all. */
+      const placed = await pg.evaluate(async () => {
+        const cv = document.getElementById('roll-figs');
+        const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const read = async () => {
+          await frame();
+          const cr = cv.getBoundingClientRect();
+          const slots = [...document.querySelectorAll('#roll-body .c-fig')];
+          const rects = window.Render.debugRollRects();
+          let worst = -1, sample = '', n = 0, oldGap = 0;
+          rects.forEach((vp, i) => {
+            const el = slots[i];
+            if (!vp || !el || el.dataset.kind !== vp.kind) return;
+            const r = el.getBoundingClientRect();
+            /* what the viewport MUST be, converted here from the DOM rather than handed over */
+            const wantX = r.left - cr.left, wantYb = cr.bottom - r.bottom;
+            const d = Math.max(Math.abs(vp.x - wantX), Math.abs(vp.yb - wantYb),
+                               Math.abs(vp.w - r.width), Math.abs(vp.h - r.height));
+            /* ...and what the window-based mapping would have said instead */
+            oldGap = Math.max(oldGap, Math.abs((window.innerHeight - r.bottom) - wantYb));
+            n++;
+            if (d > worst) {
+              worst = d;
+              sample = `${vp.kind} drawn at ${vp.x},${vp.yb} ${vp.w}x${vp.h}; its card is at ` +
+                       `${wantX.toFixed(0)},${wantYb.toFixed(0)} ${r.width.toFixed(0)}x${r.height.toFixed(0)}`;
+            }
+          });
+          return { n, worst, sample, oldGap, canvasH: cr.height, innerH: window.innerHeight };
+        };
+        const level = await read();
+        /* the canvas box and the window now disagree by a quarter of a screen, exactly as a
+         * phone's address bar makes them disagree */
+        cv.style.height = Math.round(window.innerHeight * 1.25) + 'px';
+        const skewed = await read();
+        cv.style.height = '';
+        await frame();
+        return { level, skewed };
+      });
+      ok('the rig is alive: figures are being placed, and the skew really does move the box',
+         placed.level.n > 0 && placed.skewed.n > 0 && placed.skewed.oldGap > 20,
+         `${placed.level.n} placed; the window-based mapping is off by ` +
+         `${placed.skewed.oldGap.toFixed(0)}px once the canvas and the window disagree`);
+      ok('each man is drawn in his own card, to the pixel', placed.level.worst <= 1,
+         placed.level.sample);
+      /* THE ASSERTION THAT FAILS ON THE OLD CODE */
+      ok('...and still is when the canvas box and the window disagree, as they do on a phone',
+         placed.skewed.worst <= 1,
+         `canvas ${placed.skewed.canvasH.toFixed(0)} tall against a window of ` +
+         `${placed.skewed.innerH} — ${placed.skewed.sample}`);
       /* THEY TRACK THE ROWS. The roll is a long scroll and the rectangles are asked for every
        * frame; scrolling to the muster at the bottom, where the men are listed back to back,
        * must put several of them on screen at once. */
