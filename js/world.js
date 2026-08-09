@@ -364,7 +364,7 @@
   }
 
   function postAll(world) {
-    for (const u of world.units) { if (u.man) u.man = 0; if (u.tow) u.tow = 0; }
+    for (const u of world.units) { if (u.tow) u.tow = 0; if (u.toBerth) u.toBerth = 0; }
     if (world.anyWall) postWalls(world);
     postTowers(world);
     /* a man INSIDE holds his room only while the roster still deals him that tower — the flag
@@ -372,10 +372,107 @@
      * here; only crossing the threshold sets it (the march), and only losing the room or the
      * tower (here, and the spill) clears it. */
     for (const u of world.units) if (u.in && u.in !== u.tow) u.in = 0;
+    /* ---- AND A BERTH IS AN ERRAND UNTIL HE IS STANDING IN IT ----
+     * Being NAMED to a berth used to be the whole of manning: the tick the roster reached a man
+     * he had the parapet's reach, the merlons' cover and a place on the stone in the renderer,
+     * wherever on the board he happened to be. A company ordered to a wall snapped onto it from
+     * wherever it stood. Reported from play as men teleporting to a wall.
+     * It is the mistake the tower made and the same fix: the roster gives him the ERRAND
+     * (`u.post`, `u.berth`, `u.toBerth`), he walks to it like a man walks anywhere, and only
+     * ARRIVING trades the field for the parapet.
+     * Asked HERE and not in the march because a man with a foe in reach never reaches the march
+     * — he stands and fights — and a garrison under fire that could never finish climbing its
+     * own wall would be a worse bug than the one this fixes. It is a question about where he is
+     * standing, so it is asked wherever he is and whatever he is doing.
+     * Three states out of one distance: far (an ordinary marcher), `atWall` (the final approach
+     * — his own stone, beelined, and out of the crowd's hands so the line can form), and `man`
+     * (standing in it). */
+    for (const u of world.units) {
+      if (u.atWall) u.atWall = 0;
+      if (u.hp <= 0 || !u.post || u.tow) { if (u.man) u.man = 0; continue; }
+      const w = world.walls.find((q) => q.b.id === u.post);
+      if (!w) { u.man = 0; continue; }
+      const st = station(world, u, w);
+      /* NEAR THE RUN, not near his berth — and the difference is the whole of the walk. The
+       * gateway he steers at is one point on a run that may be four hundred long, so a man who
+       * has arrived at the door can still be a hundred from his own place. Judged on the berth,
+       * he reaches the gate, is still "far", goes on steering at the gate he is standing on,
+       * and never takes another step: measured, twenty-four of twenty-four within forty of the
+       * stone and not one of them on it. He is at the wall when he is at the WALL; from there
+       * he walks its length to his place. */
+      /* THE FINAL APPROACH — near his own place, exactly as it has always been. That is the
+       * RESERVE's rule unchanged: his rows at the foot are ordinary ground and he walks to them
+       * like anyone. A man with a BERTH gets it near the RUN as well, and that difference is the
+       * whole of the walk along a wall: the gateway he steers at is one point on a run that may
+       * be four hundred long, so a man who has reached the door can still be a hundred from his
+       * own place. Judged on the berth alone he arrives at the gate, is still "far", goes on
+       * steering at the gate he is standing on, and never takes another step — measured,
+       * twenty-four of twenty-four within forty of the stone and not one man on it. */
+      const A2 = C.NAV.arrive * C.NAV.arrive, ds = d2(u.x, u.y, st.x, st.y);
+      /* ...AND THE WHOLE CURTAIN IS ONE PIECE OF STONE TO WALK ALONG. A man holding the near end
+       * who is re-dealt a berth at the far end is standing on his own wall the entire way, and
+       * judging his approach against the ONE run he is posted to froze him: the run is four
+       * hundred off, so he is "far", so he is handed to the flow field — and if he has anything
+       * in range he never reaches the march to be handed anywhere. Measured on a curtain
+       * answering two assaults: six men correctly posted to the far run, not one of them moving.
+       * Near any run of his own curtain is near his wall. */
+      let near = ds < A2 || segD2(w.b, u.x, u.y) < A2;
+      if (!near && u.toBerth) {
+        const cid = w.curtain != null ? w.curtain : w.b.id;
+        for (const q of world.walls) {
+          if ((q.curtain != null ? q.curtain : q.b.id) !== cid) continue;
+          if (segD2(q.b, u.x, u.y) < A2) { near = true; break; }
+        }
+      }
+      u.atWall = near ? 1 : 0;
+      u.man = u.toBerth && ds <= C.WALL.step * C.WALL.step ? u.post : 0;
+    }
   }
   function postWalls(world) {
     const rosters = new Map();
     const reach = C.WALL.man * 1.5;
+    /* ---- THE ALARM: WHERE ON THIS CURTAIN THE FIGHTING IS ----
+     * An even spread is the resting shape of a garrison and exactly the wrong one the moment
+     * somebody comes: the two men standing where the assault lands die while thirty of their
+     * fellows watch empty ground four hundred feet away. A curtain under threat is dealt from
+     * the threat outward, and because the roster is re-dealt every tick the men simply walk
+     * along the stone toward the fighting and thin out again when it ends.
+     *
+     * AN ALARM IS A POINT ON THE STONE, not an enemy — the part of the wall in danger, which is
+     * the right anchor for a Bombard shelling from beyond anyone's reach as much as for a ram at
+     * the foot.
+     *
+     * AND THERE IS MORE THAN ONE. A single alarm answers a feint perfectly: hit one end, watch
+     * the whole garrison run to it, walk in at the other. So every enemy near the curtain is
+     * projected onto it, the projections are CLUSTERED — one alarm per body of attackers, up to
+     * `WALL.alarms` — and a place is judged by its distance to the NEAREST of them. Two assaults
+     * therefore split the garrison between them with nothing having to decide how: the places
+     * nearest each threat sort to the front of one list and the roster fills them in turn. */
+    const A2 = C.WALL.alarm * C.WALL.alarm, CL2 = C.WALL.alarmSpan * C.WALL.alarmSpan;
+    const alarms = new Map();
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.in) continue;
+      /* the run he is nearest is the run he threatens — one pass, no allocation per man */
+      let best = null, bd = A2;
+      for (const w of world.walls) {
+        if (u.owner === w.owner) continue;            // his own garrison is not an alarm
+        const dd = segD2(w.b, u.x, u.y);
+        if (dd < bd) { bd = dd; best = w; }
+      }
+      if (!best) continue;
+      const cid = best.curtain != null ? best.curtain : best.b.id;
+      const p = segNear(best.b, u.x, u.y);
+      let list = alarms.get(cid);
+      if (!list) alarms.set(cid, list = []);
+      let joined = false;
+      for (const a of list)
+        if (d2(a.x, a.y, p.x, p.y) < CL2) { a.n++; joined = true; break; }
+      if (!joined && list.length < C.WALL.alarms) list.push({ x: p.x, y: p.y, n: 1 });
+    }
+    /* what the garrison thinks it is answering, kept for the tests and the probes: where the men
+     * end up is several rules deep, and "the wall did not gather" and "the wall gathered to the
+     * wrong place" look identical from outside */
+    world._alarms = alarms;
     for (const u of world.units) {
       if (u.hp <= 0 || u.owner === C.CHAOS_ID) continue;
       /* the order he is UNDER, worked out here rather than read off u.goal — the goal is
@@ -433,15 +530,49 @@
       const deepest = Math.max(C.TOWER.berths, ...berths);
       for (let i = 0; i < deepest; i++)
         for (let r = 0; r < runs.length; r++) {
-          if (i < berths[r]) places.push({ man: runs[r].b.id, berth: i });
-          if (i < C.TOWER.berths) for (const t of towers[r]) places.push({ tow: t.id, man: runs[r].b.id });
+          if (i < berths[r]) {
+            const p = berthAt(runs[r], i, berths[r]);
+            places.push({ man: runs[r].b.id, berth: i, x: p.x, y: p.y });
+          }
+          if (i < C.TOWER.berths)
+            for (const t of towers[r]) places.push({ tow: t.id, man: runs[r].b.id, x: t.x, y: t.y });
         }
+      /* ...AND IF THE CURTAIN IS UNDER ATTACK, FROM THE FIGHTING OUTWARD. Sorting the PLACES
+       * rather than moving men is the whole trick — the roster is dealt fresh every tick, so the
+       * same stable line of men (shooters first, then by id) simply lands on different stone,
+       * walks there along the wall, and drifts back out when the alarm ends. Ties broken by the
+       * place's own order, so the list is the same on every machine at the table. */
+      const alarm = alarms.get(cid);
+      if (alarm && alarm.length) {
+        for (let i = 0; i < places.length; i++) {
+          const p = places[i];
+          let m = Infinity;
+          for (const a of alarm) { const dd = d2(p.x, p.y, a.x, a.y); if (dd < m) m = dd; }
+          p.i = i; p.d2 = m;
+        }
+        places.sort((p, q) => (p.d2 - q.d2) || (p.i - q.i));
+      }
       /* `station` reads ONE number: a `berth` below `berths` is a place on the parapet, and
        * anything above it is a row at the foot. So the two are counted separately — a man given
        * a room in a tower is stationed by the tower and takes neither. Handing out the roster
        * index instead put the third man at the foot in the eighth row because five shooters had
        * gone up ahead of him. */
       const foot = runs.map(() => 0);
+      /* WHICH RUN THE RESERVE STANDS BEHIND. At rest, each in turn. Under alarm, the run each
+       * threat is nearest — one entry per alarm, deduplicated — and the reserve goes round
+       * THOSE, so two assaults get a body of swordsmen each rather than one getting both. */
+      let hot = null;
+      if (alarm && alarm.length) {
+        hot = [];
+        for (const a of alarm) {
+          let bi = 0, bd = Infinity;
+          for (let i = 0; i < runs.length; i++) {
+            const dd = segD2(runs[i].b, a.x, a.y);
+            if (dd < bd) { bd = dd; bi = i; }
+          }
+          if (hot.indexOf(bi) < 0) hot.push(bi);
+        }
+      }
       let take = 0, rear = 0;
       for (const u of list) {
         /* only a shooter may take a place, and the queue is only spent when one does: a
@@ -449,18 +580,33 @@
         if (mans(u) && take < places.length) {
           const p = places[take++];
           u.post = p.man;                       // the run he is stationed by, berth or bastion
+          /* the ERRAND, not the place: which run, which berth on it, and that it is a berth on
+           * the stone at all. `u.man` waits until he is standing in it — see postAll. */
           if (p.tow) u.tow = p.tow;
-          else { u.man = p.man; u.berth = p.berth; }
+          else { u.berth = p.berth; u.toBerth = 1; }
           continue;
         }
         /* the reserve spreads too: rows at the foot of each run in turn, so a curtain is not
          * held by a parapet along its whole length with every swordsman behind one end of it */
-        const r = rear++ % runs.length;
+        const r = hot && hot.length ? hot[rear++ % hot.length] : rear++ % runs.length;
         u.post = runs[r].b.id;
         u.berth = berths[r] + foot[r]++;
       }
     }
   }
+  /* HOW FAR OFF THE CENTRE LINE A MAN ON THE PARAPET STANDS, and it must clear `shove`'s band.
+   * `shove` sets any man within `thick + 6` to exactly that distance from the nearest point on a
+   * run; a berth at `man * 0.45` = 14.4 is INSIDE it, so an arrived man is re-projected every
+   * tick. That was invisible while being NAMED to a berth exempted him from every resolver, and
+   * it is fatal the moment he has to walk there like anyone else. */
+  const PARAPET = C.WALL.thick + 8;
+  /* WHERE BERTH `i` STANDS ON THIS RUN — the one place that geometry is written. The alarm sorts
+   * places by where they are and `station` walks men to them, and the two reading the same line
+   * is what stops a man being sent to a berth the sorter thought was somewhere else. */
+  const berthAt = (w, i, berths) => {
+    const t = ((i % berths) + 0.5) / berths;
+    return { x: w.ax + (w.bx - w.ax) * t, y: w.ay + (w.by - w.ay) * t };
+  };
   /* where a man posted to this wall should stand — on the parapet if he has a berth, at the
    * foot in rows behind it if he does not */
   function station(world, u, w) {
@@ -476,8 +622,8 @@
     if (w.b.flip) { nx = -nx; ny = -ny; }
     const i = u.berth || 0;
     if (i < berths) {
-      const t = ((i % berths) + 0.5) / berths, off = C.WALL.man * 0.45;
-      return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
+      const p = berthAt(w, i, berths), off = PARAPET;
+      return { x: p.x + nx * off, y: p.y + ny * off };
     }
     /* THE FOOT OF THE WALL. Rows behind it, filling outward — the reserve, in cover, where a
      * man who cannot get up is at least not standing in the field being shot. */
@@ -511,7 +657,7 @@
     const rosters = new Map();
     for (const u of world.units) {
       if (u.hp <= 0 || u.owner === C.CHAOS_ID || !mans(u)) continue;
-      if (u.man || u.tow) continue;             // already given a place by the run he was sent to
+      if (u.toBerth || u.tow) continue;         // already given a place by the run he was sent to
       const pl3 = world.players[u.owner];
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
       const gs = foldOrder(world, co3 && co3.rally ? co3.rally : pl3.banner);
@@ -816,7 +962,16 @@
     const R = C.CROWD.space, P = C.CROWD.pull, P2 = P * P, cw = P;
     const grid = new Map();
     for (const u of world.units) {
-      if (u.hp <= 0 || u.man || u.in) continue;   // a berth on a parapet, or a room in a tower, is not a crowd — a man still WALKING to his tower is both
+      /* A BERTH IS AN EXACT PLACE AND THE CROWD DOES NOT DECIDE IT — and that must hold for the
+       * man on his FINAL APPROACH as well as the man standing in it. He is walking a parapet in
+       * single file to a named spot, which is not a crowd; and the crowd's own COHESION is what
+       * stops him leaving one. Measured on a curtain answering a second assault: a man dealt a
+       * berth two hundred units along his own wall gained ONE unit in eight seconds against a
+       * fifty-a-second stride, knit to the fellows he was trying to leave.
+       * Out beyond `atWall` he is an ordinary marcher and the crowd has him like anyone. A room
+       * in a tower is the same, and a man still walking to his tower is deliberately BOTH — he
+       * is a marcher out there, and he is not shoved off the door. */
+      if (u.hp <= 0 || u.man || u.in || (u.atWall && u.toBerth)) continue;
       const k = Math.floor(u.y / cw) * 100003 + Math.floor(u.x / cw);
       const cell = grid.get(k);
       if (cell) cell.push(u); else grid.set(k, [u]);
@@ -2061,7 +2216,7 @@
       /* a berth on a parapet and a room in a tower are STATIONS, and a station is exact. Neither
        * takes a place in the body, and neither is counted for one — a tower's garrison holding
        * ranks 3 to 12 would leave ten empty places in the middle of the company outside. */
-      if (u.man || u.tow || !u.goal) { u.rank = 0; continue; }
+      if (u.man || u.toBerth || u.tow || !u.goal) { u.rank = 0; continue; }
       /* a NUMBER for a key, not a string: this runs for every man every tick and building
        * "0:1234:567" thirty times a second for an army is a measurable share of the sim */
       const k = (u.owner + 2) * 33554432 + Math.round(u.goal.y) * 4096 + Math.round(u.goal.x);
@@ -2863,6 +3018,24 @@
        * than he ever could on the ground, and everything that can see the tower can see him. */
       const gar = u.in ? C.TOWER.over : 0;   // the long throw is the room's, not the errand's
       const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
+      /* HE GOES ON TO HIS PLACE WHILE HE FIGHTS. Every other man with a foe in reach stands
+       * where he is, which is right — but a garrison's places are dealt by a roster that moves
+       * with the fighting, and a man who stops the moment anything is in range can neither
+       * finish climbing nor answer a second assault. He is not disengaging and he is not slowed:
+       * his weapon is on its own cadence, and standing still to shoot is what a man in a field
+       * does, not a man on a parapet. Only a berth, and only on his own stone, so this is a
+       * walk ALONG the wall and never a stroll across open country. */
+      const toPost = () => {
+        if (!u.toBerth || !u.atWall) return;
+        const pw = world.walls.find((q) => q.b.id === u.post);
+        if (!pw) return;
+        const st = station(world, u, pw);
+        const ds = Math.sqrt(d2(u.x, u.y, st.x, st.y));
+        if (ds <= 3) return;
+        u.x += (st.x - u.x) / ds * speed * dt;
+        u.y += (st.y - u.y) / ds * speed * dt;
+        stand(world, u, u.x, u.y);
+      };
       if (foe) {
         const rng = Math.max(par ? Math.max(def.range, C.WALL.over) : def.range, gar);
         const reach = rng + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
@@ -2887,6 +3060,26 @@
              * renderer decides what a shot from that man looks like. */
             if (rng > 40) emit(world, { e: 'bolt', kind: u.kind, from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
           }
+          /* AND A MAN GOES ON CLIMBING WHILE HE SHOOTS. Every other man with a foe in reach
+           * stands and fights, which is right — but a garrison is dealt its places by a roster
+           * that moves with the fighting, and a man who stops the moment anything is in range
+           * can neither finish climbing nor answer a second assault. Measured: a curtain
+           * correctly re-dealt to a threat at its far end sent nobody, because every man had
+           * something to shoot at where he stood.
+           * He is not disengaging and he is not slowed: his weapon is on its own cadence, and
+           * standing still to shoot is what a man in the open does, not a man on a parapet.
+           * Only a berth, and only on his own stone, so this is a walk ALONG the wall and never
+           * a stroll across open country. */
+          toPost();
+        } else if (u.toBerth && u.atWall) {
+          /* AND A MAN WITH A BERTH DOES NOT GIVE CHASE. His aggro is wider than his reach — an
+           * archer sees a hundred and fifty and throws a hundred and five — so a foe just out of
+           * range drags him off his own wall to close the difference. Measured on a curtain
+           * answering a second assault: six men dealt berths two hundred units along the stone
+           * pinned dead at the junction, their walk east cancelled tick for tick by a chase
+           * west after a man they could not have hit anyway. A garrison holds its wall; it does
+           * not run out at people. He goes to his place, and shoots whatever comes into it. */
+          toPost();
         } else {
           const mv = speed * dt / (foe.d || 1);
           const cx0 = u.x, cy0 = u.y;
@@ -2947,31 +3140,38 @@
             const st2 = station(world, u, post);
             gx = st2.x; gy = st2.y;
             const dg = Math.sqrt(d2(u.x, u.y, gx, gy));
-            /* the whole run is his ground once he is on it, or he would be dragged back to
-             * the order's point every tick — the same handover the muster ring needs.
-             *
-             * ...UNLESS HIS PLACE IS ON THE OTHER SIDE OF IT. The shortcut walks a straight
-             * line, and a straight line to the far face goes through the wall: the march put
-             * him into the stone, the end-of-tick `stand` put him back out, and he spent the
-             * match pressed against his own curtain a stride from where he was going. It is
-             * what a heir sees the moment he turns a run about — the shooters cross and the
-             * reserve does not — but it was there before the order existed, for any man whose
-             * row happened to lie beyond the run. Crossing his own line means he wants the
-             * GATEWAY, which is the nav layer's answer and not a beeline's.
-             *
-             * A MAN WITH A BERTH IS THE EXCEPTION, and it is the same exception `walled` makes:
-             * he is not walking THROUGH the stone, he is climbing onto it. His place sits a
-             * little to the sheltered side, so turning the run about moves it across the line —
-             * send him round to the gateway for that and the parapet empties every time an heir
-             * changes his mind. */
-            if (dg < C.NAV.arrive && (u.man === post.b.id ||
-                                      !crosses(u.x, u.y, gx, gy, post.ax, post.ay, post.bx, post.by))) {
+            /* THE FINAL APPROACH — his own stone, and he walks the last of it himself.
+             * `stand` alone, never `project`: the tower branch above does exactly this, and it
+             * is the only reason a man can walk into a bastion standing inside a curtain's
+             * nineteen-unit slab without being thrown straight back off it. It is also what
+             * lets him cross to the sheltered face to take his place — he is not walking
+             * THROUGH the stone, he is climbing onto it — which is the exception this branch
+             * has always made, now keyed on the ERRAND rather than on a berth he does not hold
+             * yet. Exact, and out of the crowd's hands (see `jostle`), so the line forms. */
+            /* ...UNLESS HIS PLACE IS ACROSS THE STONE AND HE HAS NO BUSINESS ON IT. A man
+             * with a berth is CLIMBING and walks straight at it; the reserve is not, and a
+             * curtain bars its owner everywhere but his gateway. Without this the rows at the
+             * foot stroll through their own wall — visible the moment a run is turned about,
+             * when every reserve station moves to the far face. */
+            if (u.atWall &&
+                (u.toBerth || !crosses(u.x, u.y, gx, gy, post.ax, post.ay, post.bx, post.by))) {
               if (dg > 3) { u.x += (gx - u.x) / dg * speed * dt; u.y += (gy - u.y) / dg * speed * dt; }
-              continue;   // a berth on a parapet is exact: he is not jostled off it
+              stand(world, u, u.x, u.y);
+              continue;
             }
-            const s4 = NAV.steer(world.nav, world, u.owner, gx, gy, u.x, u.y);
-            const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, gx, gy)) || 1);
-            const vx2 = s4 ? s4.x : (gx - u.x) / L2, vy2 = s4 ? s4.y : (gy - u.y) / L2;
+            /* AND THE WALK IN IS STEERED AT THE RUN'S OWN GATEWAY, not at his berth.
+             * A flow field is cached by its GOAL CELL (`nav.js`, `fieldFor`), the cache holds
+             * `NAV.cacheMax` of them and evicts by dropping ALL of them. Berths sit fifteen
+             * apart and a nav cell is twenty wide, so steering each man at his own berth mints
+             * a goal cell per berth — a full grid Dijkstra per man per tick and a cache that
+             * never holds anything. The tower has never had that problem because every man
+             * walking to one steers at the tower's own centre; a run's gateway is the same
+             * answer, it is already punched out of the owner's nav mask, and it is where a man
+             * coming from inside the realm would walk anyway. ONE field per run. */
+            const door = post.gate ? { x: post.gx, y: post.gy } : st2;
+            const s4 = NAV.steer(world.nav, world, u.owner, door.x, door.y, u.x, u.y);
+            const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, door.x, door.y)) || 1);
+            const vx2 = s4 ? s4.x : (door.x - u.x) / L2, vy2 = s4 ? s4.y : (door.y - u.y) / L2;
             const wx0 = u.x, wy0 = u.y;
             const sp2 = speed * crush(u.press) * dt;   // a march to a wall queues like any other
             u.x += vx2 * sp2; u.y += vy2 * sp2;
@@ -3144,7 +3344,9 @@
     for (const u of world.units) {
       /* a man holding a place on stone is not shoved off it — his station IS his position,
        * and a tower's garrison stands inside the ring `stand` would push him out of */
-      if (u.hp <= 0 || u.man || u.in) continue;
+      /* ...and a man forming up ON THE STONE is not nudged off it. The reserve at the foot
+       * stands on ordinary ground and is resolved like anyone. */
+      if (u.hp <= 0 || u.man || u.in || (u.atWall && u.toBerth)) continue;
       project(world, u, u._px, u._py);
     }
 

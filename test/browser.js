@@ -1379,7 +1379,11 @@ async function match(browser, base, renderer) {
         g.world.players[0].banner = { x: b.x, y: b.y, site: -1 };
         g.world.players[0].companies.push({ id: 77, rally: { x: off.x, y: off.y, site: -1 } });
         off.co = 77;
-        window.World.update(g.world, C2.SIM_DT);
+        /* HE WALKS ONTO IT. A berth is an errand the roster hands him and being ON the stone is
+         * something he arrives at (see `postAll`), so one tick puts him under orders and no more
+         * — the run is hundreds long and his place is not where he happens to be standing.
+         * Stepped until he gets there, and the renderer is asked afterwards. */
+        for (let i = 0; i < 40 * 30; i++) window.World.update(g.world, C2.SIM_DT);
         await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
         /* screen y RISES up the page, so a man standing on a wall projects HIGHER than the
          * ground he would otherwise stand on */

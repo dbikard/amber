@@ -340,6 +340,44 @@ blow against stone, multiplied.
   swordsman on a parapet was only ever a man in the open holding a berth an archer needed. Only
   berthed men shoot over and are exposed. It reads the order rather than `u.goal` because goals
   are assigned in the march loop, which runs after it.
+  **AND A BERTH IS AN ERRAND UNTIL HE IS STANDING IN IT.** `postWalls` deals `u.post` + `u.berth`
+  + `u.toBerth` — which run, which place, and that it is a place on the stone. `u.man` is set by
+  `postAll`, from where he actually IS: `atWall` (within `NAV.arrive` of his station, or of any
+  run of his own curtain) is the final approach, `WALL.step` of his station is arrival. Every
+  rule that matters keeps reading `u.man` and so silently gains the right meaning — the cover in
+  `hurt`, `WALL.over` reach, the wire, the renderer's lift. Being NAMED to a berth used to be the
+  whole of manning: measured on the old rule, **thirteen of twenty-four men were on the stone one
+  second after the order, still 279 units away from it**. Reported from play as men teleporting
+  to a wall. It is the tower's `tow`/`in` split, done for stone, and for the same reason.
+  Four things had to be true before a man could walk there at all, each measured:
+  (1) **he steers at the run's GATEWAY, not at his berth** — a flow field is cached by its goal
+  CELL and the cache evicts by dropping every field it holds, so a berth per man mints a goal
+  cell per berth: 29 fields held and thrashing, against 3 with one door per run. The tower has
+  always done this;
+  (2) **the last stretch is `stand` alone, never `project`** — as the tower branch does, which is
+  why a man can walk into a bastion standing inside a curtain's 19-unit slab. It is also how he
+  crosses to the sheltered face: he is not walking THROUGH the stone, he is climbing onto it;
+  (3) **the parapet's line clears `shove`'s band** (`PARAPET` = `thick + 8` against a pin at
+  `thick + 6`), or an arrived man is re-projected every tick;
+  (4) **the final approach is out of the crowd** — cohesion is what stops a man LEAVING one, and
+  a man dealt a berth 200 along his own wall gained one unit in eight seconds against a 50/s
+  stride until it was lifted.
+  **AND A GARRISON DOES NOT GIVE CHASE.** An archer sees 150 and throws 105, so a foe just out of
+  range dragged him off his own wall to close the difference — six men pinned dead at a junction,
+  their walk cancelled tick for tick by a chase after a man they could not have hit. A man with a
+  berth walks to his place and shoots whatever comes into it; he also keeps walking WHILE he
+  shoots, because a roster that moves with the fighting is useless if being in range stops a man
+  answering it.
+  **A CURTAIN GATHERS TO THE FIGHTING, AND SPLITS FOR TWO.** Every enemy within `WALL.alarm` is
+  projected onto the curtain and the projections are CLUSTERED (`WALL.alarms`, `alarmSpan`) — one
+  alarm per body of attackers, anchored on the STONE and not on the enemy, so a Bombard shelling
+  from beyond anyone's reach counts. `postWalls` sorts the PLACES by distance to the nearest
+  alarm rather than moving men: the roster is dealt fresh every tick, so the same stable line of
+  men lands on different stone and walks there. One alarm would answer a feint perfectly — hit
+  one end, watch the wall run to it, walk in at the other — which is why there is more than one.
+  Measured on a three-run curtain with twelve men: at rest 4/4/4, one assault 12 of 12, two
+  assaults 6 and 6. `world._alarms` is kept for the tests, because "the wall did not gather" and
+  "the wall gathered to the wrong place" look identical from outside.
   **AND THE PARAPET IS HALF A SHIELD.** `WALL.cover` multiplies every blow that lands on a man
   carrying `u.man`, in `hurt()` — the same door the tower's immunity and the chains' amplifier
   use, so a splash pass or a new weapon added later cannot forget to ask. That does mean the

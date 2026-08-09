@@ -433,6 +433,25 @@
                   * for a place. Without this a hundred men crowd twenty feet of stone and the
                   * whole run is defended by a scrum standing on each other. */
                  berth: 15, foot: 20, rows: 3,
+                 /* HOW NEAR HIS BERTH HE MUST BE BEFORE HE IS STANDING IN IT. A berth is an
+                  * errand the roster hands him and this is the threshold that turns it into a
+                  * place: inside it he is a man on the parapet — the long reach, the merlons'
+                  * cover, and drawn up on the stone — and outside it he is a man walking to a
+                  * wall. A berth's own spacing, so a man who has reached his stride of the run
+                  * is on it. The same bargain the tower's threshold makes, and for the same
+                  * reason: before it, being NAMED to a place made a man a parapet man wherever
+                  * he stood, and he snapped onto the stone from wherever the roster found him. */
+                 step: 15,
+                 /* HOW NEAR AN ENEMY COMES BEFORE THE CURTAIN GATHERS TO HIM. Generous on
+                  * purpose: a Bombard out-ranges everything on the board and shells stone from
+                  * 365 away, and men who only muster once the ram is at the foot arrive after
+                  * the breach. Wide enough to cover the longest gun, tight enough that a column
+                  * crossing the country beyond it is somebody else's problem.
+                  * `alarms` is how many separate attacks one curtain can answer at once and
+                  * `alarmSpan` how far apart two enemies must be ALONG THE STONE before they
+                  * count as two attacks rather than one body — one alarm answers a feint
+                  * perfectly, so a wall has to be able to divide. */
+                 alarm: 420, alarms: 4, alarmSpan: 150,
                  /* WHAT THE STONE IS WORTH TO THE MAN ON IT. Every blow that lands on a
                   * berthed man is multiplied by this — see `hurt`, which is the one door
                   * damage comes through. Half, because a berth already costs him the shelter

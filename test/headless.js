@@ -568,17 +568,28 @@ suite('stone is for shooters')
     const swords = [mk('soldier'), mk('soldier'), mk('shieldman')];
     const shots = [mk('archer'), mk('sorcerer')];
     World.update(w, C.SIM_DT); w.events.length = 0;
-    ok('every shooter takes a berth, though he was mustered last',
+    /* A BERTH IS AN ERRAND FIRST. The roster names him on the tick the order reaches him; being
+     * ON the stone is something he walks to (see `postAll`), so the deal and the arrival are
+     * asserted separately and in that order. Asserting `u.man` one tick after the order was
+     * asserting the ASSIGNMENT and calling it manning. */
+    ok('every shooter is dealt a berth, though he was mustered last',
+       shots.every((u) => u.toBerth && u.post === b.id),
+       shots.map((u) => u.kind + ':' + (u.toBerth ? u.post : 0)).join(' '));
+    ok('...and none of them is on the stone yet', shots.every((u) => !u.man),
+       shots.map((u) => u.kind + ':' + (u.man || 0)).join(' '));
+    for (let i = 0; i < 30 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    ok('...and every one of them is on it once he has walked there',
        shots.every((u) => u.man === b.id), shots.map((u) => u.kind + ':' + (u.man || 0)).join(' '));
     ok('and no swordsman takes one, though his id is lower',
-       swords.every((u) => !u.man), swords.map((u) => u.kind + ':' + (u.man || 0)).join(' '));
+       swords.every((u) => !u.man && !u.toBerth), swords.map((u) => u.kind + ':' + (u.man || 0)).join(' '));
     ok('...but they are still posted, so they stand at the foot in cover',
        swords.every((u) => u.post === b.id));
     /* an all-melee company mans nothing at all: the wall bars the ground and kills nobody */
     w.units.length = 0;
     const only = [mk('soldier'), mk('shieldman')];
-    World.update(w, C.SIM_DT); w.events.length = 0;
-    ok('a company with no shooters in it mans nothing', only.every((u) => !u.man));
+    for (let i = 0; i < 30 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    ok('a company with no shooters in it mans nothing',
+       only.every((u) => !u.man && !u.toBerth));
   }
 
   /* ---- and a tower holds a few ---- */
@@ -1636,7 +1647,14 @@ suite('the curtain wall')
   w.players[0].companies.push({ id: 41, rally: { x: below.x, y: below.y, site: -1 } });
   below.co = 41;
   World.update(w, C.SIM_DT);
-  eq('a man at his own wall is marked as standing on it', upTop.man, b.id);
+  /* HE IS DEALT IT, THEN HE WALKS TO IT. A berth is a place on a run that may be hundreds long
+   * and his is not where he happens to be standing, so the tick the order reaches him he has an
+   * ERRAND and no more. Marking him manned here was marking the roster's decision. */
+  ok('a man at his own wall is dealt a berth on it', upTop.toBerth && upTop.post === b.id,
+     `post ${upTop.post}, toBerth ${upTop.toBerth || 0}`);
+  eq('...but he is not on the stone until he has walked to it', upTop.man || 0, 0);
+  for (let i = 0; i < 30 * 30; i++) World.update(w, C.SIM_DT);
+  eq('...and he is once he has', upTop.man, b.id);
   eq('...and a man well behind it is not', below.man || 0, 0);
   {
     const snap = Net.snapFor(w, 0);
@@ -5347,6 +5365,161 @@ suite('the parapet is half a shield');
          `— x${(shipped.stone / bare.stone).toFixed(2)}, want x${C.WALL.cover}`);
     near('...and the man in the open is not sheltered by it at all', shipped.field, bare.field, 0.01,
          `${shipped.field.toFixed(1)} against ${bare.field.toFixed(1)}`);
+  }
+}
+
+/* ---------------- a berth is an errand until he is standing in it ----------------
+ * Being NAMED to a berth used to be the whole of manning: the tick the roster reached a man he
+ * had the parapet's reach, the merlons' cover and a place on the stone in the renderer, wherever
+ * on the board he was. A company ordered to a wall snapped onto it from wherever it stood, and
+ * it was reported from play as men teleporting to a wall. This is the tower's `tow`/`in` split
+ * done for stone — see `a tower shelters its garrison`, the suite written to pin that one.
+ * The measurement that named the bug: with the old rule, thirteen of twenty-four men were on the
+ * stone one second after the order, still two hundred and seventy-nine units away from it. */
+suite('a berth is an errand until he is standing in it');
+{
+  const { w, pl, wall } = walledRealm(20260811, { len: 220 });
+  ok('a curtain goes up to walk to', !!wall && !wall.raise && w.anyWall, 'no run');
+  if (wall) {
+    const c = World.cityOf(w, 0);
+    /* they muster WELL INSIDE the realm, on the sheltered face — `station` puts every berth
+     * toward the Seat, and a wall bars its owner everywhere but his gateway, so a company
+     * mustered on the exposed face is dealt places it can never reach */
+    const inward = Math.sign(c.y - wall.y) || 1;
+    pl.banner = { x: wall.x, y: wall.y };
+    const men = [];
+    for (let i = 0; i < 10; i++)
+      men.push(manAt(w, 0, 'archer', wall.x + (i % 5) * 20 - 40,
+                     wall.y + inward * (300 + ((i / 5) | 0) * 20)));
+    /* distance to the RUN, computed here from its own ends — `segD2` is private to world.js */
+    const offRun = (u) => {
+      const e = World.wallEnds(wall);
+      const vx = e[2] - e[0], vy = e[3] - e[1], l2 = vx * vx + vy * vy || 1;
+      let t = ((u.x - e[0]) * vx + (u.y - e[1]) * vy) / l2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      return Math.hypot(u.x - (e[0] + vx * t), u.y - (e[1] + vy * t));
+    };
+    const away = () => men.reduce((a, u) => a + offRun(u), 0) / men.length;
+    const start = away();
+    World.update(w, C.SIM_DT);
+    ok('the rig is alive: they muster a long walk from the stone', start > 200, `${start.toFixed(0)} out`);
+    /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — he was manned where he stood */
+    ok('the roster deals every one of them a berth at once',
+       men.every((u) => u.toBerth && u.post === wall.id),
+       men.map((u) => (u.toBerth ? u.post : 0)).join(','));
+    ok('...and not one of them is on the stone yet', men.every((u) => !u.man),
+       men.filter((u) => u.man).length + ' already up');
+    /* ...and while he walks he is an ordinary man: no parapet on the wire, nothing to a rival
+     * but a soldier in a field */
+    const walking = Net.snapFor(w, 0).units.find((q) => q.id === men[0].id);
+    ok('a man walking to a wall carries no parapet on the wire', walking && walking.man === undefined,
+       walking && walking.man);
+    let peak = 0;
+    for (let i = 0; i < 40 * 30; i++) { World.update(w, C.SIM_DT); peak = Math.max(peak, w.nav.fields.size); }
+    ok('he walks there', away() < 60, `${away().toFixed(0)} out, from ${start.toFixed(0)}`);
+    ok('...and is on the stone when he arrives', men.every((u) => u.man === wall.id),
+       men.filter((u) => !u.man).length + ' still off it');
+    const up = Net.snapFor(w, 0).units.find((q) => q.id === men[0].id);
+    ok('...and the parapet rides the wire then', up && up.man === wall.id, up && up.man);
+    /* A WALL IS ONE DOOR, NOT ONE PER BERTH. A flow field is cached by its goal CELL and the
+     * cache evicts by dropping every field it holds, so steering each man at his own berth —
+     * fifteen apart, on a twenty-unit grid — mints a goal cell per berth and a full-grid
+     * Dijkstra per man per tick. Men walk to the run's gateway and take the last stretch
+     * themselves, exactly as a tower's garrison walks to the tower's own centre. */
+    ok('a company walking to a wall does not thrash the flow-field cache',
+       peak < C.NAV.cacheMax / 2, `${peak} fields held of ${C.NAV.cacheMax}`);
+  }
+}
+
+/* ---------------- a curtain gathers to the fighting, and splits for two ----------------
+ * An even spread is the resting shape of a garrison and exactly the wrong one the moment
+ * somebody comes: the two men standing where the assault lands die while the rest watch empty
+ * ground four hundred feet away. And ONE point of concentration answers a feint perfectly — hit
+ * one end, watch the wall run to it, walk in at the other — so it has to be able to divide.
+ * Measured with FEWER MEN THAN BERTHS, the only case where where they stand is a choice. */
+suite('a curtain gathers to the fighting, and splits for two');
+{
+  const w = World.createWorld(20260810, 2), pl = w.players[0];
+  pl.essence = 1e7; w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 8; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  const finish = () => {
+    for (let i = 0; i < 90 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return;
+    }
+  };
+  const L = 200;
+  let start = null;
+  for (let rad = 190; rad < 460 && !start; rad += 20)
+    for (let a = 0; a < 64 && !start; a++) {
+      const th = a / 64 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (!World.wallError(w, 0, x, y, x + L, y) && !World.wallError(w, 0, x + L, y, x + 2 * L, y)
+          && !World.wallError(w, 0, x + 2 * L, y, x + 3 * L, y)) start = { x, y };
+    }
+  ok('the board has room for a three-run curtain', !!start, 'nowhere to draw it');
+  if (start) {
+    for (let k = 0; k < 3; k++) {
+      pl.essence = 1e7;
+      World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * L, y: start.y,
+                                 x2: start.x + (k + 1) * L, y2: start.y });
+      finish();
+    }
+    const runs = pl.buildings.filter((b) => b.bt === 'wall');
+    const inward = Math.sign(c.y - runs[1].y) || 1;
+    pl.companies = [{ id: 1, rally: { x: runs[1].x, y: runs[1].y } }];
+    pl.banner = { x: runs[1].x, y: runs[1].y };
+    const men = [];
+    for (let i = 0; i < 12; i++)
+      men.push(manAt(w, 0, 'archer', runs[1].x + (i % 6) * 12 - 36,
+                     runs[1].y + inward * (70 + ((i / 6) | 0) * 12)));
+    for (const u of men) { u.hp = 1e6; u.maxHp = 1e6; }
+    const step = (secs) => { for (let i = 0; i < secs * 30; i++) World.update(w, C.SIM_DT); };
+    /* THE THREAT IS ARCHERS, and that is not incidental: soldiers tough enough for this rig
+     * knock the run down, it leaves `world.walls`, and "nobody manned it" reads as the rule
+     * failing when it was the rig demolishing the evidence. A shooter cannot touch stone.
+     * The rival's halls are shut too, or six attackers become twenty-two spread along the whole
+     * curtain and the suite measures a garrison PINNED rather than one that will not move. */
+    w.players[1].buildings = w.players[1].buildings.filter((b) => !C.BUILDINGS[b.bt].spawns);
+    w.players[1].companies = [];
+    const foe = (rx, n, co) => {
+      const oy = runs[rx].y - inward * 90;
+      w.players[1].companies.push({ id: co, rally: { x: runs[rx].x, y: oy } });
+      for (let i = 0; i < n; i++) {
+        const u = manAt(w, 1, 'archer', runs[rx].x + (i % 4) * 14 - 21, oy);
+        u.co = co; u.hp = 1e6; u.maxHp = 1e6;
+      }
+    };
+    /* MEASURED AT THE ALARMS, not at fixed points on the map: the fighting MOVES — enemy
+     * shooters chase the men who come to meet them — so counting heads near a run's midpoint
+     * reports the garrison absent when it is standing exactly where the battle went. */
+    const alarmsOf = () => [...(w._alarms || new Map())].flatMap(([, v]) => v);
+    const holding = () => alarmsOf().map((a) => men.filter((u) => Math.abs(u.x - a.x) < C.WALL.alarmSpan).length);
+    step(30);
+    const rest = runs.map((r) => men.filter((u) => u.man === r.id).length);
+    ok('at rest the garrison is spread over the whole curtain', rest.every((n) => n > 0),
+       `${rest.join('/')} across the three runs`);
+    eq('...and nothing is raising an alarm', alarmsOf().length, 0);
+    w.players[1].banner = { x: runs[0].x, y: runs[0].y - inward * 90 };
+    foe(0, 6, 1);
+    step(30);
+    const one = holding();
+    ok('an assault raises one alarm', one.length === 1, `${one.length} alarms`);
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE — the garrison stood where it started */
+    ok('...and the whole garrison gathers to it', one[0] >= men.length * 0.75,
+       `${one[0]} of ${men.length} at the fighting`);
+    foe(2, 6, 2);
+    step(70);
+    const two = holding();
+    ok('a second assault raises a second alarm', two.length >= 2, `${two.length} alarms`);
+    ok('...and the garrison divides between them', two.length >= 2 && Math.min(...two) >= 2,
+       `holding ${two.join(' and ')} of ${men.length}`);
+    ok('...without either alarm hoarding the company',
+       two.length >= 2 && Math.max(...two) <= men.length * 0.75, `holding ${two.join(' and ')}`);
   }
 }
 
