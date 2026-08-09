@@ -713,7 +713,11 @@
       st.x = gt.x; st.y = gt.y;
       let seen = false;
       for (const u of view.units) {
-        if (u.owner !== L.owner || u.in) continue;
+        /* A GARRISON DOES NOT HOLD THE DOOR OPEN. The gate swings for a man who is going
+         * THROUGH it; the company posted to this very run is standing at its foot because the
+         * wall is its post, and with them there the gate stood open for the whole match — which
+         * is the opposite of what a guarded wall should look like. Reported from play. */
+        if (u.owner !== L.owner || u.in || u.post === L.id) continue;
         const dx = u.x - gt.x, dy = u.y - gt.y;
         if (dx * dx + dy * dy <= near2) { seen = true; break; }
       }

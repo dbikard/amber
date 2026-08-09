@@ -364,7 +364,21 @@
   }
 
   function postAll(world) {
-    for (const u of world.units) { if (u.tow) u.tow = 0; if (u.toBerth) u.toBerth = 0; }
+    /* WHAT EACH MAN HELD LAST TICK, remembered before it is cleared. The roster is re-dealt
+     * from scratch every tick, and pairing the k-th man with the k-th place means any change in
+     * the order — an alarm drifting a few units, one man falling — reshuffles the WHOLE
+     * garrison. Measured under an assault sliding along a wall: 192 tower rooms and 429 berths
+     * changed hands in twenty seconds, thirty men, nobody having ordered anything. That is what
+     * the player sees as archers stepping in and out of a tower for no reason and a standard
+     * oscillating between two of them. A place a man already holds is his. */
+    const held = world._held || (world._held = new Map());
+    held.clear();
+    for (const u of world.units) {
+      if (u.tow) held.set(u.id, 't' + u.tow);
+      else if (u.toBerth && u.post) held.set(u.id, 'b' + u.post + ':' + u.berth);
+      if (u.tow) u.tow = 0;
+      if (u.toBerth) u.toBerth = 0;
+    }
     if (world.anyWall) postWalls(world);
     postTowers(world);
     /* a man INSIDE holds his room only while the roster still deals him that tower — the flag
@@ -505,7 +519,17 @@
       /* SHOOTERS FIRST, then a stable line by id — not a nightly reshuffle. The sort is what
        * puts the archers on the parapet whatever their ids, and leaves the swordsmen behind
        * them in the rows at the foot rather than blocking berths they cannot use. */
-      list.sort((p, q) => (mans(q) - mans(p)) || (p.id - q.id));
+      /* SHOOTERS FIRST, THEN THE LINE, THEN THE ENGINES — and the last of those is why the
+       * middle key exists. Only `mans` may take a berth, so everyone else falls to the rows at
+       * the foot, and those rows fill in roster order: nearest the stone first. Ordered by id
+       * alone, whether a Bombard stood in front of the shieldwall or behind it came down to
+       * which was mustered first. `shoots` is the same derived reach the marching column uses
+       * for its back line (`CONST.LINE_REACH`), so a siege train takes the back rows at a wall
+       * for the same reason it marches at the back of a company, and a new kind lands on the
+       * right side by having a reach. Reported from play as siege weapons pushing through the
+       * troops instead of staying behind them. */
+      const shoots = (u) => (C.UNITS[u.kind].shoots ? 1 : 0);
+      list.sort((p, q) => (mans(q) - mans(p)) || (shoots(p) - shoots(q)) || (p.id - q.id));
       const berths = runs.map((w) => {
         const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
         return Math.max(2, Math.round(L / C.WALL.berth));
@@ -557,6 +581,38 @@
        * a room in a tower is stationed by the tower and takes neither. Handing out the roster
        * index instead put the third man at the foot in the eighth row because five shooters had
        * gone up ahead of him. */
+      /* ---- HE KEEPS THE PLACE HE HOLDS ----
+       * Only the best `K` places are worth filling, K being the shooters there are to fill them;
+       * sorted by the alarm, those are the ones nearest the fighting. A man whose place is still
+       * among them stays exactly where he is, and only the men whose places fell out of the set
+       * are dealt the ones that came into it. So an alarm that moves shifts the FEW men it must
+       * and leaves everyone else standing, instead of playing musical chairs with the garrison
+       * thirty times a second. */
+      const held = world._held || new Map();   // what each man held last tick — see postAll
+      const shooters = list.filter(mans);
+      const K = Math.min(shooters.length, places.length);
+      /* A BERTH IS ONE PLACE; A TOWER IS TEN UNDER ONE NAME. So the top K is counted rather than
+       * indexed — key it by identity alone and a tower's ten rooms collapse into one, which
+       * empties every tower on the curtain but for a single man. */
+      const pkey = (p) => (p.tow ? 't' + p.tow : 'b' + p.man + ':' + p.berth);
+      const capK = new Map(), proto = new Map();
+      for (let i = 0; i < K; i++) {
+        const k = pkey(places[i]);
+        capK.set(k, (capK.get(k) || 0) + 1);
+        if (!proto.has(k)) proto.set(k, places[i]);
+      }
+      const mine = new Map();
+      for (const u of shooters) {
+        const k = held.get(u.id), n = k ? capK.get(k) || 0 : 0;
+        if (n > 0) { mine.set(u.id, proto.get(k)); capK.set(k, n - 1); }
+      }
+      /* and what is left over, still in the alarm's order, for the men who must move */
+      const spare = [];
+      for (let i = 0; i < K; i++) {
+        const k = pkey(places[i]), n = capK.get(k) || 0;
+        if (n > 0) { spare.push(places[i]); capK.set(k, n - 1); }
+      }
+      let si = 0;
       const foot = runs.map(() => 0);
       /* WHICH RUN THE RESERVE STANDS BEHIND. At rest, each in turn. Under alarm, the run each
        * threat is nearest — one entry per alarm, deduplicated — and the reserve goes round
@@ -573,12 +629,12 @@
           if (hot.indexOf(bi) < 0) hot.push(bi);
         }
       }
-      let take = 0, rear = 0;
+      let rear = 0;
       for (const u of list) {
         /* only a shooter may take a place, and the queue is only spent when one does: a
          * swordsman at the head of the roster must not consume a berth on his way to the foot */
-        if (mans(u) && take < places.length) {
-          const p = places[take++];
+        if (mans(u) && (mine.has(u.id) || si < spare.length)) {
+          const p = mine.get(u.id) || spare[si++];
           u.post = p.man;                       // the run he is stationed by, berth or bastion
           /* the ERRAND, not the place: which run, which berth on it, and that it is a berth on
            * the stone at all. `u.man` waits until he is standing in it — see postAll. */
@@ -749,6 +805,16 @@
    * work pushes twenty-six, so walking a man off a hall can hop him clean over a curtain —
    * and `shove` then holds him on the wrong side, because all it knows is which side he is on
    * NOW. Cheaper to refuse the step than to unpick it. */
+  /* would going THERE take him across a run of his own curtain? The garrison's own test: his
+   * post is on the sheltered face and anything past the stone is the wall's business, not his. */
+  function crossesOwn(world, u, tx, ty) {
+    if (!world.anyWall) return false;
+    for (const w of world.walls) {
+      if (w.owner !== u.owner) continue;
+      if (crosses(u.x, u.y, tx, ty, w.ax, w.ay, w.bx, w.by)) return true;
+    }
+    return false;
+  }
   function barred(world, u, nx, ny) {
     if (!world.anyWall) return false;
     for (const w of world.walls) {
@@ -3026,6 +3092,25 @@
        * does, not a man on a parapet. Only a berth, and only on his own stone, so this is a
        * walk ALONG the wall and never a stroll across open country. */
       const toPost = () => {
+        /* A ROOM IS AN ERRAND TOO, and it was the one left behind. A man dealt a tower walks to
+         * its door in the march — and the march is not reached by a man with a foe in range, so
+         * a garrison under fire could never finish getting inside. Measured on a curtain with a
+         * bastion in each run: fifteen men in the towers at rest, and NONE once an assault
+         * arrived. The towers are the safest and furthest-shooting place on the board and they
+         * emptied at exactly the moment they were worth holding — and because the standard over
+         * a work is flown by the men IN it, the flag went out with them and jumped to whichever
+         * tower happened to hold somebody that tick. Reported from play as both: the second
+         * tower flying nothing, and the flag oscillating between the two with no order given. */
+        if (u.tow && u.in !== u.tow) {
+          const tb = towerOf(world, u);
+          if (!tb) return;
+          const dc = Math.sqrt(d2(u.x, u.y, tb.x, tb.y));
+          if (dc <= C.BUILD.pass + 4) { u.in = tb.id; return; }   // the rim is the door
+          u.x += (tb.x - u.x) / dc * speed * dt;
+          u.y += (tb.y - u.y) / dc * speed * dt;
+          stand(world, u, u.x, u.y);
+          return;
+        }
         if (!u.toBerth || !u.atWall) return;
         const pw = world.walls.find((q) => q.b.id === u.post);
         if (!pw) return;
@@ -3071,7 +3156,16 @@
            * Only a berth, and only on his own stone, so this is a walk ALONG the wall and never
            * a stroll across open country. */
           toPost();
-        } else if (u.toBerth && u.atWall) {
+        } else if (u.post && crossesOwn(world, u, foe.x, foe.y)) {
+          /* AND HE DOES NOT GO OUT THROUGH HIS OWN WALL AFTER HIM. A man posted to a curtain is
+           * posted to the sheltered side of it; a foe on the far side is exactly what the stone
+           * is for. Chasing him means walking out of the gateway to fight in the open, which is
+           * the one thing a garrison must not do unless it is ORDERED to — and an order to go
+           * out is an order somewhere else, which takes him off the wall's roster entirely.
+           * Reported from play: troops crossing the wall to attack with nobody having told
+           * them to. He holds, and shoots over. */
+          toPost();
+        } else if (u.tow || (u.toBerth && u.atWall)) {
           /* AND A MAN WITH A BERTH DOES NOT GIVE CHASE. His aggro is wider than his reach — an
            * archer sees a hundred and fifty and throws a hundred and five — so a foe just out of
            * range drags him off his own wall to close the difference. Measured on a curtain

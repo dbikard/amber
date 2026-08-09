@@ -533,6 +533,12 @@
                         * The mend cap's `_mendT`/`_mendGot` deliberately do NOT ride: those are
                         * per-tick scratch belonging to the host's loop, not state. */
                        ...(u.hexed > world.t ? { hexed: Math.round(u.hexed * 10) / 10 } : {}),
+                       /* WHICH WALL HE IS POSTED TO — the owner's alone, like his company.
+                        * The renderer needs it to keep a curtain's own gateway SHUT while its
+                        * garrison stands at the foot of it: the door swings for a man going
+                        * through, and the company whose post this wall is held it open for the
+                        * whole match. Without it on the wire a guest's gates hang open. */
+                       ...(u.owner === viewer && u.post ? { post: u.post } : {}),
                        ...(u.owner === viewer ? { co: u.co } : {}) })),
       /* the halt is the table's, not a seat's — every guest must see it and who called it */
       paused: world.paused ? { by: world.paused.by } : null,
