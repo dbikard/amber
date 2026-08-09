@@ -2287,8 +2287,36 @@
        * "0:1234:567" thirty times a second for an army is a measurable share of the sim */
       const k = (u.owner + 2) * 33554432 + Math.round(u.goal.y) * 4096 + Math.round(u.goal.x);
       let g = at.get(k);
-      if (!g) at.set(k, g = { n: 0, m: 0, want: 0, sx: 0, sy: 0, bx: 0, by: 0,
-                              goal: u.goal, owner: u.owner });
+      if (!g) {
+        at.set(k, g = { n: 0, m: 0, want: 0, sx: 0, sy: 0, bx: 0, by: 0, r0: 0,
+                        goal: u.goal, owner: u.owner });
+        /* ---- A BODY ORDERED ONTO A WORK FORMS UP AROUND IT ----
+         * A spring is taken by standing on it and a Shadow Gate stands on the spring's exact
+         * centre, so "hold this spring" is an order onto a WORK. The body's inner ranks are
+         * then dealt ground inside the building: each man walks onto it, `stand` pushes him
+         * back out to `BUILD.pass` and PINS him there — and a pinned man is skipped by the
+         * crowd, so he never separates from the fellows pinned beside him. Measured: six of
+         * eight men at exactly 26.0 from the Gate, none of them moving a unit in ten seconds,
+         * packed to fourteen apart where a berth is twenty-two. Reported from play as troops
+         * stuck behind the Shadow Gate.
+         * The Seat already had this rule — a body ordered home opens out around the tower's
+         * ground rather than starting at a point — and `bodyPlace` has taken the inner radius
+         * since. It is the same answer for any work: open the ring out past its rim and the
+         * front rank stands at the door instead of inside it. Asked once per BODY, not once
+         * per man: the order's point is the group's key.
+         * A berth and a half past the rim, and the width is measured rather than chosen: at
+         * half a berth two men still ended pinned on the stone and the body packed to 19
+         * apart; at a berth and a half the nearest man stands 45 out and the body spaces
+         * itself at 23, which is a full berth. The slack is for the men whose place is on the
+         * FAR side — they have to get round the work, not through it. */
+        if (u.owner !== C.CHAOS_ID) {
+          const R = C.BUILD.pass + C.CROWD.space * 1.5, R2 = R * R;
+          for (const b of world.players[u.owner].buildings) {
+            if (b.x2 != null) continue;                    // a run is not a thing to ring
+            if (d2(b.x, b.y, u.goal.x, u.goal.y) < R2) { g.r0 = R; break; }
+          }
+        }
+      }
       g.sx += u.x; g.sy += u.y;
       u._line = g;
       /* TWO LINES, DEALT SEPARATELY. A shooter is ranked among shooters and a fighting man
@@ -3298,7 +3326,8 @@
            * disc starts at nought even at home: it is not a ring around the tower, it is the
            * shooters standing behind the ring. Both terms are zero for a body of one kind, and
            * this is then the disc it has always been. */
-          const o0 = bodyPlace(u.rank || 0, u.rear ? 0 : (home ? C.CITY.seatR + 24 : 0), C.CROWD.space);
+          const inner = home ? C.CITY.seatR + 24 : (u._line ? u._line.r0 : 0);
+          const o0 = bodyPlace(u.rank || 0, u.rear ? 0 : inner, C.CROWD.space);
           const ln = u.rear && u._line ? u._line : null;
           const off = ln ? { x: o0.x + ln.bx, y: o0.y + ln.by, r: Math.sqrt((o0.x + ln.bx) * (o0.x + ln.bx) + (o0.y + ln.by) * (o0.y + ln.by)) } : o0;
           const pt = placeAt(world, home ? cs.x : gs.x, home ? cs.y : gs.y, off);

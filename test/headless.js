@@ -5368,6 +5368,44 @@ suite('the parapet is half a shield');
   }
 }
 
+/* ---------------- a body ordered onto a work forms up around it ----------------
+ * A spring is TAKEN by standing on it and a Shadow Gate stands on the spring's exact centre,
+ * so "hold this spring" is an order onto a WORK. The body's inner ranks were then dealt ground
+ * inside the building: each man walked onto it, `stand` pushed him back out to `BUILD.pass` and
+ * PINNED him there — and a pinned man is skipped by the crowd, so he never separated from the
+ * fellows pinned beside him. Reported from play as troops stuck behind the Shadow Gate, and
+ * measured: six of eight at exactly 26.0 from it, none moving a unit in ten seconds, packed to
+ * fourteen apart where a berth is twenty-two.
+ * The Seat has had this rule for a while — a body ordered home opens out around the tower's
+ * ground rather than starting at a point — and this is the same answer for any work. */
+suite('a body ordered onto a work forms up around it');
+{
+  const w = World.createWorld(20260813, 2), pl = w.players[0];
+  w.chaosNext = 1e9;
+  const gate = pl.buildings.find((b) => b.bt === 'gate');
+  ok('the heir opens with a Gate on his spring to stand on', !!gate, 'no Gate');
+  if (gate) {
+    pl.companies = [{ id: 1, rally: { x: gate.x, y: gate.y } }];
+    pl.banner = { x: gate.x, y: gate.y };
+    w.units.length = 0;
+    const men = [];
+    for (let i = 0; i < 8; i++)
+      men.push(manAt(w, 0, 'soldier', gate.x + (i % 4) * 24 - 36, gate.y + 200 + ((i / 4) | 0) * 24));
+    for (let i = 0; i < 80 * 30; i++) World.update(w, C.SIM_DT);
+    const off = men.map((u) => Math.hypot(u.x - gate.x, u.y - gate.y)).sort((a, b) => a - b);
+    const nn = men.map((u) => Math.min(...men.filter((v) => v !== u)
+      .map((v) => Math.hypot(u.x - v.x, u.y - v.y)))).sort((a, b) => a - b);
+    ok('the rig is alive: the company marched to the order', off[off.length - 1] < 200,
+       `the furthest is ${off[off.length - 1].toFixed(0)} from the Gate`);
+    /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — they stood ON the rim, shoulder to shoulder */
+    ok('not one man is pinned against the work', off[0] > C.BUILD.pass + 8,
+       `the nearest stands ${off[0].toFixed(0)} out, the rim is ${C.BUILD.pass}`);
+    ok('...and the body is a body, not a pile',
+       nn[nn.length >> 1] > C.CROWD.space * 0.8,
+       `median nearest-neighbour ${nn[nn.length >> 1].toFixed(0)}, a berth is ${C.CROWD.space}`);
+  }
+}
+
 /* ---------------- a berth is an errand until he is standing in it ----------------
  * Being NAMED to a berth used to be the whole of manning: the tick the roster reached a man he
  * had the parapet's reach, the merlons' cover and a place on the stone in the renderer, wherever
