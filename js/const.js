@@ -305,7 +305,7 @@
                  * all go by `len / WALL.unit` continuously; only the mason COUNT rounds up,
                  * because you cannot put two thirds of a crew on anything. */
                 hpAt: [820, 1290, 1880], span: [26], vision: 200,
-                blurb: 'A run of stone. Nothing crosses it and nothing shoots through it — but men who come up to man it can be shot back.' },
+                blurb: 'A run of stone. Nothing crosses it and nothing shoots through it. Men who come up to man it can be shot back — but the merlons take half of every blow that finds them.' },
     /* THE ANSWER TO A CASTLE. Soldiers were the only siege there was, and a Seat has 2500
      * hit points behind towers — so "win by force" meant grinding a rival's outworks forever
      * while neither Seat took a scratch. An Engine is slow, fragile in a fight and useless at
@@ -433,6 +433,12 @@
                   * for a place. Without this a hundred men crowd twenty feet of stone and the
                   * whole run is defended by a scrum standing on each other. */
                  berth: 15, foot: 20, rows: 3,
+                 /* WHAT THE STONE IS WORTH TO THE MAN ON IT. Every blow that lands on a
+                  * berthed man is multiplied by this — see `hurt`, which is the one door
+                  * damage comes through. Half, because a berth already costs him the shelter
+                  * of the foot: he is the one man on the run who can be shot back at, and
+                  * before this the only thing the parapet gave him was reach. */
+                 cover: 0.5,
                  /* AND A WALL HAS A GATE. A curtain you can walk around the end of is a
                   * decoration; one nobody can pass is a wall around your own army. The gate is
                   * the middle of the run, it is `gate` wide, and it is YOURS — a rival reaching

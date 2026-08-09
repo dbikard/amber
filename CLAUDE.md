@@ -334,6 +334,16 @@ blow against stone, multiplied.
   swordsman on a parapet was only ever a man in the open holding a berth an archer needed. Only
   berthed men shoot over and are exposed. It reads the order rather than `u.goal` because goals
   are assigned in the march loop, which runs after it.
+  **AND THE PARAPET IS HALF A SHIELD.** `WALL.cover` multiplies every blow that lands on a man
+  carrying `u.man`, in `hurt()` — the same door the tower's immunity and the chains' amplifier
+  use, so a splash pass or a new weapon added later cannot forget to ask. That does mean the
+  Jewel's storm is halved on a parapet too, which is the honest reading of cover; the
+  alternative is a list of exceptions kept at six call sites, which is what the guard exists to
+  avoid. Without it a berth bought reach and nothing else, and holding a curtain was strictly
+  worse for the man than standing in the field beside it. Note when testing this that the
+  geometry around a run is NOT a controlled comparison — a berthed archer beside one in the
+  open took exactly half with the cover switched OFF, because one of his two attackers could
+  not land a shot. The suite plays the same seeded world twice and varies only the constant.
   **A TOWER IS A ROOM, AND THE STONE IS THE SHIELD.** `TOWER.berths` shooters whose order falls
   near one of their own finished towers go INSIDE it, carry `u.tow` (NOT `u.man` — the renderer
   and `station()` read that as "the wall he holds"), and throw `TOWER.over`. While `u.tow` is set

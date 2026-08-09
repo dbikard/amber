@@ -5275,6 +5275,81 @@ suite('the shooters march behind the line');
      `settled at ${solo.toFixed(0)}, ordered to ${GOAL.y}`);
 }
 
+/* ---------------- the parapet is half a shield ----------------
+ * A tower is a room and its garrison cannot be touched at all; a wall was nothing of the kind.
+ * A berth bought a man reach and nothing else, so holding a curtain was strictly WORSE for him
+ * than standing in the field beside it — he is the one man on the run who can be shot back at
+ * — and the stone he stood on did not stop a single arrow. `WALL.cover` halves every blow that
+ * lands on a berthed man, at the one door damage comes through.
+ *
+ * THE CONTROL IS THE CONSTANT, and that is deliberate. The obvious rig — a berthed archer
+ * beside one in the open, each with the same attackers — is not a controlled comparison, and
+ * measuring it proved it: with the cover switched OFF the berthed man already took exactly
+ * half, because one of his two attackers was standing where it could not land a shot. The
+ * geometry around a curtain is not something a test can assume away. So the same seeded world
+ * is played twice, identical in every respect but `WALL.cover`, and the man in the open rides
+ * along as the proof the guard is scoped to berths and touches nobody else. */
+suite('the parapet is half a shield');
+{
+  const play = (cover) => {
+    const keep = C.WALL.cover;
+    C.WALL.cover = cover;
+    try {
+      const { w, pl, wall } = walledRealm(20260809, { len: 220 });
+      const pl1 = w.players[1];
+      if (!wall || wall.raise) return null;
+      const standable = (x, y) => {
+        const cell = NAV.cellOf(w.nav, x, y);
+        return cell >= 0 && w.nav.cost[cell] > 0;
+      };
+      /* the man on the stone answers a company standing at the run; the man in the open
+       * answers the Banner, planted far enough off that `postWalls` never offers him a berth */
+      pl.companies = [{ id: 1, rally: { x: wall.x, y: wall.y } }];
+      let open = null;
+      for (let r = 400; r < 700 && !open; r += 40)
+        for (const s of [1, -1]) {
+          const x = wall.x, y = wall.y + s * r;
+          if (!open && standable(x, y) && standable(x, y - 80) && standable(x, y + 80)) open = { x, y };
+        }
+      if (!open) return null;
+      pl.banner = { x: open.x, y: open.y };
+      const onStone = manAt(w, 0, 'archer', wall.x, wall.y - 30);
+      onStone.co = 1;
+      const inField = manAt(w, 0, 'archer', open.x, open.y);
+      /* they are here to be shot at, not to die: the reading is damage TAKEN over a fixed span */
+      for (const u of [onStone, inField]) { u.hp = 1e6; u.maxHp = 1e6; }
+      for (let i = 0; i < 4 * 30; i++) World.update(w, C.SIM_DT);   // let him take his berth
+      pl1.companies = [{ id: 1, rally: { x: onStone.x, y: onStone.y } },
+                       { id: 2, rally: { x: inField.x, y: inField.y } }];
+      for (const [co, d] of [[1, onStone], [2, inField]])
+        for (const s of [1, -1]) {
+          const f = manAt(w, 1, 'archer', d.x, d.y + s * 80);
+          f.co = co; f.hp = 1e6; f.maxHp = 1e6;                     // and they must not be killed
+        }
+      const was = { stone: onStone.hp, field: inField.hp };
+      for (let i = 0; i < 14 * 30; i++) World.update(w, C.SIM_DT);
+      return { stone: was.stone - onStone.hp, field: was.field - inField.hp,
+               berth: onStone.man === wall.id };
+    } finally { C.WALL.cover = keep; }
+  };
+  const bare = play(1), shipped = play(C.WALL.cover);
+  ok('the rig stands up: a curtain, a berthed archer and open ground to compare against',
+     !!bare && !!shipped, 'the board would not give the suite what it needs');
+  if (bare && shipped) {
+    ok('the rig is alive: he holds his berth, and men are shooting at both of them',
+       bare.berth && shipped.berth && bare.stone > 0 && bare.field > 0,
+       `berth ${bare.berth}/${shipped.berth}, took ${bare.stone.toFixed(1)} on the stone and ` +
+       `${bare.field.toFixed(1)} in the open with no cover at all`);
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE — the ratio was 1.0 */
+    near('the parapet halves what lands on the man holding it', shipped.stone / bare.stone,
+         C.WALL.cover, 0.02,
+         `${shipped.stone.toFixed(1)} against ${bare.stone.toFixed(1)} with no cover ` +
+         `— x${(shipped.stone / bare.stone).toFixed(2)}, want x${C.WALL.cover}`);
+    near('...and the man in the open is not sheltered by it at all', shipped.field, bare.field, 0.01,
+         `${shipped.field.toFixed(1)} against ${bare.field.toFixed(1)}`);
+  }
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

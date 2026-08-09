@@ -2098,6 +2098,20 @@
      * whatever they had left. Guarded here rather than at each of the half-dozen places that
      * deal damage, because a splash pass added later would not have known to ask. */
     if (victim.in) return;
+    /* AND THE PARAPET IS HALF A SHIELD. A tower is a room and a wall is not, but a man behind
+     * a merlon is still a man behind stone, and until now the only thing a berth changed was
+     * how far he could throw — so holding a curtain was strictly worse for him than standing
+     * in the field beside it, at the price of a wall. `WALL.cover` off every blow is what
+     * makes a garrison worth mustering FOR, and it is the whole reason to raise the stone
+     * rather than meet the column in the open.
+     * At the same door as the tower and the chains, and for the same reason: a splash pass, a
+     * new weapon or a storm added later cannot forget to ask. That does mean the Jewel's
+     * storm is halved on a parapet too, which is the honest reading of cover — the alternative
+     * is a list of exceptions kept at half a dozen call sites, and that list is exactly what
+     * this guard exists to avoid.
+     * `u.man` is cleared and re-dealt by `postAll` at the top of every tick, so a man whose
+     * wall came down is a man in the open on the next one. */
+    if (victim.man) dmg *= C.WALL.cover;
     /* THE CHAINS BITE HERE AND NOWHERE ELSE. A binding amplifies every blow that lands on the
      * man, so the multiplier belongs at the one door damage comes through — guarded here for
      * the same reason `in` is, because a splash pass or a new weapon added later would not
