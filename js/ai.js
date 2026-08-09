@@ -116,14 +116,23 @@
     }
     return best ? { x: best.x, y: best.y } : null;
   }
-  const stormDefend = (min) => (v) => clusterAt(v.threats, min);
+  /* THE JEWEL IS SPENT ON A RIVAL BEFORE IT IS SPENT ON THE WEATHER. Both clusters were drawn
+   * from every hostile in sight, and most of what is hostile near a Seat is Chaos — so the one
+   * power on a ninety-second cooldown went on fiends the black road was going to send again
+   * anyway while the rival's column walked past. Chaos is capped so it can never take a Seat
+   * (DESIGN_PRINCIPLES); a rival is not. So the rivals are asked FIRST at the same bar, and
+   * the whole field only when there is no rival cluster to find — a heir being overrun by
+   * fiends still calls the storm down, which is what makes this an ordering and not a ban. */
+  const noChaos = (list) => list.filter((u) => u.owner !== C.CHAOS_ID);
+  const onRivalsFirst = (list, min) => clusterAt(noChaos(list), min) || clusterAt(list, min);
+  const stormDefend = (min) => (v) => onRivalsFirst(v.threats, min);
   const stormPush = (defMin) => (v) => {
     if (v.push >= 3 && v.enCity) {
       const defenders = v.visHostiles.filter((u) => d2(u.x, u.y, v.enCity.x, v.enCity.y) < 500 * 500);   // guarded by v.enCity above
-      const p = clusterAt(defenders, 2);
+      const p = onRivalsFirst(defenders, 2);
       if (p) return p;
     }
-    return clusterAt(v.threats, defMin);
+    return onRivalsFirst(v.threats, defMin);
   };
 
   /* map helpers: own-side chokes/vantages by distance to my city */
@@ -185,7 +194,23 @@
      * only ceiling there is now */
     const reach = W.wallReach(v.world, v.me);
     if (reach < def.span[0]) return null;
-    const half = Math.min(reach, C.WALL.unit * 2) / 2;
+    /* AND NO LONGER A RUN THAN THE PURSE WILL PAY FOR. A wall is bought BY THE FOOT — the
+     * command charges `cost * units`, so a two-crew run is 220 where the card says 110 — and
+     * the plan's affordability test knows only the card. So the heir drew the longest run his
+     * crews could cover, was refused for essence, and because a want that gets as far as an
+     * ORDER counts as the plan's business for that tick, everything behind the wall in the
+     * plan went unbuilt; then, `saving` being false, the upgrade scan spent the treasury back
+     * below the wall price and it happened again. Measured on benedict against julian, seed
+     * 1000: SEVENTEEN OF NINETEEN wall orders refused, every one a 300-length run priced at
+     * 220 against an average purse of 139 — for minutes at a time, and the two heirs who ask
+     * for stone are the only ones the curtain work could ever have shown up in.
+     * Sizing the run to the purse fixes it at the root and leaves the plan's test correct as
+     * written: `cost` IS the price of the shortest run there is, one crew's worth, so falling
+     * under it is exactly when an heir should be saving. The 0.99 is for the arithmetic — a
+     * run of exactly `unit` length can round to two crews on the far side of a hypot. */
+    const purse = Math.floor(v.essence / def.cost) * C.WALL.unit;
+    const half = Math.min(reach, C.WALL.unit * 2, purse) * 0.99 / 2;
+    if (half * 2 < def.span[0]) return null;
     for (let ring = 0; ring < 4; ring++) {
       const r = 120 + ring * 34;
       for (let k = 0; k < 9; k++) {
@@ -285,6 +310,18 @@
   /* how much of the realm's earnings may sit past what the halls can drink before another
    * hall is the obvious answer — an allowance for the stone every doctrine also wants */
   const SPARE = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SPARE) || 3;
+  /* how many men a detachment wants before it is worth sending out to hold ground. Below this
+   * the smallest manned company still goes — one man on a spring is a Gate the black road has
+   * not eaten yet — but the errand PREFERS a body that can stand there. */
+  const ERRAND_MEN = +(typeof process !== 'undefined' && process.env && process.env.AMBER_ERRAND) || 4;
+  /* WHEN A RIVAL'S WALK BECOMES THE ONLY THING ON THE BOARD. A full walk is a hundred points at
+   * the Shrine's one `rate`, which is a little over five minutes — so a rival at ten points has
+   * about five minutes left and the march across a 2000x2400 board is a minute of it. Answering
+   * early is the whole value: a walk cannot be called off, so there is no feint to be drawn by
+   * and nothing is wasted by setting out. `WALK_ARMY` is the floor that stops him sending four
+   * men across the world — a Shrine is 900 hit points behind whatever its owner left at home. */
+  const WALK_ANSWER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKANS) || 10;
+  const WALK_ARMY = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKARM) || 8;
   /* THE PURSE IS NOT THE TEST ANY MORE. Every doctrine's walk clause carried a cash threshold
    * of its own — 200, 240, 260, 360 — written when an heir with nothing left to buy simply
    * banked what it earned; they were standing in for "can my realm carry this". The shared
@@ -392,7 +429,13 @@
        * economy never grew and he lost the race he had started. Mine first, then walk. */
       plan: () => ['gate', 'gate', 'tower', 'gate', 'shrine', 'tower', 'barracks', 'spire',
                    'tower', 'barracks', 'spire', 'tower'],
-      upPref: ['tower', 'gate', 'barracks'],
+      /* THE SPIRE AND THE WORKS WERE IN THE PLAN AND NOT IN THE LIST, so brand's own doctrine
+       * for them was unreachable code: a fork happens only inside this loop, brand's plan
+       * raises two Spires and the standing want can raise a Works, and neither could ever
+       * level — so the Unmaker fielded Sorcerers and Engines every match while `branch.spire`
+       * said 'warden' and `branch.siege` said 'bombard'. A doctrine written and never run is
+       * worse than none: it reads as a decision that was made. */
+      upPref: ['tower', 'gate', 'barracks', 'spire', 'siege'],
       /* the walk is answered by an army, and an army is a crowd — and a walker must HOLD, so
        * shieldmen on the ground and a warden keeping them standing */
       branch: { tower: () => 'cannon', barracks: () => 'line', spire: () => 'warden', siege: () => 'bombard' },
@@ -507,7 +550,9 @@
     const noise = opts.noise != null ? opts.noise : (P.noise || 0);
     const hold = opts.hold || 0;   // s before this heir will march on your Seat at all
     let timer = interval * 0.5, rng = null;
-    let mission = null;   // {site, bt, since} — march there, build, move on
+    let mission = null;    // {site, bt, since} — march there, build, move on
+    let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
+    let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
 
     function decide(world, me, issue) {
       const v = view(world, me);
@@ -620,6 +665,38 @@
         const spring = spotFor(v, 'gate');
         if (spring) { issue({ c: 'build', x: spring.x, y: spring.y, bt: 'gate' }); handled = true; }
       }
+      /* ---------------- A BREACH IS MENDED, NOT MOURNED ----------------
+       * No heir had ever issued `{c:'fix'}`, in any doctrine — so every wall an heir lost was
+       * lost for the rest of the match, and the two heirs who build stone at all built it once.
+       * A mend is a crew, a while and HALF the stone, which is the cheapest defence on the
+       * board by a distance: the alternative is 220 essence and a fresh run on ground the
+       * rival is standing on.
+       * IT IS A STANDING WANT AND IT HAS TO BE, which the first attempt got wrong. Written
+       * after the plan it read `!handled` — and a heir almost always HAS handled something by
+       * then, so over twelve matches four breaches opened and NOT ONE mend was ordered: a rule
+       * that looked shipped, cost a paragraph, and never ran once. A hole in your own curtain
+       * outranks the next work on a list, which is what "standing want" means. It still yields
+       * to a spring under his feet — income is what pays for stone.
+       * AND IT ASKS FOR THE PRICE AND NOTHING MORE. The first version wanted the price over and
+       * above the war chest, which is the rule a LEVEL is bought under, and measured: over
+       * twelve matches a breach stood open for 5,259 ticks and the purse test refused it on
+       * every single one — never the crew, never a mend already running, the purse every time.
+       * That is what a breach IS: a heir with a hole in his curtain is a heir who is being
+       * attacked, and a heir who is being attacked is spending. A war chest is an allowance
+       * kept for the next thing you want; there is no next thing while the wall is open. */
+      if (!handled && v.free > 0) {
+        for (const b of v.pl.buildings) {
+          if (!b.breach || b.work > 0) continue;
+          const crews = b.crews || 1;
+          if (crews > v.free) continue;
+          const price = Math.max(1, Math.round(C.BUILDINGS.wall.cost * (b.units != null ? b.units : crews) * C.WALL.repair));
+          if (v.essence < price) continue;
+          issue({ c: 'fix', id: b.id });
+          handled = true;
+          break;
+        }
+      }
+
       /* the second standing want is ONE MORE HALL THAN HE HOLDS — never a count of its own, or
        * it double-counts against the halls the plan already names and the heir builds a barrack
        * town. (It did: greedy, whose plan names four, ran to seven and a half.) */
@@ -687,7 +764,8 @@
         if (v.free <= 0) break;                                           // no crew: nothing to raise
         if (v.essence < C.BUILDINGS[bt].cost) { saving = true; break; }   // a purse problem: save for it
         const at = spotFor(v, bt);
-        if (at) { issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt }); break; }
+        /* `handled` marks the crew as spoken for: the mend below competes for the same one */
+        if (at) { issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt }); handled = true; break; }
         /* nowhere on the board will take it today — step past it, do not stop the realm */
       }
 
@@ -787,7 +865,55 @@
        * hour the footing promised you. It is the same square of ground either way; whether he
        * has been told what is on it is not the player's problem. */
       if (hold && v.t < hold && want === v.enCityId) want = v.myCity.id;
-      if (want !== v.banner) issue({ c: 'banner', site: want });
+      /* ---------------- THE ANSWER TO A WALK IS AN ARMY AT THE SHRINE ----------------
+       * The heirs already REFUSE a race they have lost — every walker moves at the same rate,
+       * so whoever stepped on first arrives first, and a hopeless walk is five and a half
+       * minutes of mustering nobody and then losing to the man you were racing. What none of
+       * them did was the other half of that sentence. `v.walkers` has carried the walker's own
+       * SHRINE COORDINATES since the day it was added — a walk is public, so this is exactly
+       * what the board in the corner tells the player — and it was read at one place, to set
+       * `raced`. Three heirs of five had no response to a rival's walk at all; the two that did
+       * sent the army at his SEAT, gated behind having found it and (for julian) behind three
+       * breakers. That gate is backwards here: a Shrine is one of the handful of works a
+       * `menOnly` shooter may attack, so a host of archers that cannot scratch a Seat can
+       * absolutely put a Shrine down — and throwing it down tears him off the Pattern and takes
+       * `breakLoss` off what he had banked.
+       * So he goes, by coordinate rather than by site — a Shrine stands wherever its owner put
+       * it and no site names that ground. `aimed` is the memo the coordinate needs: `pl.banner`
+       * remembers a site id and a coordinate banner has none, so without it this would re-issue
+       * every think — and a banner STRIKES EVERY COMPANY'S RALLY, which would put the errand
+       * on a permanent leash. Re-aimed only when the target really moves.
+       * `hold` covers it like any other march on the player's ground: an easy footing gives you
+       * the opening minutes, and that has to include the minutes you spend walking. */
+      const race = v.walkers.filter((q) => q.x != null && q.pattern >= WALK_ANSWER)
+                            .sort((a, b) => b.pattern - a.pattern)[0] || null;
+      const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY &&
+                     !(hold && v.t < hold) ? race : null;
+      /* ...AND THE OTHER HALF OF IT: A WALKER GUARDS HIS OWN SHRINE. The answer above was
+       * measured on its own first, and it was too good: the banner reached the burning Shrine
+       * on 95% of samples against 62% before it, and brand — the one heir whose plan is dig,
+       * raise a Shrine and walk — collapsed from eleven wins across the ladder to three, losing
+       * 0-6 to corwin and 0-6 to benedict. That is a heir being correctly countered, but a
+       * counter with no answer is not a game: the walk would simply stop being a road. And the
+       * survey found the reason it has no answer — `v.walking` was read at exactly ONE place in
+       * the whole file, in the arithmetic of whether he could afford another hall. Nothing an
+       * heir did changed because he was on the Pattern.
+       * Now the thing he defends changes. A Shrine is placed to the REAR — behind the Seat, out
+       * of the war — so an army called home to the Seat stands between the enemy and the throne
+       * and nowhere near the 900 hit points that actually decide the match. While he is walking,
+       * home IS the Shrine. */
+      const myShrine = v.walking && homeThreat && !answer
+        ? v.pl.buildings.find((b) => b.bt === 'shrine' && !b.raise) : null;
+      const aim = answer || myShrine;
+      if (aim) {
+        if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80) {
+          aimed = { x: aim.x, y: aim.y };
+          issue({ c: 'banner', x: aim.x, y: aim.y });
+        }
+      } else {
+        aimed = null;
+        if (want !== v.banner) issue({ c: 'banner', site: want });
+      }
 
       /* ---------------- THE ERRAND GETS A COMPANY OF ITS OWN ----------------
        * THE HEIRS HAD NEVER ISSUED `rally` — not once, in any doctrine. Every man an heir owned
@@ -805,25 +931,66 @@
        *
        * It has companies. Every mustering hall flies a standard of its own (`joinCo` never
        * returns 0), so an heir holding two halls already owns two, and one of them can be sent
-       * to take ground while the rest fights. The YOUNGEST standard draws the errand — a stable
-       * choice, so the company does not change identity every tick — and it goes to the nearest
-       * free spring in his own half or the middle. It does not need to build anything: standing
-       * there is enough, because "a spring under his feet is a spring he takes" above will raise
-       * the Gate out of the ordinary build budget on the next think.
+       * to take ground while the rest fights. It goes to the nearest free spring in his own half
+       * or the middle, and it does not need to build anything: standing there is enough, because
+       * "a spring under his feet is a spring he takes" above will raise the Gate out of the
+       * ordinary build budget on the next think.
+       *
+       * AN ORDER IS ONLY AN ORDER IF SOMEBODY IS UNDER THE FLAG. The errand used to be
+       * `cos[cos.length - 1]`, the YOUNGEST standard — chosen for stability, since a company
+       * picked afresh each tick would change identity constantly. But the youngest standard is
+       * by definition the one belonging to the hall raised last, and a hall raised last has
+       * mustered nobody yet. Measured over six matches, sampling every ten seconds of play:
+       * **a third of all errands — 174 of 509 — were given to a standard with no men under it
+       * at all**, the median company under the errand held ONE man, and it was the heir's
+       * largest company 12% of the time. A Siege Works' standard drew it and sat empty; so did
+       * a Spire's. The economy that was supposed to follow from this rule was being ordered
+       * out of an empty barracks.
+       * So: choose by CONTENT and cache the choice, which buys the same stability honestly.
+       * The largest manned company is the war body and is never the errand; among the rest the
+       * SMALLEST that can hold ground goes, so the detachment costs the war as little as it
+       * can while still being able to stand on a spring against the black road. A choice once
+       * made is kept while it still has men and is still not the war body, so the flag does not
+       * wander. And when no second company has men, no order is given at all — that is the
+       * honest answer, and the standing rally of a company that stops being the errand is
+       * struck rather than left pointing at a spring nobody is walking to.
        *
        * AND IT STAYS. A Gate on a forward spring is exactly what Chaos comes for, and the men
        * who took it are the garrison — this is the answer to the losses above, not a second
-       * rule about defending. It rejoins the Banner only when there is nothing left to take, or
-       * when the Seat itself is threatened: a realm about to lose its throne does not need a
-       * fourth Gate. */
+       * rule about defending. When there is nothing left to TAKE it garrisons the nearest
+       * spring he already holds rather than walking home: the comment above has claimed this
+       * since the rule was written, and the code sent `site: -1` — the Recall — the moment the
+       * last free spring was claimed, which is exactly when the forward Gates start being
+       * eaten. Only the Seat itself calls it home: a realm about to lose its throne does not
+       * need a fourth Gate. */
       const cos = v.pl.companies || [];
       if (cos.length >= 2) {
-        const errand = cos[cos.length - 1];
-        const spring = homeThreat ? null
-          : nearestOf(v, v.nodes.own.concat(v.nodes.mid)).filter((s) => !held(v, s))[0] || null;
-        const wantAt = spring ? spring.id : -1;
-        const at = errand.rally && errand.rally.site != null ? errand.rally.site : -1;
-        if (at !== wantAt) issue({ c: 'rally', co: errand.id, site: wantAt });
+        const size = {};
+        for (const u of v.myUnits) size[u.co] = (size[u.co] || 0) + 1;
+        const manned = cos.filter((co) => size[co.id] > 0);
+        let body = null;
+        for (const co of manned) if (!body || size[co.id] > size[body.id]) body = co;
+        const spare = manned.filter((co) => !body || co.id !== body.id);
+        let errand = errandCo != null ? spare.find((co) => co.id === errandCo) : null;
+        if (!errand) {
+          errand = spare.filter((co) => size[co.id] >= ERRAND_MEN).sort((a, b) => size[a.id] - size[b.id])[0] ||
+                   spare.sort((a, b) => size[b.id] - size[a.id])[0] || null;
+        }
+        /* a standard that has stopped being the errand does not keep marching on the old one */
+        if (errandCo != null && (!errand || errand.id !== errandCo)) {
+          const old = cos.find((co) => co.id === errandCo);
+          if (old && old.rally) issue({ c: 'rally', co: errandCo, site: -1 });
+        }
+        errandCo = errand ? errand.id : null;
+        if (errand) {
+          const reach = nearestOf(v, v.nodes.own.concat(v.nodes.mid));
+          const spring = homeThreat ? null
+            : reach.filter((s) => !held(v, s))[0] ||
+              reach.filter((s) => global.World.nodeHolder(v.world, s) === v.me)[0] || null;
+          const wantAt = spring ? spring.id : -1;
+          const at = errand.rally && errand.rally.site != null ? errand.rally.site : -1;
+          if (at !== wantAt) issue({ c: 'rally', co: errand.id, site: wantAt });
+        }
       }
 
       /* upgrades: by doctrine, keeping a war chest, never past an unmet want.
@@ -845,33 +1012,51 @@
        * an assault is a hall that musters nobody for the length of the fight. */
       if (v.free <= 0) return;
       const pressed = v.threats.length >= 3;
-      for (const bt of P.upPref) {
-        if (pressed && C.BUILDINGS[bt].spawns &&
-            v.pl.buildings.filter((b) => b.bt === bt && !b.raise && !b.work).length < 2) continue;
-        /* ONE HALL OF A KIND RE-TOOLS AT A TIME. A hall with masons in it raises nobody, and
-         * once the fork was allowed to jump the saving queue a heir with four crews forked its
-         * whole barracks town at once and stood mustering nothing for half a minute — measured
-         * as a muster throat of 2 essence a second on maps that had been managing eight. */
-        if (C.BUILDINGS[bt].spawns && v.pl.buildings.some((b) => b.bt === bt && b.work > 0)) continue;
-        const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise && !b.work)
-                       .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
-        for (const b of cands) {
-          /* ...and if the only reason we got past `saving` was the fork, then the fork is the
-           * only thing to spend on. A heir saving for a Gate must not buy a tower a level with
-           * the money on the way past. */
-          const atFork = !!C.BUILDINGS[bt].branches && !b.br && b.level + 1 === C.BUILDINGS[bt].fork;
-          if (saving && !atFork) continue;
-          /* THE FORK: an heir's doctrine picks the branch, and keeps it after. Every branching
-           * work asks the same question — a heir that has already forked a hall re-sends the
-           * branch it holds so the PRICE comes off the branch table rather than the base one. */
-          const br = C.BUILDINGS[bt].branches ? (b.br || branchFor(P, bt, v)) : undefined;
-          /* the war chest a LEVEL is bought over and above. A fork keeps a thinner one: it is
-           * the cheapest lasting decision on the board and every match spent putting it off is
-           * a match fought with somebody else's army. */
-          const chest = atFork ? 40 : 130;
-          if (v.essence > global.World.upgradeCost(bt, b.level, br) + chest) {
-            issue({ c: 'up', id: b.id, br });
-            return;
+      /* ---------------- A FORK IS NOT AN UPGRADE, AND MUST NOT QUEUE BEHIND ONE ----------------
+       * `upPref` is a priority list and the scan RETURNS on the first order it issues, so a work
+       * standing at its fork level in fourth place is only ever reached on a think where the
+       * first three have nothing to buy — which, since a level is always buyable, is never.
+       * Measured: brand's plan raises two Spires and its want can raise a Works, its doctrine
+       * names a branch for both, and across twelve matches NEITHER EVER FORKED — the Unmaker
+       * fielded Sorcerers and Engines every game while `branch.spire` said 'warden'. Adding the
+       * types to its `upPref` changed nothing at all, because the list was not the obstacle; the
+       * `return` was.
+       * So the scan runs TWICE over the same list: once for works standing at a fork, and only
+       * then for levels. It costs nothing when nobody is at a fork, it needs no heir's list
+       * reordered — a reordering is a tuning decision and this is not one — and it says the
+       * thing the code already believed: choosing what a hall raises is a decision about the
+       * army you have, where a level is a luxury bought after the realm. */
+      for (const forkPass of [true, false]) {
+        for (const bt of P.upPref) {
+          if (pressed && C.BUILDINGS[bt].spawns &&
+              v.pl.buildings.filter((b) => b.bt === bt && !b.raise && !b.work).length < 2) continue;
+          /* ONE HALL OF A KIND RE-TOOLS AT A TIME. A hall with masons in it raises nobody, and
+           * once the fork was allowed to jump the saving queue a heir with four crews forked its
+           * whole barracks town at once and stood mustering nothing for half a minute — measured
+           * as a muster throat of 2 essence a second on maps that had been managing eight. */
+          if (C.BUILDINGS[bt].spawns && v.pl.buildings.some((b) => b.bt === bt && b.work > 0)) continue;
+          if (forkPass && !C.BUILDINGS[bt].branches) continue;
+          const cands = v.pl.buildings.filter((b) => b.bt === bt && b.level < C.MAX_LEVEL && !b.raise && !b.work)
+                         .sort((a, b) => (b.node >= 0 ? 1 : 0) - (a.node >= 0 ? 1 : 0));
+          for (const b of cands) {
+            /* ...and if the only reason we got past `saving` was the fork, then the fork is the
+             * only thing to spend on. A heir saving for a Gate must not buy a tower a level with
+             * the money on the way past. */
+            const atFork = !!C.BUILDINGS[bt].branches && !b.br && b.level + 1 === C.BUILDINGS[bt].fork;
+            if (forkPass !== atFork) continue;
+            if (saving && !atFork) continue;
+            /* THE FORK: an heir's doctrine picks the branch, and keeps it after. Every branching
+             * work asks the same question — a heir that has already forked a hall re-sends the
+             * branch it holds so the PRICE comes off the branch table rather than the base one. */
+            const br = C.BUILDINGS[bt].branches ? (b.br || branchFor(P, bt, v)) : undefined;
+            /* the war chest a LEVEL is bought over and above. A fork keeps a thinner one: it is
+             * the cheapest lasting decision on the board and every match spent putting it off is
+             * a match fought with somebody else's army. */
+            const chest = atFork ? 40 : 130;
+            if (v.essence > global.World.upgradeCost(bt, b.level, br) + chest) {
+              issue({ c: 'up', id: b.id, br });
+              return;
+            }
           }
         }
       }
@@ -879,7 +1064,7 @@
 
     return {
       kind, title: P.title,
-      reset() { timer = interval * 0.5; mission = null; },
+      reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; },
       step(world, me, issue, dt) {
         if (!rng) {
           rng = global.RNG.make((world.seed ^ (me * 0x9E37)) >>> 0);
