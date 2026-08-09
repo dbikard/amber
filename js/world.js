@@ -392,20 +392,28 @@
         if (dd < pd) { pd = dd; post = w; }
       }
       if (!post) { u.post = 0; continue; }
+      /* HE IS POSTED TO THE CURTAIN, not to the one run he happened to stand nearest — which
+       * run of it he ends up on is the roster's business, below. */
       u.post = post.b.id;
-      let list = rosters.get(post.b.id);
-      if (!list) { list = []; rosters.set(post.b.id, list); }
+      const cid = post.curtain != null ? post.curtain : post.b.id;
+      let list = rosters.get(cid);
+      if (!list) { list = []; rosters.set(cid, list); }
       list.push(u);
     }
-    for (const [id, list] of rosters) {
-      const w = world.walls.find((q) => q.b.id === id);
-      if (!w) continue;
+    for (const [cid, list] of rosters) {
+      /* by id, so the runs are dealt in the same order on every machine at the table */
+      const runs = world.walls.filter((q) => (q.curtain != null ? q.curtain : q.b.id) === cid)
+                              .sort((p, q) => p.b.id - q.b.id);
+      if (!runs.length) continue;
       /* SHOOTERS FIRST, then a stable line by id — not a nightly reshuffle. The sort is what
        * puts the archers on the parapet whatever their ids, and leaves the swordsmen behind
        * them in the rows at the foot rather than blocking berths they cannot use. */
       list.sort((p, q) => (mans(q) - mans(p)) || (p.id - q.id));
-      const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
-      const berths = Math.max(2, Math.round(L / C.WALL.berth));
+      const berths = runs.map((w) => {
+        const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+        return Math.max(2, Math.round(L / C.WALL.berth));
+      });
+      runs.forEach((w, i) => { w.berths = berths[i]; });
       /* A BASTION IS PART OF THE RUN. A tower built INTO a curtain used to be filled by its own
        * pass, on its own rule — how near the order fell to the TOWER — so a company told to
        * hold the wall lined the parapet, left the bastions on it empty, and the men who could
@@ -414,31 +422,43 @@
        * standing in it together, so both fill at once rather than one filling first. Dealt in
        * that order — a place on the stone, then a room in each tower, and round again — because
        * a wall with nobody on it is a wall nobody shoots over. */
-      const towers = world.players[w.owner].buildings.filter(
-        (b) => b.bt === 'tower' && !b.raise && !b.work && b.onWall === id);
+      const towers = runs.map((w) => world.players[w.owner].buildings.filter(
+        (b) => b.bt === 'tower' && !b.raise && !b.work && b.onWall === w.b.id));
+      /* AND ROUND THE WHOLE CURTAIN, one place from each run before a second from any of them.
+       * The order of this list IS the order the wall fills in, so dealing a run out before
+       * starting the next is what packed forty men into the first two hundred feet of a
+       * board-long wall. Round-robin spreads a company thin over everything it was told to
+       * hold, which is what holding it means. */
       const places = [];
-      for (let i = 0; i < Math.max(berths, C.TOWER.berths); i++) {
-        if (i < berths) places.push({ man: id });
-        for (const t of towers) if (i < C.TOWER.berths) places.push({ tow: t.id });
-      }
+      const deepest = Math.max(C.TOWER.berths, ...berths);
+      for (let i = 0; i < deepest; i++)
+        for (let r = 0; r < runs.length; r++) {
+          if (i < berths[r]) places.push({ man: runs[r].b.id, berth: i });
+          if (i < C.TOWER.berths) for (const t of towers[r]) places.push({ tow: t.id, man: runs[r].b.id });
+        }
       /* `station` reads ONE number: a `berth` below `berths` is a place on the parapet, and
        * anything above it is a row at the foot. So the two are counted separately — a man given
        * a room in a tower is stationed by the tower and takes neither. Handing out the roster
        * index instead put the third man at the foot in the eighth row because five shooters had
        * gone up ahead of him. */
-      let take = 0, parapet = 0, foot = 0;
+      const foot = runs.map(() => 0);
+      let take = 0, rear = 0;
       for (const u of list) {
         /* only a shooter may take a place, and the queue is only spent when one does: a
          * swordsman at the head of the roster must not consume a berth on his way to the foot */
         if (mans(u) && take < places.length) {
           const p = places[take++];
-          if (p.man) { u.man = p.man; u.berth = parapet++; }
-          else u.tow = p.tow;
+          u.post = p.man;                       // the run he is stationed by, berth or bastion
+          if (p.tow) u.tow = p.tow;
+          else { u.man = p.man; u.berth = p.berth; }
           continue;
         }
-        u.berth = berths + foot++;
+        /* the reserve spreads too: rows at the foot of each run in turn, so a curtain is not
+         * held by a parapet along its whole length with every swordsman behind one end of it */
+        const r = rear++ % runs.length;
+        u.post = runs[r].b.id;
+        u.berth = berths[r] + foot[r]++;
       }
-      w.berths = berths;
     }
   }
   /* where a man posted to this wall should stand — on the parapet if he has a berth, at the
@@ -933,6 +953,44 @@
                            gate: !!b.gated });
       }
     world.anyWall = world.walls.length > 0;
+    /* ---- A CURTAIN IS EVERY RUN THAT TOUCHES, AND IT IS ONE WALL TO HOLD ----
+     * There is no longest run, only how many crews you can put on one, so a heir who wants a
+     * long curtain draws it as several — and a company told to hold it lined the ONE run that
+     * happened to be nearest the flag and left the rest of its own wall bare. Reported from
+     * play with a picture: forty men shoulder to shoulder along the first two hundred feet of
+     * a curtain that ran the length of the board, and every tower past them empty.
+     * So contiguity is derived here, where the standing set changes and nowhere else — the
+     * same reasoning `onWall` is derived by, and for the same reason: the answer changes
+     * without anything being touched, when a run is breached, mended, razed or drawn through.
+     * Union-find, joined on `WALL.join` — the number the tower snap already uses — measured
+     * from each end of a run to the whole of the other, so a run that meets another end to end
+     * and a run that meets it broadside are both one wall. O(runs^2) and runs are counted on
+     * one hand; it costs nothing beside the bake below it. */
+    const wn = world.walls.length;
+    if (wn) {
+      const par = new Array(wn);
+      for (let i = 0; i < wn; i++) par[i] = i;
+      const find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+      const j2 = C.WALL.join * C.WALL.join;
+      for (let i = 0; i < wn; i++) for (let k = i + 1; k < wn; k++) {
+        const A = world.walls[i], B = world.walls[k];
+        if (A.owner !== B.owner) continue;
+        if (segD2(B.b, A.ax, A.ay) < j2 || segD2(B.b, A.bx, A.by) < j2 ||
+            segD2(A.b, B.ax, B.ay) < j2 || segD2(A.b, B.bx, B.by) < j2) {
+          const a = find(i), b2 = find(k);
+          if (a !== b2) par[b2] = a;
+        }
+      }
+      /* the curtain is named by its LOWEST run id, not by an array index: arithmetic on the
+       * ids every machine at a LAN table already agrees about, so a guest and the host group
+       * the same stone without a byte being sent about it */
+      const lowest = new Map();
+      for (let i = 0; i < wn; i++) {
+        const r = find(i), id = world.walls[i].b.id;
+        if (!lowest.has(r) || id < lowest.get(r)) lowest.set(r, id);
+      }
+      for (let i = 0; i < wn; i++) world.walls[i].curtain = lowest.get(find(i));
+    }
     /* WHICH RUN A TOWER STANDS ON IS DERIVED, not stamped. The answer changes without the
      * tower being touched — the curtain under it is breached, mended, thrown down, or a new
      * one is drawn through it — and stamped at build time it went stale in both directions: a

@@ -97,7 +97,13 @@ needs fog of war and must not trust cross-browser determinism.
 A WALK IS PUBLIC: while an heir walks the Pattern their Shrine and `VISION.pattern` of
 ground around it are a vision source for everyone (see `visionSources`), and every walker's
 progress is on the top-right board. `World.walkers(world)` is the one answer to who is
-walking, where, and how far along.
+walking, where, and how far along. **The heirs read it, and refuse the race.** Every heir walks
+at the same `rate` — the Shrine has one, not one per level — so whoever steps on first finishes
+first, and a walk cannot be called off. An heir therefore never begins one while a rival is
+already on the lines (`v.walkers` in `ai.js`, filled from `World.walkers`, so he knows exactly
+what a human at the table knows). `late` does NOT override it: the stall-breaker exists because
+a board where nobody walks runs to the cap, and a board where somebody is walking has a clock
+running already. The answer to a rival's walk is an army at his Shrine.
 
 A rival's work is seen or it is not: while any part of it is in sight it rides the snapshot
 plainly — type, level, hp, scaffolding, breaches — and out of sight it survives only as a
@@ -344,6 +350,15 @@ blow against stone, multiplied.
   geometry around a run is NOT a controlled comparison — a berthed archer beside one in the
   open took exactly half with the cover switched OFF, because one of his two attackers could
   not land a shot. The suite plays the same seeded world twice and varies only the constant.
+  **AND CONTIGUOUS RUNS ARE ONE CURTAIN.** There is no longest run, so a long wall is drawn as
+  several — and the roster is dealt round ALL of them. `noteWalls` unions runs of one owner
+  whose ends fall within `WALL.join` of each other (measured end-to-segment, so a broadside
+  junction joins too) and stamps `w.curtain`, named by the LOWEST run id so every machine at a
+  LAN table groups the same stone without a byte about it. `postWalls` then rosters by curtain
+  and deals places ROUND-ROBIN across its runs and their bastions — the order of that list is
+  the order the wall fills in, and dealing one run out before starting the next is what packed
+  forty men into the first two hundred feet of a board-long wall and left every tower past them
+  empty. The reserve spreads the same way. Reported from play with a picture.
   **A TOWER IS A ROOM, AND THE STONE IS THE SHIELD.** `TOWER.berths` shooters whose order falls
   near one of their own finished towers go INSIDE it, carry `u.tow` (NOT `u.man` — the renderer
   and `station()` read that as "the wall he holds"), and throw `TOWER.over`. While `u.tow` is set

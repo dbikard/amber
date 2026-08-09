@@ -5350,6 +5350,123 @@ suite('the parapet is half a shield');
   }
 }
 
+/* ---------------- a curtain is held along its whole length ----------------
+ * There is no longest run — only how many mason crews you can put on one — so a heir who
+ * wants a long curtain draws it as several runs end to end. A company told to hold it lined
+ * the ONE run nearest its flag and left the rest of its own wall bare: reported from play with
+ * a picture, forty men shoulder to shoulder along the first two hundred feet of a board-long
+ * wall, every tower past them empty. Contiguous runs are one CURTAIN now, and the roster is
+ * dealt round the whole of it. */
+suite('a curtain is held along its whole length');
+{
+  const w = World.createWorld(20260810, 2), pl = w.players[0];
+  pl.essence = 1e7; w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 8; i++)                     // crews enough to raise the whole thing
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  const finish = () => {
+    for (let i = 0; i < 90 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return;
+    }
+  };
+  const L = 200;
+  let start = null;
+  for (let rad = 190; rad < 460 && !start; rad += 20)
+    for (let a = 0; a < 64 && !start; a++) {
+      const th = a / 64 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (!World.wallError(w, 0, x, y, x + L, y) && !World.wallError(w, 0, x + L, y, x + 2 * L, y)
+          && !World.wallError(w, 0, x + 2 * L, y, x + 3 * L, y)) start = { x, y };
+    }
+  ok('the board has room for three runs drawn end to end', !!start, 'nowhere to draw them');
+  if (start) {
+    let built = 0;
+    for (let k = 0; k < 3; k++) {
+      pl.essence = 1e7;
+      if (World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * L, y: start.y,
+                                     x2: start.x + (k + 1) * L, y2: start.y }).ok) built++;
+      finish();
+    }
+    const runs = pl.buildings.filter((b) => b.bt === 'wall');
+    pl.essence = 1e7;
+    World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: runs[1].x, y: runs[1].y });
+    finish();
+    const bastion = pl.buildings.filter((b) => b.bt === 'tower').pop();
+    eq('three runs go up', built, 3);
+    ok('...with a bastion standing in the middle one',
+       !!bastion && bastion.onWall === runs[1].id, `onWall ${bastion && bastion.onWall}`);
+    /* THE RIG IS ALIVE ONLY IF THEY REALLY ARE ONE CURTAIN — the grouping is the change */
+    const grouped = w.walls.map((q) => q.curtain);
+    ok('runs that touch are one curtain', new Set(grouped).size === 1 && grouped.length === 3,
+       `grouped as ${grouped.join(',')}`);
+    /* the order is on the FIRST run's midpoint, nowhere near the other two */
+    pl.companies = [{ id: 1, rally: { x: runs[0].x, y: runs[0].y } }];
+    pl.banner = { x: runs[0].x, y: runs[0].y };
+    const men = [];
+    for (let i = 0; i < 40; i++) {
+      const u = { id: w.nextId++, owner: 0, co: 1, kind: 'archer', tier: 1,
+                  x: runs[0].x + (i % 8) * 12 - 48, y: runs[0].y - 70 + ((i / 8) | 0) * 12,
+                  hp: 42, maxHp: 42, dmg: 6, cd: 0, goal: null, from: -1 };
+      w.units.push(u); men.push(u);
+    }
+    for (let i = 0; i < 900; i++) World.update(w, C.SIM_DT);
+    const onRun = runs.map((r) => men.filter((u) => u.man === r.id).length);
+    const inTower = men.filter((u) => u.tow === bastion.id || u.in === bastion.id).length;
+    ok('the rig is alive: the men took their places', onRun.reduce((a, b) => a + b, 0) > 0,
+       `${onRun.join('/')} on the three parapets`);
+    /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — the far runs held nobody at all, and the
+     * men who could not get onto the near one stood in rows at its foot instead */
+    ok('every run of the curtain is manned, not just the one under the flag',
+       onRun.every((n) => n > 0), `${onRun.join('/')} on the three parapets`);
+    ok('...and the bastion on it is filled from the same order', inTower > 0, `${inTower} inside`);
+    ok('...with no run hoarding the company', Math.max(...onRun) <= men.length / 2,
+       `${onRun.join('/')} of ${men.length} men`);
+  }
+}
+
+/* ---------------- an heir does not enter a race he has already lost ----------------
+ * Every heir walks at the same `rate` — the Shrine has one, not one per level — so whoever
+ * sets foot on the lines first reaches a hundred first, always. While a walk could be called
+ * off that cost an heir little; it is a COMMITMENT now, and its drain is taken before his
+ * halls are, so a hopeless walk is an heir who musters nobody for five and a half minutes and
+ * then loses to the man he was racing. The answer to a rival's walk is an army — it is
+ * revealed, its Shrine with it, and throwing that Shrine down tears him off the Pattern.
+ * `late` must not override this: the stall-breaker exists because a board where NOBODY walks
+ * runs to the cap, and a board where somebody is walking has a clock running already. */
+suite('an heir does not enter a race he has already lost');
+{
+  const shrineOn = (w, pi) => {
+    const pl = w.players[pi], c = World.cityOf(w, pi), sd = C.BUILDINGS.shrine;
+    pl.buildings.push({ id: w.nextId++, bt: 'shrine', level: 1, x: c.x + 60, y: c.y + 60, cd: 0,
+                        raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  };
+  /* past the stall-breaker's hour and rich enough to finish, so the heir WANTS to walk and the
+   * only thing that can stop him is the rule under test */
+  const play = (rivalWalking) => {
+    const w = World.createWorld(4242, 2);
+    w.chaosNext = 1e9; w.t = 1600;
+    shrineOn(w, 0); shrineOn(w, 1);
+    w.players[0].essence = 1e6;
+    if (rivalWalking) { w.players[1].walking = true; w.players[1].pattern = 12; }
+    const bot = AI.make('julian'), cmds = [];
+    for (let i = 0; i < 6; i++) bot.step(w, 0, (cm) => cmds.push(cm), 1.0);
+    return { walks: cmds.filter((c) => c.c === 'walk' && c.on).length,
+             saw: AI.view(w, 0).walkers.length };
+  };
+  const alone = play(false), raced = play(true);
+  /* THE RIG HAS TO SHOW THE HEIR WILL WALK AT ALL, or "he did not walk" means nothing */
+  ok('the rig is alive: with nobody else on the lines the heir commits',
+     alone.walks > 0, `${alone.walks} walk orders`);
+  eq('...and sees no rival walking', alone.saw, 0);
+  eq('a rival\'s walk is public, so he can see it', raced.saw, 1);
+  /* THE ASSERTION THAT FAILS ON THE OLD CODE — he used to step on regardless */
+  eq('...and he does not step on behind him', raced.walks, 0);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

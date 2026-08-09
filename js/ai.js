@@ -95,6 +95,12 @@
       income: pl.incomeRate || 0, drain: pl.drainRate || 0,
       myPattern: pl.pattern, walking: pl.walking,
       enemyWalking: en.revealed && en.walking, enemyPattern: en.revealed ? en.pattern : 0,
+      /* WHO ELSE IS ON THE LINES — every one of them, not just the heir this view calls the
+       * rival. A WALK IS PUBLIC (see the fog rules): `World.walkers` is what the top-right
+       * board shows every player, so an heir reading it knows exactly what a human at the
+       * table knows and no more. `enemyWalking` above is fog-limited and covers ONE opponent,
+       * which is the wrong answer at a table of four. */
+      walkers: World.walkers(world).filter((q) => q.pi !== me),
       powers: pl.powers, banner: pl.banner ? pl.banner.site : -1
     };
   }
@@ -547,7 +553,20 @@
       const shr = C.BUILDINGS.shrine;
       const secs = 100 / shr.rate[0], full = shr.drain[0] * secs;
       const canFinish = v.essence + v.income * secs >= full * 1.1;
-      if (!v.walking && (P.walk(v) || (late && v.have.shrine)) && (canFinish || late)) {
+      /* AND A RACE YOU HAVE ALREADY LOST IS NOT WORTH ENTERING. Every heir walks at the same
+       * `rate` — the Shrine has one, not one per level — so a rival who set foot on the lines
+       * first reaches a hundred first, always. Before the walk became a commitment this cost
+       * an heir nothing much: he could step off. Now he cannot, and the drain is taken BEFORE
+       * his halls are, so a hopeless walk is a heir who musters nobody for five and a half
+       * minutes and then loses to the man he was racing — the worst outcome on the board,
+       * chosen deliberately.
+       * The answer to a rival's walk is an ARMY: it is revealed, its Shrine is revealed with
+       * it, and throwing that Shrine down tears him off the Pattern. Refusing the race is what
+       * sends the heir to do that instead. `late` does not override this, and must not — the
+       * stall-breaker exists because a board where NOBODY walks runs to the cap, and a board
+       * where somebody is walking is a board with a clock already running. */
+      const raced = v.walkers.length > 0;
+      if (!v.walking && !raced && (P.walk(v) || (late && v.have.shrine)) && (canFinish || late)) {
         issue({ c: 'walk', on: true });
       }
 
