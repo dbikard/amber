@@ -581,6 +581,38 @@
      * but what changes is the PURSE and the YARD, not the ground, so UI.tick reads those and
      * there is nothing here to remember. */
   }
+  /* ---- A PRICED CARD, WRITTEN ONCE ----
+   * Six places built the same button: `card` plus `locked` when the purse is short, the price
+   * and crew count on the dataset so `UI.tick` can unlock it in place as income catches up, the
+   * same four spans, and a click that must remember to refuse itself while locked. Six copies
+   * of an affordability rule is five chances to forget the guard — and `dataset.cost` is not
+   * decoration, it is what makes a card go live while you are looking at it.
+   * `extra` is whatever the caller wants after the blurb — a stat line, a branch's numbers —
+   * and `above` the same thing before it. Both exist because the card is a GRID that places by
+   * DOM order, and the two cards that carry a rate tag have always disagreed about where it
+   * goes: an upgrade shows its rate above the masonry blurb, a branch shows its numbers under
+   * its own prose. Consolidating the builder is not a licence to restyle them. */
+  function costCard(el, { icon, name, cost, blurb, extra, above, crew, essence, id }, onPick) {
+    const b = document.createElement('button');
+    b.className = 'card' + (essence >= cost ? '' : ' locked');
+    if (id) b.id = id;
+    b.dataset.cost = cost;
+    b.dataset.crew = crew == null ? '1' : String(crew);
+    b.innerHTML = (icon ? `<span class="c-ico">${icon}</span>` : '') +
+                  `<span class="c-name">${name}</span>` +
+                  `<span class="c-cost">◆ ${cost}</span>` + (above || '') +
+                  (blurb ? `<span class="c-blurb">${blurb}</span>` : '') + (extra || '');
+    b.addEventListener('click', () => { if (b.classList.contains('locked')) return; onPick(); });
+    el.appendChild(b);
+    return b;
+  }
+  /* every sheet ends the same way: a way out, the fat-finger stamp, and the panel shown */
+  function showSheet(el, essence) {
+    addCancel(el);
+    el._openedAt = performance.now();
+    el.classList.remove('hidden');
+    if (essence != null) UI.tick(essence);   // grey it on the frame it opens, not the one after
+  }
   const freshSheet = () => { const el = $('sheet'); el._why = null; el._raising = null; return el; };
   /* CHOOSE FIRST, PLACE SECOND. The sheet no longer belongs to a spot on the map — it is what
    * the BUILD button opens — so the cards cannot say why a particular patch of ground refuses
@@ -592,10 +624,7 @@
     el.innerHTML = `<div class="sheet-title">Raise a work ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb hidden" id="no-crew"><i>${WHY.busy}</i></div>`;
     buildCards(el, essence);
-    addCancel(el);
-    el._openedAt = performance.now();
-    el.classList.remove('hidden');
-    UI.tick(essence);   // grey it on the frame it opens, not on the one after
+    showSheet(el, essence);
   };
   UI.armBuild = function (on) { $('btn-build').classList.toggle('armed', !!on); };
 
@@ -718,29 +747,18 @@
       w.innerHTML = raiseLine(s);
       el.appendChild(w);
       flipCard(el, s);
-      addCancel(el);
-      el._openedAt = performance.now();
-      el.classList.remove('hidden');
+      showSheet(el);
       return;
     }
     /* A BREACHED CURTAIN offers one thing and it is not an upgrade: put the stone back. */
     if (s.breach) {
       const size = s.units != null ? s.units : (s.crews || 1);   // stone, not crews
       const price = Math.max(1, Math.round(C.BUILDINGS.wall.cost * size * C.WALL.repair));
-      const b = document.createElement('button');
-      b.className = 'card' + (essence >= price ? '' : ' locked');
-      b.dataset.cost = price;
-      b.dataset.crew = '1';
-      b.innerHTML = '<span class="c-ico">🧱</span><span class="c-name">Mend the breach</span>' +
-                    `<span class="c-cost">◆ ${price}</span>` +
-                    '<span class="c-blurb">Half the stone, and as many crews as you can spare — ' +
-                    'fewer crews, longer work. It shelters nobody until they are done.</span>';
-      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onFix(s.id); UI.closeSheet(); });
-      el.appendChild(b);
-      addCancel(el);
-      el._openedAt = performance.now();
-      el.classList.remove('hidden');
-      UI.tick(essence);
+      costCard(el, { icon: '🧱', name: 'Mend the breach', cost: price, essence,
+                     blurb: 'Half the stone, and as many crews as you can spare — fewer crews, ' +
+                            'longer work. It shelters nobody until they are done.' },
+               () => { H.onFix(s.id); UI.closeSheet(); });
+      showSheet(el, essence);
       return;
     }
     /* THE FORK: the upgrade that reaches it is a CHOICE, offered as a card per branch. Every
@@ -756,23 +774,12 @@
       for (const key of d.branchUI) {
         const b2 = d.branches[key];
         const cost = global.World.upgradeCost(s.bt, s.level, key);
-        const b = document.createElement('button');
-        b.className = 'card' + (essence >= cost ? '' : ' locked');
-        b.dataset.cost = cost;
-        b.dataset.crew = '1';
-        b.innerHTML = `<span class="c-ico">${b2.icon}</span><span class="c-name">${b2.name}</span>` +
-                      `<span class="c-cost">◆ ${cost}</span><span class="c-blurb">${b2.blurb}</span>` +
-                      branchStatLine(s.bt, key, fork);
-        b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, key); UI.closeSheet(); });
-        el.appendChild(b);
+        costCard(el, { icon: b2.icon, name: b2.name, cost, essence, blurb: b2.blurb,
+                       extra: branchStatLine(s.bt, key, fork) },
+                 () => { H.onUp(s.id, key); UI.closeSheet(); });
       }
     } else if (s.level < C.MAX_LEVEL && (d.up || d.branches)) {
       const cost = global.World.upgradeCost(s.bt, s.level, s.br);
-      const can = essence >= cost;
-      const b = document.createElement('button');
-      b.className = 'card' + (can ? '' : ' locked');
-      b.dataset.cost = cost;
-      b.dataset.crew = '1';
       const forked = !!s.br;
       const rt = forked ? branchStatLine(s.bt, s.br, s.level + 1) : rateTag(s.bt, s.level + 1);
       /* AN UPGRADE IS MASONRY. It takes a crew and it takes time, and the work does its job
@@ -781,12 +788,11 @@
       const secs = Math.round(Math.max(1, (d.raise || 10) * C.UP_WORK));
       const quiet = d.spawns ? 'musters nobody' : s.bt === 'tower' ? 'does not shoot'
         : s.bt === 'gate' ? 'draws nothing' : 'stands idle';
-      b.innerHTML = `<span class="c-name">Upgrade to level ${s.level + 1}</span><span class="c-cost">◆ ${cost}</span>` +
-                    (rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '') +
-                    `<span class="c-blurb">🔨 ${secs}s of masonry — it ${quiet} until they are done, ` +
-                    'and a crew of yours is on it.</span>';
-      b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onUp(s.id, s.br); UI.closeSheet(); });
-      el.appendChild(b);
+      costCard(el, { name: `Upgrade to level ${s.level + 1}`, cost, essence,
+                     blurb: `🔨 ${secs}s of masonry — it ${quiet} until they are done, and a ` +
+                            'crew of yours is on it.',
+                     above: rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '' },
+               () => { H.onUp(s.id, s.br); UI.closeSheet(); });
     }
     if (d.spawns && me) {
       const co = (me.companies || []).find((q) => q.id === s.co) || null;
@@ -826,10 +832,7 @@
       }
       el.appendChild(b);
     }
-    addCancel(el);
-    el._openedAt = performance.now();
-    el.classList.remove('hidden');
-    UI.tick(essence);
+    showSheet(el, essence);
   };
 
   /* ---------------- map site sheet (v0.2) ---------------- */
@@ -898,10 +901,7 @@
      * the cards here left two contradictory ways to build, one of which ignored the armed
      * work you were already holding. A site says what it IS and who holds it; the button
      * raises things. */
-    addCancel(el);
-    el._openedAt = performance.now();
-    el.classList.remove('hidden');
-    UI.tick(essence);
+    showSheet(el, essence);
   };
 
   function addCancel(el) {

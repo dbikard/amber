@@ -10,7 +10,7 @@ const R = (f) => require(path.join(__dirname, '..', 'js', f));
 R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('net.js');
 R('record.js'); R('campaign.js');
 const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN } = globalThis;
-const { suite, ok, eq, near, report } = require('./lib.js');
+const { suite, ok, eq, near, report, wallRig } = require('./lib.js');
 
 /* ---- --quick: a partial pass for the edit loop ----
  * The full run is ~6 minutes and its own timing line names where they go — the solo ladder
@@ -5477,37 +5477,11 @@ suite('a berth is an errand until he is standing in it');
  * Measured with FEWER MEN THAN BERTHS, the only case where where they stand is a choice. */
 suite('a curtain gathers to the fighting, and splits for two');
 {
-  const w = World.createWorld(20260810, 2), pl = w.players[0];
-  pl.essence = 1e7; w.chaosNext = 1e9;
-  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
-  for (let i = 0; i < 8; i++)
-    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
-                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
-                        lastHurt: -99, node: -1, co: 0 });
-  const finish = () => {
-    for (let i = 0; i < 90 * 30; i++) {
-      World.update(w, C.SIM_DT);
-      if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return;
-    }
-  };
-  const L = 200;
-  let start = null;
-  for (let rad = 190; rad < 460 && !start; rad += 20)
-    for (let a = 0; a < 64 && !start; a++) {
-      const th = a / 64 * Math.PI * 2;
-      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-      if (!World.wallError(w, 0, x, y, x + L, y) && !World.wallError(w, 0, x + L, y, x + 2 * L, y)
-          && !World.wallError(w, 0, x + 2 * L, y, x + 3 * L, y)) start = { x, y };
-    }
-  ok('the board has room for a three-run curtain', !!start, 'nowhere to draw it');
-  if (start) {
-    for (let k = 0; k < 3; k++) {
-      pl.essence = 1e7;
-      World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * L, y: start.y,
-                                 x2: start.x + (k + 1) * L, y2: start.y });
-      finish();
-    }
-    const runs = pl.buildings.filter((b) => b.bt === 'wall');
+  const rig = wallRig(World, C, { runs: 3 });
+  ok('the board has room for a three-run curtain', !!rig, 'nowhere to draw it');
+  if (rig) {
+    const { w, pl, city: c } = rig;
+    const runs = rig.walls;
     const inward = Math.sign(c.y - runs[1].y) || 1;
     pl.companies = [{ id: 1, rally: { x: runs[1].x, y: runs[1].y } }];
     pl.banner = { x: runs[1].x, y: runs[1].y };
@@ -5570,38 +5544,11 @@ suite('a curtain gathers to the fighting, and splits for two');
  * dealt round the whole of it. */
 suite('a curtain is held along its whole length');
 {
-  const w = World.createWorld(20260810, 2), pl = w.players[0];
-  pl.essence = 1e7; w.chaosNext = 1e9;
-  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
-  for (let i = 0; i < 8; i++)                     // crews enough to raise the whole thing
-    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
-                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
-                        lastHurt: -99, node: -1, co: 0 });
-  const finish = () => {
-    for (let i = 0; i < 90 * 30; i++) {
-      World.update(w, C.SIM_DT);
-      if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return;
-    }
-  };
-  const L = 200;
-  let start = null;
-  for (let rad = 190; rad < 460 && !start; rad += 20)
-    for (let a = 0; a < 64 && !start; a++) {
-      const th = a / 64 * Math.PI * 2;
-      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-      if (!World.wallError(w, 0, x, y, x + L, y) && !World.wallError(w, 0, x + L, y, x + 2 * L, y)
-          && !World.wallError(w, 0, x + 2 * L, y, x + 3 * L, y)) start = { x, y };
-    }
-  ok('the board has room for three runs drawn end to end', !!start, 'nowhere to draw them');
-  if (start) {
-    let built = 0;
-    for (let k = 0; k < 3; k++) {
-      pl.essence = 1e7;
-      if (World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * L, y: start.y,
-                                     x2: start.x + (k + 1) * L, y2: start.y }).ok) built++;
-      finish();
-    }
-    const runs = pl.buildings.filter((b) => b.bt === 'wall');
+  const rig = wallRig(World, C, { runs: 3 });
+  ok('the board has room for three runs drawn end to end', !!rig, 'nowhere to draw them');
+  if (rig) {
+    const { w, pl, built, finish } = rig;
+    const runs = rig.walls;
     pl.essence = 1e7;
     World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: runs[1].x, y: runs[1].y });
     finish();
@@ -5658,33 +5605,11 @@ suite('a curtain is held along its whole length');
  * The suite plays the board at rest with no enemy anywhere and asserts the shape of it. */
 suite('a garrison at rest stands still');
 {
-  const w = World.createWorld(20260810, 2), pl = w.players[0];
-  pl.essence = 1e7; w.chaosNext = 1e9;
-  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
-  for (let i = 0; i < 8; i++)
-    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
-                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
-                        lastHurt: -99, node: -1, co: 0 });
-  const finish = () => { for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT);
-    if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return; } };
-  const L = 200;
-  let start = null;
-  for (let rad = 190; rad < 460 && !start; rad += 20)
-    for (let a = 0; a < 64 && !start; a++) {
-      const th = a / 64 * Math.PI * 2;
-      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-      if (!World.wallError(w, 0, x, y, x + L, y) && !World.wallError(w, 0, x + L, y, x + 2 * L, y))
-        start = { x, y };
-    }
-  ok('the board has room for two runs end to end', !!start, 'nowhere to draw them');
-  if (start) {
-    for (let k = 0; k < 2; k++) {
-      pl.essence = 1e7;
-      World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * L, y: start.y,
-                                 x2: start.x + (k + 1) * L, y2: start.y });
-      finish();
-    }
-    const runs = pl.buildings.filter((b) => b.bt === 'wall');
+  const rig = wallRig(World, C, { runs: 2 });
+  ok('the board has room for two runs end to end', !!rig, 'nowhere to draw them');
+  if (rig) {
+    const { w, pl } = rig;
+    const runs = rig.walls;
     eq('two runs go up', runs.length, 2);
     pl.companies = [{ id: 1, rally: { x: runs[0].x, y: runs[0].y } }];
     pl.banner = { x: runs[0].x, y: runs[0].y };
@@ -5756,26 +5681,10 @@ suite('a garrison at rest stands still');
 suite('a breach is mended by the crews you have left');
 {
   const build = (gatesAfter) => {
-    const w = World.createWorld(20260810, 2), pl = w.players[0];
-    pl.essence = 1e7; w.chaosNext = 1e9;
-    const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
-    for (let i = 0; i < 4; i++)
-      pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
-                          cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
-                          lastHurt: -99, node: -1, co: 0 });
-    let start = null;
-    for (let rad = 190; rad < 460 && !start; rad += 20)
-      for (let a = 0; a < 64 && !start; a++) {
-        const th = a / 64 * Math.PI * 2;
-        const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
-        if (!World.wallError(w, 0, x, y, x + 450, y)) start = { x, y };
-      }
-    if (!start) return null;
-    World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x, y: start.y,
-                               x2: start.x + 450, y2: start.y });
-    for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT);
-      if (!pl.buildings.some((b) => b.raise > 0)) break; }
-    const wall = pl.buildings.find((b) => b.bt === 'wall');
+    const rig = wallRig(World, C, { crews: 4, len: 450 });
+    if (!rig) return null;
+    const { w, pl } = rig;
+    const wall = rig.walls[0];
     if (!wall) return null;
     World.hurtBuilding(w, 0, wall.id, wall.maxHp * 2, null);
     while (pl.buildings.filter((b) => b.bt === 'gate').length > gatesAfter)

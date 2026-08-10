@@ -275,6 +275,14 @@
     return Math.max(C.MASONS.floor,
                     Math.min(C.MASONS.max, C.MASONS.base + Math.floor(gates / C.MASONS.per)));
   }
+  /* WHICH CURTAIN A RUN BELONGS TO, and WHICH RUN a work id names. Two questions asked all
+   * over the wall code and answered inline every time — the curtain in seven places, the run
+   * in four — which is how a rule ends up written seven ways. `w.curtain` is stamped by
+   * `noteWalls` and is the LOWEST run id in the group, so a run standing alone answers with
+   * its own id and every machine at a LAN table groups the same stone without a byte about it. */
+  const curtainOf = (w) => (w.curtain != null ? w.curtain : w.b.id);
+  const runOf = (world, id) => (id ? world.walls.find((q) => q.b.id === id) : null);
+
   /* HOW MANY CREWS A WORK HAS ON IT. Everything but a wall takes one. A CURTAIN IS PAID FOR
    * BY THE FOOT: there is no longest run any more — there is only how many crews you can put
    * on one at once, so the length a heir can raise IS his mason count, and it grows with the
@@ -411,16 +419,9 @@
     for (const u of world.units) {
       if (u.atWall) u.atWall = 0;
       if (u.hp <= 0 || !u.post || u.tow) { if (u.man) u.man = 0; continue; }
-      const w = world.walls.find((q) => q.b.id === u.post);
+      const w = runOf(world, u.post);
       if (!w) { u.man = 0; continue; }
       const st = station(world, u, w);
-      /* NEAR THE RUN, not near his berth — and the difference is the whole of the walk. The
-       * gateway he steers at is one point on a run that may be four hundred long, so a man who
-       * has arrived at the door can still be a hundred from his own place. Judged on the berth,
-       * he reaches the gate, is still "far", goes on steering at the gate he is standing on,
-       * and never takes another step: measured, twenty-four of twenty-four within forty of the
-       * stone and not one of them on it. He is at the wall when he is at the WALL; from there
-       * he walks its length to his place. */
       /* THE FINAL APPROACH — near his own place, exactly as it has always been. That is the
        * RESERVE's rule unchanged: his rows at the foot are ordinary ground and he walks to them
        * like anyone. A man with a BERTH gets it near the RUN as well, and that difference is the
@@ -468,9 +469,9 @@
       if (!near && !u.toBerth)
         near = Math.sqrt(segD2(w.b, u.x, u.y)) < Math.sqrt(segD2(w.b, st.x, st.y)) + C.NAV.arrive;
       if (!near && u.toBerth) {
-        const cid = w.curtain != null ? w.curtain : w.b.id;
+        const cid = curtainOf(w);
         for (const q of world.walls) {
-          if ((q.curtain != null ? q.curtain : q.b.id) !== cid) continue;
+          if (curtainOf(q) !== cid) continue;
           if (segD2(q.b, u.x, u.y) < A2) { near = true; break; }
         }
       }
@@ -510,7 +511,7 @@
         if (dd < bd) { bd = dd; best = w; }
       }
       if (!best) continue;
-      const cid = best.curtain != null ? best.curtain : best.b.id;
+      const cid = curtainOf(best);
       const p = segNear(best.b, u.x, u.y);
       let list = alarms.get(cid);
       if (!list) alarms.set(cid, list = []);
@@ -542,14 +543,14 @@
       /* HE IS POSTED TO THE CURTAIN, not to the one run he happened to stand nearest — which
        * run of it he ends up on is the roster's business, below. */
       u.post = post.b.id;
-      const cid = post.curtain != null ? post.curtain : post.b.id;
+      const cid = curtainOf(post);
       let list = rosters.get(cid);
       if (!list) { list = []; rosters.set(cid, list); }
       list.push(u);
     }
     for (const [cid, list] of rosters) {
       /* by id, so the runs are dealt in the same order on every machine at the table */
-      const runs = world.walls.filter((q) => (q.curtain != null ? q.curtain : q.b.id) === cid)
+      const runs = world.walls.filter((q) => curtainOf(q) === cid)
                               .sort((p, q) => p.b.id - q.b.id);
       if (!runs.length) continue;
       /* SHOOTERS FIRST, then a stable line by id — not a nightly reshuffle. The sort is what
@@ -699,6 +700,26 @@
     const t = ((i % berths) + 0.5) / berths;
     return { x: w.ax + (w.bx - w.ax) * t, y: w.ay + (w.by - w.ay) * t };
   };
+  /* ---- THE DOORWAY, IN ONE PLACE AND AT ONE WIDTH ----
+   * A run's gateway has to be kept clear by two rules that had nothing to do with each other:
+   * `station` drops the foot slots that fall across it, and `jostle` refuses a push that would
+   * put a posted man into it. They were written independently and disagreed about how wide a
+   * door is — the slots were dropped across ±1.35·`WALL.gate` and the pushes were refused
+   * across ±`WALL.gate` — so the ground we emptied and the ground we defended were different
+   * ground, and the projection arithmetic was spelled out three times between them.
+   * `GATE_WIDE` is the one width: a little more than the gate itself, so a column has room to
+   * turn into it rather than having to arrive square. Depth is `WALL.foot * rowsClear`, which
+   * is the reserve's own ranks — beyond that a man is not in the way of anything. */
+  const GATE_WIDE = C.WALL.gate * 1.35;
+  function inCorridor(w, x, y) {
+    if (!w.gate) return false;
+    const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+    const ux = (w.bx - w.ax) / L, uy = (w.by - w.ay) / L;
+    const ax = x - w.gx, ay = y - w.gy;
+    return Math.abs(ax * ux + ay * uy) < GATE_WIDE &&
+           Math.abs(-ax * uy + ay * ux) < C.WALL.foot * C.WALL.rowsClear;
+  }
+
   /* where a man posted to this wall should stand — on the parapet if he has a berth, at the
    * foot in rows behind it if he does not */
   /* WHICH FACE OF A RUN SHELTERS, in one place, because three rules now ask: where a man
@@ -712,32 +733,18 @@
   /* how near his own curtain a man has to be before he is walking ALONG it rather than TO it —
    * generous, because a reserve stands rows deep behind the stone and is still on the wall */
   const NEAR_WALL2 = (C.WALL.man * 2 + C.WALL.foot * 3) * (C.WALL.man * 2 + C.WALL.foot * 3);
-  /* is the straight line to his station clear of his OWN stone — every run of it but the one he
-   * is climbing onto? A rival's wall is not asked about here: he is not walking through that,
-   * `project` stops him, and this question is about a man cutting the corner of his own. */
-  function ownStoneClear(world, u, gx, gy, post) {
-    for (const q of world.walls) {
-      if (q.owner !== u.owner) continue;
-      /* HIS OWN RUN IS EXEMPT ONLY IF HE IS CLIMBING IT. That is what the exemption was always
-       * for — a berth is reached by going ONTO the stone, not through it — and written as a
-       * blanket exemption it let the RESERVE walk through its own curtain, which is the exact
-       * thing the old test was there to stop. Caught by `a wall can be turned about`: turn a
-       * run about, turn it back, and the reserve strolled through the wall to its old station
-       * instead of walking round, ending on the wrong face. A man with no berth has no business
-       * on the stone. */
-      if (u.toBerth && q.b.id === post.b.id) continue;
-      if (crosses(u.x, u.y, gx, gy, q.ax, q.ay, q.bx, q.by)) return false;
-    }
-    return true;
-  }
+  /* is the straight line to his station clear of his own stone? The run he is climbing onto is
+   * his to cross and nothing else of his is — see `crossesOwn`. */
+  const ownStoneClear = (world, u, gx, gy, post) =>
+    !crossesOwn(world, u, gx, gy, u.toBerth && post ? post.b.id : 0);
   /* WHICH SIDE OF HIS OWN CURTAIN A MAN IS STANDING ON, and which run answers for it. Only
    * askable at all since a curtain got ONE face: judged per run, a curve or a dogleg gave
    * different answers a stride apart and "inside" meant nothing. */
   function curtainSide(world, u, post) {
-    const cid = post.curtain != null ? post.curtain : post.b.id;
+    const cid = curtainOf(post);
     let near = null, nd = Infinity;
     for (const q of world.walls) {
-      if (q.owner !== u.owner || (q.curtain != null ? q.curtain : q.b.id) !== cid) continue;
+      if (q.owner !== u.owner || curtainOf(q) !== cid) continue;
       const dd = segD2(q.b, u.x, u.y);
       if (dd < nd) { nd = dd; near = q; }
     }
@@ -794,8 +801,8 @@
      * became 24, which is a rule that looks like it is working and is not. Keeping the spacing
      * and letting the displaced men fall through to the NEXT RANK is the whole of it. */
     const over = i - berths;
-    /* a little wider than the gate itself, so a column has room to turn into it */
-    const band = w.gate ? Math.min(0.6, (C.WALL.gate * 1.35 * 2) / L) : 0;
+    /* the same doorway `inCorridor` defends, as a fraction of this run's length */
+    const band = w.gate ? Math.min(0.6, (GATE_WIDE * 2) / L) : 0;
     let lo = 0, shut = 0;
     if (band > 0) {
       lo = Math.ceil((0.5 - band / 2) * berths - 0.5);
@@ -930,10 +937,18 @@
    * NOW. Cheaper to refuse the step than to unpick it. */
   /* would going THERE take him across a run of his own curtain? The garrison's own test: his
    * post is on the sheltered face and anything past the stone is the wall's business, not his. */
-  function crossesOwn(world, u, tx, ty) {
+  /* DOES THE STRAIGHT LINE FROM WHERE HE STANDS CROSS HIS OWN STONE? Asked by two rules that
+   * had a loop each — one for a shot, one for a walk — identical but for a single exemption,
+   * and only one of them carried the `anyWall` early-out that keeps a match with no walls in it
+   * from paying for the question at all. `skip` is the run he is CLIMBING ONTO: a berth is
+   * reached by going onto the stone, not through it, and a man with no berth has no business on
+   * it (written as a blanket exemption once, and the reserve strolled through its own curtain).
+   * A rival's wall is not asked about here — he is not walking through that either, but
+   * `project` is what stops him, and this question is about a man cutting his own corner. */
+  function crossesOwn(world, u, tx, ty, skip) {
     if (!world.anyWall) return false;
     for (const w of world.walls) {
-      if (w.owner !== u.owner) continue;
+      if (w.owner !== u.owner || w.b.id === skip) continue;
       if (crosses(u.x, u.y, tx, ty, w.ax, w.ay, w.bx, w.by)) return true;
     }
     return false;
@@ -1265,16 +1280,9 @@
       if (u.post && world.anyWall) {
         let blocked = false;
         for (const q of world.walls) {
-          if (!q.gate || q.owner !== u.owner) continue;
-          const qL = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
-          const qux = (q.bx - q.ax) / qL, quy = (q.by - q.ay) / qL;
-          const ax = u.x + dx - q.gx, ay = u.y + dy - q.gy;
-          const along = ax * qux + ay * quy, perp = Math.abs(-ax * quy + ay * qux);
-          if (Math.abs(along) >= C.WALL.gate || perp >= C.WALL.foot * C.WALL.rowsClear) continue;
+          if (q.owner !== u.owner || !inCorridor(q, u.x + dx, u.y + dy)) continue;
           /* already inside it: let him be pushed, he is trying to get out */
-          const bx2 = u.x - q.gx, by2 = u.y - q.gy;
-          const wasAlong = bx2 * qux + by2 * quy, wasPerp = Math.abs(-bx2 * quy + by2 * qux);
-          if (Math.abs(wasAlong) < C.WALL.gate && wasPerp < C.WALL.foot * C.WALL.rowsClear) break;
+          if (inCorridor(q, u.x, u.y)) break;
           blocked = true; break;
         }
         if (blocked) continue;
@@ -3270,7 +3278,7 @@
              * and the way to give one a field of fire over a curtain is to build it INTO the
              * curtain — which is what `onWall` is. A tower behind the wall covers the ground
              * behind the wall, and that is a real choice rather than a free one. */
-            const mine = b.onWall ? world.walls.find((q) => q.b.id === b.onWall) : null;
+            const mine = runOf(world, b.onWall);
             forNear(world, sp.x, sp.y, st.range, (u) => {
               if (u.owner === pi) return;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
@@ -3427,7 +3435,7 @@
           return;
         }
         if (!u.toBerth || !u.atWall) return;
-        const pw = world.walls.find((q) => q.b.id === u.post);
+        const pw = runOf(world, u.post);
         if (!pw) return;
         const st = station(world, u, pw);
         const ds = Math.sqrt(d2(u.x, u.y, st.x, st.y));
@@ -3544,7 +3552,7 @@
           }
         }
         if (u.post) {
-          const post = world.walls.find((q) => q.b.id === u.post);
+          const post = runOf(world, u.post);
           if (post) {
             const st2 = station(world, u, post);
             gx = st2.x; gy = st2.y;

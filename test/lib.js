@@ -93,4 +93,51 @@ function record(rows, times) {
   for (const t of (times || [])) timing.push(t);
   markAt = Date.now();
 }
-module.exports = { suite, ok, eq, near, report, results, record, track };
+/* ---- A BOARD WITH A CURTAIN ON IT, BUILT ONCE ----
+ * Nine suites opened by pushing the same Shadow Gates at the same coordinates to hire crews,
+ * and four of them then ran the same radius-and-angle search for somewhere the sim would let a
+ * run be drawn. That is scaffolding, not a test, and copied nine times it is nine places to get
+ * a board subtly different from the one the assertions were written against.
+ * The construction is EXACTLY what those suites did by hand — same seed handling, same gate
+ * coordinates, same search order — so a suite that moves onto this rig plays the same board it
+ * always played. `World` and `CONST` come in as arguments because this harness knows nothing
+ * about the game and should not start now.
+ * Returns null when the board has no room for the run, which is a thing the caller must ASSERT
+ * rather than skip past: a rig that quietly built nothing passes everything. */
+function wallRig(World, C, { seed = 20260810, crews = 8, runs = 1, len = 200, players = 2 } = {}) {
+  const w = World.createWorld(seed, players), pl = w.players[0];
+  pl.essence = 1e7;
+  w.chaosNext = 1e9;                                  // no weather: this is a rig about stone
+  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+  for (let i = 0; i < crews; i++)                     // a crew per Gate — see MASONS
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  const finish = () => {
+    for (let i = 0; i < 90 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return;
+    }
+  };
+  let start = null;
+  for (let rad = 190; rad < 460 && !start; rad += 20)
+    for (let a = 0; a < 64 && !start; a++) {
+      const th = a / 64 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      let room = true;
+      for (let k = 0; k < runs && room; k++)
+        if (World.wallError(w, 0, x + k * len, y, x + (k + 1) * len, y)) room = false;
+      if (room) start = { x, y };
+    }
+  if (!start) return null;
+  let built = 0;
+  for (let k = 0; k < runs; k++) {
+    pl.essence = 1e7;
+    if (World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * len, y: start.y,
+                                   x2: start.x + (k + 1) * len, y2: start.y }).ok) built++;
+    finish();
+  }
+  return { w, pl, city: c, start, built, finish, walls: pl.buildings.filter((b) => b.bt === 'wall') };
+}
+
+module.exports = { suite, ok, eq, near, report, results, record, track, wallRig };

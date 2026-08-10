@@ -399,28 +399,48 @@
     if (!r.ok) sayErr(r.err);
     return r;
   }
-  /* WHY AN ORDER WAS REFUSED, in one place, because two things now ask: a command the sim
-   * turned down, and a WALL'S ANCHOR — which is refused before there is a command at all. */
+  /* WHY AN ORDER WAS REFUSED, in one place, because two things ask: a command the sim turned
+   * down, and a WALL'S ANCHOR, which is refused before there is a command at all.
+   * A TABLE RATHER THAN A LADDER OF `else if`. Seventeen branches said the same thing
+   * seventeen ways, and the shape hid a real hole: an `err` with no branch fell off the end in
+   * silence, so a refusal the sim learns tomorrow is a tap that does nothing and says nothing.
+   * Missing from the table now names itself, which is ugly exactly once — until somebody
+   * writes the sentence. */
+  const REFUSAL = {
+    essence: 'Not enough Essence',
+    presence: 'A unit of yours must stand there — plant the banner first',
+    claim: 'Beyond your writ — your Gates carry it outward',
+    ground: 'The ground will not bear it',
+    crowded: 'Too close to another work',
+    busy: 'Your masons are all at work — hold more Gates to hire another crew',
+    raising: 'It is not finished yet',
+    noup: 'The Pattern is what it is — there is nothing to raise',
+    contested: 'The ground is contested',
+    fog: 'You cannot storm what you cannot see',
+    /* the two refusals only a work with a LENGTH can earn */
+    short: 'Too short a run to be a wall',
+    crews: 'Too long for the crews you have — hold more Gates, or draw a shorter run',
+    paused: 'The world is halted — lift it to give orders',
+    whole: 'There is nothing broken to mend',
+    working: 'The masons are already in it',
+    /* ---- AND THE ONES THE LADDER USED TO SWALLOW ----
+     * Writing the branches as a table made the audit possible, and the audit found refusals the
+     * sim raises that the player was never told about. `committed` is the worst of them: the
+     * sim refuses to take an heir off the Pattern RATHER THAN IGNORING THE ORDER, and its own
+     * comment says the seat that gave it is owed the answer — and then nothing was said. */
+    committed: 'A walk cannot be called off — the Pattern has you until a hundred, or until the Shrine falls',
+    shrine: 'Raise a Pattern Shrine first — there is nothing to walk from',
+    max: 'It is already as high as it goes',
+    nowall: 'Only a curtain has a sheltered side to turn about',
+    cd: 'That power is not ready',
+    alive: 'Your champion already walks the board',
+    /* the orders a player cannot phrase wrongly by tapping — reached by a stale tap on a match
+     * that has just ended, or by a guest whose snapshot is a moment behind */
+    over: 'The match is decided'
+  };
   function sayErr(err) {
-    {
-      const r = { err };
-      if (r.err === 'essence') UI.banner('Not enough Essence', 'warn');
-      else if (r.err === 'presence') UI.banner('A unit of yours must stand there — plant the banner first', 'warn');
-      else if (r.err === 'claim') UI.banner('Beyond your writ — your Gates carry it outward', 'warn');
-      else if (r.err === 'ground') UI.banner('The ground will not bear it', 'warn');
-      else if (r.err === 'crowded') UI.banner('Too close to another work', 'warn');
-      else if (r.err === 'busy') UI.banner('Your masons are all at work — hold more Gates to hire another crew', 'warn');
-      else if (r.err === 'raising') UI.banner('It is not finished yet', 'warn');
-      else if (r.err === 'noup') UI.banner('The Pattern is what it is — there is nothing to raise', 'warn');
-      else if (r.err === 'contested') UI.banner('The ground is contested', 'warn');
-      else if (r.err === 'fog') UI.banner('You cannot storm what you cannot see', 'warn');
-      /* the two refusals only a work with a LENGTH can earn */
-      else if (r.err === 'short') UI.banner('Too short a run to be a wall', 'warn');
-      else if (r.err === 'crews') UI.banner('Too long for the crews you have — hold more Gates, or draw a shorter run', 'warn');
-      else if (r.err === 'paused') UI.banner('The world is halted — lift it to give orders', 'warn');
-      else if (r.err === 'whole') UI.banner('There is nothing broken to mend', 'warn');
-      else if (r.err === 'working') UI.banner('The masons are already in it', 'warn');
-    }
+    if (!err) return;
+    UI.banner(REFUSAL[err] || ('The order was refused: ' + err), 'warn');
   }
 
   /* ---------------- view assembly (render-ready, fog applied) ---------------- */
