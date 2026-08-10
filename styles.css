@@ -380,7 +380,18 @@ body {
    a media query, and the opened card spans every column whatever that count turned out to be
    — which is what makes it read as the small card growing rather than as a panel appearing
    somewhere else. */
-.roll-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 7px; }
+/* LEVEL ONE ON THE LEFT, WHAT IT BECOMES ON THE RIGHT. Two columns rather than an auto-fill
+   flow, because a forking work is one decision with two sides and the layout should say so.
+   The opened card is NOT in either column — it goes in the section's own `.roll-open` under
+   both of them, or it would be half a screen wide with a figure in it. */
+.roll-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; align-items: start; }
+.roll-col { display: flex; flex-direction: column; gap: 7px; }
+.col-head {
+  font-size: 9px; letter-spacing: 1px; color: #8a7ca8; text-transform: uppercase;
+  padding-bottom: 1px;
+}
+.roll-open:empty { display: none; }
+.roll-open { margin-top: 7px; }
 .man {
   display: grid; grid-template-columns: 30px 1fr auto; grid-template-rows: auto auto auto;
   gap: 1px 7px; align-items: center; text-align: left;
@@ -398,7 +409,7 @@ body {
 .man.work .m-emblem { opacity: 0.75; }
 /* the opened card: the figure on the left, everything the table knows on the right */
 .man-open {
-  grid-column: 1 / -1; display: grid; grid-template-columns: 96px 1fr; gap: 10px;
+  display: grid; grid-template-columns: 96px 1fr; gap: 10px;
   align-items: start;
   padding: 10px; margin: -2px 0 2px;
   background: linear-gradient(#241c30, #17111f);
@@ -421,6 +432,17 @@ body {
 .mo-from { font-size: 9px; letter-spacing: 1px; color: #8a7ca8; margin: 3px 0 6px; }
 .mo-blurb { font-size: 11px; font-style: italic; color: #b8a878; line-height: 1.5; margin-bottom: 6px; }
 .man-open .c-rate { display: block; grid-column: auto; text-align: left; font-size: 11px; margin-top: 3px; }
+/* EVERY LEVEL WITH ITS NUMBERS. A level buys better men rather than more of them, so what a
+   level is WORTH is a table of numbers and there is nowhere else in the game they are said. */
+.mo-levels { width: 100%; border-collapse: collapse; font-size: 11px; margin: 2px 0 6px; }
+.mo-levels th {
+  font-size: 8px; letter-spacing: 1px; color: #8a7ca8; text-transform: uppercase;
+  font-weight: normal; text-align: right; padding: 0 0 2px;
+}
+.mo-levels th:first-child, .mo-levels td:first-child { text-align: left; }
+.mo-levels td { text-align: right; color: #e8dcc0; padding: 1px 0; }
+.mo-levels tr + tr td { border-top: 1px solid #c9a44f22; }
+.mo-levels td:first-child { color: #ffe9a8; }
 #roll .mbtn { margin: 6px 0 24px; }
 /* ---- the live figures ----
    ONE canvas over the whole screen and ONE WebGL context for every man in the list, each drawn

@@ -1091,77 +1091,153 @@
    * WHICH MAN and roughly what he is worth; everything else — the prose, the full line, the
    * tags, and the turning figure — belongs to the one card you have actually asked about.
    * That is also why the figures got cheaper: eighteen men turning at once became one. */
-  const KEY_NUMS = (u) => `${u.hp} hp · ${u.dmg} blow · ${u.range} reach`;
+  /* THE NUMBERS ON A SMALL CARD ARE THE ONES HE CAN ACTUALLY HAVE. A branch's recruit does not
+   * exist below the fork — a hall is RE-RAISED around him at level 2 — so quoting him at tier
+   * one is quoting a man the game never musters. The Archer read 42 hp · 6 blow · ◆23 on his
+   * card and 53 · 7.5 · ◆29 in his own level table one tap later, which is the kind of thing a
+   * codex exists to stop. `m` is the tier of the lowest level he exists at. */
+  const KEY_NUMS = (u, m) => `${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow · ` +
+                             `${u.range} reach`;
+
+  /* ---- EVERY LEVEL, WITH ITS NUMBERS ----
+   * A LEVEL BUYS BETTER MEN, NOT MORE OF THEM: `CONST.TIER` multiplies a recruit's hit points,
+   * his blow and his price, and the muster's PERIOD is flat across levels. So "what does level
+   * three get me" is a real question with a numeric answer, and the codex could not answer it —
+   * it printed one man at tier one and left the rest to be worked out from a multiplier written
+   * down nowhere the player can see.
+   * WHICH LEVELS A MAN EXISTS AT falls out of the fork and is not a list anybody keeps: a hall
+   * is RE-RAISED around a branch at `fork`, so the base recruit lives at levels 1..fork-1 and a
+   * branch's recruit at fork..MAX_LEVEL. Nothing here names a building or a branch. */
+  const levelsFor = (bt, key) => {
+    const d = C.BUILDINGS[bt], fork = d.fork || C.MAX_LEVEL + 1, out = [];
+    const lo = key ? fork : 1, hi = key ? C.MAX_LEVEL : Math.min(C.MAX_LEVEL, fork - 1);
+    for (let L = lo; L <= hi; L++) out.push(L);
+    return out;
+  };
+  /* what it costs to REACH a level: the work's own price at level 1, and the upgrade that
+   * carries it from the level below at every level after */
+  const priceTo = (bt, key, L) => (L === 1 ? C.BUILDINGS[bt].cost
+    : key && L === (C.BUILDINGS[bt].fork || 0) ? C.BUILDINGS[bt].branches[key].cost
+    : global.World.upgradeCost(bt, L - 1, key || null));
+  function levelTable(bt, key, kind) {
+    const d = C.BUILDINGS[bt], b2 = key ? d.branches[key] : null, levels = levelsFor(bt, key);
+    if (!levels.length) return '';
+    const u = kind ? C.UNITS[kind] : null;
+    const head = u ? '<tr><th>lv</th><th>to raise</th><th>hp</th><th>blow</th><th>each</th><th>drain</th></tr>'
+                   : '<tr><th>lv</th><th>to raise</th><th>blow</th><th>every</th><th>range</th></tr>';
+    const rows = levels.map((L) => {
+      const raise = `◆ ${Math.round(priceTo(bt, key, L))}`;
+      if (u) {
+        const m = C.TIER[L - 1];
+        const per = (b2 && b2.period ? b2.period[L - d.fork] : d.period ? d.period[L - 1] : 0);
+        return `<tr><td>${L}</td><td>${raise}</td><td>${Math.round(u.hp * m)}</td>` +
+               `<td>${+(u.dmg * m).toFixed(1)}</td><td>◆ ${Math.round(u.cost * m)}</td>` +
+               `<td>${per ? '−' + (u.cost * m / per).toFixed(1) + '/s' : '—'}</td></tr>`;
+      }
+      /* the work's own gunnery: a branch keeps its numbers in arrays indexed from the fork,
+       * and before the fork they are the work's own */
+      const i = b2 ? L - d.fork : L - 1;
+      const src = b2 || d, at = (f) => (Array.isArray(src[f]) ? src[f][i] : src[f]);
+      return `<tr><td>${L}</td><td>${raise}</td><td>${at('dmg')}</td>` +
+             `<td>${at('atk')}s</td><td>${at('range')}</td></tr>`;
+    }).join('');
+    return `<table class="mo-levels">${head}${rows}</table>`;
+  }
+
   /* a small card. `kind` names a man; `work` names a branch that changes a WORK rather than
    * mustering anybody (a Ballista Tower raises no one), and it opens the same way. */
-  function manCard(kind, tag, bt) {
+  function manCard(kind, tag, bt, key) {
     const u = C.UNITS[kind];
-    return `<button class="man" data-kind="${kind}"${bt ? ` data-bt="${bt}"` : ''}>` +
+    const first = bt ? (levelsFor(bt, key)[0] || 1) : 1;
+    const m = C.TIER[first - 1] || 1;
+    return `<button class="man" data-kind="${kind}"${bt ? ` data-bt="${bt}"` : ''}` +
+           `${key ? ` data-br="${key}"` : ''}>` +
            `<span class="m-emblem">${u.icon || '•'}</span>` +
            `<span class="m-name">${u.name || cap(kind)}</span>` +
            (tag ? `<span class="m-tag">${tag}</span>` : '') +
-           `<span class="m-cost">${u.cost ? '◆ ' + u.cost : ''}</span>` +
-           `<span class="m-nums">${KEY_NUMS(u)}</span></button>`;
+           `<span class="m-cost">${u.cost ? '◆ ' + Math.round(u.cost * m) : ''}</span>` +
+           `<span class="m-nums">${KEY_NUMS(u, m)}</span></button>`;
   }
   function workCard(bt, key) {
-    const b2 = C.BUILDINGS[bt].branches[key];
-    return `<button class="man work" data-bt="${bt}" data-br="${key}">` +
-           `<span class="m-emblem">${b2.icon || '•'}</span>` +
-           `<span class="m-name">${b2.name}</span>` +
-           `<span class="m-tag">${C.BUILDINGS[bt].name} · level ${C.BUILDINGS[bt].fork}</span>` +
-           `<span class="m-cost">◆ ${b2.cost}</span>` +
-           '<span class="m-nums">the work itself — it musters nobody</span></button>';
+    const d = C.BUILDINGS[bt], b2 = key ? d.branches[key] : d;
+    const i = key ? 0 : 0;
+    const dmg = Array.isArray(b2.dmg) ? b2.dmg[i] : b2.dmg;
+    const rng = Array.isArray(b2.range) ? b2.range[i] : b2.range;
+    return `<button class="man work" data-bt="${bt}"${key ? ` data-br="${key}"` : ''}>` +
+           `<span class="m-emblem">${b2.icon || d.icon || '•'}</span>` +
+           `<span class="m-name">${key ? b2.name : d.name}</span>` +
+           `<span class="m-tag">${key ? `${d.name} · level ${d.fork}` : 'level 1'}</span>` +
+           `<span class="m-cost">◆ ${key ? b2.cost : d.cost}</span>` +
+           `<span class="m-nums">${dmg != null ? `${dmg} blow · ${rng} range · musters nobody`
+                                               : 'the work itself'}</span></button>`;
   }
-  /* THE OPENED CARD. It spans the grid, so on a phone it reads as the small card growing. The
-   * berth for the figure is `c-fig` exactly as it always was — `data-kind` is still what tells
-   * the renderer which man goes in which rectangle — and there is now only ever one of them. */
-  function manOpen(kind, from) {
+  /* THE OPENED CARD. It sits under both columns, full width, so it reads as the small card
+   * growing rather than as a panel somewhere else. The berth for the figure is `c-fig` exactly
+   * as it always was — `data-kind` is still what tells the renderer which man goes in which
+   * rectangle — and there is now only ever one of them. */
+  function manOpen(kind, from, bt, key) {
     const u = C.UNITS[kind];
+    const m = C.TIER[(bt ? (levelsFor(bt, key)[0] || 1) : 1) - 1] || 1;
     return '<div class="man-open">' +
            `<span class="c-fig" data-kind="${kind}">${u.icon || '•'}</span>` +
            '<div class="mo-text">' +
            `<div class="mo-name">${u.name || cap(kind)}` +
-           `<span class="mo-cost">${u.cost ? '◆ ' + u.cost : ''}</span></div>` +
+           `<span class="mo-cost">${u.cost ? '◆ ' + Math.round(u.cost * m) : ''}</span></div>` +
            (from ? `<div class="mo-from">${from}</div>` : '') +
-           `<div class="mo-blurb">${u.blurb || ''}</div>${rollStat(kind)}</div></div>`;
+           `<div class="mo-blurb">${u.blurb || ''}</div>` +
+           (bt ? levelTable(bt, key, kind) : '') + rollStat(kind) + '</div></div>';
   }
   function workOpen(bt, key) {
-    const d = C.BUILDINGS[bt], b2 = d.branches[key];
+    const d = C.BUILDINGS[bt], b2 = key ? d.branches[key] : d;
     return '<div class="man-open">' +
-           `<span class="c-fig no-fig">${b2.icon || '•'}</span>` +
+           `<span class="c-fig no-fig">${b2.icon || d.icon || '•'}</span>` +
            '<div class="mo-text">' +
-           `<div class="mo-name">${b2.name}<span class="mo-cost">◆ ${b2.cost}</span></div>` +
-           `<div class="mo-from">${d.name}, level ${d.fork} — chosen once, and forever</div>` +
-           `<div class="mo-blurb">${b2.blurb || ''}</div>` +
-           branchStatLine(bt, key, d.fork) + '</div></div>';
+           `<div class="mo-name">${key ? b2.name : d.name}` +
+           `<span class="mo-cost">◆ ${key ? b2.cost : d.cost}</span></div>` +
+           `<div class="mo-from">${key ? `${d.name}, level ${d.fork} — chosen once, and forever`
+                                       : `${d.name}, level 1`}</div>` +
+           `<div class="mo-blurb">${(key ? b2.blurb : d.blurb) || ''}</div>` +
+           levelTable(bt, key, null) + '</div></div>';
   }
   UI.roll = function () {
     const body = $('roll-body');
     const raised = new Set();     // every man some hall musters — see the last section
     let h = '';
+    /* ---- LEVEL ONE ON THE LEFT, WHAT IT BECOMES ON THE RIGHT ----
+     * The grid used to auto-fill, so a hall's own recruit and the three men he might become
+     * landed wherever they fitted and the READING of the section was left to the reader. A
+     * forking work is one decision with two sides — this is what you get, and these are the
+     * things it can be re-raised into — so the columns say it. */
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
       if (!d.branches) continue;
       h += `<div class="roll-hall"><div class="roll-head">${d.icon} ${d.name}` +
-           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${d.blurb}</div><div class="roll-grid">`;
+           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${d.blurb}</div><div class="roll-cols">` +
+           '<div class="roll-col"><div class="col-head">Level 1</div>';
       if (d.spawns) { h += manCard(d.spawns, 'level 1', bt); raised.add(d.spawns); }
+      else h += workCard(bt, null);          // a work that musters nobody IS its level 1
+      h += `</div><div class="roll-col"><div class="col-head">Level ${d.fork} — choose once</div>`;
       for (const key of d.branchUI) {
         const b2 = d.branches[key];
-        if (b2.spawns) { h += manCard(b2.spawns, b2.name, bt); raised.add(b2.spawns); }
+        if (b2.spawns) { h += manCard(b2.spawns, b2.name, bt, key); raised.add(b2.spawns); }
         else h += workCard(bt, key);
       }
-      h += '</div></div>';
+      h += '</div></div><div class="roll-open"></div></div>';
     }
     /* ...and the two nobody musters. The Champion comes off a Trump and the Fiend out of a
      * rift, so neither is under a hall — and a roll that left them out would be a roll of what
-     * you can BUY rather than of what is on the board. This section used to be every man in
-     * the game, which is what made the codex repeat itself; it is now exactly the remainder,
-     * so a kind added to the table lands in one place or the other and never in both. */
+     * you can BUY rather than of what is on the board. This section is the REMAINDER rather
+     * than a second copy of the table, so a kind added to `UNITS` lands in one place or the
+     * other and never in both, which is what the codex used to do to nine of eleven kinds. */
     const loose = Object.keys(C.UNITS).filter((k) => !raised.has(k));
     if (loose.length) {
       h += '<div class="roll-hall"><div class="roll-head">⚑ Out of Shadow</div>' +
            '<div class="roll-blurb">Raised by nobody: what you meet rather than what you muster.</div>' +
-           '<div class="roll-grid">' + loose.map((k) => manCard(k)).join('') + '</div></div>';
+           '<div class="roll-cols"><div class="roll-col">' +
+           loose.filter((k, i) => i % 2 === 0).map((k) => manCard(k)).join('') +
+           '</div><div class="roll-col">' +
+           loose.filter((k, i) => i % 2 === 1).map((k) => manCard(k)).join('') +
+           '</div></div><div class="roll-open"></div></div>';
     }
     body.innerHTML = h;
     $('menu').classList.add('hidden');
@@ -1172,20 +1248,22 @@
     if (H.onRollOpen) H.onRollOpen();
   };
   /* ONE CARD OPEN AT A TIME, and the figure follows it. A second tap on the same card shuts it,
-   * which is the only way back to the grid without choosing something else. */
+   * which is the only way back to the grid without choosing something else. The panel goes in
+   * its section's own `.roll-open`, under both columns — a card that grew INSIDE a column would
+   * be half a screen wide with a figure in it. */
   function rollBind(body) {
     body.addEventListener('click', (e) => {
       const card = e.target.closest && e.target.closest('.man');
       if (!card || !body.contains(card)) return;
       const wasOpen = card.classList.contains('open');
-      const prev = body.querySelector('.man-open');
-      if (prev) prev.remove();
+      for (const p of body.querySelectorAll('.roll-open')) p.innerHTML = '';
       for (const c2 of body.querySelectorAll('.man.open')) c2.classList.remove('open');
       if (wasOpen) { rollFigures(); return; }
       card.classList.add('open');
-      card.insertAdjacentHTML('afterend', card.dataset.kind
-        ? manOpen(card.dataset.kind, cardFrom(card))
-        : workOpen(card.dataset.bt, card.dataset.br));
+      const slot = card.closest('.roll-hall').querySelector('.roll-open');
+      slot.innerHTML = card.dataset.kind
+        ? manOpen(card.dataset.kind, cardFrom(card), card.dataset.bt || null, card.dataset.br || null)
+        : workOpen(card.dataset.bt, card.dataset.br || null);
       rollFigures();
     });
   }

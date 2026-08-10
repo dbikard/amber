@@ -365,6 +365,90 @@ async function match(browser, base, renderer) {
        `stone ${fields.saysStone} walls ${fields.saysWalls} mend ${fields.saysMend}`);
     ok('a second tap shuts the card again', fields.leftOpen === 0, String(fields.leftOpen));
 
+    /* ---- LEVEL ONE ON THE LEFT, WHAT IT BECOMES ON THE RIGHT ----
+     * A forking work is one decision with two sides, and the layout says so rather than
+     * leaving the reading to the reader. */
+    const cols = await pg.evaluate(() => {
+      const C = window.CONST, bad = [];
+      for (const hall of document.querySelectorAll('#roll-body .roll-hall')) {
+        const cs = hall.querySelectorAll('.roll-col');
+        if (cs.length !== 2) { bad.push('columns:' + cs.length); continue; }
+        const head = hall.querySelector('.roll-head').textContent;
+        const bt = Object.keys(C.BUILDINGS).find((k) => C.BUILDINGS[k].branches &&
+                                                        head.indexOf(C.BUILDINGS[k].name) >= 0);
+        if (!bt) continue;                                   // the section for what nobody musters
+        const left = cs[0].querySelectorAll('.man').length;
+        const right = [...cs[1].querySelectorAll('.man')];
+        if (left !== 1) bad.push(bt + ' has ' + left + ' at level 1');
+        if (right.length !== C.BUILDINGS[bt].branchUI.length)
+          bad.push(bt + ' offers ' + right.length + ' of ' + C.BUILDINGS[bt].branchUI.length);
+      }
+      return bad;
+    });
+    ok('every hall shows its level 1 on the left and its upgrades on the right',
+       cols.length === 0, cols.join(' · '));
+
+    /* ---- AND EVERY LEVEL, WITH ITS NUMBERS ----
+     * A LEVEL BUYS BETTER MEN, NOT MORE OF THEM: `CONST.TIER` multiplies hit points, blow and
+     * price, and the codex used to print one man at tier one and leave the rest to a multiplier
+     * written down nowhere a player can see. Which levels a man exists at falls out of the fork
+     * — a hall is RE-RAISED around a branch, so its own recruit lives below it and the branch's
+     * above — and it caught a real thing the moment it was drawn: the Archer's card quoted him
+     * at 42 hp for a man the game musters at 53. The assertion recomputes every cell from
+     * `CONST` rather than pinning a number, so a retune moves both together or fails here. */
+    const levels = await pg.evaluate(async () => {
+      const C = window.CONST;
+      const frame = () => new Promise((r) => requestAnimationFrame(r));
+      const bad = [], checked = [];
+      for (const card of [...document.querySelectorAll('#roll-body .man[data-kind][data-bt]')]) {
+        const kind = card.dataset.kind, bt = card.dataset.bt, key = card.dataset.br || null;
+        const d = C.BUILDINGS[bt], u = C.UNITS[kind];
+        const fork = d.fork || C.MAX_LEVEL + 1;
+        const want = [];
+        for (let L = key ? fork : 1; L <= (key ? C.MAX_LEVEL : Math.min(C.MAX_LEVEL, fork - 1)); L++)
+          want.push(L);
+        card.click();
+        await frame();
+        const rows = [...document.querySelectorAll('#roll-body .man-open .mo-levels tr')].slice(1);
+        if (rows.length !== want.length) {
+          bad.push(`${kind}: ${rows.length} rows for levels ${want.join(',')}`);
+        } else {
+          want.forEach((L, i) => {
+            const cells = [...rows[i].querySelectorAll('td')].map((t) => t.textContent.trim());
+            const m = C.TIER[L - 1];
+            if (cells[0] !== String(L)) bad.push(`${kind} row ${i} says level ${cells[0]}`);
+            if (cells[2] !== String(Math.round(u.hp * m))) bad.push(`${kind} lv${L} hp ${cells[2]} want ${Math.round(u.hp * m)}`);
+            if (cells[3] !== String(+(u.dmg * m).toFixed(1))) bad.push(`${kind} lv${L} blow ${cells[3]} want ${+(u.dmg * m).toFixed(1)}`);
+            if (cells[4].indexOf(String(Math.round(u.cost * m))) < 0) bad.push(`${kind} lv${L} price ${cells[4]} want ${Math.round(u.cost * m)}`);
+          });
+          checked.push(kind + ':' + want.length);
+        }
+        card.click();
+        await frame();
+      }
+      return { bad, checked };
+    });
+    ok('every man\'s card carries a row for each level he exists at, computed from CONST.TIER',
+       levels.bad.length === 0 && levels.checked.length > 0,
+       `${levels.checked.join(' ')} — ${levels.bad.join(' · ') || 'all agree with CONST.TIER'}`);
+
+    /* AND THE SMALL CARD QUOTES A LEVEL HE CAN ACTUALLY BE AT. A branch's recruit does not
+     * exist below the fork, so tier one is a man the game never musters. */
+    const quoted = await pg.evaluate(() => {
+      const C = window.CONST, bad = [];
+      for (const card of [...document.querySelectorAll('#roll-body .man[data-kind][data-bt]')]) {
+        const d = C.BUILDINGS[card.dataset.bt], u = C.UNITS[card.dataset.kind];
+        const first = card.dataset.br ? (d.fork || 1) : 1;
+        const m = C.TIER[first - 1];
+        const txt = card.querySelector('.m-nums').textContent;
+        if (txt.indexOf(String(Math.round(u.hp * m))) < 0)
+          bad.push(`${card.dataset.kind}: "${txt}" wants ${Math.round(u.hp * m)} hp at level ${first}`);
+      }
+      return bad;
+    });
+    ok('...and his small card quotes him at the lowest level he exists at',
+       quoted.length === 0, quoted.join(' · '));
+
     /* ---------------- the figures ----------------
      * Each man in the round, turning. ONE WebGL context for the whole list — a canvas per row
      * would run a phone out of live contexts halfway down it — so what is asserted is the loop
