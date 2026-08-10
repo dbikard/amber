@@ -348,7 +348,17 @@ blow against stone, multiplied.
   `WALL.man*1.5` of one of his own runs is posted to it. The roster is sorted **shooters first,
   then by id**, and only a unit the table marks `mans` (archer, sorcerer) may take one of the
   `len/WALL.berth` berths — `u.man` is the wall he holds a place on. Everyone else still gets a
-  `post` and stations at the FOOT in rows, in cover, which is where a Shieldwall belongs. A
+  `post` and stations at the FOOT in rows, in cover, which is where a Shieldwall belongs.
+  **THE PARAPET IS CAPPED AND THE FOOT IS NOT.** The roster is re-dealt every tick, shooters
+  first, so a berth freed by a death is taken by the next archer on the SAME tick and he walks
+  up — the queue is the dealing, not a rule of its own. The ranks behind used to wrap at
+  `WALL.rows`, which meant a curtain held `berths * 4` men and dealt every one after that a
+  place somebody was already standing in (measured: 21 overlapping pairs of 60 men on one run);
+  they are unbounded now. And a man's FINAL APPROACH is judged on his own station unless he is
+  climbing — near the RUN is the right question for a man walking a parapet to his berth and
+  the wrong one for a reserve whose rank is a hundred and thirty behind it, who otherwise
+  beelines away from the wall, stops being "at" it, is handed back to the field, is steered at
+  the doorstep beside it and comes back (173 transits became 1,418, by 31 men). A
   swordsman on a parapet was only ever a man in the open holding a berth an archer needed. Only
   berthed men shoot over and are exposed. It reads the order rather than `u.goal` because goals
   are assigned in the march loop, which runs after it.

@@ -432,7 +432,12 @@
                   * who cannot get up stay at the FOOT of it — sheltered, useless, and waiting
                   * for a place. Without this a hundred men crowd twenty feet of stone and the
                   * whole run is defended by a scrum standing on each other. */
-                 berth: 15, foot: 20, rows: 3,
+                 /* `rows` is gone: the ranks at the foot are NOT capped. Wrapping at three
+                  * meant a curtain held `berths * 4` men and dealt every one after that a place
+                  * somebody was already standing in — measured at twenty-one overlapping pairs
+                  * of sixty men on a single run. A wall stops taking men on the PARAPET, not at
+                  * its foot. */
+                 berth: 15, foot: 20,
                  /* HOW NEAR HIS BERTH HE MUST BE BEFORE HE IS STANDING IN IT. A berth is an
                   * errand the roster hands him and this is the threshold that turns it into a
                   * place: inside it he is a man on the parapet — the long reach, the merlons'

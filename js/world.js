@@ -430,7 +430,17 @@
        * in range he never reaches the march to be handed anywhere. Measured on a curtain
        * answering two assaults: six men correctly posted to the far run, not one of them moving.
        * Near any run of his own curtain is near his wall. */
-      let near = ds < A2 || segD2(w.b, u.x, u.y) < A2;
+      /* ...AND ONLY FOR A MAN WHOSE PLACE IS ON THE STONE. Being near the RUN is the right
+       * question for a man climbing it — he walks its length to his berth — and the wrong one
+       * for the RESERVE, whose place is rows behind it: once the ranks stopped being capped at
+       * three a man dealt the fifth rank stood a hundred and thirty back, so he was "at the
+       * wall" whenever he came near it, beelined AWAY to his rank, left the run's vicinity,
+       * was handed back to the field, was steered at the doorstep beside the wall, and came
+       * back. Measured on the dogleg with a hundred and sixty men: 173 transits became 1,418,
+       * by THIRTY-ONE men — forty-five each, which is a man oscillating, not a man walking.
+       * The reserve's rule is the one the comment above already claims for it: his rows are
+       * ordinary ground and he walks to them like anyone, judged on his own station. */
+      let near = ds < A2 || (u.toBerth && segD2(w.b, u.x, u.y) < A2);
       if (!near && u.toBerth) {
         const cid = w.curtain != null ? w.curtain : w.b.id;
         for (const q of world.walls) {
@@ -675,7 +685,7 @@
   const DOORSTEP = C.WALL.thick + C.WALL.foot + 10;
   /* how near his own curtain a man has to be before he is walking ALONG it rather than TO it —
    * generous, because a reserve stands rows deep behind the stone and is still on the wall */
-  const NEAR_WALL2 = (C.WALL.man * 2 + C.WALL.foot * C.WALL.rows) * (C.WALL.man * 2 + C.WALL.foot * C.WALL.rows);
+  const NEAR_WALL2 = (C.WALL.man * 2 + C.WALL.foot * 3) * (C.WALL.man * 2 + C.WALL.foot * 3);
   /* is the straight line to his station clear of his OWN stone — every run of it but the one he
    * is climbing onto? A rival's wall is not asked about here: he is not walking through that,
    * `project` stops him, and this question is about a man cutting the corner of his own. */
@@ -737,9 +747,17 @@
       return { x: p.x + nx * off, y: p.y + ny * off };
     }
     /* THE FOOT OF THE WALL. Rows behind it, filling outward — the reserve, in cover, where a
-     * man who cannot get up is at least not standing in the field being shot. */
+     * man who cannot get up is at least not standing in the field being shot.
+     * AND THE RANKS ARE NOT CAPPED. The row used to wrap at `WALL.rows`, so a curtain held
+     * `berths * (rows + 1)` men and every one after that was dealt a place somebody was already
+     * standing in. Measured on one 150-length run — ten berths, three rows, forty places — with
+     * sixty men: TWENTY-ONE PAIRS of the reserve standing inside twelve units of each other,
+     * which is a scrum wearing the shape of a formation. A wall does not stop taking men; it
+     * stops taking them ON THE PARAPET. Everyone past that forms another rank behind the last,
+     * which is what a reserve IS, and it thins the crush against the stone that was squeezing
+     * men through their own gateway. */
     const over = i - berths;
-    const row = Math.floor(over / berths) % C.WALL.rows;
+    const row = Math.floor(over / berths);
     const t = ((over % berths) + 0.5) / berths;
     const off = C.WALL.man * 0.45 + C.WALL.foot * (row + 1);
     return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
