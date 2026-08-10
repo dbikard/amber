@@ -1709,6 +1709,53 @@ async function match(browser, base, renderer) {
     ok('nothing but a run is offered it', flip.onHall === false || flip.onHall === undefined,
        String(flip.onHall));
 
+    /* ---- A HALL'S STANDARD READS FIRST, AND IT READS WHILE THE MASONS ARE ON IT ----
+     * Reported from play. It was a line of small print near the bottom of the sheet, under the
+     * upgrade card and the valve — and it was not there AT ALL while the hall was rising or
+     * re-tooling, because that path returns early with nothing but the countdown. Which is
+     * exactly when it is wanted: a hall under the masons is a hall you are deciding about. */
+    const hf = await pg.evaluate(async () => {
+      const g = window.Game.game, pl = g.world.players[0], W = window.World;
+      const hall = pl.buildings.find((b) => b.bt === 'barracks');
+      if (!hall) return { err: 'no hall' };
+      const seen = (tag) => {
+        const f = document.querySelector('#sheet .sheet-flag');
+        if (!f) return { tag, has: false };
+        const sheet = document.getElementById('sheet');
+        const cards = [...sheet.querySelectorAll('.card')];
+        const fy = f.getBoundingClientRect().top;
+        const valve = document.getElementById('co-muster');
+        return { tag, has: true, text: f.textContent,
+                 colour: (f.querySelector('.sf-name') || {}).style ? f.querySelector('.sf-name').style.color : '',
+                 aboveEveryCard: cards.every((c) => c.getBoundingClientRect().top >= fy),
+                 valve: !!valve,
+                 /* the ONE order on this sheet given in a hurry: it must be the first card */
+                 valveFirst: !!valve && cards.length > 0 && cards[0] === valve };
+      };
+      window.UI.upSheet(hall, pl.essence, false, pl);
+      const idle = seen('idle');
+      /* now put the masons on it and open it again */
+      const wasWork = hall.work, wasFor = hall.workFor;
+      hall.work = 12; hall.workFor = 12;
+      window.UI.upSheet(hall, pl.essence, false, pl);
+      const busy = seen('under the masons');
+      hall.work = wasWork; hall.workFor = wasFor;
+      window.UI.closeSheet();
+      return { idle, busy, co: hall.co };
+    });
+    ok('the hall sheet shows its standard', hf.idle && hf.idle.has, JSON.stringify(hf.idle));
+    ok('...naming the company, in its own colour',
+       !!(hf.idle && /Standard\s*\d/.test(hf.idle.text) && hf.idle.colour),
+       JSON.stringify(hf.idle));
+    ok('...above every card on the sheet, not under them',
+       !!(hf.idle && hf.idle.aboveEveryCard), JSON.stringify(hf.idle));
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE — the masonry path returned before it */
+    ok('and it is still there while the masons are on the hall',
+       !!(hf.busy && hf.busy.has && /Standard\s*\d/.test(hf.busy.text)), JSON.stringify(hf.busy));
+    ok('the muster valve rides with it, first card and present under the masons',
+       !!(hf.idle && hf.idle.valveFirst && hf.busy && hf.busy.valve),
+       `idle ${JSON.stringify(hf.idle && hf.idle.valveFirst)}, busy ${JSON.stringify(hf.busy && hf.busy.valve)}`);
+
     suite(`${r} · the sheet stays live`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
     const live = await pg.evaluate(async () => {

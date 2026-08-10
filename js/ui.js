@@ -568,6 +568,44 @@
     el._me = me || null;
     el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${face.blurb}</div>`;
+    /* ---- WHOSE STANDARD THIS HALL MUSTERS INTO, IN THE HEADER ----
+     * It used to be a line of small print near the bottom of the sheet, under the upgrade card
+     * and the valve — and it was not there AT ALL while the hall was being raised or re-tooled,
+     * because that path returns early with nothing but the countdown. Which is exactly when you
+     * want it: a hall under the masons is a hall you are deciding about, and "which company do
+     * these men join" is the first question, not the last. So it goes at the top, in the
+     * company's own colour with its pennant beside it, before anything can return. */
+    if (d.spawns && me) {
+      const co0 = (me.companies || []).find((q) => q.id === s.co) || null;
+      const f = document.createElement('div');
+      f.className = 'sheet-flag';
+      f.innerHTML = co0
+        ? `<span class="sf-pip" style="background:${UI.coColor(co0.id)}"></span>` +
+          `<span class="sf-name" style="color:${UI.coColor(co0.id)}">⚐ Standard ${co0.id}</span>` +
+          `<span class="sf-note">${co0.paused ? 'mustering nobody'
+            : co0.rally ? 'posted afield' : 'holding at home'}</span>`
+        : '<span class="sf-name">⚐ No standard yet</span>';
+      el.appendChild(f);
+      /* ---- AND THE VALVE RIDES WITH IT ----
+       * Halting a standard's muster is the one order on this sheet you give in a hurry — the
+       * treasury is draining into recruits you would rather bank — and it was the third card
+       * down, under an upgrade you were not asking about, and MISSING ENTIRELY while the hall
+       * was under the masons. It belongs beside the flag it acts on, above everything, and it
+       * belongs there whatever the hall is doing: a company's other halls go on mustering
+       * while this one is being re-tooled, which is exactly when you might want them quiet. */
+      if (co0) {
+        const mu = document.createElement('button');
+        mu.className = 'card';
+        mu.id = 'co-muster';
+        mu.innerHTML = co0.paused
+          ? `<span class="c-ico">▶</span><span class="c-name">Resume Standard ${co0.id}</span>` +
+            '<span class="c-blurb">Its halls pay for troops again</span>'
+          : `<span class="c-ico">⏸</span><span class="c-name">Halt Standard ${co0.id}</span>` +
+            '<span class="c-blurb">Every hall under this standard stops mustering — the rest of the realm carries on</span>';
+        mu.addEventListener('click', () => { H.onMusterCo(co0.id, !co0.paused); UI.closeSheet(); });
+        el.appendChild(mu);
+      }
+    }
     /* still scaffolding: it earns nothing, musters nobody and holds no ground yet, and there
      * is nothing to offer but the wait */
     if (s.raise > 0 || s.work > 0) {
@@ -649,30 +687,9 @@
     }
     if (d.spawns && me) {
       const co = (me.companies || []).find((q) => q.id === s.co) || null;
-      const info = document.createElement('div');
-      info.className = 'sheet-blurb';
-      info.innerHTML = co
-        ? `<b style="color:${UI.coColor(co.id)}">⚐ Standard ${co.id}</b>` +
-          (co.rally ? ' — posted afield; its flag is in the tray' : ' — holding at home')
-        : '⚐ Its muster answers no standard yet';
-      el.appendChild(info);
-      /* THE VALVE, PER STANDARD. Halting the muster used to be the Seat's order and the Seat's
-       * alone, so saving for a Gate meant silencing every hall you own — the one holding the
-       * line included. This one is the COMPANY's: it reaches every hall under that standard
-       * and no others, and it is offered here because a hall is where you already are when
-       * you are thinking about what it musters. */
-      if (co) {
-        const mu2 = document.createElement('button');
-        mu2.className = 'card';
-        mu2.id = 'co-muster';
-        mu2.innerHTML = co.paused
-          ? `<span class="c-ico">▶</span><span class="c-name">Resume Standard ${co.id}</span>` +
-            '<span class="c-blurb">Its halls pay for troops again</span>'
-          : `<span class="c-ico">⏸</span><span class="c-name">Halt Standard ${co.id}</span>` +
-            '<span class="c-blurb">Every hall under this standard stops mustering — the rest of the realm carries on</span>';
-        mu2.addEventListener('click', () => { H.onMusterCo(co.id, !co.paused); UI.closeSheet(); });
-        el.appendChild(mu2);
-      }
+      /* (the standard AND its muster valve are in the HEADER now — see the top of this
+       * function. The valve was the one order here given in a hurry, and it was third card
+       * down and absent while the masons were on the hall.) */
       const change = document.createElement('button');
       change.className = 'card';
       change.id = 'change-standard';

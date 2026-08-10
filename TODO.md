@@ -703,6 +703,32 @@ below.
       (Watch the rig, still: the first curtain version counted anyone crossing the wall's
       LINE and so read men walking round it as a torrent through the gap — classify by
       offset along the line, never by the line alone.)
+- [ ] **A GARRISON RESHUFFLING STILL USES ITS OWN GATES — 560 transits, down from 4,222.**
+      Reported from play: on a zigzag wall with a large army, men go out through one gateway and
+      back in through another to reach their place. Two of the three causes are fixed (the
+      beeline through its own masonry, and the walk-in anchored on the doorway rather than
+      inside it); this is the third, and it is the flow field being RIGHT. The sheltered side of
+      a dogleg has the wall's own apexes poking into it, so walking round them genuinely is
+      longer than nipping through two gateways — the field takes the short way because it is the
+      short way. Overriding that is a deliberate design call (the owner's: "troops cannot use
+      gates when reshuffling between positions").
+      **The obvious implementation was BUILT AND MEASURED, and it is worse — do not simply try
+      it again.** A second layer per heir with his gateways solid, chosen by a posted man, with
+      the open layer as a fallback when the shut one cannot reach. It is CHEAP, which was worth
+      finding out: not a mask per company, it depends on the owner and one bit, so every heir
+      has exactly two and all his men share them — 12 KB each, rebuilt only when the standing
+      set changes, and adding almost no Dijkstras, because a posted man's doorsteps are goals
+      nobody else steers at. It still lost. **2,590** transits, because a man standing IN a
+      doorway is inside masonry on that layer, has no field to read, and jitters; and **637**
+      once the doorway itself was exempted, because a shut field that cannot reach the doorstep
+      falls back to the open one, and a man alternating between two routes crosses his wall more
+      than a man committed to either. The next attempt has to make the doorstep REACHABLE on the
+      shut layer — a heavy cost at the gateway rather than a block, or a doorstep the shut field
+      can always find — rather than fall back when it is not.
+      **Also tried and rejected, so nobody spends the afternoon again:** making
+      him hop to the doorstep of the NEXT run along the curtain instead of his destination's. It
+      does not remove the gate's advantage, it only shortens the hop the gate competes with, and
+      it adds a re-target every time the nearest run changes — 560 transits became 5,940.
 - [ ] **A CAMPAIGN: chapters, briefings and objectives.** What ships today is a *rung counter* —
       `LADDER`, one localStorage integer, and the identical skirmish on a random board five
       times. What is missing is not much, and most of it is already built.

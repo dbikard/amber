@@ -5638,6 +5638,246 @@ suite('a curtain is held along its whole length');
   }
 }
 
+/* ---------------- a curtain that curves has ONE sheltered face ----------------
+ * Reported from play, with a picture: "in a wall shaped like this, troops frequently walk on
+ * the wrong side of the wall to get to their position." `station` used to work the sheltered
+ * side out PER RUN, by pointing at the owner's Seat from that run's own midpoint. On a
+ * straight wall every run gets the same answer and the rule is invisible; on a wall that
+ * CURVES the direction home swings across the run's own perpendicular partway along, the
+ * answer flips, and the far half of the curtain has its berths and its reserve on the other
+ * side of the stone. A man walking his own wall to his own place then has to cross it.
+ * The face is a property of the WALL, so it is settled once in `noteWalls` and carried run to
+ * run along the curtain.
+ * The curtain is placed DIRECTLY rather than through the build command: the writ and the mason
+ * budget refuse a wall this long, and neither is what is under test. It goes up as a one-tick
+ * shell so `update` finishes it and calls `noteWalls` exactly as a real run does. */
+suite('a curtain that curves has one sheltered face');
+{
+  const BOARD = { name: 'the Curving Curtain', seed: 5, ground: 'PLAIN', height: 0.5,
+                  seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+                  springs: [{ x: 760, y: 300 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }] };
+  const w = World.createWorld(5, 2, BOARD);
+  const pl = w.players[0], city = World.cityOf(w, 0);
+  pl.essence = 1e7;
+  /* six crew-lengths bent steadily through 120 degrees */
+  const def = C.BUILDINGS.wall, pts = [];
+  const RAD = C.WALL.unit * 6 / (120 * Math.PI / 180);
+  for (let i = 0; i <= 6; i++) {
+    const a = Math.PI * 1.15 + (i / 6) * 120 * Math.PI / 180;
+    pts.push({ x: 1000 + Math.cos(a) * RAD, y: 900 + Math.sin(a) * RAD });
+  }
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y), units = len / C.WALL.unit;
+    pl.buildings.push({ id: w.nextId++, bt: 'wall', level: 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                        x2: b.x, y2: b.y, cd: 0, raise: 0.001, raiseFor: def.raise,
+                        hp: def.hp * units, maxHp: def.hp * units, lastHurt: -99, node: -1, co: 0,
+                        crews: Math.max(1, Math.ceil(units)), units,
+                        gated: units * C.WALL.unit >= C.WALL.gateMin ? 1 : 0 });
+  }
+  for (let k = 0; k < 20; k++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const runs = w.walls.filter((q) => q.owner === 0);
+  eq('the six runs stand', runs.length, 6);
+  eq('...and they are one curtain', new Set(runs.map((q) => q.curtain != null ? q.curtain : q.b.id)).size, 1);
+  /* the sheltered face, as the sim has it */
+  const shelt = (q) => {
+    const L = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
+    let nx = -(q.by - q.ay) / L, ny = (q.bx - q.ax) / L;
+    if (q.norm) { nx = q.norm.nx; ny = q.norm.ny; }
+    else if (nx * (city.x - q.b.x) + ny * (city.y - q.b.y) < 0) { nx = -nx; ny = -ny; }
+    if (q.b.flip) { nx = -nx; ny = -ny; }
+    return { nx, ny };
+  };
+  const ns = runs.map(shelt);
+  let opp = 0;
+  for (let i = 0; i + 1 < runs.length; i++)
+    if (ns[i].nx * ns[i + 1].nx + ns[i].ny * ns[i + 1].ny < 0) opp++;
+  /* THE ASSERTION THAT FAILS ON THE OLD CODE — runs 2 and 3 pointed opposite ways */
+  ok('no two neighbouring runs shelter opposite faces', opp === 0,
+     `${opp} neighbouring pair(s) disagree: ` + ns.map((n) => `(${n.nx.toFixed(2)},${n.ny.toFixed(2)})`).join(' '));
+  /* AND THE FACE IS ON THE WORK, because the renderer draws the parapet and swings the gates
+   * from it and cannot re-derive a chain it only holds part of */
+  ok('the face is stamped on the run, for the wire and the eye',
+     runs.every((q) => {
+       const L = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
+       const px = -(q.by - q.ay) / L, py = (q.bx - q.ax) / L;
+       const f = q.b.face != null ? q.b.face : 1;
+       return Math.abs(px * f - q.norm.nx) < 1e-6 && Math.abs(py * f - q.norm.ny) < 1e-6;
+     }), 'face: ' + runs.map((q) => q.b.face || 1).join(','));
+
+  /* ...and now walk a company along it. The spawn and the order are pinned to the RAW
+   * perpendicular turned toward the Seat — a constant — and not to the rule under test, or
+   * before and after would be two different experiments wearing one name. */
+  const raw = (q) => {
+    const L = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
+    let nx = -(q.by - q.ay) / L, ny = (q.bx - q.ax) / L;
+    if (nx * (city.x - q.b.x) + ny * (city.y - q.b.y) < 0) { nx = -nx; ny = -ny; }
+    return { nx, ny };
+  };
+  const first = runs[0], last = runs[runs.length - 1], rf = raw(first), rl = raw(last);
+  const co = { id: 7, rally: { x: last.bx + rl.nx * 30, y: last.by + rl.ny * 30, site: -1 } };
+  pl.companies = pl.companies || [];
+  pl.companies.push(co);
+  const men = [], MEN = 24;
+  for (let i = 0; i < MEN; i++) {
+    const a = (i / MEN) * Math.PI * 2, r = 20 + (i % 6) * 12;
+    const m = { id: 9001 + i, owner: 0, kind: 'archer', tier: 1,
+                x: first.ax + rf.nx * 40 + Math.cos(a) * r, y: first.ay + rf.ny * 40 + Math.sin(a) * r,
+                hp: 200, maxHp: 200, cd: 0, goal: null, co: co.id, from: 0 };
+    w.units.push(m); men.push(m);
+  }
+  const segNear = (q, px, py) => {
+    const dx = q.bx - q.ax, dy = q.by - q.ay, L2 = dx * dx + dy * dy || 1;
+    let t = ((px - q.ax) * dx + (py - q.ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return { x: q.ax + dx * t, y: q.ay + dy * t };
+  };
+  const prev = new Map(), crossers = new Set();
+  for (let k = 0; k < 30 * 60; k++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    if (k % 5) continue;
+    for (const m of men) {
+      if (m.hp <= 0 || !m.post) continue;
+      let near = null, nd = Infinity;
+      for (const q of runs) {
+        const p = segNear(q, m.x, m.y), dd = (p.x - m.x) * (p.x - m.x) + (p.y - m.y) * (p.y - m.y);
+        if (dd < nd) { nd = dd; near = { q, p }; }
+      }
+      const n = shelt(near.q);
+      const side = (m.x - near.p.x) * n.nx + (m.y - near.p.y) * n.ny;
+      const was = prev.get(m.id);
+      if (was != null && Math.abs(was) > C.WALL.thick && Math.abs(side) > C.WALL.thick &&
+          Math.sign(was) !== Math.sign(side)) crossers.add(m.id);
+      prev.set(m.id, side);
+    }
+  }
+  const spread = new Set(men.filter((m) => m.post).map((m) => m.post));
+  ok('the rig is alive: the company was dealt places along the whole curtain', spread.size >= 3,
+     `${spread.size} run(s) drew men`);
+  ok('...and they took them', men.filter((m) => m.man).length >= MEN - 2,
+     `${men.filter((m) => m.man).length} of ${MEN} standing in a place`);
+  /* THE ASSERTION THAT FAILS ON THE OLD CODE — eleven of forty crossed, measured */
+  eq('no man crossed his own wall to reach his place', crossers.size, 0);
+}
+
+/* ---------------- a garrison does not stroll out through its own gate ----------------
+ * Reported from play, with a picture and in these words: on a zigzag wall with a large army,
+ * "troops using a wall gate to go outside, then another wall gate to get to their position."
+ * Two causes, both measured on an eight-run dogleg with a hundred and sixty men and an assault
+ * sprung at the far end, counting every TRANSIT of the curtain (the segment a man walked this
+ * tick crossing a run's line), over a hundred seconds of reshuffling:
+ *   - the final approach is resolved by `stand` alone, which is what lets a man CLIMB his own
+ *     run, and the crossing test in front of it asked about that one run only — so a man
+ *     beelining the length of a zigzag walked through five runs of his own stone: 94 transits;
+ *   - the walk-in steered at the run's GATEWAY, a point ON the wall and a hole punched out of
+ *     its owner's own nav layer, so the flow field was free to route him through it — and on a
+ *     dogleg it did, because out-one-gate-and-in-the-next really is the short way: 4,222.
+ * With the beeline barred from every run but the one he is climbing onto, and the walk-in
+ * anchored a row INSIDE the doorway: 2 through the stone and 560 through a gateway. */
+suite('a garrison does not stroll out through its own gate');
+{
+  const BOARD = { name: 'the Dogleg', seed: 5, ground: 'PLAIN', height: 0.5,
+                  seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+                  springs: [{ x: 760, y: 300 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }] };
+  const w = World.createWorld(5, 2, BOARD);
+  const pl = w.players[0];
+  pl.essence = 1e7;
+  const ZIG = 50 * Math.PI / 180, def = C.BUILDINGS.wall, pts = [{ x: 620, y: 1000 }];
+  for (let i = 0; i < 8; i++) {
+    const a = (i % 2 ? -ZIG : ZIG), p = pts[pts.length - 1];
+    pts.push({ x: p.x + Math.cos(a) * C.WALL.unit, y: p.y + Math.sin(a) * C.WALL.unit });
+  }
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y), units = len / C.WALL.unit;
+    pl.buildings.push({ id: w.nextId++, bt: 'wall', level: 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                        x2: b.x, y2: b.y, cd: 0, raise: 0.001, raiseFor: def.raise,
+                        hp: def.hp * units, maxHp: def.hp * units, lastHurt: -99, node: -1, co: 0,
+                        crews: Math.max(1, Math.ceil(units)), units,
+                        gated: units * C.WALL.unit >= C.WALL.gateMin ? 1 : 0 });
+  }
+  for (let k = 0; k < 20; k++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const runs = w.walls.filter((q) => q.owner === 0);
+  eq('the zigzag stands as one curtain', new Set(runs.map((q) => q.curtain != null ? q.curtain : q.b.id)).size, 1);
+  ok('...and every run of it has a gateway', runs.every((q) => q.gate), runs.filter((q) => q.gate).length + '/' + runs.length);
+  /* A POLYLINE HAS A LEFT AND A RIGHT, and on a dogleg that is the only definition of "the
+   * same side" that survives. Chaining by "agree with your neighbour's normal" — the obvious
+   * rule, and the first one tried — flips a run whose bearing differs by more than a right
+   * angle, which is every dogleg, and puts alternate runs' sheltered faces on opposite sides.
+   * It was measured doing exactly that: gateway transits went UP, 61 to 87. */
+  const face = (q) => {
+    const L = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
+    let nx = -(q.by - q.ay) / L, ny = (q.bx - q.ax) / L;
+    if (q.norm) { nx = q.norm.nx; ny = q.norm.ny; }
+    if (q.b.flip) { nx = -nx; ny = -ny; }
+    return { nx, ny };
+  };
+  const ns = runs.map(face);
+  ok('every run of the dogleg shelters the same side of it',
+     ns.every((n) => Math.sign(n.ny) === Math.sign(ns[0].ny)),
+     ns.map((n) => `(${n.nx.toFixed(2)},${n.ny.toFixed(2)})`).join(' '));
+
+  /* a big army: berths are `len/berth` per run, so most of it is RESERVE, and the reserve is
+   * what walks */
+  const co = { id: 7, rally: null };
+  pl.companies = pl.companies || [];
+  pl.companies.push(co);
+  const raw0 = (() => {
+    const q = runs[0], L = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
+    const c = World.cityOf(w, 0);
+    let nx = -(q.by - q.ay) / L, ny = (q.bx - q.ax) / L;
+    if (nx * (c.x - q.b.x) + ny * (c.y - q.b.y) < 0) { nx = -nx; ny = -ny; }
+    return { nx, ny };
+  })();
+  const MEN = 160, men = [];
+  for (let i = 0; i < MEN; i++) {
+    const a = (i / MEN) * Math.PI * 2, r = 20 + (i % 8) * 13;
+    const m = { id: 9001 + i, owner: 0, kind: 'archer', tier: 1,
+                x: runs[0].ax + raw0.nx * 60 + Math.cos(a) * r,
+                y: runs[0].ay + raw0.ny * 60 + Math.sin(a) * r,
+                hp: 200, maxHp: 200, cd: 0, goal: null, co: co.id, from: 0 };
+    w.units.push(m); men.push(m);
+  }
+  const mid = runs[(runs.length / 2) | 0];
+  co.rally = { x: mid.gx, y: mid.gy, site: -1 };
+  const segX = (ax, ay, bx, by, cx, cy, dx, dy) => {
+    const sd = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+    const o = (u, v) => (u > 0) !== (v > 0);
+    return o(sd(ax, ay, bx, by, cx, cy), sd(ax, ay, bx, by, dx, dy)) &&
+           o(sd(cx, cy, dx, dy, ax, ay), sd(cx, cy, dx, dy, bx, by));
+  };
+  const at = new Map();
+  for (const m of men) at.set(m.id, { x: m.x, y: m.y });
+  const SPRING = 30 * 40;
+  let gateAfter = 0, stoneAll = 0;
+  for (let k = 0; k < 30 * 100; k++) {
+    if (k === SPRING) {
+      const q = runs[runs.length - 1], n = face(q);
+      for (let i = 0; i < 12; i++)
+        w.units.push({ id: 8000 + i, owner: 1, kind: 'soldier', tier: 1,
+                       x: q.bx - n.nx * (110 + i * 9), y: q.by - n.ny * (110 + i * 9),
+                       hp: 1e6, maxHp: 1e6, cd: 0, goal: null, co: 0, from: 0 });
+    }
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    for (const m of men) {
+      if (m.hp <= 0) continue;
+      const p = at.get(m.id);
+      if (p.x === m.x && p.y === m.y) continue;
+      for (const q of runs) {
+        if (!segX(p.x, p.y, m.x, m.y, q.ax, q.ay, q.bx, q.by)) continue;
+        const inGate = q.gate && (m.x - q.gx) * (m.x - q.gx) + (m.y - q.gy) * (m.y - q.gy) < C.WALL.gate * C.WALL.gate;
+        if (inGate) { if (k >= SPRING) gateAfter++; } else stoneAll++;
+      }
+      p.x = m.x; p.y = m.y;
+    }
+  }
+  ok('the rig is alive: the garrison filled the curtain', men.filter((m) => m.man).length >= 60,
+     men.filter((m) => m.man).length + ' standing in a place');
+  /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — 94 through the stone, 4,222 through the gates */
+  ok('almost nobody walks through his own masonry', stoneAll <= 20, stoneAll + ' transits through stone');
+  ok('...and the garrison does not commute through its own gateways',
+     gateAfter <= 1200, gateAfter + ' gateway transits while reshuffling');
+}
+
 /* ---------------- an heir does not enter a race he has already lost ----------------
  * Every heir walks at the same `rate` — the Shrine has one, not one per level — so whoever
  * sets foot on the lines first reaches a hundred first, always. While a walk could be called

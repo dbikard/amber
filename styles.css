@@ -74,6 +74,20 @@ body {
  * still his the moment he raises another, but it is not a walk in progress and must not
  * read like one. */
 .walker.stalled { opacity: 0.55; font-weight: normal; border-style: dashed; }
+/* THE HALL'S STANDARD, IN THE SHEET'S HEADER. A hall's whole point is the men it raises and
+ * the flag they answer to, so that flag reads first — pennant, name in the company's colour,
+ * and what it is doing — rather than as small print under the upgrade card. It sits directly
+ * under the title so it is there while the masons are still on the work. */
+.sheet-flag {
+  display: flex; align-items: center; gap: 8px;
+  margin: 2px 0 8px; padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05); border-radius: 6px;
+  border-left: 3px solid currentColor;
+  font-size: 14px; font-weight: bold; letter-spacing: 0.5px;
+}
+.sheet-flag .sf-pip { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.sheet-flag .sf-name { white-space: nowrap; }
+.sheet-flag .sf-note { color: #b8a878; font-weight: normal; font-size: 12px; letter-spacing: 0; }
 #timer { color: #b8a878; font-variant-numeric: tabular-nums; }
 #hud-bottom {
   position: absolute; bottom: calc(env(safe-area-inset-bottom, 0) + 2px); left: 0; right: 0;

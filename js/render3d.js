@@ -646,8 +646,14 @@
   function gateSign(b, city) {
     const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
     const ux = b.x2 - ax, uy = b.y2 - ay;
-    let flipN = false;
-    if (city && (-uy) * (city.x - b.x) + ux * (city.y - b.y) > 0) flipN = !flipN;
+    /* THE FACE IS THE CURTAIN'S, not this run's. `b.face` is stamped by `noteWalls`, carried
+     * run to run along a continuous wall so a curving curtain cannot flip its sheltered side
+     * halfway along, and it rides the wire beside `flip`. The city test below is what this
+     * used to do for every run and is now only the fallback — a run the sim has not stamped.
+     * `face` +1 means (-uy, ux) is sheltered, which is exactly when this wanted to swing the
+     * other way, so the two agree term for term. */
+    let flipN = b.face != null ? b.face > 0
+              : !!(city && (-uy) * (city.x - b.x) + ux * (city.y - b.y) > 0);
     if (b.flip) flipN = !flipN;
     return flipN ? -1 : 1;
   }
@@ -2188,10 +2194,17 @@
     /* AND HE FACES OUT. A man on a parapet turned whichever way he happened to be walking
      * when he got there, so a manned wall read as a queue rather than a line holding one.
      * The heading is the wall's outward normal — away from the Seat it shelters. */
+    /* ...and OUT is the curtain's own answer, `b.face`, chained run to run in `noteWalls` and
+     * carried on the wire — not this run's guess at the way home, which on a curving wall
+     * turns the line round halfway along and faces half the garrison at the other half. The
+     * city test is the fallback for a run the sim has not stamped. */
     let nx = -vy, ny = vx;
-    const cid = view.map.cities[u.owner];
-    const c = cid != null ? view.map.sites[cid] : null;
-    if (c && nx * (c.x - b.x) + ny * (c.y - b.y) > 0) { nx = -nx; ny = -ny; }
+    if (b.face != null) { if (b.face > 0) { nx = -nx; ny = -ny; } }
+    else {
+      const cid = view.map.cities[u.owner];
+      const c = cid != null ? view.map.sites[cid] : null;
+      if (c && nx * (c.x - b.x) + ny * (c.y - b.y) > 0) { nx = -nx; ny = -ny; }
+    }
     /* ...and a run its heir has TURNED ABOUT faces the other way, or the line on the parapet
      * would be facing its own reserve while the reserve took cover on the far side */
     if (b.flip) { nx = -nx; ny = -ny; }

@@ -425,9 +425,25 @@ blow against stone, multiplied.
   the run together, so holding a wall fills its bastions too. `postAll` clears `man`/`tow` once
   and runs the two passes in order — they each used to clear `tow` at their own start, so
   whichever ran second wiped the other's answer.
-  **A run's sheltered face is a guess the heir may overrule.** `station` faces the owner's Seat,
-  which is right for the one curtain across the road home and wrong for a run around a forward
-  spring or along a flank. `{c:'flip', id, on}` sets `b.flip` and `station` (and the renderer's
+  **A CURTAIN HAS ONE SHELTERED FACE, AND IT IS THE POLYLINE'S.** `station` used to face each
+  run at the owner's Seat independently, which is invisible on a straight wall and wrong on
+  every other: past a right angle of bend the direction home swings across the run's own
+  perpendicular and the sheltered side flips halfway along the stone. `noteWalls` now puts each
+  curtain's runs in ORDER along the wall, turns them to point the same way down it, and takes
+  the same HAND for every normal — all left or all right — with the hand settled at the run
+  nearest the Seat. Curvature cannot touch that: it is a property of the traversal, not of any
+  pair of bearings. (Chaining by "agree with your neighbour's NORMAL" is the obvious rule and is
+  wrong for a zigzag, where neighbours differ by more than a right angle — it was measured
+  making things worse.) `w.norm` is the sim's copy, `w.seq` the order, and `b.face` (+1/-1
+  against the run's own perpendicular) is stamped on the WORK so it rides the wire: the renderer
+  draws the parapet and swings the gates from it and cannot re-derive a chain it only holds part
+  of. `faceOf` is the one place the question is answered. **And a man walking to a place on it
+  may cross the run he is CLIMBING ONTO and nothing else of his own** (`ownStoneClear`), and he
+  walks in at a DOORSTEP one row inside the gateway rather than at the gateway itself — aimed
+  at the gateway, which is a hole in his own nav layer, the field cheerfully routes a garrison
+  out one gate and back in the next, because on a dogleg that is the short way.
+  **A run's sheltered face is a guess the heir may overrule.** `{c:'flip'}` negates it, per run,
+  at the point of use — the chain has no opinion about a run its heir has turned about. `{c:'flip', id, on}` sets `b.flip` and `station` (and the renderer's
   parapet facing) negate the normal. It asks for a STATE, not a toggle, takes no crew and no
   stone, and may be given while the masons are still on the run.
   **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,

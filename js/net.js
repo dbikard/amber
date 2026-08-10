@@ -492,6 +492,12 @@
            * a guest whose renderer turned that line the other way would draw a rival's parapet
            * facing its own reserve. It gives nothing away that watching the men would not. */
           ...(b.flip ? { flip: 1 } : {}),
+          /* ...and WHICH face that is, which is the curtain's answer and not this run's. It is
+           * chained run to run in `noteWalls` so a curving wall cannot turn its sheltered side
+           * over halfway along, and the guest's renderer cannot re-derive it: it holds the runs
+           * it can SEE, and the chain is a property of the whole curtain including the stone
+           * beyond the veil. Same reasoning as `flip`, and it rides for the same everyone. */
+          ...(b.face ? { face: b.face } : {}),
           /* the tower branch is yours to know and the rival's to guess */
           br: mine ? (b.br || null) : null,
           co: mine ? b.co : 0            // which company a hall musters into is yours to know

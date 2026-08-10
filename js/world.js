@@ -665,17 +665,57 @@
   };
   /* where a man posted to this wall should stand — on the parapet if he has a berth, at the
    * foot in rows behind it if he does not */
+  /* WHICH FACE OF A RUN SHELTERS, in one place, because three rules now ask: where a man
+   * stands, where he WALKS IN (the anchor below), and how the eye draws the parapet.
+   * `w.norm` is the curtain's own answer, chained run to run in `noteWalls`; the per-run test
+   * is the fallback for a run not in the standing set, and is what this always used to do.
+   * `flip` is the heir's overrule and comes last, in every case. */
+  /* how far inside its own doorway a man aims when he is walking to a run: clear of the stone's
+   * nav slab and of `shove`'s band, and about where the reserve's first row stands anyway */
+  const DOORSTEP = C.WALL.thick + C.WALL.foot + 10;
+  /* how near his own curtain a man has to be before he is walking ALONG it rather than TO it —
+   * generous, because a reserve stands rows deep behind the stone and is still on the wall */
+  const NEAR_WALL2 = (C.WALL.man * 2 + C.WALL.foot * C.WALL.rows) * (C.WALL.man * 2 + C.WALL.foot * C.WALL.rows);
+  /* is the straight line to his station clear of his OWN stone — every run of it but the one he
+   * is climbing onto? A rival's wall is not asked about here: he is not walking through that,
+   * `project` stops him, and this question is about a man cutting the corner of his own. */
+  function ownStoneClear(world, u, gx, gy, post) {
+    for (const q of world.walls) {
+      if (q.owner !== u.owner) continue;
+      /* HIS OWN RUN IS EXEMPT ONLY IF HE IS CLIMBING IT. That is what the exemption was always
+       * for — a berth is reached by going ONTO the stone, not through it — and written as a
+       * blanket exemption it let the RESERVE walk through its own curtain, which is the exact
+       * thing the old test was there to stop. Caught by `a wall can be turned about`: turn a
+       * run about, turn it back, and the reserve strolled through the wall to its old station
+       * instead of walking round, ending on the wrong face. A man with no berth has no business
+       * on the stone. */
+      if (u.toBerth && q.b.id === post.b.id) continue;
+      if (crosses(u.x, u.y, gx, gy, q.ax, q.ay, q.bx, q.by)) return false;
+    }
+    return true;
+  }
+  function faceOf(world, w, owner) {
+    let nx, ny;
+    if (w.norm) { nx = w.norm.nx; ny = w.norm.ny; }
+    else {
+      const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+      nx = -(w.by - w.ay) / L; ny = (w.bx - w.ax) / L;
+      const cs = cityOf(world, owner);
+      if (nx * (cs.x - w.b.x) + ny * (cs.y - w.b.y) < 0) { nx = -nx; ny = -ny; }
+    }
+    if (w.b.flip) { nx = -nx; ny = -ny; }
+    return { nx, ny };
+  }
   function station(world, u, w) {
     const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
     const berths = w.berths || Math.max(2, Math.round(L / C.WALL.berth));
     const ux = (w.bx - w.ax) / L, uy = (w.by - w.ay) / L;
-    const cs = cityOf(world, u.owner);
-    let nx = -uy, ny = ux;
-    if (nx * (cs.x - w.b.x) + ny * (cs.y - w.b.y) < 0) { nx = -nx; ny = -ny; }
-    /* ...unless the heir has turned the run about. Facing home is the right guess for the one
-     * curtain drawn across the road to your Seat and the wrong one for every other, so the
-     * `flip` order overrules it — see the command. */
-    if (w.b.flip) { nx = -nx; ny = -ny; }
+    /* THE FACE IS THE CURTAIN'S, worked out once in `noteWalls` and carried run to run so a
+     * curving wall cannot flip its sheltered side halfway along. The per-run test below is the
+     * fallback for a run not in the standing set — a hand-built rig, a run mid-rebuild — and
+     * is exactly what this used to do for every run. */
+    const f = faceOf(world, w, u.owner);
+    const nx = f.nx, ny = f.ny;
     const i = u.berth || 0;
     if (i < berths) {
       const p = berthAt(w, i, berths), off = PARAPET;
@@ -1211,6 +1251,122 @@
         if (!lowest.has(r) || id < lowest.get(r)) lowest.set(r, id);
       }
       for (let i = 0; i < wn; i++) world.walls[i].curtain = lowest.get(find(i));
+      /* ---- AND A CURTAIN HAS ONE SHELTERED FACE, NOT ONE PER RUN ----
+       * `station` used to work the sheltered side out per run, by pointing at the owner's Seat
+       * FROM THAT RUN'S OWN MIDPOINT. For a straight wall every run gets the same answer and
+       * the rule is invisible. For a wall that CURVES it is not: past about a right angle of
+       * bend the direction home swings across the run's own perpendicular, the answer flips
+       * partway along the stone, and the far half of the curtain has its berths and its
+       * reserve on the OTHER SIDE. A man walking the wall to his place must then cross his own
+       * wall to reach it — reported from play as troops walking on the wrong side of the wall.
+       * Measured on a six-run curtain curving through 120 degrees, forty archers: runs 2 and 3
+       * pointed their sheltered normals in OPPOSITE directions, and ELEVEN OF FORTY men crossed
+       * their own stone on the way to a place. At 200 and 280 degrees of curve, the same.
+       * The face is a property of the WALL, so it is settled here, once, where the standing set
+       * changes — the same reasoning `curtain` and `onWall` are derived by. Walk each curtain
+       * end to end and carry the side from run to neighbouring run, so neighbours always agree;
+       * seed the walk from the run nearest the owner's Seat, which is the one the old rule was
+       * always right about. `flip` still negates, per run, at the point of use: an heir who
+       * turns one run about is asking for that run, and the chain has no opinion about it.
+       * The chain is seeded and ordered by run ID — arithmetic every machine at a LAN table
+       * already agrees about — so a guest and the host stamp the same face without a byte. */
+      const byC = new Map();
+      for (let i = 0; i < wn; i++) {
+        const w = world.walls[i];
+        let g = byC.get(w.curtain);
+        if (!g) byC.set(w.curtain, g = []);
+        g.push(w);
+      }
+      const j3 = C.WALL.join * C.WALL.join;
+      for (const g of byC.values()) {
+        g.sort((a, b) => a.b.id - b.b.id);
+        /* A POLYLINE HAS A LEFT AND A RIGHT, and that is the only definition of "the same side"
+         * that survives a corner. The first version of this chained by agreeing with the
+         * neighbour's NORMAL — turn each run's perpendicular to the side its neighbour's points
+         * — which is right for a gentle curve and exactly wrong for a ZIGZAG: two runs of a
+         * dogleg differ in bearing by more than a right angle, so their perpendiculars are more
+         * than a right angle apart, so the test "flips" a run that was already on the correct
+         * side and puts alternate doglegs' sheltered faces on opposite sides of the wall.
+         * Measured: gateway transits went UP, from 61 to 87 over two minutes.
+         * So the runs are put in ORDER along the stone and turned to point the same way down
+         * it, and every normal is then the same hand — all left, or all right. Curvature cannot
+         * touch that: it is a property of the traversal, not of any pair of bearings. Which
+         * hand is settled once, at the run nearest the Seat, by the old question. */
+        const ends = (w) => [[w.ax, w.ay], [w.bx, w.by]];
+        const touch = (p, q2) => d2(p[0], p[1], q2[0], q2[1]) < j3;
+        const nb = new Map();                     // run -> [{w, myEnd, itsEnd}]
+        for (const w of g) nb.set(w, []);
+        for (let i = 0; i < g.length; i++) for (let k = i + 1; k < g.length; k++) {
+          const A = g[i], B = g[k], ea = ends(A), eb = ends(B);
+          for (let x = 0; x < 2; x++) for (let y = 0; y < 2; y++)
+            if (touch(ea[x], eb[y])) { nb.get(A).push({ w: B, my: x, its: y }); nb.get(B).push({ w: A, my: y, its: x }); }
+        }
+        /* start at a free end if there is one (a loop has none), lowest id first so every
+         * machine walks the same stone in the same direction without a byte about it */
+        let head = g.find((w) => nb.get(w).length <= 1) || g[0];
+        const order = [], seen = new Set();
+        let cur = head, fromEnd = 0;              // `fromEnd` is the end we entered by
+        while (cur && !seen.has(cur)) {
+          seen.add(cur);
+          order.push({ w: cur, rev: fromEnd === 1 });   // walk from `fromEnd` toward the other
+          const tail = fromEnd === 1 ? 0 : 1;
+          const next = (nb.get(cur) || []).find((e) => !seen.has(e.w) && e.my === tail);
+          if (!next) break;
+          fromEnd = next.its; cur = next.w;
+        }
+        /* the hand: settle it at the run nearest the Seat, facing home, then carry it */
+        const cs = cityOf(world, g[0].owner);
+        let seedI = 0, sd = Infinity;
+        for (let i = 0; i < order.length; i++) {
+          const dd = d2(order[i].w.b.x, order[i].w.b.y, cs.x, cs.y);
+          if (dd < sd) { sd = dd; seedI = i; }
+        }
+        const leftOf = (o) => {
+          const w = o.w, L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+          const dx = (w.bx - w.ax) / L * (o.rev ? -1 : 1), dy = (w.by - w.ay) / L * (o.rev ? -1 : 1);
+          return { nx: -dy, ny: dx };
+        };
+        let hand = 1;
+        if (order.length) {
+          const l = leftOf(order[seedI]), m = order[seedI].w.b;
+          hand = (l.nx * (cs.x - m.x) + l.ny * (cs.y - m.y) < 0) ? -1 : 1;
+        }
+        for (let i = 0; i < order.length; i++) {
+          const o = order[i], l = leftOf(o);
+          o.w.norm = { nx: l.nx * hand, ny: l.ny * hand };
+          /* WHERE THIS RUN COMES IN THE WALL. The traversal is built here anyway, and a garrison
+           * that must walk its own curtain without leaving cover needs to know which run is
+           * NEXT — see the march. Ordered by the walk, so it is the stone's own order and not
+           * an id order. */
+          o.w.seq = i;
+        }
+        /* a run the walk never reached — joined broadside, or through stone that has since
+         * gone — keeps the old per-run answer rather than nothing at all */
+        for (const w of g) {
+          if (w.norm) continue;
+          const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+          const p = { nx: -(w.by - w.ay) / L, ny: (w.bx - w.ax) / L };
+          w.norm = (p.nx * (cs.x - w.b.x) + p.ny * (cs.y - w.b.y) < 0) ? { nx: -p.nx, ny: -p.ny } : p;
+        }
+        /* AND IT IS STAMPED ON THE WORK, because the RENDERER has to agree with it. The eye
+         * worked the face out the same way `station` did — per run, from the direction home —
+         * so a curtain whose sheltered side is chained in the sim and guessed in the renderer
+         * would draw its parapet, and swing its gates, on the far side of the men standing on
+         * it. `world.walls` is the sim's own list and never crosses the wire; a field on the
+         * building does (see `net.js`), so a guest hangs the same doors on the same runs the
+         * host does — which is the contract the gate already runs on. +1 means the run's own
+         * (-uy, ux) is the sheltered side, -1 the other; `flip` still negates at the point of
+         * use, in both places. */
+        for (const w of g) {
+          const L = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+          const px = -(w.by - w.ay) / L, py = (w.bx - w.ax) / L;
+          /* ALWAYS stamped, both signs. Written as "-1 or nothing" the absent case is
+           * indistinguishable from "the sim has no opinion", and the renderer's fallback is the
+           * old per-run guess — so every run the chain called +1 would have been drawn by the
+           * very rule this replaces. One int, and walls are counted on one hand. */
+          w.b.face = (px * w.norm.nx + py * w.norm.ny < 0) ? -1 : 1;
+        }
+      }
     }
     /* WHICH RUN A TOWER STANDS ON IS DERIVED, not stamped. The answer changes without the
      * tower being touched — the curtain under it is breached, mended, thrown down, or a new
@@ -3275,8 +3431,17 @@
              * curtain bars its owner everywhere but his gateway. Without this the rows at the
              * foot stroll through their own wall — visible the moment a run is turned about,
              * when every reserve station moves to the far face. */
-            if (u.atWall &&
-                (u.toBerth || !crosses(u.x, u.y, gx, gy, post.ax, post.ay, post.bx, post.by))) {
+            /* ...AND IT MUST NOT CUT THROUGH THE REST OF THE CURTAIN TO GET THERE. The
+             * exemption was `u.toBerth ||` — a blanket one for anybody with a berth — and the
+             * crossing test it stood in front of asked about his OWN RUN alone. On a straight
+             * wall those are the same question. On a ZIGZAG they are not: a man at one end
+             * beelines to a place at the other and walks through five runs of his own stone on
+             * the way, because the final approach is resolved by `stand` alone and `stand` is
+             * what lets him climb. Reported from play with a large army. So he may still walk
+             * through the run he is CLIMBING ONTO — that is the whole point of the exemption —
+             * and nothing else of his own. Anything further goes back to the flow field, which
+             * knows where the stone is. */
+            if (u.atWall && ownStoneClear(world, u, gx, gy, post)) {
               if (dg > 3) { u.x += (gx - u.x) / dg * speed * dt; u.y += (gy - u.y) / dg * speed * dt; }
               stand(world, u, u.x, u.y);
               continue;
@@ -3290,7 +3455,51 @@
              * walking to one steers at the tower's own centre; a run's gateway is the same
              * answer, it is already punched out of the owner's nav mask, and it is where a man
              * coming from inside the realm would walk anyway. ONE field per run. */
-            const door = post.gate ? { x: post.gx, y: post.gy } : st2;
+            /* ...AND THE DOOR IS ON THE SHELTERED SIDE OF THE DOORWAY. Steering at the
+             * gateway itself aims a man at a point ON the wall, and a gateway is a hole punched
+             * out of its OWNER's nav layer — so the field is free to route him through it. On a
+             * zigzag it does: the cheapest way from a place on one dogleg to a place on the
+             * next ran OUT through one gateway and back IN through the next, which is a garrison
+             * taking a stroll through the field it is supposed to be shooting into. Reported
+             * from play. Anchoring one parapet-and-a-row INSIDE the doorway keeps the one goal
+             * cell per run that the cache needs — the whole reason this is not aimed at his
+             * berth — while putting that cell on the side he belongs on, so the short way there
+             * is the way that never leaves cover. A man genuinely OUTSIDE still routes through
+             * the gate to reach it, which is what a gate is for. */
+            /* AND THE REMAINING GATE TRANSITS ARE THE FIELD BEING RIGHT, which is why they
+             * are still here. The sheltered side of a dogleg wall has the wall's own apexes
+             * poking into it, so walking round them really can be longer than nipping out
+             * through one gateway and back in through the next — the field takes the short way
+             * because it IS the short way. Making a man hop from his own run's doorstep to the
+             * NEXT run's, one at a time, was tried and measured: it does not remove the gate's
+             * advantage, it only shortens the hop the gate is competing with, and it adds a
+             * re-target every time the nearest run changes — 560 transits became 5,940.
+             * Closing a gate to a man who is only RESHUFFLING is the real answer and it is a
+             * nav-layer change (a second per-owner mask with the gateways solid), with a real
+             * cost on a phone. Noted in TODO rather than smuggled in here. */
+            const fn = faceOf(world, post, u.owner);
+            const door = post.gate
+              ? { x: post.gx + fn.nx * DOORSTEP, y: post.gy + fn.ny * DOORSTEP }
+              : st2;
+            /* ---- AND CLOSING HIS OWN GATES TO HIM WAS TRIED, AND MEASURED WORSE ----
+             * The owner's gateways are punched out of the owner's nav layer so his columns can
+             * pass, and a garrison walking its own curtain takes them: on a zigzag, out through
+             * one gate and back in through the next genuinely IS the shortest path, because the
+             * sheltered side has the wall's own apexes poking into it. The obvious answer is a
+             * second layer per heir with his gateways solid — and it is cheap, which was worth
+             * finding out: it is not a mask per company, it depends on the OWNER and one bit,
+             * so every heir has exactly two and all his men share them, 12 KB each, rebuilt
+             * only when the standing set changes, and adding almost no Dijkstras because a
+             * posted man's doorsteps are not goals anyone else steers at.
+             * It still made things worse. Reshuffling transits on the eight-run dogleg with a
+             * hundred and sixty men: 560 as it stands here, 2,590 with the shut layer (a man
+             * standing IN a doorway is inside masonry on that layer, has no field to read, and
+             * jitters), and 637 once the doorway itself was exempted — because a shut field
+             * that cannot reach the doorstep falls back to the open one, and a man alternating
+             * between two different routes crosses his wall more than a man committed to
+             * either. The rule the owner asked for is right; a drop-in layer is not the way to
+             * get it, and the next attempt should make the doorstep reachable ON the shut layer
+             * rather than fall back when it is not. Numbers in TODO. */
             const s4 = NAV.steer(world.nav, world, u.owner, door.x, door.y, u.x, u.y);
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, door.x, door.y)) || 1);
             const vx2 = s4 ? s4.x : (door.x - u.x) / L2, vy2 = s4 ? s4.y : (door.y - u.y) / L2;
