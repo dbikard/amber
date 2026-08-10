@@ -5923,6 +5923,20 @@ suite('the campaign: chapters and their objectives');
   eq('every chapter builds its board', built, CAM.CHAPTERS.length);
   ok('...with nothing refused', bad.length === 0, bad.join(' '));
 
+  /* A CHAPTER THAT ASKS THE PLAYER TO WALK MUST NOT LEAVE THE RIVAL FREE TO WALK.
+   * This is the rule the reported bug broke, stated so it cannot come back. Every heir walks
+   * at one rate and a walk cannot be called off, so a rival who steps on first arrives first
+   * whatever the player does — a chapter won by walking is a chapter that can be lost before
+   * the player has done anything wrong, unless the rival's own road is shut. */
+  {
+    const w0 = World.createWorld(11, 2);
+    const walking = CAM.CHAPTERS.filter((c2) => /^Walk the Pattern/.test(c2.obj.line(w0, 0, {})));
+    ok('some chapter is about walking the Pattern', walking.length >= 1, String(walking.length));
+    ok('...and every one of them shuts the rival\'s own road',
+       walking.every((c2) => !!(c2.opts && c2.opts.noWalk)),
+       walking.filter((c2) => !(c2.opts && c2.opts.noWalk)).map((c2) => c2.key).join(','));
+  }
+
   /* the objectives, each against a real world driven to the state it asks about */
   const w = World.createWorld(4242, 2);
   const me = 0, pl = w.players[me];
@@ -5976,6 +5990,23 @@ suite('the campaign: chapters and their objectives');
     eq('raze: and now it does not', o.check(w, me, st), 'won');
     en.buildings.length = 0;
     for (let i = 0; i < had; i++) en.buildings.push(gate(-1));
+  }
+  /* --- walk: the road named, and the sim's own rule left to end the match ---
+   * This chapter used to be a RACE — the rival already on the lines, the player told to walk
+   * it before he did — and it was unwinnable by its own stated route: every heir walks at one
+   * rate and a walk cannot be called off, so whoever steps on first arrives first. Reported
+   * from play. The cure is in the rival's opts (`noWalk`), not in a second win condition, so
+   * the objective stays a READOUT and `check` must never claim a victory of its own. */
+  {
+    const o = CAM.OBJ.walk(), st = {};
+    pl.pattern = 0;
+    eq('walk: nothing to declare on a fresh board', o.check(w, me, st), null);
+    ok('...and the readout is your own progress', /0%/.test(o.line(w, me, st)), o.line(w, me, st));
+    pl.pattern = 63.4;
+    ok('...which follows the walk', /63%/.test(o.line(w, me, st)), o.line(w, me, st));
+    pl.pattern = 100;
+    eq('walk: a hundred is the SIM\'s ending, not the objective\'s', o.check(w, me, st), null);
+    pl.pattern = 0;
   }
   /* --- survive --- */
   {
@@ -6069,13 +6100,13 @@ suite('an heir does not enter a race he has already lost');
   };
   /* past the stall-breaker's hour and rich enough to finish, so the heir WANTS to walk and the
    * only thing that can stop him is the rule under test */
-  const play = (rivalWalking) => {
+  const play = (rivalWalking, opts) => {
     const w = World.createWorld(4242, 2);
     w.chaosNext = 1e9; w.t = 1600;
     shrineOn(w, 0); shrineOn(w, 1);
     w.players[0].essence = 1e6;
     if (rivalWalking) { w.players[1].walking = true; w.players[1].pattern = 12; }
-    const bot = AI.make('julian'), cmds = [];
+    const bot = AI.make('julian', opts), cmds = [];
     for (let i = 0; i < 6; i++) bot.step(w, 0, (cm) => cmds.push(cm), 1.0);
     return { walks: cmds.filter((c) => c.c === 'walk' && c.on).length,
              saw: AI.view(w, 0).walkers.length };
@@ -6088,6 +6119,14 @@ suite('an heir does not enter a race he has already lost');
   eq('a rival\'s walk is public, so he can see it', raced.saw, 1);
   /* THE ASSERTION THAT FAILS ON THE OLD CODE — he used to step on regardless */
   eq('...and he does not step on behind him', raced.walks, 0);
+
+  /* AND A CHAPTER MAY SHUT THE ROAD ALTOGETHER. `noWalk` is what keeps chapter III from
+   * ending with the Master of Arms quietly walking the Pattern while you hold your Seat
+   * against him, and it is what makes chapter V — where the walk is the PLAYER's — a chapter
+   * rather than a race the rules say cannot be won. It is not a handicap: the heir fights
+   * exactly as hard. Measured on the rig proven alive above, which walks without it. */
+  const shut = play(false, { noWalk: 1 });
+  eq('a chapter may shut the road: he wants to walk and does not', shut.walks, 0);
 }
 
 /* ---------------- */

@@ -114,16 +114,19 @@
     check: (w, me) => (w.t >= secs ? 'won' : null)
   });
 
-  /* THE RACE. A walk is public and cannot be called off, so this is the one objective where the
-   * board tells you exactly how you are doing and there is nothing to do about it but be faster
-   * or go and break his Shrine. */
+  /* THE WALK — AND IT IS THE PLAYER'S, NOT A RACE.
+   * "Walk the Pattern before he does" was the first version of this and it asked for something
+   * the rules forbid. Every heir walks at the SAME rate — the Shrine has one, not one per level
+   * — and a walk CANNOT be called off, so whoever steps on first arrives first, always. A rival
+   * already on the lines when the chapter opens cannot be caught by any amount of play, and the
+   * objective was unwinnable by its own stated route. Reported from play.
+   * The cure is not a faster walk, it is a rival who is not walking: `noWalk` in his opts, which
+   * the campaign already had. The chapter then teaches the road from the side the player can
+   * actually steer — the drain that starves your muster, and a walk that tells the whole board
+   * where your Shrine is while it runs. The sim ends a match at a hundred, so this only has to
+   * name the road and say how far along you are. */
   OBJ.walk = () => ({
-    line: (w, me) => {
-      const mine = w.players[me].pattern;
-      const his = Math.max(0, ...rivals(w, me).map((i) => (w.players[i].revealed ? w.players[i].pattern : 0)));
-      return `Walk the Pattern first — you ${mine.toFixed(0)}%, he ${his.toFixed(0)}%`;
-    },
-    /* the sim already ends a match at a hundred, so this only has to name the road */
+    line: (w, me) => `Walk the Pattern — ${w.players[me].pattern.toFixed(0)}%`,
     check: () => null
   });
 
@@ -236,22 +239,39 @@
       ]
     },
     {
-      key: 'pattern', title: 'V · The Pattern', heir: 'corwin', seed: 0x5ade05,
-      opts: { eco: 1.0, hold: 240 },
-      brief: 'Corwin of Amber has raised a Shrine, and a walk is a public act: the moment an '
-           + 'heir sets foot on the Pattern, every board at the table shows how far along he is.\n\n'
-           + 'The lines carry every walker at the same rate, so whoever steps on first arrives '
-           + 'first — and a walk CANNOT be called off, because the drain is taken before your '
-           + 'halls are paid.\n\n'
-           + 'Reach a hundred before he does. There are two ways to manage it: be the one who '
-           + 'stepped on first, or throw his Shrine down — which tears him off the lines and '
-           + 'costs him most of what he had walked.',
+      key: 'pattern', title: 'V · The Pattern', heir: 'bleys', seed: 0x5ade05,
+      /* HE DOES NOT WALK, AND THE CHAPTER SAYS SO. Written the other way round first — the
+       * rival already on the lines, you told to walk it before he did — and it was unwinnable
+       * by its own stated route, because every heir walks at one rate and a walk cannot be
+       * called off. Reported from play. This is the same lesson from the side the player can
+       * steer: the road is his to take, and what it costs is the whole difficulty.
+       * IT IS CHAPTER II'S RIVAL AT CHAPTER II'S FOOTING, deliberately and to the number. The
+       * chapter adds nothing to him because it does not need to — a walk is 22 essence a second
+       * for five and a half minutes, taken before a single recruit is paid for, which is a
+       * heavier handicap than any footing in this file. Measured on this board with a heir
+       * standing in for the player: he steps on at 3.6m and is 85% along when his Seat falls at
+       * 8.0m. A near miss for a bot who does not think to garrison his own Shrine. */
+      opts: { eco: 0.75, hold: 420, noWalk: 1 },
+      brief: 'Bleys of the Flame again, with the same realm behind him as the day you burned '
+           + 'his forward wells. Nothing about him has changed — and he has no patience for the '
+           + 'lines, so he will not be walking anywhere. The other road is yours alone.\n\n'
+           + 'What has changed is what you mean to do while he comes. A walk drains your '
+           + 'essence BEFORE your halls are paid: step on early and you muster nobody for five '
+           + 'and a half minutes. Take springs first — the Pattern is bought with Shadow Gates.\n\n'
+           + 'And a walk is a public act. The moment you set foot on the lines your Shrine '
+           + 'burns on every board in the game, so he will know exactly where to send his army; '
+           + 'throw the Shrine down and the walker is torn off the Pattern. It cannot be called '
+           + 'off, and there is no second attempt inside one match.\n\n'
+           + 'Walk the Pattern to its heart.',
       obj: OBJ.walk(),
       won: 'You walked it to its blazing heart and spoke your name. The universe rearranges.',
       hints: [
-        { when: (w) => w.t > 8, text: '✴ Raise a Pattern Shrine — but a walk you cannot pay for is a loss you chose' },
-        { when: (w, me) => (global.World.walkers(w) || []).some((q) => q.pi !== me),
-          text: '⚔ He is on the lines. Every heir walks at one rate — break his Shrine, or be faster' }
+        { when: (w, me) => w.players[me].buildings.filter((b) => b.bt === 'gate' && !b.raise).length >= 3
+                           && !w.players[me].buildings.some((b) => b.bt === 'shrine'),
+          text: '✴ Three springs will carry the drain — raise a Pattern Shrine and step on' },
+        { when: (w, me) => w.players[me].walking,
+          text: '⚔ He can see your Shrine now — keep an army on it. Break it and the walk stops, '
+              + 'and you lose ground you have already paid for' }
       ]
     },
     {
