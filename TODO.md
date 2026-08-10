@@ -762,6 +762,28 @@ below.
       The fix is probably to treat the corridor like the waterline in the MARCH as well (a step
       turned along the band rather than refused), not to add another force. Worth a rig that
       watches ONE man from muster to station rather than a tally at the end.
+- [ ] **One or two men still contend for a place at the foot of a wall.** The garrison at rest
+      is otherwise still now (`a garrison at rest stands still`): median walking per reserve man
+      over twenty seconds with no enemy on the board went from 2.57 units a second to 0.00, and
+      the median man stands 2-3 units from his place rather than 15. The MEAN is 5.04 → 2.77,
+      and the whole of that remainder is one man of sixteen walking his 1.48-unit stride into a
+      1.5-unit shove, twelve units from a place he never reaches. Two candidate cures were
+      written and both measured WORSE, so neither shipped: spacing the foot rows at `CROWD.space`
+      rather than on the parapet's berth grid (the honest fix for a formation packed tighter
+      than the crowd allows — but it makes the rows deeper and produced TWO runners instead of
+      one, mean 3.35), and refusing a step that does not close the distance (no measurable
+      effect at all — the step DOES close it, and the shove after it opens it again). The real
+      answer is probably that a settled man should ignore the crowd the way a berthed man does,
+      which is a change to who is in `jostle`'s grid and wants its own measurement.
+- [ ] **A wall's own reshuffling could not be reproduced.** Reported alongside the jitter above:
+      "archers on walls keep reshuffling even when the wall is not under attack". Measured three
+      ways on a two-run curtain with the garrison settled: with no enemy anywhere, ZERO places
+      change hands in twenty seconds; with a hall mustering a recruit every three seconds for a
+      minute, exactly one place changes hands per recruit and no man already standing is moved;
+      with one rival strolling the length of the wall at 400/300/200/120 units out, 0/2/5/2
+      places change hands in thirty seconds, which is the curtain gathering toward him and is
+      the rule working. `WALL.alarm` is 420 — four times an archer's reach — so a bystander
+      does move the roster, and that is the one lever if it is reported again.
 - [ ] **The heirs play one army and one and a half orders.** Surveyed against the grammar and
       the content tables, with the claims measured over real headless matches (seeds 1000-1005).
       Ordered by impact over effort; `[REF]` needs `node sim.js` before and after, `[SAFE]` does

@@ -286,7 +286,14 @@
    * Rounding the first up to the second billed every run under WALL.unit as a full one. */
   const wallUnits = (len) => Math.max(0, len) / C.WALL.unit;
   const wallCrews = (len) => Math.max(1, Math.ceil(wallUnits(len)));
-  const crewsOn = (b) => (b.crews || 1);
+  /* ...AND A MEND IS WORKED BY HOWEVER MANY CREWS WENT TO IT. Raising a run needs one crew per
+   * `WALL.unit` and there is no arguing with it — that is what caps the length you may start.
+   * A BREACH IS NOT A NEW RUN: the stone is on the ground, the run is standing, and a realm
+   * that raised a four-crew curtain on four Gates and then lost two of them could not mend it
+   * AT ALL. The refusal was `busy` with nothing whatever busy — reported from play, and
+   * measured: three crews wanted, two masons standing idle, `{c:'fix'}` refused on every
+   * attempt and the wall ruined for the rest of the match with no way back. */
+  const crewsOn = (b) => (b.fixing && b.fixCrews ? b.fixCrews : (b.crews || 1));
   /* how much STONE a work is, in run-lengths: 1 for everything that is not a wall */
   const sizeOf = (b) => (b.units != null ? b.units : (b.crews || 1));
   function rising(world, pi) {
@@ -440,7 +447,26 @@
        * by THIRTY-ONE men — forty-five each, which is a man oscillating, not a man walking.
        * The reserve's rule is the one the comment above already claims for it: his rows are
        * ordinary ground and he walks to them like anyone, judged on his own station. */
+      /* ...AND THE RESERVE'S OWN WINDOW IS HIS RANK, NOT AN ARRIVAL CIRCLE. His place is
+       * ordinary ground behind the wall, so he is handed the last stretch when he is near it —
+       * and a man whose rank is further from the stone than one arrival circle never gets that
+       * far. He steers at the run's GATEWAY, which is a point ON the wall; he reaches it, is
+       * still "far" from a rank a hundred and forty back, goes on steering at the door he is
+       * standing in, and never takes another step. Measured at rest on a two-run curtain: five
+       * of sixteen reserve men parked between 36 and 144 units from their places, three of them
+       * standing in the gateway itself. Reported from play as troops jittering in front of the
+       * gate instead of forming rank beside it.
+       * So the window is the BAILEY HIS RANK STANDS IN: he walks the last of it himself
+       * whenever he is no deeper behind his own wall than his own place is, plus the same
+       * arrival circle. There is no gap to fall through, which is what makes it safe — granting
+       * it by nearness to the RUN alone was tried and it oscillates (173 gateway transits became
+       * 1,418, by thirty-one men): he beelines away to his rank, leaves the run's vicinity, is
+       * handed back to the field, is steered at the doorstep, and comes back. A man out in the
+       * realm is further off than his rank is and still rides the field, and a man on the WRONG
+       * side is refused by `ownStoneClear` at the beeline itself. */
       let near = ds < A2 || (u.toBerth && segD2(w.b, u.x, u.y) < A2);
+      if (!near && !u.toBerth)
+        near = Math.sqrt(segD2(w.b, u.x, u.y)) < Math.sqrt(segD2(w.b, st.x, st.y)) + C.NAV.arrive;
       if (!near && u.toBerth) {
         const cid = w.curtain != null ? w.curtain : w.b.id;
         for (const q of world.walls) {
@@ -768,9 +794,8 @@
      * became 24, which is a rule that looks like it is working and is not. Keeping the spacing
      * and letting the displaced men fall through to the NEXT RANK is the whole of it. */
     const over = i - berths;
-    const gL = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
     /* a little wider than the gate itself, so a column has room to turn into it */
-    const band = w.gate ? Math.min(0.6, (C.WALL.gate * 1.35 * 2) / gL) : 0;
+    const band = w.gate ? Math.min(0.6, (C.WALL.gate * 1.35 * 2) / L) : 0;
     let lo = 0, shut = 0;
     if (band > 0) {
       lo = Math.ceil((0.5 - band / 2) * berths - 0.5);
@@ -1166,7 +1191,17 @@
         a._cx -= nx * give; a._cy -= ny * give; a._cn++;
         b._cx += nx * give; b._cy += ny * give; b._cn++;
         a._pr++; b._pr++;                       // ...and each is one man of the other's press
-      } else if (a.owner === b.owner && a.co === b.co) {   // COHESION: my own company, and no one else's
+      /* COHESION: my own company, and no one else's — AND NOT A MAN ON HIS WAY TO A PLACE HE
+       * HAS BEEN GIVEN. Knit is what holds a company together on the march and it is exactly
+       * wrong for a man walking out of it to his own station: measured at rest on a two-run
+       * curtain, three reserve men walked their full 1.47-unit stride toward their rows every
+       * tick for twenty seconds and moved NOWHERE, because two fellows behind them pulled them
+       * back by the crowd's cap — which is the same stride. They stood 36, 47 and 144 units
+       * from their places for ever, one of them in the gateway. It is the trap a man walking to
+       * a BERTH was lifted out of by being taken out of the crowd altogether; the reserve needs
+       * only this half of it, because his rows are ordinary ground and he must still not stand
+       * inside anybody. So separation keeps him, cohesion lets him go. */
+      } else if (a.owner === b.owner && a.co === b.co && !a.atWall && !b.atWall) {
         const give = (dd - R) * 0.5 * C.CROWD.knit;
         a._cx += nx * give; a._cy += ny * give; a._cn++;
         b._cx -= nx * give; b._cy -= ny * give; b._cn++;
@@ -2153,13 +2188,21 @@
       if (!s2) return { ok: false, err: 'id' };
       if (!s2.breach) return { ok: false, err: 'whole' };
       if (s2.work > 0) return { ok: false, err: 'working' };
-      const crews = s2.crews || 1;
-      if (rising(world, pi) + crews > masons(world, pi)) return { ok: false, err: 'busy' };
+      /* A CREW AT LEAST, AND AS MANY MORE AS ARE STANDING IDLE. Asking for the run's full
+       * complement is what made a long curtain unmendable for good; asking for one is what
+       * makes a mend always possible. The work is what pays for being short-handed — half the
+       * crews, twice as long — so nothing is given away, and `crewsOn` reports what is
+       * actually on it so the mason readout and the next order both stay honest. */
+      const free = masons(world, pi) - rising(world, pi);
+      if (free < 1) return { ok: false, err: 'busy' };
+      const crews = Math.min(s2.crews || 1, free);
       const price = Math.max(1, Math.round(C.BUILDINGS.wall.cost * sizeOf(s2) * C.WALL.repair));
       if (pl.essence < price) return { ok: false, err: 'essence' };
       pl.essence -= price;
-      s2.work = s2.workFor = Math.max(1, C.BUILDINGS.wall.raise * sizeOf(s2) * C.WALL.fixWork);
+      s2.work = s2.workFor = Math.max(1, C.BUILDINGS.wall.raise * sizeOf(s2) * C.WALL.fixWork
+                                         * ((s2.crews || 1) / crews));
       s2.fixing = 1;
+      s2.fixCrews = crews;
       emit(world, { e: 'mending', pi, id: s2.id, x: s2.x, y: s2.y });
       return { ok: true };
     }
@@ -2952,7 +2995,7 @@
        * board by the very next blow that touched it — the record gone and the mend with it.
        * It keeps a share of its stone: enough that clearing the ground is WORK, and it can
        * be cleared, which is the point of being allowed to hit it at all. */
-      b.hp = Math.max(1, b.maxHp * C.WALL.rubble); b.breach = 1; b.work = 0; b.fixing = 0;
+      b.hp = Math.max(1, b.maxHp * C.WALL.rubble); b.breach = 1; b.work = 0; b.fixing = 0; b.fixCrews = 0;
       world.navVersion++; noteWalls(world);
       emit(world, { e: 'breach', pi, id: b.id, x: b.x, y: b.y, by: by == null ? null : by });
       return;
@@ -3175,7 +3218,7 @@
             if (b.fixing) {
               /* the stone is back: it bars the ground again, and every flow field drawn while
                * the gap was open is now wrong */
-              b.fixing = 0; b.breach = 0; b.hp = b.maxHp;
+              b.fixing = 0; b.fixCrews = 0; b.breach = 0; b.hp = b.maxHp;
               world.navVersion++; noteWalls(world);
               emit(world, { e: 'mended', pi, id: b.id, x: b.x, y: b.y });
             } else emit(world, { e: 'upped', pi, id: b.id, bt: b.bt, level: b.level, x: b.x, y: b.y });
@@ -3529,7 +3572,31 @@
              * through the run he is CLIMBING ONTO — that is the whole point of the exemption —
              * and nothing else of his own. Anything further goes back to the flow field, which
              * knows where the stone is. */
+            /* ---- AND A ROW AT THE FOOT IS A PLACE IN A CROWD, NOT A POINT ----
+             * A BERTH is exact and the crowd does not touch a man walking to one (`jostle`
+             * skips him), so three units is the right stop for him: `u.man` is not granted
+             * until he is within `WALL.step` of it and a slack threshold would leave him
+             * standing beside the parapet for ever.
+             * THE RESERVE IS THE OPPOSITE CASE and had the same three-unit stop, which is the
+             * shimmer this branch has been carrying since it was written. He is in the crowd
+             * like anyone, his neighbours press him a foot off his place, three units is
+             * nothing against a twenty-two unit berth, and he sets off again — thirty times a
+             * second, for ever. Measured on a two-run curtain at REST, no enemy on the board,
+             * nothing changing hands: sixteen men at the foot walked 3.80 units a second each
+             * to end 1.9 units from where they started, a clean limit cycle. Reported from
+             * play as troops jittering in front of the gateway.
+             * The cure is the one the free-field muster already keeps, and it is `u.set`: once
+             * he is within three quarters of a berth of his place the CROWD lets go of him —
+             * `jostle` stops making corrections too small to see — and he is not considered to
+             * have left it until something has moved him half a berth further.
+             * He still WALKS the last three units, which is the difference between this and
+             * the free field's version. Making the threshold the stop as well leaves a row of
+             * men each parked a berth short of his place, which is a rabble rather than a
+             * rank: measured, eleven of sixteen standing at exactly 15. It is the crowd that
+             * has to let go of him, not the order. */
             if (u.atWall && ownStoneClear(world, u, gx, gy, post)) {
+              if (u.set) { if (dg > C.CROWD.space * 1.5) u.set = 0; }
+              else if (dg <= C.CROWD.space * 0.75) u.set = 1;
               if (dg > 3) { u.x += (gx - u.x) / dg * speed * dt; u.y += (gy - u.y) / dg * speed * dt; }
               stand(world, u, u.x, u.y);
               continue;
@@ -3853,6 +3920,10 @@
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
                    wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush,
                    bearers,
+                   /* where the roster says a man belongs — exported for the probes and the
+                    * suites, which otherwise have to re-derive it and end up testing their own
+                    * arithmetic rather than the rule */
+                   station,
                    /* the fog's working parts, exported for the tests, the probes and the
                     * GUEST: refresh on demand, re-bake after painting terrain, the shot's
                     * rock test — and the two a guest needs to cast its own occluded veil

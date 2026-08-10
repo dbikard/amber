@@ -5638,6 +5638,178 @@ suite('a curtain is held along its whole length');
   }
 }
 
+/* ---------------- a garrison AT REST stands still ----------------
+ * Reported from play: "archers on walls keep reshuffling even when the wall is not under
+ * attack. troops in front of the gate are jittering instead of forming rank on the side."
+ * Three separate rules were wrong and all three showed as the same shimmer, so all three are
+ * measured here rather than argued about:
+ *   (1) the reserve at the foot had no ARRIVAL at all. It walked at its station every tick and
+ *       stopped only within three units of it, which is nothing against a twenty-two unit
+ *       berth: the crowd moved him a foot off his place and he walked back, thirty times a
+ *       second. Measured on this board: 3.80 units a second each, to end 1.9 units from where
+ *       they started.
+ *   (2) COHESION held him there. Knit is what keeps a company together on the march and it is
+ *       exactly wrong for a man walking out of one to a place he has been given — the pull back
+ *       is capped at `CROWD.step`, which is the same as his stride, so three men stood 36, 47
+ *       and 144 units from their places FOR EVER, one of them in the gateway.
+ *   (3) the window in which he walks the last stretch himself was one arrival circle around his
+ *       own place, so a man whose rank is further from the stone than that never reached it: he
+ *       steers at the run's gateway, arrives, is still "far", and stands in the doorway.
+ * The suite plays the board at rest with no enemy anywhere and asserts the shape of it. */
+suite('a garrison at rest stands still');
+{
+  const w = World.createWorld(20260810, 2), pl = w.players[0];
+  pl.essence = 1e7; w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 8; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+  const finish = () => { for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT);
+    if (!pl.buildings.some((b) => b.raise > 0 || b.work > 0)) return; } };
+  const L = 200;
+  let start = null;
+  for (let rad = 190; rad < 460 && !start; rad += 20)
+    for (let a = 0; a < 64 && !start; a++) {
+      const th = a / 64 * Math.PI * 2;
+      const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      if (!World.wallError(w, 0, x, y, x + L, y) && !World.wallError(w, 0, x + L, y, x + 2 * L, y))
+        start = { x, y };
+    }
+  ok('the board has room for two runs end to end', !!start, 'nowhere to draw them');
+  if (start) {
+    for (let k = 0; k < 2; k++) {
+      pl.essence = 1e7;
+      World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x + k * L, y: start.y,
+                                 x2: start.x + (k + 1) * L, y2: start.y });
+      finish();
+    }
+    const runs = pl.buildings.filter((b) => b.bt === 'wall');
+    eq('two runs go up', runs.length, 2);
+    pl.companies = [{ id: 1, rally: { x: runs[0].x, y: runs[0].y } }];
+    pl.banner = { x: runs[0].x, y: runs[0].y };
+    const men = [];
+    const add = (kind, i) => {
+      const d = C.UNITS[kind];
+      const u = { id: w.nextId++, owner: 0, co: 1, kind, tier: 1,
+                  x: runs[0].x + (i % 8) * 12 - 48, y: runs[0].y - 90 + ((i / 8) | 0) * 12,
+                  hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, from: -1 };
+      w.units.push(u); men.push(u);
+    };
+    for (let i = 0; i < 14; i++) add('archer', i);
+    for (let i = 0; i < 16; i++) add('shieldman', 14 + i);
+    for (let i = 0; i < 60 * 30; i++) World.update(w, C.SIM_DT);   // a minute to settle
+    /* THE RIG IS ALIVE ONLY IF THEY TOOK THE WALL AT ALL — a company that never arrived is
+     * perfectly still, and would pass every assertion below for the wrong reason */
+    const onStone = men.filter((u) => u.man).length;
+    ok('the rig is alive: the archers took the parapet', onStone > 0, `${onStone} on the stone`);
+    const foot = men.filter((u) => !u.man && !u.tow);
+    ok('...and the rest formed up at its foot', foot.length > 0, `${foot.length} at the foot`);
+    /* now twenty seconds of nothing happening at all */
+    const key = (u) => (u.tow ? 't' + u.tow : 'b' + u.post + ':' + u.berth);
+    const st0 = new Map(men.map((u) => [u.id, { k: key(u), x: u.x, y: u.y, walked: 0 }]));
+    let swaps = 0;
+    for (let i = 0; i < 20 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      for (const u of men) {
+        const q = st0.get(u.id);
+        if (key(u) !== q.k) { swaps++; q.k = key(u); }
+        q.walked += Math.hypot(u.x - q.x, u.y - q.y);
+        q.x = u.x; q.y = u.y;
+      }
+    }
+    eq('with no enemy on the board, no place changes hands', swaps, 0);
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE, and it is the MEDIAN because the mean is a
+     * different claim. Measured on the same board, same seed, same company: the old rules gave
+     * a median of 2.57 units a second per man — the whole garrison shimmering — against 0.00
+     * now. The mean is 5.04 against 2.77, and both of those are one or two men contending for
+     * a spot rather than a garrison that will not stand still; that tail is real, is bounded
+     * below, and is written up in TODO rather than claimed as fixed. */
+    const per = foot.map((u) => st0.get(u.id).walked / 20).sort((a, b) => a - b);
+    const walk = per[per.length >> 1];
+    ok('...and the reserve is not walking on the spot', walk < 0.5,
+       `median ${walk.toFixed(2)} units/s each of [${per.map((q) => q.toFixed(1)).join(' ')}]`);
+    ok('...with no more than a man or two still contending for a place',
+       per.filter((q) => q > 1).length <= 2, per.map((q) => q.toFixed(1)).join(' '));
+    /* AND HE IS STANDING IN HIS PLACE, not a berth short of it and not in the gateway. On the
+     * old code eleven of sixteen stood exactly 15 off and three were stranded 36-144 away. */
+    const off = foot.map((u) => {
+      const wl = w.walls.find((q) => q.b.id === u.post);
+      if (!wl) return 0;
+      const st = World.station(w, u, wl);
+      return Math.hypot(u.x - st.x, u.y - st.y);
+    }).sort((a, b) => a - b);
+    const median = off[off.length >> 1];
+    ok('...and stands in the place he was given', median < 6, `median ${median.toFixed(1)} off`);
+  }
+}
+
+/* ---------------- a breach is mended by the crews you have left ----------------
+ * Reported from play: "mending the breach of a wall doesn't work." It did not, and the refusal
+ * blamed the masons: `{c:'fix'}` asked for one crew per `WALL.unit` of the run, exactly as
+ * RAISING it does, so a four-crew curtain raised on four Gates could not be mended once two of
+ * those Gates had fallen — refused as `busy` with every crew standing idle, and the wall ruined
+ * for the rest of the match with nothing the player could do about it.
+ * A breach is not a new run: the stone is on the ground and the run is standing. So a mend
+ * takes a crew at least and as many more as are idle, and being short-handed is paid for in
+ * TIME rather than in a refusal. */
+suite('a breach is mended by the crews you have left');
+{
+  const build = (gatesAfter) => {
+    const w = World.createWorld(20260810, 2), pl = w.players[0];
+    pl.essence = 1e7; w.chaosNext = 1e9;
+    const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
+    for (let i = 0; i < 4; i++)
+      pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+                          cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
+                          lastHurt: -99, node: -1, co: 0 });
+    let start = null;
+    for (let rad = 190; rad < 460 && !start; rad += 20)
+      for (let a = 0; a < 64 && !start; a++) {
+        const th = a / 64 * Math.PI * 2;
+        const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+        if (!World.wallError(w, 0, x, y, x + 450, y)) start = { x, y };
+      }
+    if (!start) return null;
+    World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: start.x, y: start.y,
+                               x2: start.x + 450, y2: start.y });
+    for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT);
+      if (!pl.buildings.some((b) => b.raise > 0)) break; }
+    const wall = pl.buildings.find((b) => b.bt === 'wall');
+    if (!wall) return null;
+    World.hurtBuilding(w, 0, wall.id, wall.maxHp * 2, null);
+    while (pl.buildings.filter((b) => b.bt === 'gate').length > gatesAfter)
+      World.hurtBuilding(w, 0, pl.buildings.find((b) => b.bt === 'gate').id, 1e9, null);
+    pl.essence = 1e7;
+    return { w, pl, wall };
+  };
+  const rich = build(4);
+  ok('the rig is alive: a long run goes up and is breached',
+     !!rich && rich.wall.crews >= 3 && rich.wall.breach === 1,
+     rich ? `crews ${rich.wall.crews} breach ${rich.wall.breach}` : 'no room for the run');
+  if (rich) {
+    const timed = (gatesAfter) => {
+      const t = build(gatesAfter);
+      const r = World.applyCommand(t.w, 0, { c: 'fix', id: t.wall.id });
+      if (!r.ok) return { err: r.err };
+      const crews = World.rising(t.w, 0), t0 = t.w.t;
+      for (let i = 0; i < 600 * 30; i++) { World.update(t.w, C.SIM_DT); if (!t.wall.work) break; }
+      return { crews, secs: t.w.t - t0, breach: t.wall.breach, hp: t.wall.hp, max: t.wall.maxHp };
+    };
+    const full = timed(4), thin = timed(1);
+    eq('with crews to spare the mend is taken', full.err, undefined);
+    eq('...and closes the breach', full.breach, 0);
+    eq('...on all of the stone', Math.round(full.hp), Math.round(full.max));
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE — this was `{ok:false, err:'busy'}` */
+    eq('one crew against a three-crew run still takes the order', thin.err, undefined);
+    eq('...and closes the breach too', thin.breach, 0);
+    eq('...with only the crew he has on it', thin.crews, 1);
+    /* being short-handed is paid for in TIME: the whole point of it not being a refusal */
+    ok('...and it takes proportionally longer', thin.secs > full.secs * 2,
+       `${full.secs.toFixed(0)}s on ${full.crews} crews, ${thin.secs.toFixed(0)}s on ${thin.crews}`);
+  }
+}
+
 /* ---------------- a curtain that curves has ONE sheltered face ----------------
  * Reported from play, with a picture: "in a wall shaped like this, troops frequently walk on
  * the wrong side of the wall to get to their position." `station` used to work the sheltered

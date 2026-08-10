@@ -731,7 +731,8 @@
       b.dataset.crew = '1';
       b.innerHTML = '<span class="c-ico">🧱</span><span class="c-name">Mend the breach</span>' +
                     `<span class="c-cost">◆ ${price}</span>` +
-                    '<span class="c-blurb">A crew and half the stone. It shelters nobody until they are done.</span>';
+                    '<span class="c-blurb">Half the stone, and as many crews as you can spare — ' +
+                    'fewer crews, longer work. It shelters nobody until they are done.</span>';
       b.addEventListener('click', () => { if (b.classList.contains('locked')) return; H.onFix(s.id); UI.closeSheet(); });
       el.appendChild(b);
       addCancel(el);
