@@ -5603,6 +5603,87 @@ suite('a curtain is held along its whole length');
  *       own place, so a man whose rank is further from the stone than that never reached it: he
  *       steers at the run's gateway, arrives, is still "far", and stands in the doorway.
  * The suite plays the board at rest with no enemy anywhere and asserts the shape of it. */
+/* ---------------- a tick builds only so many flow fields ----------------
+ * THE SIM'S WORST TICK HAS NOTHING TO DO WITH ITS AVERAGE, and this is why. A cold flow field
+ * is a Dijkstra over every cell of the board — 6ms on today's board, 59ms on one three times as
+ * wide — and `masksFor` drops every field the moment a wall rises or falls, because fields
+ * drawn against ground that has changed shape are wrong rather than merely old. The ticks after
+ * that wanted two, five, nine of them at once: measured over six-minute matches, the median
+ * tick is half a millisecond, the 99th percentile under four, and the worst 27ms here and 285ms
+ * on the wide board.
+ * IT WAS NOT THE CACHE, which was the first guess. A whole match builds about fifty fields
+ * against three hundred thousand reads, the cache peaks at 34 of its 48 places, and the
+ * overflow path never runs once — a gentler eviction was written, measured against the same
+ * seeds, and changed nothing, because the code it changed never executes.
+ * So the rebuilds are rationed, and a man whose field is not ready gets the answer `steer` has
+ * always given for a goal it cannot reach. */
+suite('a tick builds only so many flow fields');
+{
+  const w = World.createWorld(31, 2), pl = w.players[0];
+  pl.essence = 1e7; w.chaosNext = 1e9;
+  const c = World.cityOf(w, 0);
+  /* four companies ordered four ways, so four DISTINCT goal cells are wanted on the same tick,
+   * which is the shape of the tick after a wall changes */
+  const men = [];
+  pl.companies = [];
+  /* ON GROUND THAT WILL BEAR THEM. Placed by eye at a fixed offset, two of the four rallies
+   * landed in water — and the men sent to them never arrived at ration 1, 2 or 999 alike, which
+   * is a rig failing rather than a rule failing. The control is what said so. */
+  const spot = (i) => {
+    for (let r = 560; r < 900; r += 40)
+      for (let a = 0; a < 16; a++) {
+        const th = (i * Math.PI / 2) + a * 0.13 * (a % 2 ? 1 : -1);
+        const x = c.x + Math.cos(th) * r, y = c.y + Math.sin(th) * r;
+        const ci = NAV.cellOf(w.nav, x, y);
+        if (ci >= 0 && w.nav.cost[ci] > 0) return { x, y };
+      }
+    return null;
+  };
+  for (let co = 1; co <= 4; co++) {
+    const at = spot(co - 1);
+    ok(`company ${co} has somewhere to be sent`, !!at, 'no passable ground found');
+    pl.companies.push({ id: co, rally: at || { x: c.x, y: c.y } });
+    for (let i = 0; i < 3; i++) {
+      const d = C.UNITS.soldier;
+      w.units.push({ id: w.nextId++, owner: 0, co, kind: 'soldier', tier: 1,
+                     x: c.x + i * 14 - 20, y: c.y + co * 16 - 40,
+                     hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, from: -1 });
+      men.push(w.units[w.units.length - 1]);
+    }
+  }
+  NAV.debugFieldsReset();
+  let worst = 0;
+  for (let i = 0; i < 60; i++) {
+    const was = NAV.debugFields().built;
+    World.update(w, C.SIM_DT);
+    worst = Math.max(worst, NAV.debugFields().built - was);
+  }
+  const d = NAV.debugFields();
+  /* THE RIG IS ALIVE ONLY IF FIELDS WERE WANTED AT ALL — a rig that asked for none would pass
+   * this suite by doing nothing whatever */
+  ok('the rig is alive: the companies asked for fields', d.built > 0, `${d.built} built`);
+  ok('...and asked for more than one tick may build', d.built + d.deferred >= 4,
+     `${d.built} built, ${d.deferred} deferred`);
+  ok('no tick builds more than the ration', worst <= C.NAV.perTick,
+     `${worst} in one tick, ration ${C.NAV.perTick}`);
+  /* THE ASSERTION THAT FAILS ON THE OLD CODE. The line above cannot: it compares the ration
+   * against itself, so lifting the ration to a thousand satisfies it just as well as holding
+   * it at one. What the OLD code could never do is DEFER — it built every field asked for on
+   * the tick it was asked for, so nothing was ever put off to the next one. */
+  ok('...and a field wanted past it waits for the next tick', d.deferred > 0,
+     `${d.deferred} deferred`);
+  /* AND THE MEN STILL GET THERE. A ration that stalled a column would be a worse bug than the
+   * spike it cures: a deferred man walks straight at his goal for that tick, which is what he
+   * does past the end of any field. */
+  for (let i = 0; i < 40 * 30; i++) World.update(w, C.SIM_DT);
+  const home = men.filter((u) => {
+    const r = pl.companies.find((q) => q.id === u.co).rally;
+    return Math.hypot(u.x - r.x, u.y - r.y) < 220;
+  }).length;
+  ok('...and every company still reaches its standard', home === men.length,
+     `${home} of ${men.length} within 220 of their rally`);
+}
+
 suite('a garrison at rest stands still');
 {
   const rig = wallRig(World, C, { runs: 2 });

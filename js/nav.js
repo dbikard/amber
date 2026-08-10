@@ -133,6 +133,7 @@
     const span = world.players.length + 1;
     for (let i = 0; i < span * 2; i++) nav.masks.push(new Uint8Array(n));
     nav.maskVer = world.navVersion;
+    dbgDump++;
     nav.fields.clear();
     /* A CURTAIN WALL BARS THE GROUND — to everyone but the heir who raised it. Each finished
      * wall is stamped into every OTHER layer, Chaos's included, so a rival army must break it
@@ -240,17 +241,50 @@
     return dist;
   }
 
+  /* HOW MANY FIELDS WERE ACTUALLY BUILT, and how many reads found one waiting. A field build is
+   * a Dijkstra over every cell of the board and a read is a Map lookup, so telling them apart is
+   * the whole of any question about this cache — and from OUTSIDE they are indistinguishable:
+   * a probe that wraps `fields.set` counts a read as a build the moment anything re-inserts on
+   * a hit. Two probes in a row reported cache reads as builds before this existed, and the
+   * conclusion drawn from them — that the cache was thrashing — was wrong. */
+  let dbgBuilt = 0, dbgRead = 0, dbgDump = 0, dbgDeferred = 0;
+  NAV.debugFields = () => ({ built: dbgBuilt, read: dbgRead, dumped: dbgDump, deferred: dbgDeferred });
+  NAV.debugFieldsReset = () => { dbgBuilt = dbgRead = dbgDump = dbgDeferred = 0; };
+
+  /* ---- A COLD FIELD IS A DIJKSTRA OVER THE WHOLE BOARD, SO ONLY SO MANY PER TICK ----
+   * The sim's worst tick has nothing to do with its average. Measured over six-minute matches
+   * with two heirs playing: the median is half a millisecond, the 99th percentile under four,
+   * and the WORST is 26-53ms on today's board and 293ms on one three times as wide. Every one
+   * of those spikes is a tick that built several fields at once.
+   * IT IS NOT THE CACHE. That was the first guess and it was wrong, which the counters below
+   * were added to settle: a whole match builds FIFTY fields against 387,000 reads, the cache
+   * peaks at 34 of its 48 places and the overflow path never runs once. Evicting more gently
+   * was implemented, measured against the same seeds, and changed nothing at all — because the
+   * code it changed never executes. It was reverted.
+   * What does fire is `masksFor`: a wall rises, every field drawn against the old ground is
+   * genuinely WRONG, all of them go, and the next few ticks rebuild whichever are wanted —
+   * two, five, nine of them in one tick, at up to 59ms each on a big board.
+   * So the rebuilds are RATIONED. A tick builds `NAV.perTick` fields and no more; a man whose
+   * field is not ready yet gets the same answer as a man whose goal is unreachable, which
+   * `steer` already returns and every caller already handles by heading at the goal directly
+   * for one tick. It is a COUNT and not a time budget, deliberately: the sim is seeded and
+   * host-authoritative, and a rule that depended on how fast the machine was would make two
+   * seats disagree about where an army went. */
   function fieldFor(nav, world, owner, goal, shut) {
     masksFor(nav, world);   // FIRST: a new wall drops every field drawn against the old ones
     /* the LAYER is the key, not the owner — two heirs' fields never collided and a heir's own
      * two must not either */
     const key = layerOf(world, owner, shut) * 1e7 + goal;
-    let f = nav.fields.get(key);
-    if (f) return f;
+    const f = nav.fields.get(key);
+    if (f) { dbgRead++; return f; }
+    if (nav.buildTick !== world.tick) { nav.buildTick = world.tick; nav.builds = 0; }
+    if (nav.builds >= C.NAV.perTick) { dbgDeferred++; return null; }
+    nav.builds++;
+    dbgBuilt++;
     if (nav.fields.size >= C.NAV.cacheMax) nav.fields.clear();
-    f = buildField(nav, world, owner, goal, shut);
-    nav.fields.set(key, f);
-    return f;
+    const built = buildField(nav, world, owner, goal, shut);
+    nav.fields.set(key, built);
+    return built;
   }
 
   /* ---------------- steering ----------------
@@ -270,6 +304,12 @@
     const here = NAV.cellOf(nav, x, y);
     if (here < 0) return null;
     const W = nav.W, H = nav.H, cw = nav.cw, f = fieldFor(nav, world, owner, goal, shut);
+    /* NO FIELD THIS TICK. Either it has not been built yet — the tick's ration is spent, see
+     * `NAV.perTick` — or the goal is walled off. The answer is the same either way and it is
+     * the one this function has always given for a goal it cannot reach: null, and the caller
+     * heads at the goal directly. A man waits a tick or two after a wall changes and walks
+     * straight meanwhile, which is what he does past the end of any field. */
+    if (!f) return null;
     /* the descent direction OF one cell: centre toward its best neighbour's centre */
     const dirOf = (ci) => {
       const cx = ci % W, cy = (ci - cx) / W;

@@ -788,6 +788,26 @@ below.
       places change hands in thirty seconds, which is the curtain gathering toward him and is
       the rule working. `WALL.alarm` is 420 — four times an archer's reach — so a bystander
       does move the roster, and that is the one lever if it is reported again.
+- [ ] **How big can the board get?** Measured on the shipped code, `CONST.MAP` overridden in
+      process, two heirs actually playing six minutes at each size. The steady state barely
+      moves — mean tick 0.54ms at 2000×2400 and 1.19ms at 6000×7200, p99 1.9ms against 3.9ms —
+      because it is unit-bound, not map-bound. Vision is FLAT (0.54 → 0.70ms; it is bounded by
+      sight radius) and `update()` is flat. What scales is worldgen (118 → 327ms, sublinear) and
+      the flow field, which is dead linear: 6.3ms → 59ms.
+      With the rebuild ration in (`NAV.perTick`) the worst tick is 13ms at 2000×2400, 27ms at
+      4000×4800 and 66ms at 6000×7200 on a desktop-class core. **The renderer, not the sim, is
+      the next wall**: the ground MESH is one vertex per 10 units, so 48k verts and 1.7MB today
+      against 433k and 14.9MB at three times the width, and the ground TEXTURE self-caps at
+      22.9MB (terrain.js already guards at 6 megapixels) — which means at 3× the same pixels
+      cover nine times the ground and the painted land gets three times blurrier. Frame time was
+      NOT measured: this container runs software GL and the numbers it gave were transparent
+      noise (276ms at the smallest size, 58ms at 5000×6000). That needs a real phone.
+      And `NAV.cell` is not a dial: it is also the worldgen resolution, and at 24, 30 and 40
+      ZERO of six boards built at all.
+      So: 1.5× linear is free today, 2× wants a ground-mesh LOD first, and past that somebody
+      has to look at it on a phone. A bigger board is also longer marches and longer matches,
+      which is a referee question before it is a frame-rate one.
+
 - [ ] **The heirs play one army and one and a half orders.** Surveyed against the grammar and
       the content tables, with the claims measured over real headless matches (seeds 1000-1005).
       Ordered by impact over effort; `[REF]` needs `node sim.js` before and after, `[SAFE]` does

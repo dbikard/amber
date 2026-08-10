@@ -258,6 +258,22 @@
     slope: 26,         // extra move cost per unit of elevation climbed (descending is free)
     arrive: 72,        // within this of the goal a unit steers to its own place in the line
     cacheMax: 48,      // flow fields held before the cache is dropped
+    /* HOW MANY COLD FLOW FIELDS ONE TICK MAY BUILD. A field is a Dijkstra over every cell of
+     * the board — 6ms today, 59ms on a board three times as wide — and `masksFor` drops all of
+     * them the moment a wall rises, so the ticks that follow wanted two, five, nine at once.
+     * That is the whole of the sim's worst-frame problem: its median tick is half a millisecond
+     * and its 99th percentile under four.
+     * A man whose field is not ready this tick heads at his goal directly for one tick, which is
+     * what `steer` already answers for a goal it cannot reach. It is a COUNT and not a time
+     * budget on purpose: the sim is seeded and host-authoritative, and a rule that depended on
+     * how fast the machine was would make two seats disagree about where an army went.
+     * ONE, measured. A whole six-minute match builds about fifty fields against three hundred
+     * thousand cache reads, so the ration almost never binds: at one a tick it bit on SEVEN
+     * ticks of a 10,800-tick match on this board, and on twenty-two of a four-handed match on a
+     * board three times as wide — a quarter of a second, total, of some men walking straight for
+     * one tick. What it buys is the worst tick: 27ms to 13 here, 97 to 27 at twice the width,
+     * 285 to 66 at three times. Two halves the win and buys nothing back. */
+    perTick: 1,
     shore: 4,          // world units a man keeps from the waterline (the SDF isoline he is
                        // projected back to — see NAV.ground and `grounded` in world.js)
     wade: 6            // the most one tick's projection may move him: a man deep in the wrong
