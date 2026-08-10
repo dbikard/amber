@@ -396,7 +396,14 @@
     }
     const r = World.applyCommand(game.world, game.viewer, cmd);
     if (r.ok) Rec.command(cmd, game.world);   // orders GIVEN, not orders refused
-    if (!r.ok) {
+    if (!r.ok) sayErr(r.err);
+    return r;
+  }
+  /* WHY AN ORDER WAS REFUSED, in one place, because two things now ask: a command the sim
+   * turned down, and a WALL'S ANCHOR — which is refused before there is a command at all. */
+  function sayErr(err) {
+    {
+      const r = { err };
       if (r.err === 'essence') UI.banner('Not enough Essence', 'warn');
       else if (r.err === 'presence') UI.banner('A unit of yours must stand there — plant the banner first', 'warn');
       else if (r.err === 'claim') UI.banner('Beyond your writ — your Gates carry it outward', 'warn');
@@ -414,7 +421,6 @@
       else if (r.err === 'whole') UI.banner('There is nothing broken to mend', 'warn');
       else if (r.err === 'working') UI.banner('The masons are already in it', 'warn');
     }
-    return r;
   }
 
   /* ---------------- view assembly (render-ready, fog applied) ---------------- */
@@ -572,11 +578,23 @@
       /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
        * read exactly like a rival's assault — and a player watching for the rival never saw
        * the black road taking three quarters of their army. */
+      /* ...AND WHERE, which it could not say either. The alert fires for ANY work of yours
+       * being scratched, and it said "inside your city" for all of them — so a Gate on a
+       * spring four hundred out, gnawed by one fiend, read exactly like a column at the
+       * throne. Reported from play in the first chapter of the campaign, where the whole
+       * board is a Gate on a spring. The event carried `x`/`y` the entire time and the banner
+       * used neither: now it names the WORK when the trouble is out in Shadow, and keeps the
+       * old cry for the one case that deserves it — something standing on your own court. */
       else if (ev.e === 'hurtcity') {
         if (ev.pi !== game.viewer) continue;
-        if (ev.by === C.CHAOS_ID) UI.banner('Chaos is inside your city!', 'chaos');
-        else if (ev.by != null && ev.by !== game.viewer) UI.banner((game.names[ev.by] || 'The enemy') + ' is inside your city!', 'warn');
-        else UI.banner('Your works are under attack!', 'warn');
+        const c = view.map.sites[view.map.cities[game.viewer]];
+        const home = c && ev.x != null && Math.hypot(ev.x - c.x, ev.y - c.y) < C.CITY.r;
+        const what = (C.BUILDINGS[ev.bt] || {}).name || 'works';
+        const who = ev.by === C.CHAOS_ID ? 'Chaos'
+                  : ev.by != null && ev.by !== game.viewer ? (game.names[ev.by] || 'The enemy') : null;
+        const cls = ev.by === C.CHAOS_ID ? 'chaos' : 'warn';
+        if (home) UI.banner(who ? who + ' is inside your city!' : 'Your works are under attack!', cls);
+        else UI.banner(who ? who + ' is at your ' + what + '!' : 'Your ' + what + ' is under attack!', cls);
       }
       /* the Shrine falling is the single biggest thing an assault can do — say what it cost */
       else if (ev.e === 'shrinefell') UI.banner(ev.pi === game.viewer
@@ -776,6 +794,21 @@
       const w = Render.toWorld(x, y, game.viewer);
       const def = C.BUILDINGS[game.placing.bt];
       if (def.span) {   // a work with a LENGTH: this tap is the anchor, the next is the far end
+        /* ---- AND THE ANCHOR IS JUDGED NOW, NOT AFTER THE SECOND TAP ----
+         * Nothing looked at the first tap at all: you set an anchor on ground that could never
+         * take a wall, aimed the far end, and only THEN learned the run was refused — and the
+         * refusal kept the anchor, so the bad end was the one you were stuck with. Reported
+         * from play. `placementError` has always answered exactly this question for a work with
+         * a `span` — the ground, the writ, and whether a crew is free — and is the same door
+         * the command goes through, so the anchor cannot be refused for a reason the run would
+         * not be. A refusal leaves the WORK armed and takes no anchor, so the next tap is a
+         * fresh first tap. What still waits for the second is the length and the crews: a point
+         * cannot be too short or too long, and saying so would be a lie about a run that does
+         * not exist yet. A guest holds no world; the host judges, as it does for everything. */
+        if (game.world) {
+          const bad = World.placementError(game.world, game.viewer, w.x, w.y, game.placing.bt);
+          if (bad) { sayErr(bad); return; }
+        }
         game.span = { x: w.x, y: w.y, bt: game.placing.bt, co: game.placing.co };
         /* `reach` is how long a run the idle masons can cover — the only limit on a wall's
          * length — so the preview can refuse a run for the real reason before the second tap
@@ -1276,5 +1309,9 @@
 
   /* LADDER is exported so the suite can ask which rung is FIRST rather than be told a name:
    * the order is measured, and it is expected to move when the heirs do. */
+  /* test handle: the banner router. What an alert SAYS is a decision made here, out of an
+   * event and the viewer's own map, and there is no other way to ask it — driving a real
+   * assault to make one line appear takes a minute of match and proves less. */
+  global.__routeEvents = routeEvents;
   global.Game = { game, startSP, startMP, startChapter, toChapters, toMenu, LADDER };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -75,21 +75,37 @@
     check: (w, me) => (works(w, me, bt) >= n ? 'won' : null)
   });
 
-  /* THROW HIS WORKS DOWN — every standing one of a kind, anywhere on the board. Not the Seat:
-   * this is the chapter that teaches an army is FOR something short of the throne. */
-  OBJ.raze = (bt) => ({
-    line: (w, me) => {
-      const d = C.BUILDINGS[bt], left = rivals(w, me).reduce((s, i) => s + works(w, i, bt), 0);
-      return `Throw down every rival ${d ? d.name : bt} — ${left} still stand${left === 1 ? 's' : ''}`;
-    },
-    check: (w, me, st) => {
-      const left = rivals(w, me).reduce((s, i) => s + works(w, i, bt), 0);
-      if (left > 0) { st.seen = true; return null; }
-      /* he must have HAD one: a chapter cannot be won on the opening frame because the rival
-       * has not raised his yet */
-      return st.seen ? 'won' : null;
-    }
-  });
+  /* THROW HIS WORKS DOWN — but only the ones he took OUT IN SHADOW.
+   * Reported from play: chapter II was impossible, because one of his Gates stood so close to
+   * his Seat that it could not be reached without fighting the throne. That is not the seed's
+   * fault and no seed fixes it: EVERY heir opens with a finished Gate on a spring inside his
+   * own writ (worldgen requires one usable spring within `CLAIM.seat`), so "every Gate" always
+   * included one standing under his guns, and a chapter about taking an army out to break a
+   * rival's wells always secretly demanded a Seat assault as well. Breaking a work on a heir's
+   * own court IS breaking his Seat, and that is a different chapter.
+   * So `beyond` — a work is his business out here only if it stands past the named distance
+   * from his own Seat, and the writ is the honest line: a Gate beyond it is one he MARCHED for,
+   * which is exactly what this chapter is about. */
+  OBJ.raze = (bt, beyond) => {
+    const far = beyond != null ? beyond : C.CLAIM.seat;
+    const out = (w, me) => rivals(w, me).reduce((s, i) => {
+      const c2 = World().cityOf(w, i);
+      return s + w.players[i].buildings.filter((b) => b.bt === bt && !b.raise &&
+        Math.hypot(b.x - c2.x, b.y - c2.y) >= far).length;
+    }, 0);
+    return {
+      line: (w, me) => {
+        const d = C.BUILDINGS[bt], left = out(w, me);
+        return `Throw down his ${d ? d.name : bt}s out in Shadow — ${left} still stand${left === 1 ? 's' : ''}`;
+      },
+      check: (w, me, st) => {
+        if (out(w, me) > 0) { st.seen = true; return null; }
+        /* he must have HAD one: a chapter cannot be won on the opening frame, before the rival
+         * has marched out and taken anything */
+        return st.seen ? 'won' : null;
+      }
+    };
+  };
 
   /* STAND. The clock is the enemy's, not yours — losing your own Seat is a loss under the sim's
    * own rule and needs nothing here. */
@@ -172,7 +188,8 @@
            + 'Gates in the open and trusts his host to keep them.\n\n'
            + 'A mustering hall flies a standard of its own, and the tray at your thumb is one '
            + 'chip per company. Raise halls, arm a standard, and send it.\n\n'
-           + 'Throw down every Shadow Gate he holds. His Seat can wait.',
+           + 'Throw down the Gates he has taken out in Shadow. The well under his own guns is '
+           + 'a matter for another day.',
       obj: OBJ.raze('gate'),
       won: 'His wells are broken and his muster runs dry. An army is for taking things.',
       hints: [

@@ -2945,7 +2945,10 @@
        * rift chewing an outlying Gate read as "the enemy is inside your city" exactly like a
        * rival's assault — and a player watching for the rival never saw the black road
        * taking three quarters of their army. */
-      emit(world, { e: 'hurtcity', pi, x: b.x, y: b.y, by: by == null ? null : by });
+      /* ...AND WHAT IS BEING HURT, which the alert could not say without it. `bt` is the one
+       * field that turns "the enemy is inside your city" into "he is at your Shadow Gate" —
+       * see the banner, which had the coordinates all along and used neither. */
+      emit(world, { e: 'hurtcity', pi, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
     }
   }
 

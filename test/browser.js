@@ -1298,6 +1298,59 @@ async function match(browser, base, renderer) {
       return null;
     });
     ok('a legal run can be found on screen', !!run);
+
+    /* ---- AND A BAD ANCHOR IS REFUSED ON THE FIRST TAP ----
+     * Nothing looked at the first tap at all: you set an anchor on ground that could never
+     * take a wall, aimed the far end, and only THEN learned the run was refused — and the
+     * refusal keeps the anchor, so the bad end was the one you were stuck with. Reported from
+     * play. `placementError` has always answered exactly this for a work with a `span`. */
+    const anchorBad = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, g = window.Game.game;
+      const c = g.world.map.sites[g.world.map.cities[0]];
+      const lines = [];
+      const real = window.UI.banner;
+      window.UI.banner = (t) => lines.push(t);
+      /* somewhere ON SCREEN that a wall may not start: past the writ is the reliable one */
+      let bad = null;
+      for (let a = 0; a < 6.283 && !bad; a += 0.2)
+        for (let rr = window.CONST.CLAIM.seat + 60; rr < window.CONST.CLAIM.seat + 400; rr += 30) {
+          const x = c.x + Math.cos(a) * rr, y = c.y + Math.sin(a) * rr;
+          if (!W.placementError(g.world, 0, x, y, 'wall')) continue;   // legal: not what we want
+          const p = R.project(x, y);
+          if (p.x < 30 || p.x > window.innerWidth - 30 || p.y < 90 || p.y > window.innerHeight - 40) continue;
+          bad = { x, y, sx: p.x, sy: p.y, why: W.placementError(g.world, 0, x, y, 'wall') };
+          break;
+        }
+      if (!bad) { window.UI.banner = real; return { found: false }; }
+      window.UI.armBuild(true);
+      g.placing = { bt: 'wall', co: 0 };
+      g.span = null;
+      window.UI.banner = real;
+      return { found: true, why: bad.why, at: bad, lines };
+    });
+    if (anchorBad.found) {
+      /* the tap goes through the real pointer, like every other tap in this suite */
+      await pg.evaluate(() => { window.__said = []; window.__realBanner = window.UI.banner;
+                                window.UI.banner = (t) => window.__said.push(t); });
+      await pg.mouse.click(anchorBad.at.sx, anchorBad.at.sy);
+      await pg.waitForTimeout(220);
+      anchorBad.afterBad = await pg.evaluate(() => {
+        const g = window.Game.game;
+        const out = { span: !!g.span, placing: !!g.placing, said: window.__said.slice() };
+        window.UI.banner = window.__realBanner;
+        return out;
+      });
+    }
+    if (anchorBad.found) {
+      /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — the anchor was taken without a glance */
+      ok('a wall refused at its anchor takes no anchor at all',
+         anchorBad.afterBad.span === false, JSON.stringify(anchorBad.afterBad));
+      ok('...and says why, in the words the command would have used',
+         anchorBad.afterBad.said.length > 0, anchorBad.afterBad.said.join(' | '));
+      ok('...leaving the work armed, so the next tap is another first tap',
+         anchorBad.afterBad.placing === true, String(anchorBad.afterBad.placing));
+    } else ok('a refusable anchor could be found on screen', false, 'none on screen');
+
     if (run) {
       /* CHOOSE FIRST, PLACE SECOND. The sheet belongs to the BUILD button now, not to a patch
        * of ground — tapping the map no longer opens it, which is what stopped the army and
@@ -3456,6 +3509,147 @@ async function match(browser, base, renderer) {
       ok('...and the flag over it changed with it', r.now.flag && r.now.flag !== r.was.flag,
          `flag ${r.was.flag} -> ${r.now.flag}`);
     }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- where the fighting is, and where it is NOT ----------------
+   * Two reports from play, one chapter apart. The alert cried "Julian is inside your city!"
+   * when a Gate four hundred out was being chewed — it fired for ANY work of yours and said
+   * the same thing about all of them, though the event carried the coordinates the whole time.
+   * And there was nowhere to LOOK: the board is 2000x2400, a phone shows a corner, and the
+   * minimap carried springs, Seats, curtains and your own standards but nothing about where
+   * blows were landing. */
+  {
+    suite('where the fighting is, and where it is not');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 21 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+
+    /* ---- THE ALERT NAMES THE WORK, AND ONLY CRIES 'CITY' FOR THE CITY ---- */
+    const said = await pg.evaluate(async () => {
+      const g = window.Game.game, W = window.World, C = window.CONST;
+      const c = W.cityOf(g.world, 0), pl = g.world.players[0];
+      const lines = [];
+      const real = window.UI.banner;
+      window.UI.banner = (t) => lines.push(t);
+      const hurt = (b) => {
+        pl.alertAt = -99;                       // the alert has its own cooldown
+        g.world.events.length = 0;
+        W.hurtBuilding(g.world, 0, b.id, 3, 1);
+        const evs = g.world.events.splice(0);
+        window.Game.game._route ? 0 : 0;
+        return evs.filter((e) => e.e === 'hurtcity');
+      };
+      /* a Gate out in Shadow, and then something standing on the court itself */
+      const far = pl.buildings.find((b) => b.bt === 'gate' && Math.hypot(b.x - c.x, b.y - c.y) > C.CITY.r);
+      const near = pl.buildings.find((b) => Math.hypot(b.x - c.x, b.y - c.y) < C.CITY.r);
+      const out = { hasFar: !!far, hasNear: !!near, farEv: null, nearEv: null };
+      if (far) out.farEv = hurt(far)[0] || null;
+      if (near) out.nearEv = hurt(near)[0] || null;
+      window.UI.banner = real;
+      return out;
+    });
+    ok('the rig is alive: a Gate stands out in Shadow', said.hasFar && !!said.farEv,
+       JSON.stringify({ hasFar: said.hasFar, ev: !!said.farEv }));
+    /* THE ASSERTION THAT FAILS ON THE OLD CODE — the event carried no `bt` at all */
+    ok('the alert now says WHAT is being hurt', said.farEv && said.farEv.bt === 'gate',
+       JSON.stringify(said.farEv));
+    ok('...and where it stands', said.farEv && said.farEv.x != null && said.farEv.y != null,
+       JSON.stringify(said.farEv));
+
+    /* the banner itself, routed the way the game routes it */
+    const banner = await pg.evaluate(async () => {
+      const g = window.Game.game, W = window.World, C = window.CONST;
+      const c = W.cityOf(g.world, 0);
+      const lines = [];
+      const real = window.UI.banner;
+      window.UI.banner = (t) => { lines.push(t); };
+      /* the same shape of event the sim emits, both near and far */
+      const view = { map: g.world.map, players: g.world.players, see: () => true, t: g.world.t };
+      window.Game.game.names = ['Corwin', 'Julian'];
+      const route = (ev) => { lines.length = 0; window.__routeEvents([ev], view); return lines.slice(); };
+      const farLines = route({ e: 'hurtcity', pi: 0, bt: 'gate', x: c.x + 700, y: c.y + 500, by: 1 });
+      const nearLines = route({ e: 'hurtcity', pi: 0, bt: 'barracks', x: c.x + 10, y: c.y + 10, by: 1 });
+      const chaosFar = route({ e: 'hurtcity', pi: 0, bt: 'gate', x: c.x + 700, y: c.y + 500, by: -1 });
+      window.UI.banner = real;
+      return { farLines, nearLines, chaosFar };
+    }).catch(() => null);
+    if (banner) {
+      ok('a work out in Shadow is named, not called your city',
+         banner.farLines.some((t) => /Shadow Gate/i.test(t) && !/inside your city/i.test(t)),
+         banner.farLines.join(' | '));
+      ok('...and something on the court still gets the old cry',
+         banner.nearLines.some((t) => /inside your city/i.test(t)), banner.nearLines.join(' | '));
+      ok('...and the black road is named as the black road',
+         banner.chaosFar.some((t) => /Chaos/i.test(t)), banner.chaosFar.join(' | '));
+    }
+
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- and the minimap shows where ----------------
+   * ITS OWN PAGE, deliberately. The section above hurts two works to test the alert, and the
+   * game's own loop routes those events into the very store under test — a rig that shares a
+   * board with an earlier experiment is not measuring what its name says. The first version
+   * did, read one of its own footprints as a battle, and split six deaths across two marks. */
+  {
+    suite('and the minimap shows where the fighting is');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 21 }), VEIL_BOARD);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const fl = await pg.evaluate(async () => {
+      const R = window.Render, g = window.Game.game, W = window.World;
+      const c = W.cityOf(g.world, 0);
+      const view = { t: g.world.t, map: g.world.map };
+      /* THE SECTION ABOVE ALREADY LIT SOME. It hurt two works to test the alert, and the
+       * game's own loop routed those events into the very store under test — so a rig that
+       * counts the TOTAL is counting its own earlier footprints. Both battles below are put
+       * far from anything the alert touched and judged by what is near THEM. */
+      const near = (list, x, y) => list.filter((f) => Math.hypot(f.x - x, f.y - y) < 260);
+      const evs = [];
+      /* a battle, spread over a hundred units — it must read as ONE place */
+      for (let i = 0; i < 6; i++) evs.push({ e: 'die', x: c.x + 500 + i * 18, y: c.y + 300 + i * 12, owner: 0, kind: 'soldier' });
+      /* and a second one, far away and his */
+      for (let i = 0; i < 2; i++) evs.push({ e: 'die', x: c.x + 20, y: c.y + 900 + i * 20, owner: 1, kind: 'soldier' });
+      const mineAt = { x: c.x + 545, y: c.y + 330 }, hisAt = { x: c.x + 20, y: c.y + 910 };
+      const beforeMine = near(R.debugFlash(), mineAt.x, mineAt.y).length;
+      const beforeHis = near(R.debugFlash(), hisAt.x, hisAt.y).length;
+      R.addEvents(evs, view, 0);
+      const all = R.debugFlash();
+      const a1 = near(all, mineAt.x, mineAt.y), a2 = near(all, hisAt.x, hisAt.y);
+      await new Promise((res) => setTimeout(res, 1400));
+      const l1 = near(R.debugFlash(), mineAt.x, mineAt.y);
+      return { beforeMine, beforeHis, a1, a2, l1 };
+    });
+    ok('the rig is alive: neither battleground was burning before',
+       fl.beforeMine === 0 && fl.beforeHis === 0, `${fl.beforeMine}/${fl.beforeHis}`);
+    /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — there were no flashpoints at all */
+    ok('six deaths spread over a hundred units are ONE mark, not six',
+       fl.a1.length === 1, JSON.stringify(fl.a1));
+    ok('...and a second battle elsewhere is its own', fl.a2.length === 1, JSON.stringify(fl.a2));
+    ok('...weighted by how much is happening there',
+       fl.a1[0] && fl.a1[0].n >= 5 && fl.a2[0] && fl.a2[0].n === 2,
+       JSON.stringify([fl.a1[0] && fl.a1[0].n, fl.a2[0] && fl.a2[0].n]));
+    ok('...and it knows whose blood it is',
+       fl.a1[0] && fl.a1[0].mine === true && fl.a2[0] && fl.a2[0].mine === false,
+       JSON.stringify([fl.a1[0] && fl.a1[0].mine, fl.a2[0] && fl.a2[0].mine]));
+    ok('a flashpoint fades when the fighting stops',
+       fl.l1[0] && fl.a1[0] && fl.l1[0].ttl < fl.a1[0].ttl,
+       JSON.stringify([fl.a1[0] && fl.a1[0].ttl, fl.l1[0] && fl.l1[0].ttl]));
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

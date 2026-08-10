@@ -1666,6 +1666,7 @@
      * disposed with everything else, so the handles must go with it or the next frame writes
      * instances into a mesh that is no longer in the scene */
     arrowIM = null; ballIM = null; hexIM = null; arrows.length = 0; gateState.clear();
+    flash2 = [];   // last match's battles are not this one's
     /* ...AND SO DOES THE JEWEL'S STORM, which was the one thing missed off this list. Every
      * slot of `stormState` holds a disc and a bolt of lightning that hang in `worldG` and were
      * just disposed with it, and the pool re-creates them lazily behind `if (!ss.disc)` — which
@@ -2061,9 +2062,55 @@
   /* test handle: how many men are wearing chains this frame */
   R.debugHex = () => (hexIM ? hexIM.count : 0);
 
+  /* ---------------- WHERE THE FIGHTING IS ----------------
+   * The board is two thousand by two thousand four hundred and a phone shows a corner of it,
+   * so the minimap is the only place the shape of a match is visible at all — and it showed
+   * springs, Seats, curtains and your own standards, but nothing about where blows were
+   * actually being struck. A player whose Gate is being eaten four hundred out learns it from
+   * a banner that lasts three and a half seconds and then has nowhere to look.
+   * A flashpoint is a PLACE, not an event: violence near an existing one bumps it rather than
+   * making another, so a battle is one mark and not forty. It decays, so it says where the
+   * fighting IS and not where it once was. And it is fed from the events the viewer was
+   * already handed — `routeEvents` filters those by sight — so it cannot show what the veil
+   * is hiding, for free and by construction. */
+  const FLASH = { near: 190, life: 7, cap: 8, max: 6 };
+  let flash2 = [];
+  function flashAt(x, y, mine) {
+    if (x == null || y == null) return;
+    for (const f of flash2) {
+      if ((f.x - x) * (f.x - x) + (f.y - y) * (f.y - y) > FLASH.near * FLASH.near) continue;
+      /* the mark drifts toward the newest blow, so a running fight is one mark that MOVES */
+      f.x += (x - f.x) * 0.25; f.y += (y - f.y) * 0.25;
+      f.n = Math.min(FLASH.max, f.n + 1);
+      f.ttl = FLASH.life;
+      if (mine) f.mine = 1;
+      return;
+    }
+    if (flash2.length >= FLASH.cap) {
+      /* the quietest one gives up its place — a cap that dropped the NEWEST would go blind
+       * exactly when a second front opened */
+      let w = 0;
+      for (let i = 1; i < flash2.length; i++) if (flash2[i].ttl < flash2[w].ttl) w = i;
+      flash2.splice(w, 1);
+    }
+    flash2.push({ x, y, n: 1, ttl: FLASH.life, mine: mine ? 1 : 0 });
+  }
+  /* test handle: the flashpoints as the board currently has them. They are drawn straight to
+   * the overlay canvas with no object per mark, so a suite has nothing else to read. */
+  R.debugFlash = () => flash2.map((f) => ({ x: Math.round(f.x), y: Math.round(f.y), n: f.n,
+                                            ttl: +f.ttl.toFixed(2), mine: !!f.mine }));
+
   R.addEvents = function (events, view, viewer) {
     if (!R.ready) return;
     for (const ev of events) {
+      /* ---- WHAT COUNTS AS FIGHTING ----
+       * A man falling, a work being struck, stone giving way. NOT a shot leaving a tower: a
+       * gun firing at nothing in particular would light the map wherever a Watchtower stands,
+       * and a Bombard shelling from beyond anyone's reach would mark ITS ground rather than
+       * the stone it is breaking. What is HIT is where the fight is. */
+      if (ev.e === 'die') flashAt(ev.x, ev.y, ev.owner === viewer);
+      else if (ev.e === 'hurtcity' || ev.e === 'breach' || ev.e === 'raze' || ev.e === 'siege')
+        flashAt(ev.x, ev.y, ev.pi === viewer);
       if (ev.e === 'shot' && ev.pi === viewer) {
         /* ---- A TOWER THROWS SOMETHING, AND IT COMES OUT OF THE GUN ----
          * This drew the old hairline tracer — the very thing the arrow rewrite replaced for
@@ -2741,6 +2788,11 @@
   }
 
   function updateFxs(dt) {
+    /* a flashpoint fades on its own; the fighting has to keep saying so to keep it lit */
+    for (let i = flash2.length - 1; i >= 0; i--) {
+      flash2[i].ttl -= dt;
+      if (flash2[i].ttl <= 0) flash2.splice(i, 1);
+    }
     for (let i = fx.length - 1; i >= 0; i--) {
       const f = fx[i];
       f.ttl -= dt;
@@ -3226,6 +3278,26 @@
         g.closePath(); g.fill();
         g.strokeStyle = 'rgba(0,0,0,0.6)'; g.stroke();
       }
+    }
+    /* ---- AND WHERE THE FIGHTING IS ----
+     * Last, so it sits over the springs and the stone: it is the most perishable thing on the
+     * map and the thing you are looking for. CRIMSON when it is your own men or your own
+     * works taking the blows and GOLD when it is his, because "I am being attacked here" and
+     * "I am attacking there" are the two different questions a glance at a minimap asks. The
+     * ring grows with how much is happening and pulses so the eye catches it against a map of
+     * still dots; the dot at its heart is what survives at four pixels. */
+    for (const f of flash2) {
+      const X = mpx(f.x), Y = mpy(f.y);
+      const a = Math.min(1, f.ttl / 2);                       // fading out as it goes quiet
+      const beat = 0.72 + 0.28 * Math.sin(view.t * 5.5 + f.x * 0.01);
+      const r = (3.2 + f.n * 1.15) * beat;
+      g.globalAlpha = a;
+      g.strokeStyle = f.mine ? '#ff6a5a' : '#ffd98a';
+      g.lineWidth = 1.6;
+      g.beginPath(); g.arc(X, Y, r, 0, 7); g.stroke();
+      g.fillStyle = f.mine ? '#ff8a96' : '#ffe9a8';
+      g.beginPath(); g.arc(X, Y, 1.7, 0, 7); g.fill();
+      g.globalAlpha = 1;
     }
     g.lineWidth = 1;
     for (const f of fx) if (f.ping) {

@@ -345,6 +345,21 @@ Adding a chapter is a table entry: `{key, title, heir, seed, opts, brief, obj, w
 let him off the leash without taking the footing away. The chapter screen, the briefing, the
 lock, the progress and the end screen all follow from the table with no code.
 
+**A BANNER MUST SAY WHERE.** The `hurtcity` alert fired for ANY work of yours being scratched
+and cried "the enemy is inside your city!" about all of them — so a Gate four hundred out,
+gnawed by one fiend, read exactly like a column at the throne. It carries `bt` and `x`/`y`, and
+the banner names the WORK when the trouble is out in Shadow and keeps the old cry for something
+standing on the court (`CITY.r`).
+
+**AND THE MINIMAP SHOWS WHERE THE FIGHTING IS.** A flashpoint is a PLACE, not an event
+(`R.debugFlash`): violence near an existing one bumps and moves it rather than making another,
+so a battle is one mark and not forty, and it decays so it says where the fighting IS. Fed from
+`die`/`hurtcity`/`breach`/`raze`/`siege` — what is HIT, never a shot leaving a gun, or every
+Watchtower would light the map — and from the events the viewer was already handed, which are
+sight-filtered in `routeEvents`, so it cannot show what the veil is hiding. Crimson when it is
+yours, gold when it is his: "I am attacked here" and "I am attacking there" are the two
+questions a glance at a minimap asks.
+
 ## Common Tasks
 
 - **Add a building**: table entry in `const.js` (cost/up/effect) + `BUILD_ORDER_UI` → handle
