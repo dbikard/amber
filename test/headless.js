@@ -5772,7 +5772,18 @@ suite('a curtain that curves has one sheltered face');
  *     its owner's own nav layer, so the flow field was free to route him through it — and on a
  *     dogleg it did, because out-one-gate-and-in-the-next really is the short way: 4,222.
  * With the beeline barred from every run but the one he is climbing onto, and the walk-in
- * anchored a row INSIDE the doorway: 2 through the stone and 560 through a gateway. */
+ * anchored a row INSIDE the doorway: 2 through the stone and 560 through a gateway.
+ * And then the third cause, which is the flow field being RIGHT — on a dogleg, out through one
+ * gateway and back in through the next really IS the short way, because the sheltered side has
+ * the wall's own apexes poking into it. The stone is now SOLID to a man walking to a place on
+ * it, on a second layer per heir (not per company — it depends on the owner and one bit), and
+ * the door decides: coming from OUTSIDE his own troops always pass, and going from INSIDE it is
+ * shut to a man posted to that wall. One test, because a posted man's station is always on the
+ * sheltered side — inside reads the shut layer, outside the open one, and no direction has to
+ * be modelled. Switched on the SIDE HE IS ON, never on whether the field can reach him: keyed
+ * on reachability a man falls back to the open layer, takes a stride, is turned round, and a
+ * doorway fills with men jittering — 2,590 transits, and 637 with the doorway exempted, both
+ * worse than leaving the gates open. Now: 0 through the stone and 173 through a gateway. */
 suite('a garrison does not stroll out through its own gate');
 {
   const BOARD = { name: 'the Dogleg', seed: 5, ground: 'PLAIN', height: 0.5,
@@ -5873,9 +5884,10 @@ suite('a garrison does not stroll out through its own gate');
   ok('the rig is alive: the garrison filled the curtain', men.filter((m) => m.man).length >= 60,
      men.filter((m) => m.man).length + ' standing in a place');
   /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — 94 through the stone, 4,222 through the gates */
-  ok('almost nobody walks through his own masonry', stoneAll <= 20, stoneAll + ' transits through stone');
+  /* THE ASSERTIONS THAT FAIL ON THE OLD CODE — 94 through the stone, 4,222 through the gates */
+  ok('nobody walks through his own masonry', stoneAll <= 5, stoneAll + ' transits through stone');
   ok('...and the garrison does not commute through its own gateways',
-     gateAfter <= 1200, gateAfter + ' gateway transits while reshuffling');
+     gateAfter <= 600, gateAfter + ' gateway transits while reshuffling');
 }
 
 /* ---------------- an heir does not enter a race he has already lost ----------------

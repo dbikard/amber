@@ -122,7 +122,16 @@
     if (nav.maskVer === world.navVersion) return nav.masks;
     const n = nav.W * nav.H;
     nav.masks = [];
-    for (let i = 0; i <= world.players.length; i++) nav.masks.push(new Uint8Array(n));
+    /* TWO LAYERS PER HEIR, NOT ONE PER COMPANY. A garrison walking its own curtain must not
+     * treat its own gateways as a short cut (see `world.js`), and the mask that says so depends
+     * on nothing but the OWNER and one bit — gates open, or gates solid. Every company and every
+     * man of that heir shares the same two. So the table is doubled: `masks[i]` is the old
+     * layer, `masks[i + span]` the same ground with the gateways stone. A layer is 12 KB, they
+     * are rebuilt only when the standing set changes, and the second one costs almost no FIELDS
+     * — the only cost measured in Dijkstras — because a posted man's doorsteps are goals nobody
+     * else steers at. */
+    const span = world.players.length + 1;
+    for (let i = 0; i < span * 2; i++) nav.masks.push(new Uint8Array(n));
     nav.maskVer = world.navVersion;
     nav.fields.clear();
     /* A CURTAIN WALL BARS THE GROUND — to everyone but the heir who raised it. Each finished
@@ -151,7 +160,9 @@
           const cx = gx + dx, cy = gy + dy;
           if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
           const i = cy * W + cx;
-          for (let q = 0; q <= world.players.length; q++) {
+          for (let q = 0; q < span; q++) {
+            /* the SHUT twin takes the stone whatever the gateway says — the whole difference */
+            nav.masks[q + span][i] = 1;
             if (q === w.owner && atGate) continue;   // his own gateway stays open to him
             nav.masks[q][i] = 1;
           }
@@ -171,14 +182,16 @@
     }
     return nav.masks;
   }
-  /* Chaos rides the last layer; everyone else rides their own */
-  const maskOf = (nav, world, owner) =>
-    masksFor(nav, world)[owner >= 0 ? owner : world.players.length];
+  /* Chaos rides the last layer; everyone else rides their own. `shut` picks the twin in which
+   * this heir's own gateways are stone — for a garrison walking to a place on its own wall. */
+  const layerOf = (world, owner, shut) =>
+    (owner >= 0 ? owner : world.players.length) + (shut ? world.players.length + 1 : 0);
+  const maskOf = (nav, world, owner, shut) => masksFor(nav, world)[layerOf(world, owner, shut)];
 
   /* ---------------- flow fields (Dijkstra out from the goal) ---------------- */
   const SQ2 = Math.SQRT2;
-  function buildField(nav, world, owner, goal) {
-    const W = nav.W, H = nav.H, n = W * H, cost = nav.cost, mask = maskOf(nav, world, owner);
+  function buildField(nav, world, owner, goal, shut) {
+    const W = nav.W, H = nav.H, n = W * H, cost = nav.cost, mask = maskOf(nav, world, owner, shut);
     const elev = nav.elev;
     const dist = new Float32Array(n).fill(Infinity);
     /* binary heap of cell indices keyed by tentative distance */
@@ -227,13 +240,15 @@
     return dist;
   }
 
-  function fieldFor(nav, world, owner, goal) {
+  function fieldFor(nav, world, owner, goal, shut) {
     masksFor(nav, world);   // FIRST: a new wall drops every field drawn against the old ones
-    const key = owner * 1e7 + goal;
+    /* the LAYER is the key, not the owner — two heirs' fields never collided and a heir's own
+     * two must not either */
+    const key = layerOf(world, owner, shut) * 1e7 + goal;
     let f = nav.fields.get(key);
     if (f) return f;
     if (nav.fields.size >= C.NAV.cacheMax) nav.fields.clear();
-    f = buildField(nav, world, owner, goal);
+    f = buildField(nav, world, owner, goal, shut);
     nav.fields.set(key, f);
     return f;
   }
@@ -249,12 +264,12 @@
    * a field should be read. The old single-cell answer is kept as the fallback for the
    * degenerate blends — corners where opposing samples cancel, and the first stride out of
    * an unreachable pocket, where only the escape matters. */
-  NAV.steer = function (nav, world, owner, gxw, gyw, x, y) {
+  NAV.steer = function (nav, world, owner, gxw, gyw, x, y, shut) {
     const goal = NAV.cellOf(nav, gxw, gyw);
     if (goal < 0) return null;
     const here = NAV.cellOf(nav, x, y);
     if (here < 0) return null;
-    const W = nav.W, H = nav.H, cw = nav.cw, f = fieldFor(nav, world, owner, goal);
+    const W = nav.W, H = nav.H, cw = nav.cw, f = fieldFor(nav, world, owner, goal, shut);
     /* the descent direction OF one cell: centre toward its best neighbour's centre */
     const dirOf = (ci) => {
       const cx = ci % W, cy = (ci - cx) / W;

@@ -694,6 +694,21 @@
     }
     return true;
   }
+  /* WHICH SIDE OF HIS OWN CURTAIN A MAN IS STANDING ON, and which run answers for it. Only
+   * askable at all since a curtain got ONE face: judged per run, a curve or a dogleg gave
+   * different answers a stride apart and "inside" meant nothing. */
+  function curtainSide(world, u, post) {
+    const cid = post.curtain != null ? post.curtain : post.b.id;
+    let near = null, nd = Infinity;
+    for (const q of world.walls) {
+      if (q.owner !== u.owner || (q.curtain != null ? q.curtain : q.b.id) !== cid) continue;
+      const dd = segD2(q.b, u.x, u.y);
+      if (dd < nd) { nd = dd; near = q; }
+    }
+    if (!near) return { inside: true, face: null };
+    const p = segNear(near.b, u.x, u.y), f = faceOf(world, near, u.owner);
+    return { inside: (u.x - p.x) * f.nx + (u.y - p.y) * f.ny > 0, face: f };
+  }
   function faceOf(world, w, owner) {
     let nx, ny;
     if (w.norm) { nx = w.norm.nx; ny = w.norm.ny; }
@@ -3481,26 +3496,34 @@
             const door = post.gate
               ? { x: post.gx + fn.nx * DOORSTEP, y: post.gy + fn.ny * DOORSTEP }
               : st2;
-            /* ---- AND CLOSING HIS OWN GATES TO HIM WAS TRIED, AND MEASURED WORSE ----
-             * The owner's gateways are punched out of the owner's nav layer so his columns can
-             * pass, and a garrison walking its own curtain takes them: on a zigzag, out through
-             * one gate and back in through the next genuinely IS the shortest path, because the
-             * sheltered side has the wall's own apexes poking into it. The obvious answer is a
-             * second layer per heir with his gateways solid — and it is cheap, which was worth
-             * finding out: it is not a mask per company, it depends on the OWNER and one bit,
-             * so every heir has exactly two and all his men share them, 12 KB each, rebuilt
-             * only when the standing set changes, and adding almost no Dijkstras because a
-             * posted man's doorsteps are not goals anyone else steers at.
-             * It still made things worse. Reshuffling transits on the eight-run dogleg with a
-             * hundred and sixty men: 560 as it stands here, 2,590 with the shut layer (a man
-             * standing IN a doorway is inside masonry on that layer, has no field to read, and
-             * jitters), and 637 once the doorway itself was exempted — because a shut field
-             * that cannot reach the doorstep falls back to the open one, and a man alternating
-             * between two different routes crosses his wall more than a man committed to
-             * either. The rule the owner asked for is right; a drop-in layer is not the way to
-             * get it, and the next attempt should make the doorstep reachable ON the shut layer
-             * rather than fall back when it is not. Numbers in TODO. */
-            const s4 = NAV.steer(world.nav, world, u.owner, door.x, door.y, u.x, u.y);
+            /* ---- AND THE STONE IS SOLID TO HIM, AND THE DOOR DECIDES ----
+             * A gateway is a hole punched in its OWNER's nav layer so his columns can pass, and
+             * a garrison walking its own curtain took it: on a zigzag, out through one gate and
+             * back in through the next genuinely IS the shortest way, because the sheltered side
+             * has the wall's own apexes poking into it. Measured on an eight-run dogleg with a
+             * hundred and sixty men reshuffling after an assault: 4,222 transits.
+             * The rule is the owner's, and it is two lines: coming from OUTSIDE, his own troops
+             * always pass — the door opens for them; going from INSIDE, the door is shut to a
+             * company that is posted to that wall, and open to everyone else. They collapse into
+             * ONE test, because a posted man's station is always on the sheltered side: so
+             * INSIDE reads the layer where his own gates are stone, OUTSIDE reads the ordinary
+             * one, and no direction has to be modelled anywhere.
+             * It is switched on the SIDE HE IS STANDING ON and not on whether the field can
+             * reach him — that distinction is the whole thing. Keyed on reachability (the first
+             * attempt) a man falls back to the open layer the moment the shut one has nothing
+             * for him, takes a stride, is turned round, and a doorway fills with men jittering:
+             * measured at 2,590 transits, and 637 with the doorway exempted, both WORSE than
+             * leaving the gates open. Keyed on the side he is on there is nothing to flip
+             * between: once inside, the shut field never points at a gate, so he never comes
+             * back out. And the side is only a meaningful question at all because a curtain now
+             * has ONE face — judged per run, a dogleg answered differently a stride apart.
+             * The one sliver left is a man standing IN the doorway, which is masonry on the shut
+             * layer and so has no field to read. He is not lost and he is not pathing: he is on
+             * a threshold, and the only useful thing to tell him is to step off it into his own
+             * bailey. One stride along the sheltered face and he is clear. */
+            const cs2 = post.gate ? curtainSide(world, u, post) : { inside: true, face: null };
+            let s4 = NAV.steer(world.nav, world, u.owner, door.x, door.y, u.x, u.y, cs2.inside);
+            if (!s4 && cs2.inside && cs2.face) s4 = { x: cs2.face.nx, y: cs2.face.ny };
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, door.x, door.y)) || 1);
             const vx2 = s4 ? s4.x : (door.x - u.x) / L2, vy2 = s4 ? s4.y : (door.y - u.y) / L2;
             const wx0 = u.x, wy0 = u.y;

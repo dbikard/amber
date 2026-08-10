@@ -448,6 +448,20 @@ blow against stone, multiplied.
   stone, and may be given while the masons are still on the run.
   **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
   punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
+  **AND THE DOOR DECIDES WHO PASSES.** Coming from OUTSIDE an heir's own troops always pass;
+  going from INSIDE the door is shut to a man POSTED to that wall, and open to everyone else.
+  One test does both, because a posted man's station is always on the sheltered side: inside he
+  steers on a second layer where his own gateways are stone, outside on the ordinary one, and no
+  direction is modelled anywhere. `masksFor` keeps TWO layers per heir — not one per company: it
+  depends on the owner and one bit, so all his men share them — and `NAV.steer`/`fieldFor` take
+  a `shut` flag that is part of the field-cache key. It is switched on **the side he is standing
+  on** (`curtainSide`), never on whether the field can reach him: keyed on reachability a man
+  falls back to the open layer, strides, and is turned round, and a doorway fills with men
+  jittering — measured worse than leaving the gates open, twice. A man standing IN a doorway is
+  in masonry on the shut layer and has no field: he is told to step off the threshold along the
+  sheltered face, which is the only useful thing to say to him. Without this a garrison
+  reshuffling on a zigzag went out one gateway and in the next — 4,222 transits in a hundred
+  seconds, against 173 now.
   **A breach is a ruin, but a SHELL is not.** Only a run that actually stood is breached; one
   knocked over while `raise > 0` is razed like any other work — nothing stood, so there is
   nothing to mend, and `fix` for half the stone would have been cheaper than finishing it.
