@@ -3701,6 +3701,40 @@ async function match(browser, base, renderer) {
     }));
     ok('choosing a chapter shows its briefing', brief.prose >= 2 && brief.begin && brief.back,
        JSON.stringify(brief));
+    /* ---- AND ITS BUTTONS ARE ONE COLUMN, NOT A RAGGED STACK ----
+     * Reported with a picture. `.mbtn` carries a fixed `min(78vw,340px)` and `.mbtn.small`
+     * carries `width:auto`, so a column of them came out three different widths — one flush
+     * left, one sized to its own text, and the way out to the menu centred on its own because
+     * it is not in the body at all. And two of the three meant "not this": on a briefing THE
+     * OTHER CHAPTERS is already the way back, so BACK TO THE MENU is one button too many. */
+    const shape = await pg.evaluate(() => {
+      const body = document.getElementById('chapters-body');
+      const btns = [...body.querySelectorAll('.mbtn')].map((b) => {
+        const r = b.getBoundingClientRect();
+        return { id: b.id, w: Math.round(r.width), x: Math.round(r.left) };
+      });
+      const close = document.getElementById('chapters-close');
+      return { btns, closeShown: !close.classList.contains('hidden'),
+               bodyW: Math.round(body.getBoundingClientRect().width) };
+    });
+    ok('every button on the briefing is the panel\'s own width',
+       shape.btns.length >= 2 && shape.btns.every((b) => Math.abs(b.w - shape.bodyW) <= 2),
+       JSON.stringify(shape));
+    ok('...and they share one left edge',
+       new Set(shape.btns.map((b) => b.x)).size === 1, JSON.stringify(shape.btns.map((b) => b.x)));
+    ok('a briefing offers ONE way back, not two', shape.closeShown === false, String(shape.closeShown));
+
+    /* out of a briefing is back to the LIST — the chapter you are reading about is not one you
+     * have decided against */
+    await pg.evaluate(() => document.getElementById('chapter-back').click());
+    const backToList = await pg.evaluate(() => ({
+      cards: document.querySelectorAll('#chapters-body .card.chapter').length,
+      closeShown: !document.getElementById('chapters-close').classList.contains('hidden')
+    }));
+    ok('THE OTHER CHAPTERS goes back to the list', backToList.cards >= 5, JSON.stringify(backToList));
+    ok('...where the way out to the menu is offered again', backToList.closeShown === true,
+       String(backToList.closeShown));
+    await pg.evaluate(() => document.querySelector('#chapters-body .card.chapter').click());
     ok('...which states the objective', /\w/.test(brief.obj), brief.obj);
     ok('...before any board exists', brief.inMatch === false, String(brief.inMatch));
 

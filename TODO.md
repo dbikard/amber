@@ -746,6 +746,22 @@ below.
       chapter uses one yet, they all pin a seed instead); starting units or essence per chapter,
       which the spec format cannot express today; and a way to gate a HUD control for a tutorial
       step, for which the `.locked` card and `disabled` button idioms exist but no machinery does.
+- [ ] **The corridor through a gateway is CLEARER, not clear — 30 men to 17.** Reported from
+      play: the reserve at the foot of a wall stands across its own door, so a company sent out
+      has to shove through them. Two things fixed, each measured on a 300-length run with sixty
+      men, counting the reserve inside a corridor 60 wide and 120 deep through the gate:
+      the foot slots that fall in the gate's band are now DROPPED and the displaced men fall
+      through to the next rank (remapping `t` instead merely COMPRESSED the row — twenty places
+      into the shorter length, eleven apart where the spacing is fifteen, so `jostle` pushed
+      them straight back into the gap: 30 became 24, a rule that looks like it works and does
+      not); and a push that would put a posted man INTO the corridor is now refused, the way a
+      push toward the water and a push through stone already are (24 → 20 → 17).
+      **What is left is men who SETTLE there.** A settled man (`u.set`) is deliberately not
+      moved — the formation already spaced him and a push on him is the pass arguing with the
+      order — so a man who ends up in the corridor early, before the roster stabilises, stays.
+      The fix is probably to treat the corridor like the waterline in the MARCH as well (a step
+      turned along the band rather than refused), not to add another force. Worth a rig that
+      watches ONE man from muster to station rather than a tally at the end.
 - [ ] **The heirs play one army and one and a half orders.** Surveyed against the grammar and
       the content tables, with the claims measured over real headless matches (seeds 1000-1005).
       Ordered by impact over effort; `[REF]` needs `node sim.js` before and after, `[SAFE]` does

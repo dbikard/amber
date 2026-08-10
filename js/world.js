@@ -756,9 +756,34 @@
      * stops taking them ON THE PARAPET. Everyone past that forms another rank behind the last,
      * which is what a reserve IS, and it thins the crush against the stone that was squeezing
      * men through their own gateway. */
+    /* ---- AND THE RANKS LEAVE THE DOORWAY CLEAR ----
+     * A run's gateway is the only way through its own stone for the heir who raised it, and the
+     * reserve was dealt evenly along the whole length — straight across the door. A curtain with
+     * a garrison behind it was a curtain with its own gate plugged by its own men, and a company
+     * sent out had to shove through them. Reported from play.
+     * THE SLOTS IN THE DOORWAY ARE DROPPED, NOT SQUEEZED. The first attempt remapped `t` to
+     * skip the band, which COMPRESSES a row of twenty places into the shorter length — the men
+     * end up eleven apart where the berth spacing is fifteen, `jostle` pushes them off each
+     * other, and the nearest empty ground is the gap itself. Measured: 30 men in the corridor
+     * became 24, which is a rule that looks like it is working and is not. Keeping the spacing
+     * and letting the displaced men fall through to the NEXT RANK is the whole of it. */
     const over = i - berths;
-    const row = Math.floor(over / berths);
-    const t = ((over % berths) + 0.5) / berths;
+    const gL = Math.hypot(w.bx - w.ax, w.by - w.ay) || 1;
+    /* a little wider than the gate itself, so a column has room to turn into it */
+    const band = w.gate ? Math.min(0.6, (C.WALL.gate * 1.35 * 2) / gL) : 0;
+    let lo = 0, shut = 0;
+    if (band > 0) {
+      lo = Math.ceil((0.5 - band / 2) * berths - 0.5);
+      const hi = Math.floor((0.5 + band / 2) * berths - 0.5);
+      lo = Math.max(0, lo);
+      shut = Math.max(0, Math.min(berths - 1, hi) - lo + 1);
+    }
+    const usable = Math.max(1, berths - shut);
+    const row = Math.floor(over / usable);
+    const j = over % usable;
+    const slot = j < lo ? j : j + shut;
+    const t = (slot + 0.5) / berths;
+    /* a berth on the parapet is untouched — a man UP THERE is over the arch, not in it */
     const off = C.WALL.man * 0.45 + C.WALL.foot * (row + 1);
     return { x: w.ax + (w.bx - w.ax) * t + nx * off, y: w.ay + (w.by - w.ay) * t + ny * off };
   }
@@ -1192,6 +1217,33 @@
        * clearance is free to be pushed anywhere, including out. The MARCH is the opposite
        * choice on purpose — a step is turned along the bank (see the guard at the stride),
        * because a marcher has somewhere to be. */
+      /* ---- AND NOBODY IS SHOVED INTO HIS OWN DOORWAY ----
+       * The stations already skip the gate's own slots, and that was not enough on its own: an
+       * empty pocket surrounded by a crowd is exactly where a separation rule sends people, so
+       * the reserve simply spread back across the door. Measured on a 300-length run with sixty
+       * men — 30 in the corridor, 24 when the band was merely remapped, 20 with the slots
+       * properly dropped. A push that would put a posted man INTO the corridor is refused, the
+       * same way a push toward the water and a push through stone already are: he stays where
+       * he is, and the door stays a door. A man walking OUT through it has no post here and is
+       * not asked; a man who is already in the corridor may be pushed anywhere, including out,
+       * which is the same escape hatch the waterline uses. */
+      if (u.post && world.anyWall) {
+        let blocked = false;
+        for (const q of world.walls) {
+          if (!q.gate || q.owner !== u.owner) continue;
+          const qL = Math.hypot(q.bx - q.ax, q.by - q.ay) || 1;
+          const qux = (q.bx - q.ax) / qL, quy = (q.by - q.ay) / qL;
+          const ax = u.x + dx - q.gx, ay = u.y + dy - q.gy;
+          const along = ax * qux + ay * quy, perp = Math.abs(-ax * quy + ay * qux);
+          if (Math.abs(along) >= C.WALL.gate || perp >= C.WALL.foot * C.WALL.rowsClear) continue;
+          /* already inside it: let him be pushed, he is trying to get out */
+          const bx2 = u.x - q.gx, by2 = u.y - q.gy;
+          const wasAlong = bx2 * qux + by2 * quy, wasPerp = Math.abs(-bx2 * quy + by2 * qux);
+          if (Math.abs(wasAlong) < C.WALL.gate && wasPerp < C.WALL.foot * C.WALL.rowsClear) break;
+          blocked = true; break;
+        }
+        if (blocked) continue;
+      }
       const jx = u.x + dx, jy = u.y + dy;
       const jc = NAV.cellOf(world.nav, jx, jy);
       if ((jc < 0 || world.nav.cost[jc] === 0 || NAV.ground(world.nav, jx, jy).d < C.NAV.shore)

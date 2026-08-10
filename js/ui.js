@@ -134,7 +134,12 @@
     UI.closeSheet();
   };
   UI.chaptersOpen = () => !$('chapters').classList.contains('hidden');
+  /* which chapter's briefing is up, or null for the list. The phone's back gesture reads it:
+   * out of a BRIEFING is back to the list, not out to the menu — the level you are reading
+   * about is one you have not decided against yet. */
+  let briefing = null;
   UI.chaptersClose = function () {
+    if (briefing) { const CAM = global.CAMPAIGN; briefing = null; UI.chapters(CAM, null); return; }
     $('chapters').classList.add('hidden');
     if (UI.showMenu && H.onMenuAgain) H.onMenuAgain();
   };
@@ -142,6 +147,11 @@
     const el = $('chapters'), body = $('chapters-body');
     el.classList.remove('hidden');
     if (focus) return UI.brief(CAM, focus);
+    briefing = null;
+    /* the LIST is the only place the way out to the menu is needed, and the only place it is
+     * offered: on a briefing THE OTHER CHAPTERS is already the way back, and two buttons that
+     * both mean "not this" is one button too many */
+    $('chapters-close').classList.remove('hidden');
     $('chapters-title').textContent = 'THE SUCCESSION';
     body.innerHTML = '';
     for (const ch of CAM.CHAPTERS) {
@@ -164,6 +174,8 @@
     if (!ch) return;
     const body = $('chapters-body');
     $('chapters').classList.remove('hidden');
+    briefing = ch.key;
+    $('chapters-close').classList.add('hidden');
     $('chapters-title').textContent = ch.title.toUpperCase();
     body.innerHTML = '';
     const p = document.createElement('div');
@@ -180,7 +192,12 @@
     go.className = 'mbtn';
     go.id = 'chapter-begin';
     go.textContent = 'BEGIN';
-    go.addEventListener('click', () => { $('chapters').classList.add('hidden'); H.onChapter(ch.key); });
+    go.addEventListener('click', () => {
+      briefing = null;
+      $('chapters').classList.add('hidden');
+      $('chapters-close').classList.remove('hidden');
+      H.onChapter(ch.key);
+    });
     body.appendChild(go);
     const back = document.createElement('button');
     back.className = 'mbtn small';

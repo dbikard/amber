@@ -357,6 +357,12 @@ body {
 #roll h2 { font-size: 24px; letter-spacing: 5px; color: #ffe9a8; margin-bottom: 10px; }
 #roll-body { width: min(96vw, 560px); }
 #chapters-body { width: min(96vw, 520px); display: flex; flex-direction: column; gap: 8px; }
+/* EVERY BUTTON IN THE PANEL IS THE PANEL'S WIDTH. `.mbtn` carries a fixed `min(78vw,340px)`
+ * and `.mbtn.small` carries `width:auto`, so a column of them came out three different widths
+ * — one flush left at 340, one sized to its own text, and the close button centred on its own
+ * because it is not in the body at all. A ragged stack of buttons that all do the same KIND of
+ * thing reads as a mistake, because it is one. */
+#chapters-body .mbtn { width: 100%; }
 .roll-hall { margin-bottom: 18px; }
 .roll-head {
   display: flex; justify-content: space-between; align-items: baseline;

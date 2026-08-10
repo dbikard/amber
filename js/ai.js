@@ -564,6 +564,7 @@
     const interval = (P.interval || 1.5) * (opts.slow || 1);
     const noise = opts.noise != null ? opts.noise : (P.noise || 0);
     const hold = opts.hold || 0;   // s before this heir will march on your Seat at all
+    const noWalk = !!opts.noWalk;  // a chapter that is not about the Pattern shuts that road
     let timer = interval * 0.5, rng = null;
     let mission = null;    // {site, bt, since} — march there, build, move on
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
@@ -626,7 +627,13 @@
        * stall-breaker exists because a board where NOBODY walks runs to the cap, and a board
        * where somebody is walking is a board with a clock already running. */
       const raced = v.walkers.length > 0;
-      if (!v.walking && !raced && (P.walk(v) || (late && v.have.shrine)) && (canFinish || late)) {
+      /* AND A CHAPTER MAY TAKE THE ROAD AWAY ENTIRELY. `noWalk` is a campaign's, not a
+       * footing's: chapter III asks you to hold your Seat against the Master of Arms for eight
+       * minutes, and a rival who quietly walks the Pattern instead ends it with a loss that has
+       * nothing to do with what was asked. Reported from play. It is not a handicap — the heir
+       * fights exactly as hard — it is the scenario saying which of the two roads this chapter
+       * is about, which is the whole point of a chapter having a win condition of its own. */
+      if (!v.walking && !noWalk && !raced && (P.walk(v) || (late && v.have.shrine)) && (canFinish || late)) {
         issue({ c: 'walk', on: true });
       }
 

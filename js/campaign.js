@@ -165,7 +165,7 @@
        * march on your Seat inside the hour, so the board is quiet and the only question is the
        * one the game is actually about: the essence is out there, and you have to go and stand
        * on it. */
-      opts: { eco: 0.45, hold: 3600 },
+      opts: { eco: 0.45, hold: 3600, noWalk: 1 },
       brief: 'Oberon is gone and the black road is rising. You hold one spring and one hall, '
            + 'which is what any heir holds — and it is not a realm.\n\n'
            + 'Essence lies out in Shadow, at the springs. A Shadow Gate draws from one, and a '
@@ -183,7 +183,7 @@
     },
     {
       key: 'muster', title: 'II · The Muster', heir: 'bleys', seed: 0x5ade02,
-      opts: { eco: 0.75, hold: 420 },
+      opts: { eco: 0.75, hold: 420, noWalk: 1 },
       brief: 'Bleys of the Flame is taking Shadow while you count your wells. He raises his '
            + 'Gates in the open and trusts his host to keep them.\n\n'
            + 'A mustering hall flies a standard of its own, and the tray at your thumb is one '
@@ -202,7 +202,7 @@
     {
       key: 'curtain', title: 'III · The Curtain', heir: 'benedict', seed: 0x5ade03,
       /* the Master of Arms, off the leash early: this chapter is the assault */
-      opts: { eco: 1.0, hold: 90 },
+      opts: { eco: 1.0, hold: 90, noWalk: 1 },
       brief: 'Benedict is coming, and he is coming soon. You will not out-muster the Master of '
            + 'Arms in the open field.\n\n'
            + 'Stone is the answer. A Curtain Wall is drawn as a RUN — tap where it starts, then '
@@ -219,7 +219,7 @@
     },
     {
       key: 'blackroad', title: 'IV · The Black Road', heir: 'brand', seed: 0x5ade04,
-      opts: { eco: 0.9, hold: 300 },
+      opts: { eco: 0.9, hold: 300, noWalk: 1 },
       brief: 'The black road is open and Chaos is spilling through it. Brand the Unmaker is '
            + 'content to let it come — every fiend that gnaws your Gates is one he need not '
            + 'pay for.\n\n'
@@ -240,10 +240,12 @@
       opts: { eco: 1.0, hold: 240 },
       brief: 'Corwin of Amber has raised a Shrine, and a walk is a public act: the moment an '
            + 'heir sets foot on the Pattern, every board at the table shows how far along he is.\n\n'
-           + 'The lines carry a walker at one rate. Whoever steps on first arrives first, and '
-           + 'a walk CANNOT be called off — the drain is taken before your halls are paid.\n\n'
-           + 'So there are two roads and you must choose: outrun him, or go and throw his '
-           + 'Shrine down. Walk the Pattern before he does.',
+           + 'The lines carry every walker at the same rate, so whoever steps on first arrives '
+           + 'first — and a walk CANNOT be called off, because the drain is taken before your '
+           + 'halls are paid.\n\n'
+           + 'Reach a hundred before he does. There are two ways to manage it: be the one who '
+           + 'stepped on first, or throw his Shrine down — which tears him off the lines and '
+           + 'costs him most of what he had walked.',
       obj: OBJ.walk(),
       won: 'You walked it to its blazing heart and spoke your name. The universe rearranges.',
       hints: [
