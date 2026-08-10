@@ -6095,6 +6095,24 @@ suite('the campaign: chapters and their objectives');
   eq('every chapter builds its board', built, CAM.CHAPTERS.length);
   ok('...with nothing refused', bad.length === 0, bad.join(' '));
 
+  /* A BRIEFING HAS NO WORLD. `line` is the HUD readout, asked every tick over a real world, and
+   * it may look anything up; `ask` is what the chapter is FOR, and it is read on a screen that
+   * exists before any board does. The two were one sentence and the briefing screen fabricated a
+   * world to get it — which held right up until `raze` learned to ask where the rival's Seat is,
+   * and then chapter II's briefing threw where it stood and took the BEGIN button with it.
+   * Reported from play as "the menu disappeared". */
+  {
+    ok('every objective says what it asks, without a world to ask it of',
+       CAM.CHAPTERS.every((c2) => typeof c2.obj.ask === 'string' && /\w/.test(c2.obj.ask)),
+       CAM.CHAPTERS.filter((c2) => !(typeof c2.obj.ask === 'string' && /\w/.test(c2.obj.ask)))
+                   .map((c2) => c2.key).join(','));
+    /* and it is not the readout: the readout is about where you STAND, and needs a real world */
+    const w0 = World.createWorld(31, 2);
+    ok('...and every objective can still say where you stand, given one',
+       CAM.CHAPTERS.every((c2) => /\w/.test(String(c2.obj.line(w0, 0, { since: -1 })))),
+       CAM.CHAPTERS.map((c2) => c2.key + ':' + c2.obj.line(w0, 0, { since: -1 })).join(' | '));
+  }
+
   /* A CHAPTER THAT ASKS THE PLAYER TO WALK MUST NOT LEAVE THE RIVAL FREE TO WALK.
    * This is the rule the reported bug broke, stated so it cannot come back. Every heir walks
    * at one rate and a walk cannot be called off, so a rival who steps on first arrives first

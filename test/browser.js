@@ -3738,6 +3738,38 @@ async function match(browser, base, renderer) {
     ok('...which states the objective', /\w/.test(brief.obj), brief.obj);
     ok('...before any board exists', brief.inMatch === false, String(brief.inMatch));
 
+    /* ---- AND EVERY CHAPTER'S BRIEFING, NOT MERELY THE FIRST ONE ----
+     * Reported from play as "the menu disappeared": chapter II drew its title and its prose and
+     * then nothing — no objective, no BEGIN, no way back. The screen used to get the objective's
+     * sentence by calling the HUD readout over a FABRICATED world, and the day `raze` learned to
+     * ask where the rival's Seat is, that readout threw where it stood and every element built
+     * after it was never appended. This suite could not see it because it only ever opened the
+     * first chapter, which happens not to look past a building list. Open all of them. */
+    const all = await pg.evaluate(() => {
+      const CAM = window.CAMPAIGN, out = [];
+      for (const ch of CAM.CHAPTERS) {
+        let err = null;
+        try { window.UI.brief(CAM, ch.key); } catch (e) { err = String(e && e.message || e); }
+        out.push({ key: ch.key, err,
+                   obj: (document.querySelector('#chapters-body .brief-obj') || {}).textContent || '',
+                   prose: document.querySelectorAll('#chapters-body .brief p').length,
+                   begin: !!document.getElementById('chapter-begin'),
+                   back: !!document.getElementById('chapter-back') });
+      }
+      return out;
+    });
+    ok('every chapter briefs without throwing', all.every((q) => !q.err),
+       all.filter((q) => q.err).map((q) => q.key + ': ' + q.err).join(' | '));
+    ok('...and every one of them can be begun',
+       all.every((q) => q.begin && q.back && q.prose >= 2),
+       all.filter((q) => !(q.begin && q.back && q.prose >= 2)).map((q) => q.key).join(','));
+    ok('...and states what it is asking',
+       all.every((q) => /\w/.test(q.obj.replace(/[^\w]/g, '') || '')),
+       all.map((q) => q.key + ':' + JSON.stringify(q.obj)).join(' '));
+    /* ...and put the screen back where the rest of this suite expects it: reading the first
+     * chapter, with BEGIN under the thumb */
+    await pg.evaluate(() => window.UI.brief(window.CAMPAIGN, window.CAMPAIGN.CHAPTERS[0].key));
+
     await pg.click('#chapter-begin');
     await inMatchNow(pg);
     await until(pg, () => window.Render.ready);

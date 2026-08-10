@@ -184,9 +184,11 @@
     body.appendChild(p);
     const ob = document.createElement('div');
     ob.className = 'brief-obj';
-    ob.textContent = '❖ ' + ch.obj.line({ t: 0, units: [], storms: [],
-      players: [{ buildings: [], pattern: 0, revealed: false },
-                { buildings: [], pattern: 0, revealed: false }] }, 0, { since: -1 });
+    /* THE OBJECTIVE'S OWN SENTENCE, not its readout. This used to hand `line` a fabricated
+     * world — two empty players and nothing else — and the day an objective looked past a
+     * building list it threw where it stood, taking the BEGIN button and the way back with it.
+     * A briefing has no world. See `ask` in campaign.js. */
+    ob.textContent = '❖ ' + (ch.obj.ask || '');
     body.appendChild(ob);
     const go = document.createElement('button');
     go.className = 'mbtn';

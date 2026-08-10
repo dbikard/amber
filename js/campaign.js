@@ -48,10 +48,24 @@
    * where the player IS, not merely what was asked of him. */
   const OBJ = {};
 
+  /* ---- WHAT IT ASKS, AND WHERE YOU STAND: TWO DIFFERENT SENTENCES ----
+   * `line` is the HUD readout and is asked every tick OVER A REAL WORLD, so it may look
+   * anything up — where the rival's Seat is, how many springs you draw from, how far along he
+   * has walked. `ask` is the BRIEFING's sentence and there is no world yet: the chapter has not
+   * started, and the screen is being drawn from the table alone.
+   * They were one sentence, and the briefing screen fabricated a world to get it — an object
+   * with two empty players and nothing else. That worked exactly as long as no objective looked
+   * past a building list. The moment `raze` learned to ask which of his Gates stand out in
+   * Shadow (`cityOf`), chapter II's briefing threw where it stood, and everything the screen
+   * builds AFTER the objective line — the BEGIN button, the way back to the other chapters —
+   * was never appended. Reported from play as "the menu disappeared": a chapter you could read
+   * and could not start or leave. A briefing has no world, so it is not given one. */
+
   /* HOLD n SPRINGS, CONTINUOUSLY, FOR A WHILE. Taking one is a march; holding four while the
    * black road gnaws at them is a realm. `since` is cleared the moment the count slips, so this
    * cannot be satisfied by touching the number once. */
   OBJ.hold = (n, secs) => ({
+    ask: `Hold ${n} springs of Shadow, and keep them for ${secs} seconds`,
     line: (w, me, st) => {
       const h = springs(w, me);
       if (h < n) return `Hold ${n} springs — you draw from ${h}`;
@@ -68,6 +82,7 @@
   /* RAISE SOMETHING. The plainest objective there is, and the right one for a first chapter:
    * it is satisfied by doing the thing the game is about and by nothing else. */
   OBJ.raise = (bt, n) => ({
+    ask: `Raise ${n} ${(C.BUILDINGS[bt] || {}).name || bt}${n === 1 ? '' : 's'}`,
     line: (w, me) => {
       const d = C.BUILDINGS[bt];
       return `Raise ${n} ${d ? d.name : bt}${n === 1 ? '' : 's'} — you hold ${works(w, me, bt)}`;
@@ -94,6 +109,7 @@
         Math.hypot(b.x - c2.x, b.y - c2.y) >= far).length;
     }, 0);
     return {
+      ask: `Throw down every ${(C.BUILDINGS[bt] || {}).name || bt} he has taken out in Shadow`,
       line: (w, me) => {
         const d = C.BUILDINGS[bt], left = out(w, me);
         return `Throw down his ${d ? d.name : bt}s out in Shadow — ${left} still stand${left === 1 ? 's' : ''}`;
@@ -110,6 +126,7 @@
   /* STAND. The clock is the enemy's, not yours — losing your own Seat is a loss under the sim's
    * own rule and needs nothing here. */
   OBJ.survive = (secs) => ({
+    ask: `Hold your Seat of Power for ${secs} seconds`,
     line: (w, me, st) => `Hold your Seat — ${Math.max(0, Math.ceil(secs - w.t))}s`,
     check: (w, me) => (w.t >= secs ? 'won' : null)
   });
@@ -126,12 +143,14 @@
    * where your Shrine is while it runs. The sim ends a match at a hundred, so this only has to
    * name the road and say how far along you are. */
   OBJ.walk = () => ({
+    ask: 'Walk the Pattern to its heart',
     line: (w, me) => `Walk the Pattern — ${w.players[me].pattern.toFixed(0)}%`,
     check: () => null
   });
 
   /* THE THRONE, which is the game's own condition and is here so a chapter can say so. */
   OBJ.seat = () => ({
+    ask: 'Break his Seat of Power',
     line: () => 'Break his Seat of Power',
     check: () => null
   });
