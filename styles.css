@@ -371,11 +371,6 @@ body {
 }
 .roll-head b { font-size: 12px; color: #c9a44f; font-weight: normal; }
 .roll-blurb { font-size: 12px; font-style: italic; color: #b8a878; line-height: 1.5; margin: 5px 0 8px; }
-/* the rung a choice is made on — a label across the column, not another card */
-.roll-lv {
-  font-size: 9px; letter-spacing: 2px; color: #8a7ca8;
-  margin: 10px 0 5px; text-transform: uppercase;
-}
 /* ---- THE GRID OF SMALL CARDS, AND THE ONE THAT IS OPEN ----
    A codex is looked things up in, not read top to bottom: the old roll gave every man a
    full-width card carrying his prose, his numbers and his tags, and then listed every man a
@@ -404,6 +399,7 @@ body {
 /* the opened card: the figure on the left, everything the table knows on the right */
 .man-open {
   grid-column: 1 / -1; display: grid; grid-template-columns: 96px 1fr; gap: 10px;
+  align-items: start;
   padding: 10px; margin: -2px 0 2px;
   background: linear-gradient(#241c30, #17111f);
   border: 1px solid #c9a44f; border-radius: 8px;
@@ -413,8 +409,12 @@ body {
   font-size: 34px;
 }
 #roll.figs .man-open .c-fig { color: transparent; }
-/* ...but a branch that raises nobody has no man to draw, so its glyph must survive `figs` */
+/* ...but a branch that raises nobody has no man to draw. Its glyph must survive `figs` — the
+   class that fades the icon out from under a figure that is about to be drawn over it — and it
+   must not reserve a figure's HEIGHT either, or a Ballista Tower opens with a hand's width of
+   empty card under three lines of text. */
 #roll.figs .man-open .c-fig.no-fig { color: inherit; }
+.man-open .c-fig.no-fig { height: auto; align-self: start; padding-top: 4px; }
 .mo-text { text-align: left; }
 .mo-name { font-size: 15px; color: #ffe9a8; display: flex; justify-content: space-between; gap: 8px; }
 .mo-cost { font-size: 13px; color: #c9a44f; }
