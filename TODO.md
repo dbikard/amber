@@ -746,7 +746,11 @@ below.
       chapter uses one yet, they all pin a seed instead); starting units or essence per chapter,
       which the spec format cannot express today; and a way to gate a HUD control for a tutorial
       step, for which the `.locked` card and `disabled` button idioms exist but no machinery does.
-- [ ] **The corridor through a gateway is CLEARER, not clear — 30 men to 17.** Reported from
+- [ ] **The corridor through a gateway is CLEARER, not clear — 30 men to 17.** *(and since:
+      the two rules that keep it clear had disagreed about how wide a door is — `station` was
+      dropping foot slots across ±1.35·`WALL.gate` while `jostle` refused pushes across
+      ±`WALL.gate`. One `inCorridor` and one `GATE_WIDE` now; measured at sixty men on a 300
+      run, 8 in the gateway before and 7 after.)* Reported from
       play: the reserve at the foot of a wall stands across its own door, so a company sent out
       has to shove through them. Two things fixed, each measured on a 300-length run with sixty
       men, counting the reserve inside a corridor 60 wide and 120 deep through the gate:

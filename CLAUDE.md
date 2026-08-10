@@ -540,6 +540,16 @@ questions a glance at a minimap asks.
   curtain, the Seat stands where worldgen put it forever, so if stone could shade it the cheapest
   work in the game would switch the throne's guns off from outside their reach.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
+- **The Muster Roll is a GRID, and a man belongs to one place in it.** Small cards — emblem,
+  name, what raises him, price, three numbers — under the hall that musters him, and the
+  remainder (`Champion`, `Fiend`) under one last section computed as *what no hall raised*, so
+  a new kind lands in exactly one of them. A tap opens a large card that spans the grid with
+  the turning figure, the prose and every field the table carries; the FIGURE belongs to that
+  one card, so `Render.rollStart` is handed one berth or none (it used to turn eighteen men at
+  once, on a phone). It reads `CONST` and nothing else: `rollStat` drives the tag line off a
+  unit def's OWN KEYS, so a mechanic the sim gains is never silently missing and one it drops
+  stops being advertised. Nothing here names a building — which work raises a man comes off the
+  card's `data-bt`.
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an
   abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,
   the moments — as text. `node sim.js` plays bots and cannot see what a human's match felt
