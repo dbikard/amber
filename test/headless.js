@@ -8,8 +8,8 @@
 const path = require('path');
 const R = (f) => require(path.join(__dirname, '..', 'js', f));
 R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('net.js');
-R('record.js');
-const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG } = globalThis;
+R('record.js'); R('campaign.js');
+const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN } = globalThis;
 const { suite, ok, eq, near, report } = require('./lib.js');
 
 /* ---- --quick: a partial pass for the edit loop ----
@@ -5888,6 +5888,166 @@ suite('a garrison does not stroll out through its own gate');
   ok('nobody walks through his own masonry', stoneAll <= 5, stoneAll + ' transits through stone');
   ok('...and the garrison does not commute through its own gateways',
      gateAfter <= 600, gateAfter + ' gateway transits while reshuffling');
+}
+
+/* ---------------- the campaign: chapters and their objectives ----------------
+ * An objective is a PREDICATE over world state and nothing else, which is exactly why it lives
+ * in a headless-safe file: a predicate that cannot be run in Node cannot be tested, and the one
+ * new rule the campaign adds would then be the only rule in the game nobody could check.
+ * The sim is untouched by all of this. `World.declare` is the single door out — guarded, and
+ * emitting the same event every other ending emits — and `update` grew no third condition. */
+suite('the campaign: chapters and their objectives');
+{
+  const CAM = CAMPAIGN;
+  ok('there are chapters', CAM.CHAPTERS.length >= 5, String(CAM.CHAPTERS.length));
+  ok('every one has a key, a title, a briefing, a rival, a pinned board and an objective',
+     CAM.CHAPTERS.every((c2) => c2.key && c2.title && c2.brief && c2.heir &&
+                                c2.seed != null && c2.obj && c2.won),
+     CAM.CHAPTERS.filter((c2) => !(c2.key && c2.title && c2.brief && c2.heir && c2.seed != null && c2.obj && c2.won))
+        .map((c2) => c2.key || '?').join(','));
+  ok('...and names a rival the game actually has',
+     CAM.CHAPTERS.every((c2) => !!AI.HEIRS[c2.heir]),
+     CAM.CHAPTERS.filter((c2) => !AI.HEIRS[c2.heir]).map((c2) => c2.heir).join(','));
+  eq('keys are unique', new Set(CAM.CHAPTERS.map((c2) => c2.key)).size, CAM.CHAPTERS.length);
+
+  /* EVERY CHAPTER MUST BE ABLE TO START. A pinned seed is worth nothing if the board it pins
+   * refuses to build, and a chapter that throws on BEGIN is the worst bug this feature can
+   * have — it is unreachable from the menu of the one before it. */
+  let built = 0, bad = [];
+  for (const c2 of CAM.CHAPTERS) {
+    try {
+      const w = World.createWorld(c2.seed >>> 0, 2, c2.spec);
+      if (w && w.map && w.players.length === 2) built++; else bad.push(c2.key);
+    } catch (e) { bad.push(c2.key + ':' + e.message); }
+  }
+  eq('every chapter builds its board', built, CAM.CHAPTERS.length);
+  ok('...with nothing refused', bad.length === 0, bad.join(' '));
+
+  /* the objectives, each against a real world driven to the state it asks about */
+  const w = World.createWorld(4242, 2);
+  const me = 0, pl = w.players[me];
+  const gate = (node) => ({ id: w.nextId++, bt: 'gate', level: 1, x: 100, y: 100, cd: 0,
+                            raise: 0, raiseFor: 21, hp: 100, maxHp: 100, lastHurt: -99,
+                            node, co: 0 });
+  /* --- raise --- */
+  {
+    const o = CAM.OBJ.raise('gate', 3), st = {};
+    const had = pl.buildings.length;   // he opens with one Gate already; three means three
+    eq('raise: not yet', o.check(w, me, st), null);
+    ok('...and says where you are', /1|2|3/.test(o.line(w, me, st)), o.line(w, me, st));
+    while (pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length < 3) pl.buildings.push(gate(-1));
+    eq('raise: three Gates takes it', o.check(w, me, st), 'won');
+    pl.buildings.length = had;
+  }
+  /* --- hold: continuous, and the clock RESTARTS when the count slips ---
+   * The board is CLEARED first: every heir opens with a finished Gate on a spring, so a rig
+   * that pushes two more and pops one still holds two and the clock never restarts. The first
+   * version of this test did exactly that and read as the rule being broken. */
+  {
+    const o = CAM.OBJ.hold(2, 10), st = { since: -1 };
+    const had = pl.buildings.slice();
+    pl.buildings.length = 0;
+    w.t = 0;
+    eq('hold: nothing held yet', o.check(w, me, st), null);
+    pl.buildings.push(gate(1), gate(2));
+    eq('hold: two springs, but not for long enough', o.check(w, me, st), null);
+    w.t = 6; eq('hold: still counting', o.check(w, me, st), null);
+    /* lose one — the clock must go back to nought, or "hold" means "touch" */
+    pl.buildings.pop();
+    eq('hold: one lost, so nothing is being held', o.check(w, me, st), null);
+    pl.buildings.push(gate(2));
+    w.t = 12;
+    eq('hold: the clock restarted, so six seconds in is not ten', o.check(w, me, st), null);
+    w.t = 22;
+    eq('hold: ten unbroken seconds takes it', o.check(w, me, st), 'won');
+    pl.buildings.length = 0;
+    pl.buildings.push(...had);
+    w.t = 0;
+  }
+  /* --- raze: and it cannot be won on the opening frame --- */
+  {
+    const o = CAM.OBJ.raze('gate'), st = {};
+    const en = w.players[1], had = en.buildings.length;
+    en.buildings.length = 0;
+    eq('raze: he has none YET, which is not a victory', o.check(w, me, st), null);
+    en.buildings.push(gate(3));
+    eq('raze: one stands', o.check(w, me, st), null);
+    en.buildings.length = 0;
+    eq('raze: and now it does not', o.check(w, me, st), 'won');
+    en.buildings.length = 0;
+    for (let i = 0; i < had; i++) en.buildings.push(gate(-1));
+  }
+  /* --- survive --- */
+  {
+    const o = CAM.OBJ.survive(60), st = {};
+    w.t = 30; eq('survive: not yet', o.check(w, me, st), null);
+    w.t = 61; eq('survive: the clock runs out in your favour', o.check(w, me, st), 'won');
+    w.t = 0;
+  }
+  /* --- an extra way to lose --- */
+  {
+    const o = CAM.FAIL.lose('barracks'), st = {};
+    const had = pl.buildings.slice();
+    pl.buildings.length = 0;
+    eq('lose: you never had one, so you have not lost one', o.check(w, me, st), null);
+    pl.buildings.push({ id: w.nextId++, bt: 'barracks', level: 1, x: 1, y: 1, cd: 0, raise: 0,
+                        raiseFor: 1, hp: 1, maxHp: 1, lastHurt: -99, node: -1, co: 0 });
+    eq('lose: you have one', o.check(w, me, st), null);
+    pl.buildings.length = 0;
+    eq('lose: and now you do not', o.check(w, me, st), 'lost');
+    pl.buildings.push(...had);
+  }
+
+  /* THE DOOR OUT OF THE SIM. Guarded, so a chapter cannot overrule a Seat that has already
+   * fallen, and it emits the same 'win' every other ending does. */
+  {
+    const w2 = World.createWorld(7, 2);
+    w2.events.length = 0;
+    ok('declare ends the match', World.declare(w2, 0, 'objective') === true &&
+       w2.winner === 0 && w2.winReason === 'objective', `${w2.winner}/${w2.winReason}`);
+    ok('...and emits the same event every other ending emits',
+       w2.events.some((e) => e.e === 'win' && e.winner === 0 && e.reason === 'objective'),
+       JSON.stringify(w2.events.slice(-2)));
+    eq('...and cannot overrule a match already decided', World.declare(w2, 1, 'castle'), false);
+    eq('...leaving the first answer standing', w2.winner, 0);
+  }
+
+  /* THE RUNNER: what game.js holds for the length of a chapter. It never writes to the world. */
+  {
+    const ch = CAM.byKey('road');
+    const w3 = World.createWorld(ch.seed >>> 0, 2);
+    const run = CAM.run(ch, 0);
+    const before = JSON.stringify({ t: w3.t, u: w3.units.length, win: w3.winner });
+    eq('the runner answers null on a fresh board', run.tick(w3), null);
+    ok('...and says what is being asked', typeof run.say(w3) === 'string' && run.say(w3).length > 0, run.say(w3));
+    eq('...and touched nothing', JSON.stringify({ t: w3.t, u: w3.units.length, win: w3.winner }), before);
+    /* the tutorial is PREDICATES, in order, once each */
+    const hints = [];
+    for (let k = 0; k < 30 * 30; k++) { World.update(w3, C.SIM_DT); w3.events.length = 0;
+      const h = run.hint(w3); if (h) hints.push(h); }
+    ok('the chapter teaches, one lesson at a time', hints.length >= 1, hints.length + ' hint(s)');
+    eq('...and never twice', new Set(hints).size, hints.length);
+    ok('...in the order they were written',
+       hints.every((h, i) => ch.hints.findIndex((q) => q.text === h) >=
+                             (i ? ch.hints.findIndex((q) => q.text === hints[i - 1]) : -1)),
+       hints.join(' | '));
+    /* and a match already decided is not the runner's business */
+    World.declare(w3, 1, 'castle');
+    eq('a decided match stops the objective dead', run.tick(w3), null);
+  }
+
+  /* PROGRESS: a schema with a version, and a chapter is open when the one before it is done.
+   * There is no localStorage in Node, so this exercises the shape rather than the storage —
+   * `progress()` must survive its absence, which is the private-mode case as well. */
+  {
+    const p = CAM.progress();
+    eq('progress reads as an empty record with no storage behind it', p.v, 1);
+    ok('...with nothing cleared', Array.isArray(p.done) && p.done.length === 0, JSON.stringify(p));
+    ok('the first chapter is always open', CAM.open(CAM.CHAPTERS[0].key));
+    ok('...and the second is not, until the first is done', !CAM.open(CAM.CHAPTERS[1].key));
+    ok('the menu offers the first chapter', CAM.next() && CAM.next().key === CAM.CHAPTERS[0].key,
+       CAM.next() ? CAM.next().key : 'none');
+  }
 }
 
 /* ---------------- an heir does not enter a race he has already lost ----------------

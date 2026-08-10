@@ -39,6 +39,7 @@ js/render_select.js — hands game.js the renderer, or null when the device has 
 js/qrcode.js    — QR encoder (verbatim from perils)
 js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
 js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
+js/campaign.js  — the chapters: boards, briefings, objectives, progress (headless-safe)
 js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners, the Muster Roll
 js/game.js      — orchestration: modes, fixed-timestep loop, input routing, MP wiring (last)
 sim.js          — Node balance runner: mirror / gradient / round-robin / durations
@@ -314,6 +315,35 @@ Seats *at all*; `acquire` returns before it looks, so he walks past stone huntin
 shooter has it, which is why no host of archers, sorcerers, wardens and binders can end a match,
 and why the AI carries `v.breakers`. `mans` — may hold a berth or a tower place. `siege` — his
 blow against stone, multiplied.
+
+## The campaign
+
+Chapters, not a rung counter. `js/campaign.js` holds `CHAPTERS` — key, title, briefing, rival,
+a PINNED seed (a story wants its own country, not whatever the noise produced this morning),
+an objective, and predicate-driven hints — plus `OBJ` (`raise`, `hold`, `raze`, `survive`,
+`walk`, `seat`), `FAIL`, and the progress record under `amber_campaign` (`{v:1,done:[keys]}`).
+It is **headless-safe on purpose**: an objective is a predicate over world state, and a
+predicate that cannot be run in Node cannot be tested.
+
+**THE SIM GREW NO THIRD WIN CONDITION.** `win` still has exactly two callers. What a chapter
+needed was not another rule inside `update` but a way to end a match from OUTSIDE, having
+watched the world game.js already holds — that is `World.declare(world, winner, reason)`:
+guarded (it cannot overrule a Seat that has already fallen) and emitting the same `win` event
+every other ending emits, so the end screen, the chronicle and the seat's collapse all behave
+exactly as they always did. The objective is POLLED once per simulated frame in game.js's own
+loop. Do not put triggers in `world.js`: the sim is headless-first, the netcode is
+host-authoritative, and a spec board cannot cross the wire (a guest rebuilds from the seed
+alone), so a scripted chapter is a single-player concern by construction.
+
+`CAMPAIGN.run(chapter, me)` is what game.js holds for the length of one: `tick` answers
+`'won'`/`'lost'`/null and never writes to the world, `say` is the HUD line (asked every frame,
+so it can count down), and `hint` fires the tutorial one lesson at a time, **in order**, each
+waiting for the BOARD to be true rather than for the clock to reach a number.
+
+Adding a chapter is a table entry: `{key, title, heir, seed, opts, brief, obj, won, hints}`.
+`opts` merges OVER the player's chosen footing, so a chapter may hold a rival back (`hold`) or
+let him off the leash without taking the footing away. The chapter screen, the briefing, the
+lock, the progress and the end screen all follow from the table with no code.
 
 ## Common Tasks
 

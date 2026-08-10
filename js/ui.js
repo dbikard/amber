@@ -42,6 +42,7 @@
     $('pw-storm').addEventListener('click', () => H.onPower('storm'));
     $('pw-trump').addEventListener('click', () => H.onPower('trump'));
     $('end-next').addEventListener('click', () => H.onEndNext());
+    $('chapters-close').addEventListener('click', () => UI.chaptersClose());
     $('end-menu').addEventListener('click', () => H.onEndMenu());
     $('end-copy').addEventListener('click', () => UI.copyRecord($('end-copy')));
     $('end-save').addEventListener('click', () => UI.saveRecord());
@@ -116,6 +117,88 @@
     btn.classList.toggle('hidden', !has);
     btn.textContent = '📜 CHRONICLE OF THE LAST MATCH';
     $('record-box').classList.add('hidden');
+  };
+  /* ---------------- the campaign ----------------
+   * A CHAPTER SCREEN AND A BRIEFING, in one panel, because they are one gesture: pick the
+   * chapter, read what is being asked, begin. The objective is stated BEFORE the board is —
+   * which is what makes a varied win condition legible instead of confusing, and is the thing
+   * worth taking from how this was done before there were tutorials.
+   * It reuses the Muster Roll's shape (a full-screen scrolling panel with a heading, a
+   * generated body and a way out) and the build sheet's cards, so a chapter card is a `.card`
+   * with `.locked` on it exactly as an unaffordable work is. */
+  UI.toMenuScreens = function () {
+    $('halt').classList.add('hidden');
+    $('hud').classList.add('hidden');
+    $('end').classList.add('hidden');
+    $('menu').classList.add('hidden');
+    UI.closeSheet();
+  };
+  UI.chaptersOpen = () => !$('chapters').classList.contains('hidden');
+  UI.chaptersClose = function () {
+    $('chapters').classList.add('hidden');
+    if (UI.showMenu && H.onMenuAgain) H.onMenuAgain();
+  };
+  UI.chapters = function (CAM, focus) {
+    const el = $('chapters'), body = $('chapters-body');
+    el.classList.remove('hidden');
+    if (focus) return UI.brief(CAM, focus);
+    $('chapters-title').textContent = 'THE SUCCESSION';
+    body.innerHTML = '';
+    for (const ch of CAM.CHAPTERS) {
+      const open = CAM.open(ch.key), done = CAM.cleared(ch.key);
+      const b = document.createElement('button');
+      b.className = 'card chapter' + (open ? '' : ' locked') + (done ? ' cleared' : '');
+      b.dataset.key = ch.key;
+      b.innerHTML = `<span class="c-ico">${done ? '✔' : open ? '❖' : '🔒'}</span>` +
+                    `<span class="c-name">${ch.title}</span>` +
+                    `<span class="c-blurb">${open ? ch.brief.split('\n')[0]
+                       : 'Sealed until the chapter before it is done.'}</span>`;
+      if (open) b.addEventListener('click', () => UI.brief(CAM, ch.key));
+      body.appendChild(b);
+    }
+  };
+  /* THE BRIEFING. Prose, then the one sentence of what is being asked, then BEGIN. The chapter
+   * list is one tap behind it, because a briefing you cannot back out of is a trap. */
+  UI.brief = function (CAM, key) {
+    const ch = CAM.byKey(key);
+    if (!ch) return;
+    const body = $('chapters-body');
+    $('chapters').classList.remove('hidden');
+    $('chapters-title').textContent = ch.title.toUpperCase();
+    body.innerHTML = '';
+    const p = document.createElement('div');
+    p.className = 'brief';
+    p.innerHTML = ch.brief.split('\n\n').map((q) => `<p>${q.replace(/\n/g, '<br>')}</p>`).join('');
+    body.appendChild(p);
+    const ob = document.createElement('div');
+    ob.className = 'brief-obj';
+    ob.textContent = '❖ ' + ch.obj.line({ t: 0, units: [], storms: [],
+      players: [{ buildings: [], pattern: 0, revealed: false },
+                { buildings: [], pattern: 0, revealed: false }] }, 0, { since: -1 });
+    body.appendChild(ob);
+    const go = document.createElement('button');
+    go.className = 'mbtn';
+    go.id = 'chapter-begin';
+    go.textContent = 'BEGIN';
+    go.addEventListener('click', () => { $('chapters').classList.add('hidden'); H.onChapter(ch.key); });
+    body.appendChild(go);
+    const back = document.createElement('button');
+    back.className = 'mbtn small';
+    back.id = 'chapter-back';
+    back.textContent = 'THE OTHER CHAPTERS';
+    back.addEventListener('click', () => UI.chapters(CAM, null));
+    body.appendChild(back);
+  };
+  /* WHAT THE CHAPTER IS ASKING, on the board, for as long as it is true. A briefing is read
+   * once; an objective has to be answerable at a glance three minutes later. */
+  let objShown = null;
+  UI.objective = function (text) {
+    const el = $('objective');
+    if (!el) return;
+    if (text === objShown) return;
+    objShown = text;
+    el.textContent = text || '';
+    el.classList.toggle('hidden', !text);
   };
   UI.startMatch = function (rivalName) {
     haltShown = null; masonHash = '';

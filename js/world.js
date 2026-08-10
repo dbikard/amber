@@ -3775,12 +3775,25 @@
     return false;
   }
 
+  /* THE ONE DOOR OUT OF THE SIM. `win` is written here and called from exactly two places —
+   * the Pattern at a hundred, and the last Seat standing — and it must stay that way: the sim
+   * is headless-first and the netcode is host-authoritative, so a scripted objective has no
+   * business growing a rule inside `update`. What a CAMPAIGN needs is not a third condition but
+   * a way to say the match is over from outside, having watched the world it already holds.
+   * That is this: guarded, so a chapter cannot overrule a Seat that has already fallen, and
+   * emitting the same event every other ending emits so the end screen, the chronicle and the
+   * renderer's collapse all behave exactly as they always did. */
+  function declare(world, winner, reason) {
+    if (!world || world.winner !== null) return false;
+    win(world, winner, reason);
+    return true;
+  }
   function win(world, winner, reason) {
     world.winner = winner; world.winReason = reason;
     emit(world, { e: 'win', winner, reason });
   }
 
-  global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf,
+  global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf, declare,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
                    wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush,

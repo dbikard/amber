@@ -200,51 +200,64 @@ async function match(browser, base, renderer) {
     ok('the chosen handicap reaches the heir', applied.eco === applied.want, `eco ${applied.eco}`);
     ok('and never touches your own side', applied.mine === 1, `eco ${applied.mine}`);
 
-    /* ...and the CAMPAIGN, which used to ignore it entirely */
+    /* ...AND THE CAMPAIGN, which used to ignore the footing entirely. It is CHAPTERS now, so
+     * the button opens a list and the list opens a briefing — the objective is stated before
+     * the board is. The footing still has to reach the chapter's rival, which is the thing this
+     * suite is actually about: a chapter merges its own `opts` OVER the player's footing, so it
+     * may hold a rival back without taking the footing away. */
     await pg.evaluate(() => { window.Game.toMenu(); });
     await pg.waitForTimeout(300);
     const camp = await pg.evaluate(async () => {
-      const C = window.CONST;
-      localStorage.setItem('amber_rung', '0');
+      const C = window.CONST, CAM = window.CAMPAIGN;
+      CAM.reset();
       window.UI.setDifficulty('prince');
       window.Game.toMenu();
       document.getElementById('btn-campaign').click();
-      await new Promise((res) => setTimeout(res, 400));
+      await new Promise((res) => setTimeout(res, 200));
+      const listShown = !document.getElementById('chapters').classList.contains('hidden');
+      /* the LAST chapter carries no eco of its own, so the footing reaches it untouched */
+      const last = CAM.CHAPTERS[CAM.CHAPTERS.length - 1];
+      window.Game.startChapter(last.key);
+      await new Promise((res) => setTimeout(res, 500));
       const g = window.Game.game;
-      return { eco: g.world.players[1].eco, want: C.DIFFICULTY.prince.eco,
-               rival: g.names[1], campaign: g.campaign };
+      return { listShown, eco: g.world.players[1].eco,
+               want: (last.opts && last.opts.eco != null) ? last.opts.eco : C.DIFFICULTY.prince.eco,
+               rival: g.names[1], wantRival: last.heir, campaign: g.campaign,
+               chapter: g.chapter && g.chapter.key, wantChapter: last.key };
     });
-    ok('the campaign runs on the same footing', camp.eco === camp.want && camp.campaign,
-       `eco ${camp.eco}, wanted ${camp.want}`);
-    /* the ladder is MEASURED and its order moves with the heirs — ask the game which rung is
-     * first rather than pinning a name the referee is allowed to change */
-    const rung0 = await pg.evaluate(() => window.Game.LADDER[0]);
-    ok('and the first rung is the first heir', new RegExp(rung0, 'i').test(camp.rival),
-       `${camp.rival}, first rung is ${rung0}`);
+    ok('the campaign button opens the chapters rather than a match', camp.listShown, String(camp.listShown));
+    ok('a chapter runs on the footing, with its own overrides on top',
+       camp.eco === camp.want && camp.campaign, `eco ${camp.eco}, wanted ${camp.want}`);
+    ok('...against the rival that chapter names',
+       new RegExp(camp.wantRival, 'i').test(camp.rival) && camp.chapter === camp.wantChapter,
+       `${camp.rival} / ${camp.chapter}, wanted ${camp.wantRival} / ${camp.wantChapter}`);
 
-    /* A CLAIMED THRONE WALKS THE SUCCESSION AGAIN, FROM THE START. The index was clamped
-     * rather than wrapped, so finishing dropped you straight back onto the hardest rung. */
-    const again = await pg.evaluate(async () => {
-      const L = window.Game.LADDER.length;   // the whole ladder claimed, however long it is
-      localStorage.setItem('amber_rung', String(L));
+    /* THE MENU NAMES THE CHAPTER, NOT THE HEIR — a rung had nothing to say about itself except
+     * whom you would face, and the whole point of the change is that those are two questions. */
+    const label = await pg.evaluate(async () => {
+      const CAM = window.CAMPAIGN;
+      CAM.reset();
       window.Game.toMenu();
       await new Promise((res) => setTimeout(res, 200));
-      const label = document.getElementById('btn-campaign').textContent;
-      const note = document.getElementById('campaign-note').textContent;
-      document.getElementById('btn-campaign').click();
-      await new Promise((res) => setTimeout(res, 400));
-      return { label, note, rival: window.Game.game.names[1],
-               rung: localStorage.getItem('amber_rung') };
+      const fresh = { label: document.getElementById('btn-campaign').textContent,
+                      note: document.getElementById('campaign-note').textContent };
+      for (const c2 of CAM.CHAPTERS) CAM.clear(c2.key);
+      window.Game.toMenu();
+      await new Promise((res) => setTimeout(res, 200));
+      const done = { label: document.getElementById('btn-campaign').textContent,
+                     note: document.getElementById('campaign-note').textContent };
+      CAM.reset();
+      return { fresh, done, first: CAM.CHAPTERS[0].title };
     });
-    ok('a claimed throne offers the walk again', /AGAIN/i.test(again.label), again.label);
-    ok('and says where it starts', new RegExp(rung0, 'i').test(again.note), again.note);
-    ok('which is the FIRST heir, not the last', new RegExp(rung0, 'i').test(again.rival),
-       `${again.rival}, first rung is ${rung0}`);
-    ok('and the ladder is back at its first rung', again.rung === '0', again.rung);
+    ok('the menu offers the first chapter by name',
+       label.fresh.label.indexOf(label.first.toUpperCase()) >= 0, label.fresh.label);
+    ok('...and counts how many are done', /0 of \d/.test(label.fresh.note), label.fresh.note);
+    ok('a succession all cleared offers the walk again', /AGAIN/i.test(label.done.label), label.done.label);
+    ok('...and says so in the count', /(\d+) of \1/.test(label.done.note), label.done.note);
 
     await pg.evaluate(() => {
       window.UI.setDifficulty(window.CONST.DIFFICULTY_DEFAULT);
-      localStorage.setItem('amber_rung', '0');
+      window.CAMPAIGN.reset();
       window.Game.toMenu();
     });
     await pg.waitForTimeout(400);
@@ -3443,6 +3456,121 @@ async function match(browser, base, renderer) {
       ok('...and the flag over it changed with it', r.now.flag && r.now.flag !== r.was.flag,
          `flag ${r.was.flag} -> ${r.now.flag}`);
     }
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- the campaign: a chapter is chosen, briefed, played and cleared ----------------
+   * The objective is stated BEFORE the board is — that is the whole shape of the screen, and
+   * the thing worth taking from how this was done before there were tutorials. Everything the
+   * chapter adds is polled from game.js over the world it already holds; the sim grew no third
+   * win condition, and `World.declare` is the one door out. */
+  {
+    suite('the campaign: a chapter is chosen, briefed, played and cleared');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate(() => { window.CAMPAIGN.reset(); window.UI.showMenu('x', 'y'); });
+
+    /* the menu names the chapter, not the heir */
+    const menu = await pg.evaluate(() => {
+      window.location.reload;
+      const CAM = window.CAMPAIGN;
+      return { first: CAM.CHAPTERS[0].key, n: CAM.CHAPTERS.length,
+               open1: CAM.open(CAM.CHAPTERS[0].key), open2: CAM.open(CAM.CHAPTERS[1].key) };
+    });
+    ok('the first chapter is open and the second is sealed',
+       menu.open1 === true && menu.open2 === false, JSON.stringify(menu));
+
+    await pg.click('#btn-campaign');
+    const list = await pg.evaluate(() => {
+      const cards = [...document.querySelectorAll('#chapters-body .card.chapter')];
+      return { shown: !document.getElementById('chapters').classList.contains('hidden'),
+               n: cards.length,
+               locked: cards.filter((c2) => c2.classList.contains('locked')).length,
+               first: cards.length ? cards[0].dataset.key : null };
+    });
+    ok('the campaign button opens the chapter list', list.shown && list.n === menu.n, JSON.stringify(list));
+    ok('...with every chapter but the first sealed', list.locked === menu.n - 1, JSON.stringify(list));
+
+    /* THE BRIEFING COMES BEFORE THE BOARD */
+    await pg.evaluate(() => document.querySelector('#chapters-body .card.chapter').click());
+    const brief = await pg.evaluate(() => ({
+      prose: document.querySelectorAll('#chapters-body .brief p').length,
+      obj: (document.querySelector('#chapters-body .brief-obj') || {}).textContent || '',
+      begin: !!document.getElementById('chapter-begin'),
+      back: !!document.getElementById('chapter-back'),
+      inMatch: !document.getElementById('hud').classList.contains('hidden')
+    }));
+    ok('choosing a chapter shows its briefing', brief.prose >= 2 && brief.begin && brief.back,
+       JSON.stringify(brief));
+    ok('...which states the objective', /\w/.test(brief.obj), brief.obj);
+    ok('...before any board exists', brief.inMatch === false, String(brief.inMatch));
+
+    await pg.click('#chapter-begin');
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const started = await pg.evaluate(() => {
+      const g = window.Game.game;
+      const ch = window.CAMPAIGN.CHAPTERS[0];
+      return { chapter: g.chapter && g.chapter.key, run: !!g.run, heir: g.bot && g.bot.kind,
+               wantHeir: ch.heir, wantSeed: ch.seed >>> 0, seed: g.world.seed,
+               objText: (document.getElementById('objective') || {}).textContent || '',
+               objShown: !document.getElementById('objective').classList.contains('hidden') };
+    });
+    ok('BEGIN starts that chapter, against its own rival on its own pinned board',
+       started.chapter === 'road' && started.run &&
+       started.heir === started.wantHeir && started.seed === started.wantSeed,
+       JSON.stringify(started));
+    ok('...and the board carries the objective for as long as it is true',
+       started.objShown && /\w/.test(started.objText), JSON.stringify(started));
+
+    /* ---- PLAY IT. The first chapter asks for three Gates; hand them over and the chapter
+     * must END — through `World.declare`, so the end screen, the chronicle and the progress
+     * record all behave exactly as they do for a fallen Seat. ---- */
+    const won = await pg.evaluate(async () => {
+      const g = window.Game.game, W = window.World, C = window.CONST;
+      const pl = g.world.players[0];
+      pl.essence = 1e7;
+      /* raise Gates on springs the ordinary way — the objective counts finished ones */
+      const nodes = g.world.map.sites.filter((s) => s.kind === 'node');
+      for (const s of nodes) {
+        if (pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length >= 3) break;
+        if (W.placementError(g.world, 0, s.x, s.y, 'gate') !== null) {
+          /* beyond the writ: a Gate needs troops standing on it, so put some there */
+          for (let i = 0; i < 3; i++)
+            g.world.units.push({ id: g.world.nextId++, owner: 0, kind: 'soldier', tier: 1,
+                                 x: s.x + i * 6, y: s.y, hp: 200, maxHp: 200, cd: 0,
+                                 goal: null, co: 0, from: 0 });
+          for (let k = 0; k < 4; k++) W.update(g.world, C.SIM_DT);
+        }
+        pl.essence = 1e7;
+        W.applyCommand(g.world, 0, { c: 'build', bt: 'gate', x: s.x, y: s.y });
+        for (let k = 0; k < 30 * 120 && pl.buildings.some((b) => b.raise > 0); k++) {
+          pl.essence = 1e7; W.update(g.world, C.SIM_DT);
+        }
+      }
+      const gates = pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length;
+      /* one more frame of the real loop is what runs the objective */
+      await new Promise((res) => setTimeout(res, 900));
+      return { gates, winner: g.world.winner, reason: g.world.winReason,
+               over: g.over, cleared: window.CAMPAIGN.cleared('road'),
+               endShown: !document.getElementById('end').classList.contains('hidden'),
+               sub: (document.getElementById('end-sub') || {}).textContent || '',
+               next: (document.getElementById('end-next') || {}).textContent || '' };
+    });
+    ok('the rig is alive: three Gates stand', won.gates >= 3, String(won.gates));
+    /* THE ASSERTIONS THAT FAIL WITHOUT THE CAMPAIGN — the sim has no third win condition */
+    ok('meeting the objective ends the chapter', won.winner === 0 && won.reason === 'objective',
+       `${won.winner}/${won.reason}`);
+    ok('...through the ordinary ending, so the end screen is up', won.over && won.endShown,
+       JSON.stringify({ over: won.over, endShown: won.endShown }));
+    ok('...with the chapter\'s own words rather than the sim\'s', /realm|road|spring|well/i.test(won.sub), won.sub);
+    ok('...the chapter is recorded as cleared', won.cleared === true, String(won.cleared));
+    ok('...and the button names the chapter that follows', /II|SUCCESSION/i.test(won.next), won.next);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

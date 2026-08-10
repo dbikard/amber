@@ -44,20 +44,46 @@
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
   const done = () => rung() >= LADDER.length;
-  const campaignLabel = () =>
-    done() ? 'THRONE CLAIMED — WALK IT AGAIN'
-           : 'CAMPAIGN — FACE ' + firstName(LADDER[rung()]).toUpperCase();
+  /* THE BUTTON NAMES THE CHAPTER, not the heir. A rung had nothing to say about itself except
+   * whom you would face; a chapter has a title and an objective, and the whole point of the
+   * change is that the two are not the same question. */
+  const campaignLabel = () => {
+    const CAM = global.CAMPAIGN;
+    if (!CAM) return 'CAMPAIGN';
+    const nx = CAM.next();
+    return nx ? 'THE SUCCESSION — ' + nx.title.toUpperCase() : 'THE SUCCESSION — WALK IT AGAIN';
+  };
   /* what the button will actually do, said out loud. Walking again started you against
    * BENEDICT — the last rung — because the index was clamped instead of wrapped, so the
    * reward for finishing the succession was to be dropped straight back at its hardest step. */
-  const campaignNote = () =>
-    done() ? 'the succession begins again, from ' + firstName(LADDER[0])
-           : 'rung ' + (rung() + 1) + ' of ' + LADDER.length +
-             ' · ' + LADDER.map((k, i) => (i < rung() ? '✔' : '·')).join(' ');
+  const campaignNote = () => {
+    const CAM = global.CAMPAIGN;
+    if (!CAM) return '';
+    const n = CAM.CHAPTERS.length, cl = CAM.CHAPTERS.filter((c2) => CAM.cleared(c2.key)).length;
+    return cl + ' of ' + n + ' · ' + CAM.CHAPTERS.map((c2) => (CAM.cleared(c2.key) ? '✔' : '·')).join(' ');
+  };
 
   /* ---------------- match lifecycle ---------------- */
-  function startSP(kind, opts, isCampaign) {
+  /* ---------------- a chapter ----------------
+   * The board is PINNED (a story wants its own country, not whatever the noise produced this
+   * morning), the rival is named, and `opts` is merged OVER the player's footing so a chapter
+   * may hold him back or let him off the leash without taking the footing away. Everything
+   * downstream is the ordinary single-player match — what a chapter adds is one predicate,
+   * polled below over the world game.js already holds. */
+  function startChapter(key) {
+    const ch = global.CAMPAIGN && global.CAMPAIGN.byKey(key);
+    if (!ch) return false;
+    const foot = C.DIFFICULTY[UI.difficulty()] || {};
+    startSP(ch.heir, Object.assign({}, foot, ch.opts, { seed: ch.seed, spec: ch.spec }), ch);
+    return true;
+  }
+  function startSP(kind, opts, chapter) {
+    const isCampaign = !!chapter;
     game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
+    /* the chapter's runner holds the objective's own state for the length of the match, and
+     * nothing else in the game knows it exists */
+    game.chapter = chapter && chapter.obj ? chapter : null;
+    game.run = game.chapter && global.CAMPAIGN ? global.CAMPAIGN.run(game.chapter, 0) : null;
     if (Render.clearSeatFalls) Render.clearSeatFalls();   // no throne is falling in a new match
     /* THE BOARD MAY BE CHOSEN RATHER THAN GROWN. `opts.spec` hands createWorld a hand-made
      * world (WorldGen.fromSpec) instead of leaving it to noise, and `opts.seed` pins the
@@ -72,8 +98,11 @@
     game.world.players[1].eco = (opts && opts.eco) || 1;
     game.names = ['Corwin', AI.HEIRS[kind].title];
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
-    /* first-matches onboarding: teach the banner, the springs, the assault */
-    const seenHints = +localStorage.getItem('amber_hints') || 0;
+    /* A CHAPTER BRINGS ITS OWN TUTORIAL, and it is predicates rather than a clock — see
+     * `CAMPAIGN.run().hint`. The timed onboarding below fires on `world.t` alone and says its
+     * piece whether or not the player has done the thing, which is exactly wrong inside a
+     * chapter that is already teaching one lesson at a time. */
+    const seenHints = game.chapter ? 99 : (+localStorage.getItem('amber_hints') || 0);
     if (seenHints < 3) {
       localStorage.setItem('amber_hints', String(seenHints + 1));
       game.hints = [
@@ -87,7 +116,7 @@
     homeCamera();
     armBack();
     Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
-                mode: isCampaign ? 'campaign' : 'skirmish',
+                mode: game.chapter ? 'campaign · ' + game.chapter.key : isCampaign ? 'campaign' : 'skirmish',
                 footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
     UI.startMatch(AI.HEIRS[kind].title);
   }
@@ -137,6 +166,9 @@
     backArmed = false;
     /* the codex is a layer over the menu, so it is peeled before the menu's own answer */
     if (UI.rollOpen && UI.rollOpen()) { UI.rollClose(); return; }
+    /* the chapter list and its briefing sit over the MENU, where `game.mode` is null — back
+     * out of them the same way the codex does, and only then leave the site */
+    if (UI.chaptersOpen && UI.chaptersOpen()) { UI.chaptersClose(); return; }
     if (!game.mode) return;                       // at the menu: let the browser have it
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
     const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
@@ -242,13 +274,32 @@
              : other + ' has walked the Pattern to its heart. The universe rearranges.')
       : (won ? 'The rival Seat of Power lies in ruin along the black road.'
              : 'Your Seat of Power lies in ruin. The road took it.');
+    /* A CHAPTER SAYS ITS OWN PIECE. It is a told story and the sentence at the end of one is
+     * half of what it was for; the two the sim knows how to say are about a throne and a
+     * Pattern and are wrong for "you held four wells through the storm". A chapter WON by
+     * breaking the Seat or walking the lines keeps the sim's own line, which is the true one. */
+    if (game.chapter && reason === 'objective')
+      game.endSub = won ? game.chapter.won
+                        : 'The chapter is lost. ' + game.chapter.title.replace(/^[IVX]+ · /, '') + ' waits again.';
     game.endNext = null;
     /* THE RECORD IS THE HOST'S. A guest samples its own fog-filtered snapshots — a rival's
      * essence is never on the wire — so its end screen drew a different match from the host's.
      * The match is over and there is nothing left to hide, so hand the true table over and let
      * every seat read the same one. */
     if (game.mode === 'host' && Net.active) Net.send({ t: 'chron', rows: Rec.rows() });
-    if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
+    /* THE CHAPTER IS MARKED CLEARED, and the button offers the next one by NAME — the old
+     * ladder's button said which heir you would face, which is the only thing a rung had to
+     * say about itself. A chapter has a title. */
+    if (game.chapter && won) {
+      const CAM = global.CAMPAIGN;
+      CAM.clear(game.chapter.key);
+      const nx = CAM.next();
+      game.endNext = nx ? nx.title.toUpperCase() : 'THE SUCCESSION IS YOURS';
+      game.endNextKey = nx ? nx.key : null;
+    } else if (game.chapter) {
+      game.endNext = 'TRY THE CHAPTER AGAIN';
+      game.endNextKey = game.chapter.key;
+    } else if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
       localStorage.setItem('amber_rung', String(rung() + 1));
       /* the last rung is not the end of the button: walking again starts the succession over */
       game.endNext = done() ? 'WALK IT AGAIN — FACE ' + firstName(LADDER[0]).toUpperCase()
@@ -562,6 +613,19 @@
           if (game.mode === 'host')
             for (const q of guestCmdQueue.splice(0)) World.applyCommand(game.world, q.pi, q.c);
           World.update(game.world, C.SIM_DT);
+          /* ---- THE CHAPTER'S OWN CONDITION ----
+           * Polled here, over the world this loop already holds, and NOT grown into `update`:
+           * the sim is headless-first and host-authoritative, and a scripted objective is a
+           * single-player concern. When it is met the match ends through `World.declare`, which
+           * is the same door `win` goes out of — so the end screen, the chronicle, the seat's
+           * collapse and the event queue all behave exactly as they always have. A loss hands
+           * the win to the rival, because "you lost" is a thing this game already knows how to
+           * say and inventing a second word for it would mean teaching every screen. */
+          if (game.run) {
+            const r = game.run.tick(game.world);
+            if (r === 'won') World.declare(game.world, game.viewer, 'objective');
+            else if (r === 'lost') World.declare(game.world, 1, 'objective');
+          }
         }
       }
       const view = hostView();
@@ -583,6 +647,13 @@
       if (game.hints && game.hints.length && game.world.t >= game.hints[0][0]) {
         const h = game.hints.shift();
         UI.banner(h[1], h[2]);
+      }
+      /* the chapter's tutorial: one lesson at a time, and each waits for the BOARD to be true
+       * rather than for the clock to reach a number */
+      if (game.run && !game.over) {
+        const h2 = game.run.hint(game.world);
+        if (h2) UI.banner(h2, 'alert');
+        UI.objective(game.run.say(game.world));
       }
       if (game.mode === 'host') {
         /* ONE GUEST PER SLOT, NOT ALL OF THEM AT ONCE. Each snapshot is fog-filtered for its
@@ -1063,6 +1134,18 @@
     };
   }
 
+  /* the chapter list, with `focus` naming the one to open a briefing for straight away (which
+   * is what the end screen's button wants: it has just named the next chapter) */
+  function toChapters(focus) {
+    game.over = false;
+    game.mode = null; game.chapter = null; game.run = null;
+    if (game.world) game.world = null;
+    UI.objective(null);
+    UI.toMenuScreens();
+    UI.chapters(global.CAMPAIGN, focus);
+    armBack(true);
+  }
+
   /* ---------------- boot ---------------- */
   async function boot() {
     /* No WebGL, no game — and say so, instead of failing into a black screen */
@@ -1076,11 +1159,11 @@
     await Render.init($('game'));
     window.addEventListener('resize', Render.resize);
     UI.init({
-      onCampaign: () => {
-        /* a claimed throne starts the succession OVER, from the first rung */
-        if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
-        startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
-      },
+      /* THE CAMPAIGN IS CHAPTERS NOW, not a rung counter. The button opens the list; the list
+       * opens a briefing; the briefing begins the match. The objective is stated BEFORE the
+       * board is, which is what makes a varied objective legible rather than confusing. */
+      onCampaign: () => toChapters(null),
+      onChapter: (key) => { startChapter(key); },
       onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
       /* the halt: anyone at the table may call one and anyone may lift it, so the button
        * simply asks for the opposite of what is showing. A guest sends it like any other
@@ -1154,6 +1237,9 @@
       },
       onEndNext: () => {
         if (game.mode === 'sp') {
+          /* a chapter names its own next thing — the one after it, or itself again */
+          if (game.endNextKey) { const k = game.endNextKey; toChapters(k); return; }
+          if (game.chapter) { toChapters(null); return; }
           if (game.campaign) {
             if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
             startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
@@ -1163,6 +1249,8 @@
         else toMenu();
       },
       onEndMenu: toMenu,
+      /* the chapter screen closing with nothing chosen: show the menu it sits over */
+      onMenuAgain: () => UI.showMenu(campaignLabel(), campaignNote()),
       /* the codex opens over the menu, where nothing has armed the back button */
       onRollOpen: () => armBack(true)
     });
@@ -1188,5 +1276,5 @@
 
   /* LADDER is exported so the suite can ask which rung is FIRST rather than be told a name:
    * the order is measured, and it is expected to move when the heirs do. */
-  global.Game = { game, startSP, startMP, toMenu, LADDER };
+  global.Game = { game, startSP, startMP, startChapter, toChapters, toMenu, LADDER };
 })(typeof window !== 'undefined' ? window : globalThis);

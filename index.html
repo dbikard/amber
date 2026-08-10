@@ -8,11 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.9.48';</script>
-<link rel="manifest" href="manifest.json?v=0.9.48">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.9.48">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.9.48">
-<link rel="stylesheet" href="styles.css?v=0.9.48">
+<script>window.GAME_VERSION = '0.9.49';</script>
+<link rel="manifest" href="manifest.json?v=0.9.49">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.9.49">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.9.49">
+<link rel="stylesheet" href="styles.css?v=0.9.49">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -36,6 +36,10 @@
   <div id="masons" title="mason crews — idle of total"><span class="m-ico">🔨</span><b id="m-free">1</b><span id="m-of">/1</span></div>
   <!-- every heir currently on the Pattern, and how far along: a race everyone can see -->
   <div id="walkers"></div>
+  <!-- WHAT THE CHAPTER IS ASKING, for as long as it is true. A briefing is read once; an
+       objective has to be answerable at a glance three minutes later. Centred under the clock,
+       clear of both thumbs and of the flag tray. -->
+  <div id="objective" class="hidden"></div>
   <div id="hud-bottom">
     <div id="hud-left">
       <div id="flag-tray"></div>
@@ -99,6 +103,15 @@
   <div id="version"></div>
 </div>
 
+<!-- THE SUCCESSION: the chapter list and, in the same panel, the briefing for whichever one
+     is chosen. The objective is stated BEFORE the board is — that is what makes a varied win
+     condition legible. Shares the #menu/#end/#roll layout rule. -->
+<div id="chapters" class="hidden">
+  <h2 id="chapters-title">THE SUCCESSION</h2>
+  <div id="chapters-body"></div>
+  <button id="chapters-close" class="mbtn">BACK TO THE MENU</button>
+</div>
+
 <!-- THE MUSTER ROLL: every hall that forks, every branch it may take, and every man in Amber
      with his numbers. Built from CONST at open time, so it cannot drift from the game. -->
 <div id="roll" class="hidden">
@@ -133,20 +146,21 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.9.48"></script>
-<script src="js/rng.js?v=0.9.48"></script>
-<script src="js/const.js?v=0.9.48"></script>
-<script src="js/worldgen.js?v=0.9.48"></script>
-<script src="js/nav.js?v=0.9.48"></script>
-<script src="js/world.js?v=0.9.48"></script>
-<script src="js/ai.js?v=0.9.48"></script>
-<script src="js/terrain.js?v=0.9.48"></script>
-<script src="js/render3d.js?v=0.9.48"></script>
-<script src="js/render_select.js?v=0.9.48"></script>
-<script src="js/qrcode.js?v=0.9.48"></script>
-<script src="js/net.js?v=0.9.48"></script>
-<script src="js/record.js?v=0.9.48"></script>
-<script src="js/ui.js?v=0.9.48"></script>
-<script src="js/game.js?v=0.9.48"></script>
+<script src="js/vendor/three.min.js?v=0.9.49"></script>
+<script src="js/rng.js?v=0.9.49"></script>
+<script src="js/const.js?v=0.9.49"></script>
+<script src="js/worldgen.js?v=0.9.49"></script>
+<script src="js/nav.js?v=0.9.49"></script>
+<script src="js/world.js?v=0.9.49"></script>
+<script src="js/ai.js?v=0.9.49"></script>
+<script src="js/terrain.js?v=0.9.49"></script>
+<script src="js/render3d.js?v=0.9.49"></script>
+<script src="js/render_select.js?v=0.9.49"></script>
+<script src="js/qrcode.js?v=0.9.49"></script>
+<script src="js/net.js?v=0.9.49"></script>
+<script src="js/record.js?v=0.9.49"></script>
+<script src="js/campaign.js?v=0.9.49"></script>
+<script src="js/ui.js?v=0.9.49"></script>
+<script src="js/game.js?v=0.9.49"></script>
 </body>
 </html>
