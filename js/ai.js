@@ -322,6 +322,10 @@
    * men across the world — a Shrine is 900 hit points behind whatever its owner left at home. */
   const WALK_ANSWER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKANS) || 10;
   const WALK_ARMY = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKARM) || 8;
+  /* how near a RIVAL comes to a walker's own Shrine before the walker's army turns and stands
+   * over it. A shooter throws 105 and a Bombard shells stone from 365, so anything inside this
+   * is either already hitting it or one march from it. */
+  const SHRINE_GUARD = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SHGUARD) || 500;
   /* THE PURSE IS NOT THE TEST ANY MORE. Every doctrine's walk clause carried a cash threshold
    * of its own — 200, 240, 260, 360 — written when an heir with nothing left to buy simply
    * banked what it earned; they were standing in for "can my realm carry this". The shared
@@ -537,6 +541,17 @@
       plan: () => ['gate', 'gate', 'gate', 'gate', 'barracks', 'barracks', 'barracks', 'barracks'],
       upPref: ['gate', 'barracks'],
       missions: () => [], banner: (v) => strike(v),
+      /* A YARDSTICK NEEDS A DOCTRINE THE MOMENT FORKS ACTUALLY HAPPEN. `branchFor` falls back
+       * to `branchUI[0]` for a building nobody named, and for a Barracks that is the
+       * SHIELDWALL — a thirty-essence man, and the one branch this file already records as
+       * measured worse for a heir who wins by numbers ("cut his host from 76 to 21", under
+       * bleys). While no fork ever fired the default was invisible; the moment the fork stopped
+       * queueing behind levels, greedy quietly stopped being greedy. Measured: greedy-vs-greedy
+       * convergence went from 16.4m with one timeout to 24.8m with two, past the band, in a
+       * matchup where nothing else in that change can even fire — greedy walls nothing, walks
+       * never, and has no Spire to fork. Outriders are what its own character asks for: it
+       * expands and it charges. */
+      branch: { barracks: () => 'raid' },
       walk: () => false,
       storm: () => null, trump: () => false
     }
@@ -900,10 +915,19 @@
        * heir did changed because he was on the Pattern.
        * Now the thing he defends changes. A Shrine is placed to the REAR — behind the Seat, out
        * of the war — so an army called home to the Seat stands between the enemy and the throne
-       * and nowhere near the 900 hit points that actually decide the match. While he is walking,
-       * home IS the Shrine. */
-      const myShrine = v.walking && homeThreat && !answer
-        ? v.pl.buildings.find((b) => b.bt === 'shrine' && !b.raise) : null;
+       * and nowhere near the 900 hit points that actually decide the match.
+       * AND IT IS KEYED ON THE SHRINE, NOT ON `homeThreat`. Written the obvious way — walking
+       * plus a threat at the court — it was far too wide: `homeThreat` is three hostiles within
+       * six hundred of the SEAT, most of what is hostile near a Seat is Chaos, and a walker
+       * therefore parked his whole army on the Shrine for the weather. Measured: the contested
+       * two-roads split went from 53% against a target of 50 straight back to 69%, a handful of
+       * points off the tolerance, and the walk stopped being a race and became a turtle with a
+       * clock. The honest trigger is a RIVAL coming for the Shrine — which is also strictly
+       * earlier than the old one for the case that matters, since a column making for a
+       * rear-placed Shrine need never come within six hundred of the throne at all. */
+      const shrine = v.walking && !answer ? v.pl.buildings.find((b) => b.bt === 'shrine' && !b.raise) : null;
+      const myShrine = shrine && v.visHostiles.some((u) => u.owner !== C.CHAOS_ID &&
+        d2(u.x, u.y, shrine.x, shrine.y) < SHRINE_GUARD * SHRINE_GUARD) ? shrine : null;
       const aim = answer || myShrine;
       if (aim) {
         if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80) {

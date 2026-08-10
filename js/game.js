@@ -17,8 +17,11 @@
    * not balanced against each other on purpose (see DESIGN_PRINCIPLES); what their strengths
    * are FOR is this order. It used to be a guess with four names in it, and it had bleys —
    * who wins the field by a distance — on the second rung, while corwin was not on the ladder
-   * at all. */
-  const LADDER = ['benedict', 'julian', 'brand', 'corwin', 'bleys'];
+   * at all. Re-read after the doctrine work of v0.9.44: the Warden fell to the bottom and the
+   * Master of Arms rose to the top, which is what happens when a walk is answered — julian is
+   * the heir who walks LAST, and the last walker in a field that now marches on Shrines is the
+   * one who never gets there. Pasted from the run, not adjusted by hand. */
+  const LADDER = ['julian', 'corwin', 'brand', 'bleys', 'benedict'];
   const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
 
   const game = {

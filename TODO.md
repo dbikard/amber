@@ -703,6 +703,58 @@ below.
       (Watch the rig, still: the first curtain version counted anyone crossing the wall's
       LINE and so read men walking round it as a torrent through the gap — classify by
       offset along the line, never by the line alone.)
+- [ ] **A CAMPAIGN: chapters, briefings and objectives.** What ships today is a *rung counter* —
+      `LADDER`, one localStorage integer, and the identical skirmish on a random board five
+      times. What is missing is not much, and most of it is already built.
+      **What exists and can be used as-is.** `Game.startSP(kind, opts, isCampaign)` already
+      takes `opts.spec` and `opts.seed`, and `WorldGen.fromSpec` already builds a validated
+      hand-made board — terrain paints, springs, vantages, seats, with the refusals named
+      (a seat on unbuildable ground, a site cut off from the mainland, seats too close, and
+      **exactly one usable spring inside each writ**). That road is exercised in a real browser
+      eight times over by `VEIL_BOARD`. `C.DIFFICULTY` already reaches the campaign. `#roll`
+      (the Muster Roll) is a full-screen scrolling overlay with headings, italic prose and
+      cards — a briefing screen with the text changed — and `#menu`/`#end`/`#roll` share one
+      CSS rule, so a chapter-select screen is one more div in that selector list.
+      **What is missing, in the order it should be built.**
+      1. *A chapter table.* `CAMPAIGN[]` in a new `js/campaign.js`: `{key, title, briefing,
+         spec, seed, heir, footing, objective, hints}`. Everything but `objective` is already
+         plumbed.
+      2. *Pluggable objectives.* `world.winner` is written in ONE function with TWO call sites
+         (`pattern` at 100, `castle` on the last Seat standing) and there is no third condition,
+         no timer and no per-player goal state. But in single-player `game.js` holds the real
+         unfogged world and already has a per-frame seam where it drains events, so an objective
+         can be a predicate polled there — `hold this spring for 90s`, `raise four Gates`,
+         `survive until 8:00`, `break his Siege Works`, `walk the Pattern`, `lose no Gate`. The
+         ONE hard blocker: there is no way to *declare* a win from outside the sim. `endMatch`
+         is not exported. Export it (or a `World.concede`) — that is the whole seam.
+      3. *Defeat conditions other than your own Seat.* Same mechanism, opposite sign.
+      4. *A briefing overlay* on the halt. `world.paused` is host-authoritative and already
+         stops `update()` and refuses every command but the lift, so a briefing that halts the
+         world also halts the objective clock — which is what you want.
+      5. *A tutorial that watches the player.* The onboarding hints are `[time, text, class]`
+         fired on `world.t` alone and never check whether the player DID the thing. Same line,
+         a predicate instead of a timestamp, and the array comes from the chapter.
+      6. *Progress.* Three localStorage keys exist (`amber_rung`, `amber_hints`,
+         `amber_difficulty`), no versioning and no blob. A campaign wants one key with a schema.
+      **How StarCraft did it, and what is worth stealing.** Its missions are a fixed hand-made
+      map plus a trigger table — `(conditions) → (actions)` evaluated on a tick — where the
+      actions include *display text*, *create unit*, *set victory*, *reveal map*, *pause*. The
+      three things that made the campaign work, none of which is scale:
+      (a) **the first mission takes things AWAY** — no economy, four units, walk to a point;
+          every later mission hands one system back, so the tutorial is the level design rather
+          than a wall of tooltips. Here that is: chapter 1 has one hall, no Gate, no Shrine, and
+          the objective is *reach the spring and hold it*;
+      (b) **the objective is stated before the board is** — briefing, then map — which is what
+          makes a varied objective legible instead of confusing;
+      (c) **later missions change the WIN CONDITION, not the numbers.** Survive-the-clock,
+          escort, take-and-hold, no-losses, kill-a-named-unit. Amber has three natural ones
+          nothing else in the genre has: *walk the Pattern before he does*, *hold the springs
+          while the black road surges*, and *break a Seat with an army that cannot break stone*
+          (which is a lesson about `menOnly`, taught by being made to feel it).
+      Do NOT put triggers in `world.js`. The sim is headless-first and the netcode is
+      host-authoritative; a scripted chapter is a single-player concern and belongs in game.js
+      over the seam that already exists. A spec board cannot cross the wire either — a guest
+      rebuilds from the seed alone — which is another reason to keep campaign out of the sim.
 - [ ] **The heirs play one army and one and a half orders.** Surveyed against the grammar and
       the content tables, with the claims measured over real headless matches (seeds 1000-1005).
       Ordered by impact over effort; `[REF]` needs `node sim.js` before and after, `[SAFE]` does
@@ -904,7 +956,8 @@ below.
 
 ## Phase 2 — Content
 - [ ] More Trumps (hero variety), 5th building?, per-heir portraits on menu/end screens
-- [ ] Campaign framing text between ladder rungs (Zelazny-flavored)
+- [ ] Campaign framing text between ladder rungs (Zelazny-flavored) — see the campaign entry
+      in IN FLIGHT; framing text is step 4 of it, not a thing to bolt on separately
 - [ ] Audio (procedural, perils-style sfx.js)
 
 ## Phase 3 — 4-player LAN
