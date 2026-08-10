@@ -376,14 +376,51 @@ body {
   font-size: 9px; letter-spacing: 2px; color: #8a7ca8;
   margin: 10px 0 5px; text-transform: uppercase;
 }
-/* the codex reuses .card wholesale; these two only stop it looking like something to tap */
-.roll-branch, .roll-unit { cursor: default; }
-/* ...and every stat line takes the whole width. Left in the card's `auto` cost column they
-   compete with the price for it, and an entry with two of them squeezes its own NAME into a
-   wrap — "The Butts" broke across two lines beside a one-line neighbour. */
-.roll-branch .c-rate, .roll-unit .c-rate { grid-column: 2 / 4; }
-.roll-branch { border-color: #c9a44f88; }
-.roll-unit { background: linear-gradient(#1d1728, #150f1d); }
+/* ---- THE GRID OF SMALL CARDS, AND THE ONE THAT IS OPEN ----
+   A codex is looked things up in, not read top to bottom: the old roll gave every man a
+   full-width card carrying his prose, his numbers and his tags, and then listed every man a
+   SECOND time under a catch-all, so the thing was four screens of scrolling to find one
+   archer. Small cards say which man and what he costs; the card you open says the rest.
+   `auto-fill` rather than a fixed count, so a phone gets two and a desktop gets four without
+   a media query, and the opened card spans every column whatever that count turned out to be
+   — which is what makes it read as the small card growing rather than as a panel appearing
+   somewhere else. */
+.roll-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 7px; }
+.man {
+  display: grid; grid-template-columns: 30px 1fr auto; grid-template-rows: auto auto auto;
+  gap: 1px 7px; align-items: center; text-align: left;
+  padding: 7px 8px; background: linear-gradient(#1d1728, #150f1d);
+  border: 1px solid #c9a44f55; border-radius: 8px; color: #e8dcc0;
+  font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.man:active { border-color: #c9a44f; }
+.man.open { border-color: #c9a44f; box-shadow: 0 0 10px rgba(255, 220, 150, 0.22); }
+.m-emblem { grid-row: 1 / 3; font-size: 21px; text-align: center; line-height: 1; }
+.m-name { font-size: 13px; color: #ffe9a8; }
+.m-tag { grid-column: 2 / 4; font-size: 9px; letter-spacing: 1px; color: #8a7ca8; text-transform: uppercase; }
+.m-cost { grid-column: 3; grid-row: 1; font-size: 11px; color: #c9a44f; white-space: nowrap; }
+.m-nums { grid-column: 1 / 4; font-size: 10px; color: #b8a878; margin-top: 3px; }
+.man.work .m-emblem { opacity: 0.75; }
+/* the opened card: the figure on the left, everything the table knows on the right */
+.man-open {
+  grid-column: 1 / -1; display: grid; grid-template-columns: 96px 1fr; gap: 10px;
+  padding: 10px; margin: -2px 0 2px;
+  background: linear-gradient(#241c30, #17111f);
+  border: 1px solid #c9a44f; border-radius: 8px;
+}
+.man-open .c-fig {
+  width: 96px; height: 118px; display: flex; align-items: center; justify-content: center;
+  font-size: 34px;
+}
+#roll.figs .man-open .c-fig { color: transparent; }
+/* ...but a branch that raises nobody has no man to draw, so its glyph must survive `figs` */
+#roll.figs .man-open .c-fig.no-fig { color: inherit; }
+.mo-text { text-align: left; }
+.mo-name { font-size: 15px; color: #ffe9a8; display: flex; justify-content: space-between; gap: 8px; }
+.mo-cost { font-size: 13px; color: #c9a44f; }
+.mo-from { font-size: 9px; letter-spacing: 1px; color: #8a7ca8; margin: 3px 0 6px; }
+.mo-blurb { font-size: 11px; font-style: italic; color: #b8a878; line-height: 1.5; margin-bottom: 6px; }
+.man-open .c-rate { display: block; grid-column: auto; text-align: left; font-size: 11px; margin-top: 3px; }
 #roll .mbtn { margin: 6px 0 24px; }
 /* ---- the live figures ----
    ONE canvas over the whole screen and ONE WebGL context for every man in the list, each drawn
@@ -401,14 +438,7 @@ body {
    against the containing block, which for a fixed element is the viewport, so these two lines
    are what actually holds it. */
 #roll-figs { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 41; pointer-events: none; }
-/* a man drawn in the icon's 34px column is a smudge; the unit rows get a wider berth for him,
-   and the glyph sits in the same box so nothing moves when the glass refuses and it is all
-   there is to show */
-.roll-unit { grid-template-columns: 54px 1fr auto; }
-.roll-unit .c-fig {
-  width: 54px; height: 54px; display: flex; align-items: center; justify-content: center;
-}
-#roll.figs .roll-unit .c-fig { color: transparent; }
+
 /* the chronicle's last resort: a browser that will not reach the clipboard still has to let
  * you get the text out, so it goes somewhere you can select it by hand */
 #record-box {

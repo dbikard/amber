@@ -279,77 +279,91 @@ async function match(browser, base, renderer) {
       const forking = Object.keys(C.BUILDINGS).filter((bt) => C.BUILDINGS[bt].branches);
       const body = document.getElementById('roll-body');
       const txt = body.textContent;
+      const cards = [...body.querySelectorAll('.man')];
+      const men = cards.filter((c2) => c2.dataset.kind).map((c2) => c2.dataset.kind);
+      const seen = {}, twice = [];
+      for (const k of men) { if (seen[k]) twice.push(k); seen[k] = 1; }
+      /* a branch is IN the roll either as the man it musters or, when it musters nobody, as
+       * the work itself — and every one of them has to be one or the other */
+      const branchNames = [];
+      for (const bt of forking)
+        for (const k of C.BUILDINGS[bt].branchUI) branchNames.push(C.BUILDINGS[bt].branches[k].name);
       return {
         open: !document.getElementById('roll').classList.contains('hidden'),
         menuHidden: document.getElementById('menu').classList.contains('hidden'),
         halls: body.querySelectorAll('.roll-hall').length,
-        wantHalls: forking.length + 1,                       // ...plus 'every man in Amber'
-        branches: body.querySelectorAll('.roll-branch').length,
-        wantBranches: forking.reduce((n, bt) => n + C.BUILDINGS[bt].branchUI.length, 0),
-        units: body.querySelectorAll('.roll-unit').length,
-        wantUnits: Object.keys(C.UNITS).length,
-        /* every branch and every man must be NAMED — an entry whose name came out of a key
-         * would read as 'Shieldman' either way, so check the table's own words are present */
-        named: forking.every((bt) => C.BUILDINGS[bt].branchUI.every((k) => txt.indexOf(C.BUILDINGS[bt].branches[k].name) >= 0)),
-        manned: Object.keys(C.UNITS).every((k) => txt.indexOf(C.UNITS[k].name) >= 0),
-        /* the three flags are what a branch is FOR, and they must be said in words */
-        saysStone: /besieges nothing/.test(txt) && /strikes a Shrine/.test(txt),
-        /* the fact, not the wording — a phrasing pinned here would be a test of the phrasing */
-        saysWalls: /parapet/.test(txt) && /shelters inside a tower/.test(txt),
-        saysMend: /mends/.test(txt)
+        wantHalls: forking.length + 1,                       // ...plus the men nobody musters
+        cards: cards.length,
+        men, twice,
+        wantMen: Object.keys(C.UNITS).length,
+        branchesNamed: branchNames.filter((n) => txt.indexOf(n) < 0),
+        named: Object.keys(C.UNITS).every((k) => txt.indexOf(C.UNITS[k].name) >= 0),
+        /* NOTHING IS OPEN UNTIL SOMETHING IS TAPPED: a codex you can look things up in is a
+         * grid, and the prose belongs to the one card you asked about */
+        opened: body.querySelectorAll('.man-open').length
       };
     });
     ok('the roll opens over the menu', roll.open && roll.menuHidden);
     ok('every forking work is in it, and nothing is hard-coded', roll.halls === roll.wantHalls,
        `${roll.halls} sections, wanted ${roll.wantHalls}`);
-    ok('...with every branch it offers', roll.branches === roll.wantBranches,
-       `${roll.branches} branches, wanted ${roll.wantBranches}`);
-    ok('...and every man in Amber, not only the ones a hall raises',
-       roll.units >= roll.wantUnits, `${roll.units} listed, ${roll.wantUnits} kinds`);
-    ok('each one called what the table calls it', roll.named && roll.manned);
-    ok('and what a shooter cannot do is said in words', roll.saysStone && roll.saysWalls && roll.saysMend);
+    /* ---- EVERY MAN ONCE, AND ONCE ONLY ----
+     * Reported from play with a picture: nine of the eleven kinds had a full card under their
+     * hall and a SECOND full card, same prose and all, under a catch-all that listed every man
+     * in the game. A codex that repeats itself is a codex you scroll rather than read. */
+    ok('every man in the table has a card', roll.men.length >= roll.wantMen,
+       `${roll.men.length} cards for ${roll.wantMen} kinds`);
+    ok('...and none of them has two', roll.twice.length === 0, roll.twice.join(','));
+    ok('...and every branch is named, as its man or as the work itself',
+       roll.branchesNamed.length === 0, roll.branchesNamed.join(','));
+    ok('each one called what the table calls it', roll.named);
+    ok('the roll opens as a grid, with nothing expanded', roll.opened === 0, String(roll.opened));
 
-    /* EVERY FIELD THE TABLE CARRIES IS SAID. The stat line used to be a hand-written list of
-     * `if (u.siege)` tests, which fails in both directions: a mechanic the sim drops keeps
-     * being advertised, and a mechanic the sim GAINS is silently absent. So the line is driven
-     * off each unit def's own keys — and this is the assertion that keeps it that way. The base
-     * numbers are already above it; everything else must appear, in prose or as itself. */
-    const fields = await pg.evaluate(() => {
+    /* ---- WHAT A CARD SAYS WHEN YOU OPEN IT ----
+     * The old codex printed every field of every man on a wall of full-width cards, and this
+     * is the assertion that kept it honest: every NUMBER a unit def carries must reach the
+     * screen, because a codex with its own copy of the numbers is worse than no codex. It has
+     * to open each man now, which also tests the thing the grid is for. */
+    const fields = await pg.evaluate(async () => {
       const C = window.CONST;
-      /* read each man's OWN ROW, not the whole page: '110' is the binder's reach as well as the
-       * warden's mending radius, and a substring hunt across the codex would pass on somebody
-       * else's number and prove nothing */
-      const rowOf = {};
-      for (const row of document.querySelectorAll('#roll-body .roll-unit')) {
-        const slot = row.querySelector('[data-kind]');
-        if (slot && !rowOf[slot.dataset.kind]) rowOf[slot.dataset.kind] = row.textContent;
-      }
       const base = new Set(['name', 'icon', 'blurb', 'hp', 'dmg', 'atk', 'range', 'speed',
                             'aggro', 'bounty', 'size', 'cost', 'keep']);
-      const miss = [], noRow = [];
-      let checked = 0;
+      const frame = () => new Promise((r) => requestAnimationFrame(r));
+      const miss = [], noCard = [], noBlurb = [];
+      let checked = 0, saysStone = false, saysWalls = false, saysMend = false;
       for (const k of Object.keys(C.UNITS)) {
-        const txt = rowOf[k];
-        if (txt == null) { noRow.push(k); continue; }
+        const card = document.querySelector(`#roll-body .man[data-kind="${k}"]`);
+        if (!card) { noCard.push(k); continue; }
+        card.click();
+        await frame();
+        const panel = document.querySelector('#roll-body .man-open');
+        const txt = panel ? panel.textContent : '';
+        if (C.UNITS[k].blurb && txt.indexOf(C.UNITS[k].blurb.slice(0, 24)) < 0) noBlurb.push(k);
+        if (/besieges nothing/.test(txt) && /strikes a Shrine/.test(txt)) saysStone = true;
+        if (/parapet/.test(txt) && /shelters inside a tower/.test(txt)) saysWalls = true;
+        if (/mends/.test(txt)) saysMend = true;
         for (const f of Object.keys(C.UNITS[k])) {
           if (base.has(f)) continue;
           const v = C.UNITS[k][f];
-          /* a flag is prose and its wording is nobody's business here — the existing
-           * assertions above already pin what the three flags say. A NUMBER is the thing a
-           * codex must never drop: it is the field's own value and it can come from nowhere
-           * else on that row. */
           if (typeof v !== 'number' || !v) continue;
           checked++;
           if (txt.indexOf(String(v)) < 0 && txt.indexOf(String(Math.round(v * 100))) < 0)
             miss.push(k + '.' + f + '=' + v);
         }
+        card.click();                       // shut it again: one open at a time is the rule
+        await frame();
       }
-      return { miss, noRow, checked };
+      return { miss, noCard, noBlurb, checked, saysStone, saysWalls, saysMend,
+               leftOpen: document.querySelectorAll('#roll-body .man-open').length };
     });
-    ok('every man in the table has a row of his own', fields.noRow.length === 0, fields.noRow.join(','));
-    ok('and every NUMBER his entry carries reaches that row',
+    ok('every man in the table has a card of his own', fields.noCard.length === 0, fields.noCard.join(','));
+    ok('...which says his piece when it is opened', fields.noBlurb.length === 0, fields.noBlurb.join(','));
+    ok('and every NUMBER his entry carries reaches that card',
        fields.miss.length === 0 && fields.checked > 0,
        `${fields.checked} checked; missing: ${fields.miss.join(', ') || 'none'}`);
+    ok('and what a shooter cannot do is said in words',
+       fields.saysStone && fields.saysWalls && fields.saysMend,
+       `stone ${fields.saysStone} walls ${fields.saysWalls} mend ${fields.saysMend}`);
+    ok('a second tap shuts the card again', fields.leftOpen === 0, String(fields.leftOpen));
 
     /* ---------------- the figures ----------------
      * Each man in the round, turning. ONE WebGL context for the whole list — a canvas per row
@@ -358,6 +372,20 @@ async function match(browser, base, renderer) {
      * that it STOPS: a leaked rAF behind a hidden panel looks exactly like a feature that
      * works. If the glass refuses, the roll keeps its glyphs and says nothing, and that path
      * is asserted too rather than assumed. */
+    /* ONE FIGURE, IN THE CARD THAT IS OPEN. The whole list used to turn at once — eighteen men
+     * in eighteen scissor rectangles every frame, on a phone, and seventeen of them in cards
+     * nobody had asked about. The figure belongs to the opened card, so the loop should not be
+     * running at all until one is. */
+    const idle = await pg.evaluate(async () => {
+      const R = window.Render;
+      const a = R.debugRollLoop();
+      for (let i = 0; i < 4; i++) await new Promise((res) => requestAnimationFrame(res));
+      return { berths: document.querySelectorAll('#roll-body .c-fig').length,
+               moved: R.debugRollLoop() - a };
+    });
+    ok('a closed grid has no berth and no loop', idle.berths === 0 && idle.moved === 0,
+       `${idle.berths} berths, ${idle.moved} frames`);
+    await pg.evaluate(() => document.querySelector('#roll-body .man[data-kind="soldier"]').click());
     await until(pg, () => window.Render && window.Render.debugRollLoop
                        && window.Render.debugRollLoop() > 2);
     const figs = await pg.evaluate(() => {
@@ -366,14 +394,13 @@ async function match(browser, base, renderer) {
       return { live: document.getElementById('roll').classList.contains('figs'),
                canvas: !!document.getElementById('roll-figs'),
                slots: slots.length,
-               units: document.querySelectorAll('#roll-body .roll-unit').length,
-               named: slots.every((e) => !!C.UNITS[e.dataset.kind]),
+               named: slots.every((e) => !e.dataset.kind || !!C.UNITS[e.dataset.kind]),
                frames: R.debugRollLoop(), drew: R.debugRollDraws(),
                hasFigure: !!R.rollFigure && !!R.rollFigure('soldier') };
     });
-    ok('every man in the list has a berth for his figure',
-       figs.slots === figs.units && figs.slots > 0, `${figs.slots} berths, ${figs.units} rows`);
-    ok('...each naming a man the table has', figs.named);
+    ok('the opened card carries exactly one berth for its figure', figs.slots === 1,
+       `${figs.slots} berths`);
+    ok('...naming a man the table has', figs.named);
     ok('the figure is the game\'s own model, not a second copy of it', figs.hasFigure);
     if (figs.live) {
       ok('the loop runs while the roll is open', figs.frames > 2, `${figs.frames} frames`);
@@ -435,18 +462,28 @@ async function match(browser, base, renderer) {
          placed.skewed.worst <= 1,
          `canvas ${placed.skewed.canvasH.toFixed(0)} tall against a window of ` +
          `${placed.skewed.innerH} — ${placed.skewed.sample}`);
-      /* THEY TRACK THE ROWS. The roll is a long scroll and the rectangles are asked for every
-       * frame; scrolling to the muster at the bottom, where the men are listed back to back,
-       * must put several of them on screen at once. */
+      /* HE TRACKS HIS CARD. The roll is a long scroll and the rectangle is asked for every
+       * frame, so a figure must follow his own card up the page and stop being drawn when it
+       * has gone — which is the same rule that used to be tested across eighteen rows. */
       const scrolled = await pg.evaluate(async () => {
         const el = document.getElementById('roll');
-        el.scrollTop = el.scrollHeight;
-        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-        return { top: el.scrollTop, drew: window.Render.debugRollDraws() };
+        const frame = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        await frame();
+        /* `debugRollDraws` is what the LAST FRAME drew, not a running total — it is zeroed at
+         * the top of every tick — so these are readings, not deltas */
+        const before = window.Render.debugRollDraws();
+        el.scrollTop = el.scrollHeight;        // his card is now far above the fold
+        await frame(); await frame();
+        const away = window.Render.debugRollDraws();
+        el.scrollTop = 0;
+        await frame(); await frame();
+        return { before, away, back: window.Render.debugRollDraws() };
       });
-      ok('...and follow their rows down the scroll', scrolled.top > 0 && scrolled.drew > figs.drew,
-         `${scrolled.drew} drawn at the foot of the roll against ${figs.drew} at its head`);
+      ok('the rig is alive: he was on the glass before the scroll', scrolled.before > 0,
+         `${scrolled.before} drawn`);
+      ok('...and is not drawn once his card has scrolled away', scrolled.away === 0,
+         `${scrolled.away} drawn with the card off screen`);
+      ok('...and is drawn again when it comes back', scrolled.back > 0, `${scrolled.back} drawn`);
     } else {
       /* the documented fallback: no context, no `figs` class, and the glyph that was always
        * there is still there and still legible */

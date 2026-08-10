@@ -1080,49 +1080,126 @@
     return `<span class="c-rate wide">${bits.join(' · ')}</span>` +
            (tags.length ? `<span class="c-rate up">${tags.join(' · ')}</span>` : '');
   };
-  /* the icon doubles as the FIGURE'S BERTH: a live 3D man is drawn over this box while the
-   * Roll is open (Render.rollStart), and the glyph under him is what you see if the glass
-   * refuses. `data-kind` is what tells the renderer which man goes in which rectangle. */
-  function unitRow(kind) {
+  /* ---------------- the Roll: small cards, one opened at a time ----------------
+   * WHAT WAS WRONG WITH THE OLD SHAPE. Every man was a full-width card carrying his emblem,
+   * his prose, his numbers and his tags, and then EVERY MAN WAS LISTED AGAIN under "every man
+   * in Amber" — so nine of the eleven kinds appeared twice, with the same paragraph under each
+   * copy, and the codex was a column you scrolled rather than a thing you looked things up in.
+   * Reported from play with a picture.
+   * A man belongs to ONE place: the hall that raises him, or, for the two nobody raises, to
+   * the section for what you meet rather than muster. What a card has to do at a glance is say
+   * WHICH MAN and roughly what he is worth; everything else — the prose, the full line, the
+   * tags, and the turning figure — belongs to the one card you have actually asked about.
+   * That is also why the figures got cheaper: eighteen men turning at once became one. */
+  const KEY_NUMS = (u) => `${u.hp} hp · ${u.dmg} blow · ${u.range} reach`;
+  /* a small card. `kind` names a man; `work` names a branch that changes a WORK rather than
+   * mustering anybody (a Ballista Tower raises no one), and it opens the same way. */
+  function manCard(kind, tag, bt) {
     const u = C.UNITS[kind];
-    return `<div class="card roll-unit"><span class="c-ico c-fig" data-kind="${kind}">${u.icon || '•'}</span>` +
-           `<span class="c-name">${u.name || cap(kind)}</span>` +
-           `<span class="c-cost">${u.cost ? '◆ ' + u.cost : ''}</span>` +
-           `<span class="c-blurb">${u.blurb || ''}</span>${rollStat(kind)}</div>`;
+    return `<button class="man" data-kind="${kind}"${bt ? ` data-bt="${bt}"` : ''}>` +
+           `<span class="m-emblem">${u.icon || '•'}</span>` +
+           `<span class="m-name">${u.name || cap(kind)}</span>` +
+           (tag ? `<span class="m-tag">${tag}</span>` : '') +
+           `<span class="m-cost">${u.cost ? '◆ ' + u.cost : ''}</span>` +
+           `<span class="m-nums">${KEY_NUMS(u)}</span></button>`;
+  }
+  function workCard(bt, key) {
+    const b2 = C.BUILDINGS[bt].branches[key];
+    return `<button class="man work" data-bt="${bt}" data-br="${key}">` +
+           `<span class="m-emblem">${b2.icon || '•'}</span>` +
+           `<span class="m-name">${b2.name}</span>` +
+           `<span class="m-tag">${C.BUILDINGS[bt].name} · level ${C.BUILDINGS[bt].fork}</span>` +
+           `<span class="m-cost">◆ ${b2.cost}</span>` +
+           '<span class="m-nums">the work itself — it musters nobody</span></button>';
+  }
+  /* THE OPENED CARD. It spans the grid, so on a phone it reads as the small card growing. The
+   * berth for the figure is `c-fig` exactly as it always was — `data-kind` is still what tells
+   * the renderer which man goes in which rectangle — and there is now only ever one of them. */
+  function manOpen(kind, from) {
+    const u = C.UNITS[kind];
+    return '<div class="man-open">' +
+           `<span class="c-fig" data-kind="${kind}">${u.icon || '•'}</span>` +
+           '<div class="mo-text">' +
+           `<div class="mo-name">${u.name || cap(kind)}` +
+           `<span class="mo-cost">${u.cost ? '◆ ' + u.cost : ''}</span></div>` +
+           (from ? `<div class="mo-from">${from}</div>` : '') +
+           `<div class="mo-blurb">${u.blurb || ''}</div>${rollStat(kind)}</div></div>`;
+  }
+  function workOpen(bt, key) {
+    const d = C.BUILDINGS[bt], b2 = d.branches[key];
+    return '<div class="man-open">' +
+           `<span class="c-fig no-fig">${b2.icon || '•'}</span>` +
+           '<div class="mo-text">' +
+           `<div class="mo-name">${b2.name}<span class="mo-cost">◆ ${b2.cost}</span></div>` +
+           `<div class="mo-from">${d.name}, level ${d.fork} — chosen once, and forever</div>` +
+           `<div class="mo-blurb">${b2.blurb || ''}</div>` +
+           branchStatLine(bt, key, d.fork) + '</div></div>';
   }
   UI.roll = function () {
     const body = $('roll-body');
+    const raised = new Set();     // every man some hall musters — see the last section
     let h = '';
-    /* the forking works, in the order the build sheet offers them */
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
       if (!d.branches) continue;
       h += `<div class="roll-hall"><div class="roll-head">${d.icon} ${d.name}` +
-           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${d.blurb}</div>`;
-      if (d.spawns) h += `<div class="roll-lv">Level 1 — ${C.UNITS[d.spawns].name}</div>` + unitRow(d.spawns);
-      h += `<div class="roll-lv">Level ${d.fork} — choose once, and forever</div>`;
+           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${d.blurb}</div><div class="roll-grid">`;
+      if (d.spawns) { h += manCard(d.spawns, 'level 1', bt); raised.add(d.spawns); }
       for (const key of d.branchUI) {
         const b2 = d.branches[key];
-        h += `<div class="card roll-branch"><span class="c-ico">${b2.icon}</span>` +
-             `<span class="c-name">${b2.name}</span><span class="c-cost">◆ ${b2.cost}</span>` +
-             `<span class="c-blurb">${b2.blurb}</span>` +
-             (b2.spawns ? rollStat(b2.spawns) : branchStatLine(bt, key, d.fork)) + '</div>';
+        if (b2.spawns) { h += manCard(b2.spawns, b2.name, bt); raised.add(b2.spawns); }
+        else h += workCard(bt, key);
       }
-      h += '</div>';
+      h += '</div></div>';
     }
-    /* ...and everyone else you meet. The Champion comes off a Trump and the Fiend out of a
-     * rift, so neither is under a hall — and a roll that left them out would be a roll of
-     * what you can BUY rather than of what is on the board. */
-    h += '<div class="roll-hall"><div class="roll-head">⚑ Every man in Amber</div>';
-    for (const kind of Object.keys(C.UNITS)) h += unitRow(kind);
-    h += '</div>';
+    /* ...and the two nobody musters. The Champion comes off a Trump and the Fiend out of a
+     * rift, so neither is under a hall — and a roll that left them out would be a roll of what
+     * you can BUY rather than of what is on the board. This section used to be every man in
+     * the game, which is what made the codex repeat itself; it is now exactly the remainder,
+     * so a kind added to the table lands in one place or the other and never in both. */
+    const loose = Object.keys(C.UNITS).filter((k) => !raised.has(k));
+    if (loose.length) {
+      h += '<div class="roll-hall"><div class="roll-head">⚑ Out of Shadow</div>' +
+           '<div class="roll-blurb">Raised by nobody: what you meet rather than what you muster.</div>' +
+           '<div class="roll-grid">' + loose.map((k) => manCard(k)).join('') + '</div></div>';
+    }
     body.innerHTML = h;
     $('menu').classList.add('hidden');
     $('roll').classList.remove('hidden');
     body.scrollTop = 0;
-    rollFigures();
+    rollBind(body);
+    rollFigures();          // nothing is open yet: this stops the loop
     if (H.onRollOpen) H.onRollOpen();
   };
+  /* ONE CARD OPEN AT A TIME, and the figure follows it. A second tap on the same card shuts it,
+   * which is the only way back to the grid without choosing something else. */
+  function rollBind(body) {
+    body.addEventListener('click', (e) => {
+      const card = e.target.closest && e.target.closest('.man');
+      if (!card || !body.contains(card)) return;
+      const wasOpen = card.classList.contains('open');
+      const prev = body.querySelector('.man-open');
+      if (prev) prev.remove();
+      for (const c2 of body.querySelectorAll('.man.open')) c2.classList.remove('open');
+      if (wasOpen) { rollFigures(); return; }
+      card.classList.add('open');
+      card.insertAdjacentHTML('afterend', card.dataset.kind
+        ? manOpen(card.dataset.kind, cardFrom(card))
+        : workOpen(card.dataset.bt, card.dataset.br));
+      rollFigures();
+    });
+  }
+  /* WHICH WORK RAISES HIM, said on the opened card — the small card has no room for it and it
+   * is the first thing you want to know about a man you have just tapped. It comes off the
+   * card's own `data-bt` and the table it names: NOTHING HERE NAMES A BUILDING, so a hall
+   * added tomorrow describes its own men without a line of code here. */
+  function cardFrom(card) {
+    const d = C.BUILDINGS[card.dataset.bt];
+    if (!d) return '';
+    const tag = card.querySelector('.m-tag'), t = tag ? tag.textContent : '';
+    if (!t || t === 'level 1') return `${d.name}, level 1 — mustered from the first`;
+    return `${t} · ${d.name} at level ${d.fork}, chosen once and forever`;
+  }
   /* THE FIGURES ARE THE RENDERER'S, AND THE TIMING IS OURS. ui.js owns one canvas and the two
    * moments that matter — the Roll opened, the Roll shut — and render3d.js owns every line
    * that is actually drawn into it (see R.rollStart: one context, one scissor per row). Nothing
@@ -1141,8 +1218,14 @@
       roll.appendChild(rollCv);
     }
     rollCv.classList.remove('hidden');
-    const rows = [...$('roll-body').querySelectorAll('.c-fig')]
+    /* ONE BERTH NOW, OR NONE. The whole list used to turn at once — eighteen men, eighteen
+     * scissor rectangles, every frame, on a phone — and every one of them was a card you were
+     * not looking at. The figure belongs to the card you have opened, so `rollStart` is handed
+     * that one berth, or nothing at all when the grid is closed, which stops the loop. */
+    const rows = [...$('roll-body').querySelectorAll('.man-open .c-fig')]
+      .filter((el) => el.dataset.kind)
       .map((el) => ({ el, kind: el.dataset.kind }));
+    if (!rows.length) { R3.rollStop(); rollCv.classList.add('hidden'); return false; }
     const live = !!R3.rollStart(rollCv, rows);
     /* AND IF IT REFUSES, THE ROLL IS STILL THE ROLL. `figs` is the only thing that fades the
      * glyph, so a page with no WebGL keeps the icons it always had and says nothing about it. */
