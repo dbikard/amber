@@ -115,7 +115,7 @@ async function match(browser, base, renderer) {
   await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await ready(pg);
   await pg.click('#btn-skirmish'); await pg.waitForTimeout(120);
-  await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
+  await pg.evaluate(() => [...document.querySelectorAll('#rivals-body .rival')]
     .find((e) => /julian/i.test(e.textContent)).click());
   await inMatchNow(pg);
   await until(pg, () => window.Game.game.world.units.length >= 0 && window.Render.ready);
@@ -158,14 +158,33 @@ async function match(browser, base, renderer) {
     await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await ready(pg);
     const hidden = (id) => pg.evaluate((i) => document.getElementById(i).classList.contains('hidden'), id);
+    /* ---- THREE KINDS OF THING, THREE SHAPES ----
+     * Reported from play: "a lot of things that are very different in nature are represented
+     * the same way, and it gets very cluttered when skirmish is selected." Every line was the
+     * same gold pill — a setting, three modes, five rivals, a codex — and two of the modes
+     * unfolded INLINE, so choosing one pushed the rest of the menu down the page. Anything
+     * with a second step is a screen now. */
+    const shape = await pg.evaluate(() => ({
+      folds: document.querySelectorAll('#menu #skirmish-row, #menu #lan-panel').length,
+      cards: document.querySelectorAll('#menu .mcard').length,
+      primary: document.querySelectorAll('#menu .mcard.primary').length,
+      links: document.querySelectorAll('#menu .mfoot .mlink').length,
+      heirsOnMenu: document.querySelectorAll('#menu [data-heir]').length
+    }));
+    ok('nothing unfolds on the menu any more', shape.folds === 0, String(shape.folds));
+    ok('...the ways to play are cards, one of them primary',
+       shape.cards === 3 && shape.primary === 1, JSON.stringify(shape));
+    ok('...the rivals are not on it at all', shape.heirsOnMenu === 0, String(shape.heirsOnMenu));
+    ok('...and the codex is a link rather than a fourth way to play', shape.links >= 1, String(shape.links));
+
     await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
-    ok('the skirmish row opens', !(await hidden('skirmish-row')));
-    await pg.mouse.click(60, 60); await pg.waitForTimeout(200);
-    ok('tapping away closes the skirmish row', await hidden('skirmish-row'));
+    ok('SKIRMISH opens a screen of rivals', !(await hidden('rivals')) && (await hidden('menu')));
+    await pg.click('#rivals-close'); await pg.waitForTimeout(200);
+    ok('...with a way back to the menu', (await hidden('rivals')) && !(await hidden('menu')));
     await pg.click('#btn-lan'); await pg.waitForTimeout(200);
-    ok('the LAN panel opens', !(await hidden('lan-panel')));
-    await pg.mouse.click(60, 60); await pg.waitForTimeout(200);
-    ok('tapping away closes the LAN panel', await hidden('lan-panel'));
+    ok('LAN opens a screen of its own', !(await hidden('lan-screen')) && (await hidden('menu')));
+    await pg.click('#lan-close'); await pg.waitForTimeout(200);
+    ok('...and that comes back too', (await hidden('lan-screen')) && !(await hidden('menu')));
 
     /* THE FOOTING GOVERNS BOTH MODES. It used to live inside the skirmish fold-out, which
      * said — wrongly — that it had nothing to do with the campaign, and the ladder ran on a
@@ -177,11 +196,16 @@ async function match(browser, base, renderer) {
       return { n: btns.length, before, dflt: C.DIFFICULTY_DEFAULT,
                marked: btns.filter((b) => b.classList.contains('on')).map((b) => b.dataset.key),
                keys: btns.map((b) => b.dataset.key),
-               inFold: document.querySelectorAll('#skirmish-row .diff').length,
+               labelled: !!document.querySelector('#footing-row .set-label'),
+               onMenu: !!document.querySelector('#menu #footing-row'),
                visible: !document.getElementById('footing-row').classList.contains('hidden') };
     });
     ok('every footing is offered', diff.n >= 3 && diff.n === diff.keys.length, diff.keys.join(','));
-    ok('and offered outside either fold-out, since it governs both', diff.inFold === 0 && diff.visible);
+    /* it governs the campaign and a skirmish alike, so it is on the menu itself — and it is
+     * LABELLED, or three unmarked pills between the title and the modes read as three more
+     * ways to play, which is half of what made the old menu unreadable */
+    ok('and offered on the menu, labelled as the setting it is',
+       diff.onMenu && diff.visible && diff.labelled, JSON.stringify(diff));
     ok('one is marked, and it is the remembered choice', diff.marked.length === 1 && diff.marked[0] === diff.before,
        `marked ${diff.marked} vs ${diff.before}`);
     ok('which defaults to something short of full strength', diff.before === diff.dflt && diff.dflt !== 'prince',
@@ -190,7 +214,7 @@ async function match(browser, base, renderer) {
     /* it reaches a SKIRMISH... */
     await pg.evaluate(() => { window.UI.setDifficulty('squire'); });
     await pg.click('#btn-skirmish'); await pg.waitForTimeout(200);
-    await pg.evaluate(() => [...document.querySelectorAll('#skirmish-row button')]
+    await pg.evaluate(() => [...document.querySelectorAll('#rivals-body .rival')]
       .find((e) => /julian/i.test(e.textContent)).click());
     await inMatchNow(pg);
     const applied = await pg.evaluate(() => {
@@ -239,20 +263,24 @@ async function match(browser, base, renderer) {
       CAM.reset();
       window.Game.toMenu();
       await new Promise((res) => setTimeout(res, 200));
-      const fresh = { label: document.getElementById('btn-campaign').textContent,
+      const fresh = { label: document.getElementById('campaign-chapter').textContent,
                       note: document.getElementById('campaign-note').textContent };
       for (const c2 of CAM.CHAPTERS) CAM.clear(c2.key);
       window.Game.toMenu();
       await new Promise((res) => setTimeout(res, 200));
-      const done = { label: document.getElementById('btn-campaign').textContent,
+      const done = { label: document.getElementById('campaign-chapter').textContent,
                      note: document.getElementById('campaign-note').textContent };
       CAM.reset();
       return { fresh, done, first: CAM.CHAPTERS[0].title };
     });
+    /* THE CARD NAMES THE CHAPTER on a line of its own. It used to be the button's whole label —
+     * "THE SUCCESSION — VI · THE THRONE", shouted across two wrapped lines — with the progress
+     * as a stray row of ticks underneath. What it IS, which chapter is next, and how far along
+     * you are are three different facts and they are three lines. */
     ok('the menu offers the first chapter by name',
-       label.fresh.label.indexOf(label.first.toUpperCase()) >= 0, label.fresh.label);
+       label.fresh.label.indexOf(label.first) >= 0, label.fresh.label);
     ok('...and counts how many are done', /0 of \d/.test(label.fresh.note), label.fresh.note);
-    ok('a succession all cleared offers the walk again', /AGAIN/i.test(label.done.label), label.done.label);
+    ok('a succession all cleared offers the walk again', /again/i.test(label.done.label), label.done.label);
     ok('...and says so in the count', /(\d+) of \1/.test(label.done.note), label.done.note);
 
     await pg.evaluate(() => {
@@ -2754,17 +2782,21 @@ async function match(browser, base, renderer) {
 
     /* ---------------- the scanner is not "away" ---------------- *
      * Pairing is the one place the player is blind: the camera covers the screen, and every
-     * word about how it went — the status line, the diagnostics, the BEGIN button — lives
-     * inside the LAN fold-out. The fold-out closes when you tap away from it, and the scanner
-     * is a full-screen overlay OUTSIDE it, so steadying the phone against the glass shut the
-     * panel underneath. The host came back from scanning the reply to a bare title screen and
-     * called LAN broken, which from where they were sitting it was. */
+     * word about how it went — the status line, the diagnostics, the BEGIN button — is on the
+     * LAN table behind it. That table used to be a FOLD-OUT on the menu, closed by a tap
+     * anywhere else, and the scanner is a full-screen overlay outside it — so steadying the
+     * phone against the glass shut the panel underneath, and the host came back from scanning
+     * the reply to a bare title screen and called LAN broken, which from where they were
+     * sitting it was.
+     * The table is a SCREEN now, which is the structural version of the same fix: there is no
+     * "away" to tap. This asserts the property rather than the old mechanism — nothing a tap
+     * can do while pairing takes the table off the glass. */
     suite(`${r} · the scanner is not a tap away from the table`);
     const pair = await pg.evaluate(async () => {
       const $ = (id) => document.getElementById(id);
-      $('menu').classList.remove('hidden');
-      $('lan-panel').classList.remove('hidden');       // as HOST THE TABLE leaves it
-      const open = () => !$('lan-panel').classList.contains('hidden');
+      window.UI.lan();                                 // as the menu's LAN card opens it
+      const open = () => !$('lan-screen').classList.contains('hidden')
+                      && !$('lan-panel').classList.contains('hidden');
       const opened = open();
       $('scanner').classList.remove('hidden');         // the camera comes up over everything
       const tap = (el) => el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5 }));
@@ -2773,16 +2805,18 @@ async function match(browser, base, renderer) {
       tap($('scan-cancel'));
       const afterCancel = open();
       $('scanner').classList.add('hidden');
-      tap($('menu'));                                  // ...but the menu itself still closes it
-      const afterMenu = open();
+      tap($('lan-screen'));                            // ...and a tap on the table itself
+      const afterOwn = open();
+      window.UI.screensClose();
+      const afterBack = open();
       $('menu').classList.add('hidden');
-      $('lan-panel').classList.add('hidden');
-      return { opened, afterVideo, afterCancel, afterMenu };
+      return { opened, afterVideo, afterCancel, afterOwn, afterBack };
     });
-    ok('the LAN fold-out is open to start with', pair.opened);
+    ok('the LAN table is up to start with', pair.opened);
     ok('steadying the phone on the scanner does not shut the table behind it', pair.afterVideo);
     ok("...nor does tapping the scanner's own close button", pair.afterCancel);
-    ok('but a tap on the menu itself still puts it away', !pair.afterMenu);
+    ok('...nor a tap on the table itself', pair.afterOwn);
+    ok('and only the way back puts it away', !pair.afterBack);
 
     /* ---------------- the network that will not carry it ---------------- *
      * A web page cannot switch on a phone's hotspot — there is no API for it on any platform.
@@ -3193,7 +3227,7 @@ async function match(browser, base, renderer) {
       Net.isHost = false; Net.active = false; Net.peers = [];
       window.Game.game.mode = null;
       document.getElementById('btn-skirmish').click();
-      [...document.querySelectorAll('#skirmish-row button')].find((e) => /julian/i.test(e.textContent)).click();
+      [...document.querySelectorAll('#rivals-body .rival')].find((e) => /julian/i.test(e.textContent)).click();
       await new Promise((res) => setTimeout(res, 200));
       out.recording = Rec.on;
       /* the table samples once a frame, so run the sim in chunks with frames between them —

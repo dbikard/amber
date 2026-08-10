@@ -366,6 +366,8 @@
   const HEIRS = {
     julian: {
       title: 'Julian, Warden of Arden',
+      blurb: 'Stone and patience. Towers first, ground held rather than taken, and the Pattern '
+           + 'only at the last — he is the slowest of them to reach for your throne.',
       interval: 2.2, noise: 0.30,
       /* The Warden walks only at the LAST. He was quietly out-walking Brand — a turtle that
        * reaches for the Pattern early is just a slower greed, and it collapsed the triangle:
@@ -409,6 +411,8 @@
     },
     bleys: {
       title: 'Bleys of the Flame',
+      blurb: 'Arrives first, with more. Halls before anything else, outriders to get there and a '
+           + 'ram to get in. He wins early or not at all.',
       interval: 1.8, noise: 0.20,
       plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'siege',
                    'spire', 'barracks', 'siege', 'spire', 'barracks', 'tower'],
@@ -427,6 +431,8 @@
     },
     brand: {
       title: 'Brand the Unmaker',
+      blurb: 'Mines Shadow before he fights: springs, Gates, then the Pattern once the ground '
+           + 'will pay for the walk. Leave him alone and he simply wins.',
       interval: 1.5, noise: 0.12,
       /* GREED, not a shrine rush. Brand used to raise the Shrine fourth and start walking at
        * three minutes on two springs, drain 17 against income 12 — permanently broke, so his
@@ -454,6 +460,8 @@
     },
     corwin: {
       title: 'Corwin of Amber',
+      blurb: 'A balanced hand — halls, stone and a Shrine — and he will take whichever of the '
+           + 'two roads you leave open.',
       interval: 1.4, noise: 0.10,
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks',
                    'siege', 'tower', 'barracks', 'spire', 'gate'],
@@ -472,6 +480,8 @@
     },
     benedict: {
       title: 'Benedict, Master of Arms',
+      blurb: 'The Master of Arms: quickest to act, hardest to mislead, and the strongest heir '
+           + 'the referee can find. Nothing about him is a handicap.',
       interval: 1.1, noise: 0.05,
       plan: (v) => {
         const wants = ['gate', 'barracks'];

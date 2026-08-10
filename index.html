@@ -8,11 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.9.57';</script>
-<link rel="manifest" href="manifest.json?v=0.9.57">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.9.57">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.9.57">
-<link rel="stylesheet" href="styles.css?v=0.9.57">
+<script>window.GAME_VERSION = '0.9.58';</script>
+<link rel="manifest" href="manifest.json?v=0.9.58">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.9.58">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.9.58">
+<link rel="stylesheet" href="styles.css?v=0.9.58">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -65,20 +65,66 @@
 
 <div id="sheet" class="hidden"></div>
 
+<!-- THE MENU: THREE KINDS OF THING, THREE SHAPES.
+     Reported from play: "a lot of things that are very different in nature are represented the
+     same way, and it gets very cluttered when skirmish is selected." Every line of it was the
+     same gold pill — a SETTING (the footing), three MODES, five RIVALS and a piece of
+     REFERENCE — and two of those modes unfolded inline, so choosing one pushed everything
+     else down the screen.
+     Now: one primary card for the way in, two cards for the other ways to play, the footing as
+     a labelled setting, and the codex as a quiet link. Anything with a second step gets its own
+     screen (the chapters, the rivals, the LAN table) rather than growing out of the menu. -->
 <div id="menu">
   <h1>AMBER</h1>
   <div class="sub">— The Succession —</div>
   <p class="lore">Oberon is gone. The black road reaches for the one true city.<br>
      Raise your works, walk in Shadow, and take the throne — by siege, or by the Pattern.</p>
-  <!-- the footing is a preference, not a per-mode question: it governs the campaign and a
-       skirmish alike, so it sits above both rather than inside one fold-out -->
+
+  <!-- the way in: where you are in the story, and one tap back into it -->
+  <button id="btn-campaign" class="mcard primary">
+    <span class="mc-kicker">The campaign</span>
+    <span class="mc-name" id="campaign-name">THE SUCCESSION</span>
+    <span class="mc-line" id="campaign-chapter"></span>
+    <span class="mc-note" id="campaign-note"></span>
+  </button>
+
+  <!-- the other two ways to play, which are each other's equals and nothing like the above -->
+  <div class="mrow">
+    <button id="btn-skirmish" class="mcard">
+      <span class="mc-name">SKIRMISH</span>
+      <span class="mc-line">One rival of your choosing, on fresh ground.</span>
+    </button>
+    <button id="btn-lan" class="mcard">
+      <span class="mc-name">LAN</span>
+      <span class="mc-line">Two to four heirs, one Wi-Fi, paired by QR.</span>
+    </button>
+  </div>
+
+  <!-- a SETTING, and it says so: it governs the campaign and a skirmish alike -->
   <div id="footing-row"></div>
-  <button id="btn-campaign" class="mbtn"></button>
-  <div id="campaign-note" class="diff-note"></div>
-  <button id="btn-skirmish" class="mbtn">SKIRMISH — CHOOSE YOUR RIVAL</button>
-  <div id="skirmish-row" class="hidden"></div>
-  <button id="btn-lan" class="mbtn">LAN — UP TO FOUR HEIRS</button>
-  <div id="lan-panel" class="hidden">
+
+  <!-- reference and record: not ways to play, and no longer shaped like them -->
+  <div class="mfoot">
+    <button id="btn-roll" class="mlink">⚔ The Muster Roll</button>
+    <button id="menu-record" class="mlink hidden">📜 Chronicle of the last match</button>
+  </div>
+  <div id="version"></div>
+</div>
+
+<!-- CHOOSE YOUR RIVAL: the five heirs, weakest first, each saying how he plays. This was five
+     identical pills in a fold-out on the menu, which said nothing about any of them. -->
+<div id="rivals" class="hidden">
+  <h2>CHOOSE YOUR RIVAL</h2>
+  <div id="rivals-body"></div>
+  <button id="rivals-close" class="mbtn">BACK TO THE MENU</button>
+</div>
+
+<!-- THE LAN TABLE: pairing is a FLOW — host or join, show a code, scan a reply, begin — and a
+     flow does not belong unfolded on the menu under everything else. Same panel, same ids, on
+     a screen of its own. -->
+<div id="lan-screen" class="hidden">
+  <h2>THE LAN TABLE</h2>
+  <div id="lan-panel">
     <div id="lan-net" class="hidden"></div>
     <div id="lan-status">same Wi-Fi · no server · pair by QR · two to four heirs</div>
     <canvas id="qr-display" class="hidden"></canvas>
@@ -98,9 +144,7 @@
     </div>
     <pre id="lan-diag" class="hidden"></pre>
   </div>
-  <button id="btn-roll" class="mbtn">⚔ THE MUSTER ROLL</button>
-  <button id="menu-record" class="mbtn small hidden">📜 CHRONICLE OF THE LAST MATCH</button>
-  <div id="version"></div>
+  <button id="lan-close" class="mbtn">BACK TO THE MENU</button>
 </div>
 
 <!-- THE SUCCESSION: the chapter list and, in the same panel, the briefing for whichever one
@@ -146,21 +190,21 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.9.57"></script>
-<script src="js/rng.js?v=0.9.57"></script>
-<script src="js/const.js?v=0.9.57"></script>
-<script src="js/worldgen.js?v=0.9.57"></script>
-<script src="js/nav.js?v=0.9.57"></script>
-<script src="js/world.js?v=0.9.57"></script>
-<script src="js/ai.js?v=0.9.57"></script>
-<script src="js/terrain.js?v=0.9.57"></script>
-<script src="js/render3d.js?v=0.9.57"></script>
-<script src="js/render_select.js?v=0.9.57"></script>
-<script src="js/qrcode.js?v=0.9.57"></script>
-<script src="js/net.js?v=0.9.57"></script>
-<script src="js/record.js?v=0.9.57"></script>
-<script src="js/campaign.js?v=0.9.57"></script>
-<script src="js/ui.js?v=0.9.57"></script>
-<script src="js/game.js?v=0.9.57"></script>
+<script src="js/vendor/three.min.js?v=0.9.58"></script>
+<script src="js/rng.js?v=0.9.58"></script>
+<script src="js/const.js?v=0.9.58"></script>
+<script src="js/worldgen.js?v=0.9.58"></script>
+<script src="js/nav.js?v=0.9.58"></script>
+<script src="js/world.js?v=0.9.58"></script>
+<script src="js/ai.js?v=0.9.58"></script>
+<script src="js/terrain.js?v=0.9.58"></script>
+<script src="js/render3d.js?v=0.9.58"></script>
+<script src="js/render_select.js?v=0.9.58"></script>
+<script src="js/qrcode.js?v=0.9.58"></script>
+<script src="js/net.js?v=0.9.58"></script>
+<script src="js/record.js?v=0.9.58"></script>
+<script src="js/campaign.js?v=0.9.58"></script>
+<script src="js/ui.js?v=0.9.58"></script>
+<script src="js/game.js?v=0.9.58"></script>
 </body>
 </html>

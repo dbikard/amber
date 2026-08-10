@@ -241,7 +241,7 @@ body {
 .c-blurb:empty { display: none; }
 
 /* ---------------- menu ---------------- */
-#menu, #end, #roll, #chapters {
+#menu, #end, #roll, #chapters, #rivals, #lan-screen {
   position: fixed; inset: 0; z-index: 40;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 20px; text-align: center;
@@ -270,14 +270,54 @@ body {
 #end-next:disabled { animation: waiting 2.2s ease-in-out infinite; }
 @keyframes waiting { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.95; } }
 .mbtn.small { width: auto; padding: 9px 14px; font-size: 12px; }
-#skirmish-row, .lan-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 92vw; }
-/* the footing governs BOTH modes, so it reads as a setting above them rather than as part of
- * either: its own strip, a hair apart from the buttons it applies to */
-#footing-row { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 2px; }
+.lan-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 92vw; }
+
+/* ---- THREE KINDS OF THING, THREE SHAPES ----
+   The menu was one gold pill per line, whatever the line was FOR: a setting, three modes, five
+   rivals, a codex. Reported from play as clutter, and it is — the shape carried no information,
+   so the reading of the screen was left entirely to the words.
+   A CARD is a way to play. The primary one is the campaign, which is also the only thing on the
+   menu with a STATE worth showing, so it gets the room to show it. */
+.mcard {
+  width: min(78vw, 340px); display: flex; flex-direction: column; align-items: flex-start;
+  gap: 2px; padding: 11px 13px; text-align: left; font-family: inherit;
+  color: #ffe9a8; background: linear-gradient(#2a2138, #171020);
+  border: 1px solid #c9a44f88; border-radius: 8px; box-shadow: 0 2px 12px #0009;
+}
+.mcard:active { background: #3a2e4e; }
+.mcard.primary { border-color: #c9a44f; box-shadow: 0 2px 16px #000b, 0 0 18px rgba(255, 220, 150, 0.16); }
+.mc-kicker { font-size: 9px; letter-spacing: 2px; color: #8a7ca8; text-transform: uppercase; }
+.mc-name { font-size: 17px; letter-spacing: 3px; }
+.mcard.primary .mc-name { font-size: 21px; }
+.mc-line { font-size: 11px; font-style: italic; color: #b8a878; line-height: 1.45; }
+.mc-note { font-size: 10px; letter-spacing: 1px; color: #c9a44f; margin-top: 3px; }
+/* the two other ways to play are each other's equals, so they share a row and a width */
+.mrow { display: flex; gap: 8px; justify-content: center; width: min(78vw, 340px); }
+.mrow .mcard { width: 100%; }
+/* A SETTING, LABELLED. Three unlabelled pills between the title and the modes read as three
+   more ways to play, which is half of what made the menu unreadable. */
+#footing-row {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: min(78vw, 340px); margin: 4px 0 2px; padding: 9px 10px 7px;
+  border: 1px solid #c9a44f33; border-radius: 8px;
+}
+.set-label { font-size: 9px; letter-spacing: 2px; color: #8a7ca8; text-transform: uppercase; }
 /* .diff-note carries flex-basis:100% for the ROW it was written for; in a column that is a
    claim on the whole height, which opened a hand's width of nothing down the middle of the menu */
-#footing-row .diff-note, #campaign-note { flex-basis: auto; }
-#campaign-note { margin: -6px 0 2px; }
+#footing-row .diff-note { flex-basis: auto; margin: 0; }
+/* REFERENCE IS NOT A WAY TO PLAY. The codex and the chronicle are links at the foot of the
+   screen, not full-width gold buttons competing with the campaign. */
+.mfoot { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 6px; }
+.mlink {
+  font-family: inherit; font-size: 12px; letter-spacing: 1px; color: #b8a878;
+  background: none; border: none; border-bottom: 1px solid #c9a44f44; padding: 2px 1px;
+}
+.mlink:active { color: #ffe9a8; }
+/* an heir on the rivals screen: his name, how hard he is, and how he plays */
+.card.rival { grid-template-columns: 1fr auto; text-align: left; }
+.card.rival .c-name { font-size: 15px; }
+.card.rival .c-rate { font-size: 9px; letter-spacing: 1px; color: #8a7ca8; text-transform: uppercase; }
+.card.rival .c-blurb { grid-column: 1 / 3; }
 .diff-row { display: flex; gap: 6px; justify-content: center; flex-basis: 100%; }
 .mbtn.diff { border-color: #5a4c30; color: #b8a878; }
 .mbtn.diff.on { border-color: #c9a44f; color: #ffe9a8; box-shadow: 0 0 12px rgba(255, 220, 150, 0.3); }
@@ -353,7 +393,11 @@ body {
 /* ---------------- the Muster Roll ----------------
  * A long read rather than a screen of buttons, so it packs from the top and scrolls, and the
  * CLOSE button sits at the end of the scroll where a thumb arrives having finished reading. */
-#roll { justify-content: flex-start; padding-top: 22px; }
+#roll, #rivals, #lan-screen { justify-content: flex-start; padding-top: 22px; }
+#rivals h2, #lan-screen h2 { font-size: 22px; letter-spacing: 4px; color: #ffe9a8; margin-bottom: 12px; }
+#rivals-body { width: min(96vw, 520px); display: flex; flex-direction: column; gap: 8px; }
+#rivals .mbtn, #lan-screen .mbtn { margin-top: 14px; }
+#lan-screen .mbtn.small { margin-top: 0; }
 #roll h2 { font-size: 24px; letter-spacing: 5px; color: #ffe9a8; margin-bottom: 10px; }
 #roll-body { width: min(96vw, 560px); }
 #chapters-body { width: min(96vw, 520px); display: flex; flex-direction: column; gap: 8px; }

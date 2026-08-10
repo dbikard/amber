@@ -30,12 +30,14 @@
         if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
         panel.classList.add('hidden');
       };
-      closeIfAway('skirmish-row', 'btn-skirmish');
-      closeIfAway('lan-panel', 'btn-lan');
+      /* NOTHING UNFOLDS ON THE MENU ANY MORE, so there is nothing left to close by tapping
+       * away — the rivals and the LAN table are screens with a way back, like the chapters. */
     }, true);
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
-    $('btn-skirmish').addEventListener('click', () => $('skirmish-row').classList.toggle('hidden'));
-    $('btn-lan').addEventListener('click', () => $('lan-panel').classList.toggle('hidden'));
+    $('btn-skirmish').addEventListener('click', () => UI.rivals());
+    $('btn-lan').addEventListener('click', () => UI.lan());
+    $('rivals-close').addEventListener('click', () => UI.screensClose());
+    $('lan-close').addEventListener('click', () => UI.screensClose());
     $('btn-build').addEventListener('click', () => H.onBuildMenu());
     $('btn-pause').addEventListener('click', () => H.onPause());
     $('halt').addEventListener('click', () => H.onPause());
@@ -56,6 +58,12 @@
      * its own that no menu ever mentioned. One choice now, above both, and it sticks between
      * matches because it is a preference and asking twice would be nagging. */
     const foot = $('footing-row');
+    /* IT IS A SETTING AND IT SAYS SO. Three unlabelled pills between the title and the modes
+     * read as three more ways to play — which is exactly the complaint the menu earned. */
+    const lab = document.createElement('div');
+    lab.className = 'set-label';
+    lab.textContent = 'Your footing — how hard the heirs play';
+    foot.appendChild(lab);
     const diffRow = document.createElement('div');
     diffRow.className = 'diff-row';
     const note = document.createElement('div');
@@ -77,15 +85,6 @@
     foot.appendChild(diffRow);
     foot.appendChild(note);
 
-    /* the heirs, one card each, in the order the ladder faces them */
-    const row = $('skirmish-row');
-    for (const kind of Object.keys(global.AI.HEIRS)) {
-      const b = document.createElement('button');
-      b.className = 'mbtn small';
-      b.textContent = global.AI.HEIRS[kind].title.split(',')[0].toUpperCase();
-      b.addEventListener('click', () => H.onSkirmish(kind));
-      row.appendChild(b);
-    }
     UI.paintFooting();
   };
   /* remembered across sessions; an unknown or missing value falls back to the default */
@@ -107,7 +106,13 @@
     $('hud').classList.add('hidden');
     $('end').classList.add('hidden');
     UI.closeSheet();
-    $('btn-campaign').textContent = campaignLabel;
+    $('rivals').classList.add('hidden');
+    $('lan-screen').classList.add('hidden');
+    /* THE CAMPAIGN CARD SAYS WHERE YOU ARE, in three lines rather than one long shouted one:
+     * what it is, which chapter comes next, and how much of the succession is behind you. The
+     * button used to carry the whole of that as its label — "THE SUCCESSION — VI · THE THRONE"
+     * across two wrapped lines — with the progress as a stray row of ticks underneath it. */
+    $('campaign-chapter').textContent = campaignLabel || '';
     $('campaign-note').textContent = campaignNote || '';
     if (UI.paintFooting) UI.paintFooting();
     /* the match you WALKED OUT OF is often the one worth sending — a game that went badly
@@ -115,8 +120,45 @@
     const has = !!(global.Rec && global.Rec.recorded && global.Rec.recorded());
     const btn = $('menu-record');
     btn.classList.toggle('hidden', !has);
-    btn.textContent = '📜 CHRONICLE OF THE LAST MATCH';
+    btn.textContent = '📜 Chronicle of the last match';
     $('record-box').classList.add('hidden');
+  };
+  /* ---------------- the screens that sit over the menu ----------------
+   * The chapters have had one since the campaign shipped, and the reason generalises: anything
+   * with a SECOND STEP is a screen, not a fold-out. A fold-out pushes the rest of the menu down
+   * the page, so choosing between five rivals buried the LAN table and the codex; and it gave
+   * every one of those rivals the shape of a mode. */
+  UI.rivals = function () {
+    const body = $('rivals-body');
+    const H2 = global.AI.HEIRS;
+    /* WEAKEST FIRST, which is the campaign's own order (`Game.LADDER`, set by the referee) —
+     * the one thing a menu of five names owes a player who has not met any of them. */
+    const order = (global.Game && global.Game.LADDER || Object.keys(H2)).filter((k) => H2[k]);
+    for (const k of Object.keys(H2)) if (order.indexOf(k) < 0) order.push(k);
+    body.innerHTML = order.map((k, i) => {
+      const h = H2[k];
+      return `<button class="card rival" data-heir="${k}">` +
+             `<span class="c-name">${h.title}</span>` +
+             `<span class="c-rate">${i === 0 ? 'the gentlest' : i === order.length - 1 ? 'the hardest' : ''}</span>` +
+             `<span class="c-blurb">${h.blurb || ''}</span></button>`;
+    }).join('');
+    for (const b of body.querySelectorAll('.rival'))
+      b.addEventListener('click', () => { $('rivals').classList.add('hidden'); H.onSkirmish(b.dataset.heir); });
+    UI.toMenuScreens();
+    $('rivals').classList.remove('hidden');
+    body.scrollTop = 0;
+  };
+  UI.lan = function () {
+    UI.toMenuScreens();
+    $('lan-screen').classList.remove('hidden');
+    if (H.onLanOpen) H.onLanOpen();
+  };
+  UI.screensOpen = () => !$('rivals').classList.contains('hidden')
+                      || !$('lan-screen').classList.contains('hidden');
+  UI.screensClose = function () {
+    $('rivals').classList.add('hidden');
+    $('lan-screen').classList.add('hidden');
+    $('menu').classList.remove('hidden');
   };
   /* ---------------- the campaign ----------------
    * A CHAPTER SCREEN AND A BRIEFING, in one panel, because they are one gesture: pick the
@@ -1061,14 +1103,26 @@
    * — it is a prompt to write the sentence, not a substitute for one — and never wrong. */
   const plainly = (k, v) => k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase() +
                             (v === true ? '' : ' ' + v);
-  const rollStat = (kind) => {
+  /* ---- WHAT A LEVEL CHANGES, AND WHAT IT DOES NOT ----
+   * `CONST.TIER` scales exactly four things — hit points, blow, price and bounty — and leaves
+   * reach, pace, the interval between blows and a hall's ceiling alone. So when a man has a
+   * LEVEL TABLE above him, the scaled numbers belong to it and nowhere else: printed here as
+   * well they are printed at tier one, which for a branch's recruit is a man the game never
+   * musters. Reported from play, and it was as bad as it sounds — the Shieldman's table said
+   * 160 hp · 16.3 blow · ◆38 and the line under it said 128 · 13 · ◆30, about the same man,
+   * two lines apart. `scaled` is false for the men with no hall and no upgrades (the Champion
+   * off a Trump, the Fiend out of a rift), who have one set of numbers and need them said. */
+  const rollStat = (kind, scaled) => {
     const u = C.UNITS[kind];
     if (!u) return '';
-    const dps = (u.dmg / u.atk).toFixed(1);
-    const bits = [`${u.hp} hp`, `${u.dmg} blow · ${dps}/s`, `${u.range} reach`, `${u.speed} pace`];
-    if (u.cost) bits.push(`◆ ${u.cost}`);
-    /* the hall's ceiling belongs beside the price: how many of this man ONE hall will keep
-     * in the field, refilling as they fall — the number that says what a hall is worth */
+    const bits = [];
+    if (!scaled) {
+      bits.push(`${u.hp} hp`, `${u.dmg} blow`);
+      if (u.cost) bits.push(`◆ ${u.cost}`);
+    }
+    bits.push(`${u.range} reach`, `${u.speed} pace`, `a blow every ${u.atk}s`);
+    /* the hall's ceiling belongs here rather than in the table: it is the same at every level,
+     * and it is the number that says what a hall is worth */
     if (u.keep) bits.push(`${u.keep} to a hall`);
     const tags = [];
     for (const k of Object.keys(u)) {
@@ -1185,7 +1239,7 @@
            `<span class="mo-cost">${u.cost ? '◆ ' + Math.round(u.cost * m) : ''}</span></div>` +
            (from ? `<div class="mo-from">${from}</div>` : '') +
            `<div class="mo-blurb">${u.blurb || ''}</div>` +
-           (bt ? levelTable(bt, key, kind) : '') + rollStat(kind) + '</div></div>';
+           (bt ? levelTable(bt, key, kind) : '') + rollStat(kind, !!bt) + '</div></div>';
   }
   function workOpen(bt, key) {
     const d = C.BUILDINGS[bt], b2 = key ? d.branches[key] : d;

@@ -51,7 +51,7 @@
     const CAM = global.CAMPAIGN;
     if (!CAM) return 'CAMPAIGN';
     const nx = CAM.next();
-    return nx ? 'THE SUCCESSION — ' + nx.title.toUpperCase() : 'THE SUCCESSION — WALK IT AGAIN';
+    return nx ? nx.title : 'Walk it again, from the first chapter';
   };
   /* what the button will actually do, said out loud. Walking again started you against
    * BENEDICT — the last rung — because the index was clamped instead of wrapped, so the
@@ -157,6 +157,8 @@
   /* `force` is for a layer that opens while there is no match — the Muster Roll sits over the
    * MENU, where `game.mode` is null and the ordinary arming deliberately does nothing. Without
    * it the first back press out of the codex leaves the site. */
+  /* what to run when the LAN screen opens: set by the pairing block below, called by ui.js */
+  let lanOpened = null;
   function armBack(force) {
     if (backArmed || (!game.mode && !force)) return;
     backArmed = true;
@@ -169,6 +171,8 @@
     /* the chapter list and its briefing sit over the MENU, where `game.mode` is null — back
      * out of them the same way the codex does, and only then leave the site */
     if (UI.chaptersOpen && UI.chaptersOpen()) { UI.chaptersClose(); return; }
+    /* the rivals and the LAN table sit over the menu the same way, and peel the same way */
+    if (UI.screensOpen && UI.screensOpen()) { UI.screensClose(); return; }
     if (!game.mode) return;                       // at the menu: let the browser have it
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
     const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
@@ -982,7 +986,9 @@
       else { el.classList.add('hidden'); return; }
       el.classList.remove('hidden');
     };
-    $('btn-lan').addEventListener('click', paintNet);
+    /* the LAN table is a screen now — ui.js calls `onLanOpen` when it comes up, and that is
+     * registered with every other handler in UI.init below rather than bolted on here */
+    lanOpened = paintNet;
     paintNet();
     $('lan-status').addEventListener('click', () => $('lan-diag').classList.toggle('hidden'));
     /* repainted on a timer as well as on events: ICE moves without telling us, and a stuck
@@ -1217,6 +1223,7 @@
        * board is, which is what makes a varied objective legible rather than confusing. */
       onCampaign: () => toChapters(null),
       onChapter: (key) => { startChapter(key); },
+      onLanOpen: () => { if (lanOpened) lanOpened(); },
       onSkirmish: (kind) => startSP(kind, C.DIFFICULTY[UI.difficulty()], false),
       /* the halt: anyone at the table may call one and anyone may lift it, so the button
        * simply asks for the opposite of what is showing. A guest sends it like any other
