@@ -76,8 +76,9 @@
 
   /* `players` is 2..4. Two is a duel and behaves exactly as it always did; more is a
    * free-for-all, where toppling a Seat ELIMINATES that heir rather than ending the match,
-   * and the last one left takes the throne. */
-  function createWorld(seed, players, spec) {
+   * and the last one left takes the throne.
+   * `rules` is the MODE's business (see `CONST.RULES`): omitted, the world plays today's game. */
+  function createWorld(seed, players, spec, rules) {
     const rng = RNG.make(seed >>> 0);
     const map = buildMap(seed >>> 0, players, spec);
     const seats = map.cities;
@@ -85,6 +86,10 @@
       seed: seed >>> 0, rng,
       t: 0, tick: 0,
       winner: null, winReason: null,
+      /* THE RULES ARE THE WORLD'S, NOT A GLOBAL'S. Copied so a mode cannot edit the defaults
+       * out from under a match already running, and so two worlds in one process (a region and
+       * the skirmish that generated it, a suite playing the same board twice) may disagree. */
+      rules: Object.assign({}, C.RULES, rules || null),
       map,
       players: seats.map(() => ({
         essence: C.START_ESSENCE,
@@ -103,6 +108,12 @@
         championId: 0,
         banner: -1,             // site id the army marches on; -1 = defend home
         musterPaused: false,    // the Seat can halt the muster to hoard essence
+        /* A PACT IS TWO STANDING OFFERS, and that is the whole state machine. `offers[j]` is
+         * "I am willing"; a truce holds while BOTH stand and ends the instant either is
+         * withdrawn. Symmetric by construction, so there is no agreement to desynchronise and
+         * no way for two seats to disagree about whether they are at peace. Empty until a mode
+         * turns `rules.truce` on. */
+        offers: [],
         explored: {},           // siteId -> last-known {kind, owner}
         seen: newSeenMask(),    // coarse grid of ground you have ever had eyes on
         ghosts: {}              // buildingId -> last-seen {bt, level, x, y, owner} (fog memory)
@@ -154,6 +165,38 @@
       world.players[pi].banner = aimAt(world, { site: world.map.cities[pi] });
     refreshVision(world);   // you know your own surroundings from the start
     return world;
+  }
+
+  /* ---------------- WHO IS A FOE ----------------
+   * ONE PREDICATE, AND IT MUST BE THE ONLY SPELLING. The question was written inline as
+   * `owner !== owner` at a dozen sites, which was correct for as long as the answer could only
+   * ever be "everyone who is not me" — and stops being correct the moment two heirs may agree
+   * not to fight. A rule spelled in a dozen places is a rule with a dozen chances to be missed,
+   * and a missed one reads as a bug (one archer still shooting) rather than as a design error.
+   *
+   * IT IS NOT THE SAME QUESTION AS "IS THIS MINE". `js/world.js` carries both, and they wore
+   * one spelling: the muster cap, the wall roster, the crowd's cohesion, company assignment,
+   * vision and a heir's own ghosts all ask whether a man is HIS, and a pact must not change any
+   * of them — a truce is not an alliance, so his men do not join my formations, my Wardens do
+   * not mend them and my walls do not open to them. Only the sites that ask "may I strike this"
+   * come through here.
+   *
+   * CHAOS IS ALWAYS A FOE and is never in a pact: the black road is the weather, it has no seat
+   * to offer terms with, and `CHAOS_ID` is not a player index. */
+  /* Asked of SNAPSHOTS as well as of worlds — a guest reads its fogged snapshot dressed as a
+   * world, and a chronicle rebuilds a half-world from one — so every field is reached for
+   * defensively. A thing with no rules on it is a thing playing today's game, where the only
+   * pact is with yourself. */
+  function pactOn(world, a, b) {
+    if (a === b || a < 0 || b < 0) return false;      // Chaos agrees to nothing
+    if (!world.rules || !world.rules.truce) return false;
+    const pa = world.players[a], pb = world.players[b];
+    return !!(pa && pb && pa.offers && pb.offers && pa.offers[b] && pb.offers[a]);
+  }
+  function foe(world, a, b) {
+    if (a === b) return false;
+    if (a === C.CHAOS_ID || b === C.CHAOS_ID) return true;
+    return !pactOn(world, a, b);
   }
 
   /* WHERE THE OPENING HALL STANDS. Searched rather than given, because the only ground that
@@ -506,7 +549,9 @@
       /* the run he is nearest is the run he threatens — one pass, no allocation per man */
       let best = null, bd = A2;
       for (const w of world.walls) {
-        if (u.owner === w.owner) continue;            // his own garrison is not an alarm
+        /* his own garrison is not an alarm — and neither is a column he is at peace with,
+         * which is the difference between a wall that watches and a wall that panics */
+        if (!foe(world, w.owner, u.owner)) continue;
         const dd = segD2(w.b, u.x, u.y);
         if (dd < bd) { bd = dd; best = w; }
       }
@@ -1594,7 +1639,11 @@
       if (inClaim(world, pi, x, y)) return busy;
       /* beyond the writ it must be a spring your troops hold and the enemy's do not */
       if (!world.units.some((u) => u.owner === pi && d2(u.x, u.y, site.x, site.y) < C.NODE.hold * C.NODE.hold)) return 'presence';
-      if (world.units.some((u) => u.owner !== pi && u.owner !== C.CHAOS_ID && d2(u.x, u.y, site.x, site.y) < C.NODE.hold * C.NODE.hold)) return 'contested';
+      /* a RIVAL heir contests a spring; the black road does not hold ground, it only chews it.
+       * A heir you are at peace with standing on the same spring is not contesting it either —
+       * he simply has no claim to press until the pact ends. */
+      if (world.units.some((u) => u.owner !== C.CHAOS_ID && foe(world, pi, u.owner) &&
+          d2(u.x, u.y, site.x, site.y) < C.NODE.hold * C.NODE.hold)) return 'contested';
       return busy;
     }
     if (inClaim(world, pi, x, y)) return busy;
@@ -2689,6 +2738,13 @@
   function hexSlow(world, u) { return hexOn(world, u) ? C.UNITS.binder.hexSlow : 1; }
   function hexAmp(world, u) { return hexOn(world, u) ? C.UNITS.binder.hexAmp : 1; }
   function hurt(world, victim, dmg, byOwner) {
+    /* A PACT IS KEPT AT THE DOOR DAMAGE COMES THROUGH, and not only where a target is chosen.
+     * Every rule that has ever had to hold against "a pass added later would not know to ask"
+     * — the tower's shelter below, the parapet's cover, the chains' amplifier — is guarded
+     * here, and a truce is the same kind of rule. Acquisition, gunnery and splash all refuse a
+     * pact partner on their own; this is what makes a MISSED one a no-op rather than an arrow.
+     * `byOwner` may be Chaos, which is a foe of everyone and so passes. */
+    if (byOwner != null && !foe(world, byOwner, victim.owner)) return;
     /* THE TOWER IS THE SHIELD. A garrison used to stand on the crown and be shot like a man on
      * a parapet, which made filling a tower a way to lose archers slightly further from home:
      * a bombard's burst took the lot, and a tower's whole worth is that it is a ROOM. Inside,
@@ -2776,7 +2832,10 @@
   const RETARGET = 15;
   function cached(world, u, radius) {
     const v = u._t;
-    if (!v || v.hp <= 0 || v.owner === u.owner) return null;
+    /* re-validated as a FOE and not merely as somebody else's: a pact sealed while two men are
+     * swinging at each other has to reach the sticky cache, or they go on fighting until the
+     * stagger comes round */
+    if (!v || v.hp <= 0 || !foe(world, u.owner, v.owner)) return null;
     const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
     if (d >= radius) return null;
     if (world.anyWall && walled(world, u.x, u.y, v.x, v.y, u.owner, v.owner)) return null;
@@ -2807,7 +2866,7 @@
       const cell = world.bins.get((gy + dy) * 100003 + (gx + dx));
       if (!cell) continue;
       for (const v of cell) {
-        if (v.hp <= 0 || v.owner === u.owner) continue;
+        if (v.hp <= 0 || !foe(world, u.owner, v.owner)) continue;
         const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
         /* a man inside a tower is not a target — the stone is. `hurt` refuses the blow anyway,
          * but a swordsman who aimed at him would stand at the foot of the tower swinging at
@@ -2832,7 +2891,7 @@
      * the lines — which is why this one work, and no other, is a target for him. */
     const menOnly = !!C.UNITS[u.kind].menOnly;
     for (let ci = 0; ci < world.players.length; ci++) {
-      if (ci === u.owner) continue;
+      if (!foe(world, u.owner, ci)) continue;
       const tp = world.players[ci];
       if (tp.out) continue;
       const cs = world.map.sites[world.map.cities[ci]];
@@ -2956,7 +3015,7 @@
   function bindNear(world, u, def) {
     let best = null, bd = def.bindR * def.bindR;
     forNear(world, u.x, u.y, def.bindR, (v) => {
-      if (v.owner === u.owner) return;
+      if (!foe(world, u.owner, v.owner)) return;
       if (v.in) return;                       // inside a tower the stone is between them
       if (hexOn(world, v)) return;            // already chained — do not spend the throw twice
       const d = d2(u.x, u.y, v.x, v.y);
@@ -2984,6 +3043,8 @@
   }
 
   function hurtBuilding(world, pi, id, dmg, by) {
+    /* the same door, for stone — see `hurt`. `by` is null for damage nobody dealt. */
+    if (by != null && !foe(world, by, pi)) return;
     const pl = world.players[pi], i = pl.buildings.findIndex((b2) => b2.id === id);
     if (i < 0) return;
     const b = pl.buildings[i];
@@ -3084,7 +3145,7 @@
      * closed, reopened by terrain nobody chose. */
     let best = null, bd = g.range * g.range;
     forNear(world, city.x, city.y, g.range, (u) => {
-      if (u.owner === pi) return;
+      if (!foe(world, pi, u.owner)) return;
       const d = d2(u.x, u.y, city.x, city.y);
       if (d < bd) { bd = d; best = u; }
     });
@@ -3095,7 +3156,7 @@
     if (g.splash > 0 && g.splashDmg > 0) {
       const r2 = g.splash * g.splash, hits = [];
       forNear(world, best.x, best.y, g.splash, (u) => {
-        if (u.owner === pi || u === best) return;
+        if (u === best || !foe(world, pi, u.owner)) return;
         if (d2(u.x, u.y, best.x, best.y) < r2) hits.push(u);
       });
       for (const u of hits) hurt(world, u, g.splashDmg, pi);
@@ -3280,7 +3341,7 @@
              * behind the wall, and that is a real choice rather than a free one. */
             const mine = runOf(world, b.onWall);
             forNear(world, sp.x, sp.y, st.range, (u) => {
-              if (u.owner === pi) return;
+              if (!foe(world, pi, u.owner)) return;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
               if (dd >= bd) return;
               if (world.anyWall && walled(world, sp.x, sp.y, u.x, u.y, pi, u.owner, mine && mine.b)) return;
@@ -3296,7 +3357,7 @@
               if (st.splash > 0 && st.splashDmg > 0) {
                 const r2 = st.splash * st.splash, hits = [];
                 forNear(world, best.x, best.y, st.splash, (u) => {
-                  if (u.owner === pi || u === best) return;
+                  if (u === best || !foe(world, pi, u.owner)) return;
                   if (d2(u.x, u.y, best.x, best.y) < r2) hits.push(u);
                 });
                 for (const u of hits) hurt(world, u, st.splashDmg, pi);
@@ -3340,7 +3401,7 @@
       s.tLeft -= dt;
       const def = C.POWERS.storm;
       for (const u of world.units) {
-        if (u.hp <= 0 || u.owner === s.owner) continue;
+        if (u.hp <= 0 || !foe(world, s.owner, u.owner)) continue;
         if (d2(u.x, u.y, s.x, s.y) < def.radius * def.radius) hurt(world, u, def.dps * dt, s.owner);
       }
       if (s.tLeft <= 0) world.storms.splice(i, 1);
@@ -3406,7 +3467,7 @@
       /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
        * than he ever could on the ground, and everything that can see the tower can see him. */
       const gar = u.in ? C.TOWER.over : 0;   // the long throw is the room's, not the errand's
-      const foe = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
+      const mark = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
       /* HE GOES ON TO HIS PLACE WHILE HE FIGHTS. Every other man with a foe in reach stands
        * where he is, which is right — but a garrison's places are dealt by a roster that moves
        * with the fighting, and a man who stops the moment anything is in range can neither
@@ -3444,29 +3505,34 @@
         u.y += (st.y - u.y) / ds * speed * dt;
         stand(world, u, u.x, u.y);
       };
-      if (foe) {
+      if (mark) {
         const rng = Math.max(par ? Math.max(def.range, C.WALL.over) : def.range, gar);
-        const reach = rng + (foe.kind === 'unit' ? C.UNITS[foe.t.kind].size
-          : foe.kind === 'tower' ? 36 : C.BUILD.foot - 8);
-        if (foe.d <= reach) {
+        const reach = rng + (mark.kind === 'unit' ? C.UNITS[mark.t.kind].size
+          : mark.kind === 'tower' ? 36 : C.BUILD.foot - 8);
+        if (mark.d <= reach) {
           if (u.cd <= 0) {
             /* an Engine's blow is made for stone: `siege` multiplies it against a work or a
              * Seat and against nothing else, which is what makes the Works a siege train
              * rather than simply better soldiers */
             const wall = u.dmg * (def.siege || 1);
-            if (foe.kind === 'unit') hurt(world, foe.t, u.dmg, u.owner);
-            else if (foe.kind === 'work') hurtBuilding(world, foe.t.pi, foe.t.id, wall, u.owner);
-            else if (foe.kind === 'tower') {
-              const tp = world.players[foe.t.pi];
+            if (mark.kind === 'unit') hurt(world, mark.t, u.dmg, u.owner);
+            else if (mark.kind === 'work') hurtBuilding(world, mark.t.pi, mark.t.id, wall, u.owner);
+            /* the Seat is the one target whose damage goes through neither `hurt` nor
+             * `hurtBuilding` — its hit points live on the PLAYER — so the pact is kept here by
+             * hand. `acquire` never hands back a pact partner's throne anyway; this is the same
+             * belt-and-braces the other two doors carry, and stage 2 retires it by giving a
+             * city a record of its own. */
+            else if (mark.kind === 'tower' && foe(world, u.owner, mark.t.pi)) {
+              const tp = world.players[mark.t.pi];
               tp.castleHp -= wall;
-              emit(world, { e: 'siege', pi: foe.t.pi, x: u.x, y: u.y });
-              if (tp.castleHp <= 0 && !tp.out) { if (topple(world, foe.t.pi, u.owner)) return; }
+              emit(world, { e: 'siege', pi: mark.t.pi, x: u.x, y: u.y });
+              if (tp.castleHp <= 0 && !tp.out) { if (topple(world, mark.t.pi, u.owner)) return; }
             }
             u.cd = def.atk;
             /* WHO THREW IT. A bolt was a bolt whoever loosed it, so an archer's arrow and a
              * sorcerer's fire were drawn as the same streak. The kind rides along and the
              * renderer decides what a shot from that man looks like. */
-            if (rng > 40) emit(world, { e: 'bolt', kind: u.kind, from: { x: u.x, y: u.y, owner: u.owner }, to: { x: foe.x, y: foe.y } });
+            if (rng > 40) emit(world, { e: 'bolt', kind: u.kind, from: { x: u.x, y: u.y, owner: u.owner }, to: { x: mark.x, y: mark.y } });
           }
           /* AND A MAN GOES ON CLIMBING WHILE HE SHOOTS. Every other man with a foe in reach
            * stands and fights, which is right — but a garrison is dealt its places by a roster
@@ -3479,7 +3545,7 @@
            * Only a berth, and only on his own stone, so this is a walk ALONG the wall and never
            * a stroll across open country. */
           toPost();
-        } else if (u.post && crossesOwn(world, u, foe.x, foe.y)) {
+        } else if (u.post && crossesOwn(world, u, mark.x, mark.y)) {
           /* AND HE DOES NOT GO OUT THROUGH HIS OWN WALL AFTER HIM. A man posted to a curtain is
            * posted to the sheltered side of it; a foe on the far side is exactly what the stone
            * is for. Chasing him means walking out of the gateway to fight in the open, which is
@@ -3498,9 +3564,9 @@
            * not run out at people. He goes to his place, and shoots whatever comes into it. */
           toPost();
         } else {
-          const mv = speed * dt / (foe.d || 1);
+          const mv = speed * dt / (mark.d || 1);
           const cx0 = u.x, cy0 = u.y;
-          u.x += (foe.x - u.x) * mv; u.y += (foe.y - u.y) * mv;
+          u.x += (mark.x - u.x) * mv; u.y += (mark.y - u.y) * mv;
           project(world, u, cx0, cy0);   // the chase is not slowed by the press, but it is projected like everything else
         }
         continue;
@@ -3928,6 +3994,11 @@
                    newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
                    wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush,
                    bearers,
+                   /* WHO MAY STRIKE WHOM, and whether two heirs are at peace. The one spelling
+                    * of the question — the AI, the netcode, the renderer and the suites all ask
+                    * it here rather than each writing `owner !== owner` and each having to be
+                    * found again the next time the answer gains a case. */
+                   foe, pactOn,
                    /* where the roster says a man belongs — exported for the probes and the
                     * suites, which otherwise have to re-derive it and end up testing their own
                     * arithmetic rather than the rule */

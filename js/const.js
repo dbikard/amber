@@ -177,6 +177,18 @@
    * only while there were exactly two players. It now sits somewhere no player index can
    * reach, so a four-way match cannot mistake the third heir for the black road. */
   CONST.CHAOS_ID = -1;
+  /* ---------------- THE RULES OF THIS MATCH ----------------
+   * Not tuning: the small set of rules that a MODE may change, defaulted here to the game as it
+   * has always been played. `createWorld` stamps a copy onto the world and the sim reads it from
+   * there, so a rule is asked of the world rather than of a global — which is what lets one
+   * process hold a skirmish and a province war at once, and what lets a suite assert that the
+   * defaults ARE today's game.
+   *   endOnSeat  a Seat at zero hit points ends the match (a duel) or eliminates its heir (a
+   *              free-for-all). Off, it yields instead and the ground must be taken.
+   *   occupy     a yielded Seat may be occupied, relieved or thrown down. Needs endOnSeat off.
+   *   truce      heirs may offer, seal and break pacts. Off, `World.foe` is exactly "not mine".
+   * Everything here is off or today's behaviour, so every existing mode is untouched. */
+  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0 };
   /* Seat colours. You are ALWAYS gold — a player should never have to remember which of four
    * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
   CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];

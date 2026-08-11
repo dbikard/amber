@@ -6346,6 +6346,179 @@ suite('an heir does not enter a race he has already lost');
   eq('a chapter may shut the road: he wants to walk and does not', shut.walks, 0);
 }
 
+/* ---------------- the rules of a match, and who is a foe ----------------
+ * `world.rules` is what a MODE may change and the sim reads; `World.foe` is the ONE spelling of
+ * "may I strike this". Both exist so that a province war can hold truces without the skirmish
+ * that shipped today's balance changing by a byte — so the first thing asserted is that the
+ * defaults ARE today's game. */
+suite('the rules of a match default to today\'s game');
+{
+  const w = World.createWorld(20260901, 2);
+  eq('a world carries its rules', typeof w.rules, 'object');
+  eq('a Seat at zero still ends a match', w.rules.endOnSeat, 1);
+  eq('nothing is occupied', w.rules.occupy, 0);
+  eq('and no heir may treat with another', w.rules.truce, 0);
+  /* the defaults are COPIED, not shared: two worlds in one process must be able to disagree,
+   * which is the whole reason a region can be a world */
+  const v = World.createWorld(20260901, 2, null, { truce: 1 });
+  eq('a mode may ask for a different rule', v.rules.truce, 1);
+  eq('...without touching the table it copied from', C.RULES.truce, 0);
+  eq('...or the world beside it', w.rules.truce, 0);
+  eq('...and the rules it did not name keep their defaults', v.rules.endOnSeat, 1);
+}
+
+/* ---- A PACT IS TWO STANDING OFFERS ----
+ * There is no agreement object and no state machine: `pl.offers[j]` is "I am willing", a truce
+ * holds while both stand, and it ends the instant either is withdrawn. Symmetric by
+ * construction, which is what makes it impossible for two seats to disagree about whether they
+ * are at peace. */
+suite('a pact is two standing offers');
+{
+  const w = World.createWorld(20260902, 3, null, { truce: 1 });
+  const on = (a, b) => World.pactOn(w, a, b);
+  eq('nobody starts at peace', on(0, 1), false);
+  w.players[0].offers[1] = 1;
+  eq('one offer alone is not a pact', on(0, 1), false);
+  eq('...and it is not one read the other way round either', on(1, 0), false);
+  w.players[1].offers[0] = 1;
+  eq('two standing offers are a pact', on(0, 1), true);
+  eq('...and a pact reads the same from either seat', on(1, 0), true);
+  eq('...and binds nobody else', on(0, 2), false);
+  eq('a heir at peace is not a foe', World.foe(w, 0, 1), false);
+  eq('...but a third heir still is', World.foe(w, 0, 2), true);
+  eq('nobody is his own foe', World.foe(w, 0, 0), false);
+  /* CHAOS AGREES TO NOTHING. The black road has no seat to offer terms with, and `CHAOS_ID` is
+   * not a player index — a pact that quietly pacified the weather would turn every match into
+   * a different game. */
+  eq('Chaos is a foe of everyone', World.foe(w, 0, C.CHAOS_ID), true);
+  eq('...from either side', World.foe(w, C.CHAOS_ID, 0), true);
+  eq('...and cannot be treated with', World.pactOn(w, 0, C.CHAOS_ID), false);
+  w.players[1].offers[0] = 0;
+  eq('withdrawing one offer breaks it, on that tick', on(0, 1), false);
+  eq('...and they are foes again', World.foe(w, 0, 1), true);
+  /* AND THE RULE HAS TO BE ON. Without it `foe` is exactly "not mine", which is what every
+   * existing mode plays — the offers may sit there and mean nothing. */
+  const q = World.createWorld(20260902, 3);
+  q.players[0].offers[1] = 1; q.players[1].offers[0] = 1;
+  eq('with truces off, standing offers are not a pact', World.pactOn(q, 0, 1), false);
+  eq('...and the two are foes', World.foe(q, 0, 1), true);
+  /* asked of a SNAPSHOT dressed as a world, which is what a guest holds */
+  eq('a world with no rules on it plays today\'s game', World.foe({ players: [{}, {}] }, 0, 1), true);
+}
+
+/* ---- NOTHING CROSSES A PACT, AND THE CONTROL IS THAT THE SAME BOARD IS VIOLENT ----
+ * The single largest correctness risk in the truce work is a hostility test that does not ask:
+ * `js/world.js` carries dozens of owner comparisons and only some of them are this question.
+ * A missed one reads as a bug — one archer still shooting — rather than as a design error, so
+ * the rig seals a pact between EVERY pair and asserts nothing at all happens. It is written to
+ * fail on the code before `World.foe` existed, where the pacts are inert and the board is a
+ * four-way melee. */
+suite('nothing crosses a pact');
+{
+  /* FOUR HEIRS STANDING IN EACH OTHER, on seat 0's own court so the men, the works and the
+   * throne are all in reach at once. Five kinds, so melee, shooters, splash, siege and the
+   * chains are every one of them asked the question. */
+  const melee = (pacts, fiends) => {
+    const w = World.createWorld(20260903, 4, null, { truce: 1 });
+    w.chaosNext = 1e9;   // the road is planted by hand below, so its timing is not the rig's
+    if (pacts) for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (a !== b) w.players[a].offers[b] = 1;
+    const mid = World.cityOf(w, 0), KINDS = ['archer', 'soldier', 'sorcerer', 'engine', 'binder'];
+    for (let pi = 0; pi < 4; pi++) {
+      for (let k = 0; k < 8; k++) {
+        const a = (pi * 8 + k) / 32 * Math.PI * 2;
+        const u = manAt(w, pi, KINDS[k % KINDS.length], mid.x + Math.cos(a) * 90, mid.y + Math.sin(a) * 90);
+        u.hp = u.maxHp = 6000;          // they are here to be shot at, not to die
+      }
+      w.players[pi].banner = { x: mid.x, y: mid.y };
+      w.players[pi].essence = 1e6;
+    }
+    if (fiends) for (let k = 0; k < 6; k++) {
+      const a = k / 6 * Math.PI * 2;
+      const u = manAt(w, C.CHAOS_ID, 'fiend', mid.x + Math.cos(a) * 60, mid.y + Math.sin(a) * 60);
+      u.hp = u.maxHp = 6000;
+    }
+    /* a storm from every heir over the heap, so the Jewel is asked it too */
+    for (let pi = 0; pi < 4; pi++) w.storms.push({ owner: pi, x: mid.x, y: mid.y, delay: 0, tLeft: 30 });
+    /* DAMAGE IS COUNTED AS IT LANDS, man by man, and never as a difference of two totals: the
+     * halls go on mustering through all this, so a sum over the board GREW while every planted
+     * man stood untouched — the first version of this rig read -840 hp lost and called it a
+     * failure of the code rather than of the instrument. A drop in one man's hit points between
+     * two ticks is a blow; a man who appears is a recruit at full health. */
+    const seen = new Map();
+    let died = 0, hexed = 0, lost = 0;
+    for (let i = 0; i < 25 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      for (const u of w.units) {
+        if (u.owner < 0) continue;
+        const was = seen.has(u.id) ? seen.get(u.id) : u.hp;
+        if (u.hp < was) lost += was - u.hp;
+        seen.set(u.id, u.hp);
+        if (u.hexed) hexed++;
+      }
+      for (const e of w.events) if (e.e === 'die' && e.owner >= 0) died++;
+      w.events.length = 0;
+    }
+    return { lost: Math.round(lost), died, hexed,
+             raised: w.units.filter((u) => u.owner >= 0).length,
+             men: w.units.filter((u) => u.owner >= 0 && u.hp > 0).length };
+  };
+  const war = melee(false, false), peace = melee(true, false);
+  /* THE CONTROL FIRST. "No damage" is worthless until the rig is shown able to produce some. */
+  ok('the rig is alive: four heirs standing in each other tear one another up',
+     war.lost > 5000 && war.died > 0 && war.hexed > 0,
+     `${war.lost} hp lost, ${war.died} dead, ${war.hexed} man-ticks in chains`);
+  /* THE ASSERTIONS THAT FAIL ON THE OLD CODE */
+  eq('with every pair at peace, not one hit point is lost', peace.lost, 0);
+  eq('...nobody falls', peace.died, 0);
+  eq('...every man raised is still standing', peace.men, peace.raised);
+  eq('...and nobody is put in chains', peace.hexed, 0);
+
+  /* AND THE WEATHER IS NOT PACIFIED. Chaos has no seat to offer terms with, and a pact that
+   * quietly stopped the black road would make every match a different game. */
+  const road = melee(true, true);
+  ok('a pact does not treat with Chaos: the road still draws blood',
+     road.lost > 0, `${road.lost} hp lost with every heir at peace and fiends in the heap`);
+
+  /* ---- AND THE STONE, WHICH THE MELEE CANNOT ASK ----
+   * With men standing on each other nothing ever chooses a work: the nearest target is always
+   * alive. So one besieger, one target, nothing else in reach — which also puts him under the
+   * Seat's own gun, the one shot on the board that goes through neither `hurt` nor
+   * `hurtBuilding` and so has to keep the pact by hand. */
+  const siege = (pact) => {
+    const w = World.createWorld(20260904, 2, null, { truce: 1 });
+    w.chaosNext = 1e9;
+    if (pact) { w.players[0].offers[1] = 1; w.players[1].offers[0] = 1; }
+    const c0 = World.cityOf(w, 0), gate = w.players[0].buildings.find((b) => b.bt === 'gate');
+    const rams = [];
+    for (let k = 0; k < 3; k++) { const u = manAt(w, 1, 'engine', c0.x + 30 + k * 12, c0.y + 30); u.hp = u.maxHp = 1e6; rams.push(u); }
+    for (let k = 0; k < 3; k++) { const u = manAt(w, 1, 'engine', gate.x + 26, gate.y + 26 + k * 12); u.hp = u.maxHp = 1e6; rams.push(u); }
+    w.players[1].banner = { x: c0.x, y: c0.y };
+    const seat0 = w.players[0].castleHp, g0 = gate.hp, seen = new Map();
+    let ramLost = 0;
+    for (let i = 0; i < 20 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      for (const u of rams) {
+        const was = seen.has(u.id) ? seen.get(u.id) : u.hp;
+        if (u.hp < was) ramLost += was - u.hp;
+        seen.set(u.id, u.hp);
+      }
+      w.events.length = 0;
+    }
+    const g = w.players[0].buildings.find((b) => b.id === gate.id);
+    return { seat: Math.round(seat0 - w.players[0].castleHp), gate: Math.round(g0 - (g ? g.hp : 0)),
+             stands: !!g, ramLost: Math.round(ramLost) };
+  };
+  const sacked = siege(false), spared = siege(true);
+  ok('the rig is alive: six engines take a Seat and a Gate, and the Seat\'s gun answers them',
+     sacked.seat > 0 && !sacked.stands && sacked.ramLost > 0,
+     `${sacked.seat} off the throne, the Gate ${sacked.stands ? 'stands' : 'is down'}, ` +
+     `${sacked.ramLost} back off the Seat's gun`);
+  eq('at peace the throne is not scratched', spared.seat, 0);
+  eq('...his Gate stands', spared.stands, true);
+  eq('...untouched', spared.gate, 0);
+  eq('...and the Seat\'s own gun holds its fire', spared.ramLost, 0);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

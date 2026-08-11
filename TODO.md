@@ -672,6 +672,28 @@ heir, so there is no knob left to turn: **making the top footing harder has to b
 work.** The findings are itemised under "The heirs play one army and one and a half orders"
 below.
 
+- [ ] **THE LONG WAR — a fourth mode, staged. See `REALM_PLAN.md`.** A country of regions and
+      cities, truces that can be broken, conquest that yields ground rather than rubble, and one
+      Pattern in one city. The load-bearing decision, taken from measurement rather than taste:
+      **a region IS today's board** — a cold flow field is dead linear in area (6.3ms → 59ms at
+      3×, 4.8MB at 10×) and the ground texture self-caps at 22.9MB, while the tick itself is
+      unit-bound and nearly flat. So the grid never grows and the number of grids does.
+      - [x] **Stage 0 — `world.rules` and `World.foe`.** `CONST.RULES` is the table a MODE may
+            change (`endOnSeat`/`occupy`/`truce`), copied onto the world by `createWorld` so two
+            worlds in one process may disagree. `World.foe` is the one spelling of "may I strike
+            this". **The trap, and the reason this was a stage of its own:** `world.js` carries
+            46 owner comparisons and they are two different questions wearing one spelling —
+            "is this mine" (the muster cap, the wall roster, cohesion, company assignment,
+            vision, ghosts) must not go through it, or a truce partner's men join your
+            formations. Only the strike class was substituted, and `hurt`/`hurtBuilding` were
+            guarded as well so a missed site is a no-op rather than an arrow.
+            Proved with a control that fails on the old code: on the pre-refactor tree the
+            peaceful board is IDENTICAL to the warring one (throne down for its full 2500, Gate
+            razed, 186 back off the Seat's gun); after, every reading is nought and the warring
+            board is unchanged to the byte.
+      - [ ] Stage 1 truces · 2 cities first-class · 3 yield/occupy · 4 the quiet tick ·
+            5 regions and marches · 6 lords and the mode's shell · 7 LAN. Stages 1, 3 and 4 each
+            ship something playable alone, which is the mitigation for the size of it.
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
       yet answered for the ORDER, so a banner planted past a shoreline pressed the company
       into the bank in a stack, and one assertion whose target lay 350 off the board failed —

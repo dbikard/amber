@@ -15,6 +15,8 @@ no bundler. WebGL is a hard requirement, stated plainly at boot (`js/render_sele
 ## Key Documents
 
 - **GAME_VISION.md** — concept, board, buildings/units/powers, AI heirs, fog, art direction.
+- **REALM_PLAN.md** — the target for the fourth mode: a country of regions and cities, truces,
+  conquest that yields ground, the quiet tick. Staged, with a referee gate per stage.
 - **DESIGN_PRINCIPLES.md** — pillars + the sim-based balance methodology.
 - **TODO.md** — phases and current state.
 
@@ -81,6 +83,24 @@ duel and behaves as it always did. Chaos is `CONST.CHAOS_ID = -1`, NOT a player 
 free-for-all a toppled Seat eliminates that heir (`pl.out`) and the last standing wins; in a
 duel the first fall still ends it. You are always `SEAT_TINT[0]` (gold); rivals take the rest
 in seat order with the viewer removed from the line.
+
+**A MATCH CARRIES ITS RULES, AND `World.foe` IS THE ONLY SPELLING OF "MAY I STRIKE THIS".**
+`CONST.RULES` is the table of the few rules a MODE may change (`endOnSeat`, `occupy`, `truce`),
+`createWorld(seed, players, spec, rules)` COPIES it onto `world.rules`, and the sim asks the
+world rather than a global — so two worlds in one process may disagree, which is what lets a
+region be a world. Every default is today's game, and a suite asserts it.
+`World.foe(world, a, b)` answers hostility and `World.pactOn` answers peace; **a pact is two
+standing offers** (`pl.offers[j]`), sealed while both stand and broken the instant either is
+withdrawn — symmetric by construction, so two seats cannot disagree about it.
+The trap is that `js/world.js` carries 46 owner comparisons and they are **two different
+questions wearing one spelling**: "is this MINE" (the muster cap, the wall roster, the crowd's
+cohesion, company assignment, vision, a heir's own ghosts) must NOT go through `foe` — a truce is
+not an alliance, so his men never join my formations, my Wardens never mend them, my walls never
+open to them and I see nothing he sees. Only "may I strike this" does. And it is guarded at the
+door damage comes through as well — `hurt` and `hurtBuilding` refuse a blow between heirs at
+peace outright, the same place the tower's shelter, the parapet's cover and the chains' amplifier
+are written, so a pass added later cannot forget to ask and a MISSED site is a no-op rather than
+an arrow. Chaos is a foe of everyone and treats with nobody. See `REALM_PLAN.md`.
 
 ## Multiplayer model (differs from perils!)
 
