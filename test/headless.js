@@ -6827,6 +6827,104 @@ suite('a Seat yields, and is taken by standing in it');
   }
 }
 
+/* ---- THE QUIET TICK, AND THE EQUIVALENCE THAT LICENSES IT ----
+ * ONE SIM AT A VARIABLE RATE, never a second and cheaper model of combat: two models is two
+ * balance surfaces, and a player who finds the seam fights every battle on the kinder one. So
+ * what varies is not the rules but how much of the tick has anything to do — and the licence for
+ * that is not an argument, it is this suite. The same seeded world is played twice, once with
+ * the quiet tick and once without, and the two must land on IDENTICAL state: not close, not
+ * within a tolerance, the same. Anything approximate would show up here as a difference. */
+suite('a quiet world skips only what has nothing to do');
+{
+  /* everything the sim owns that a player could ever see, to six places */
+  const print = (w) => JSON.stringify({
+    t: +w.t.toFixed(6), tick: w.tick, winner: w.winner,
+    cities: w.cities.map((c) => [c.owner, +c.hp.toFixed(6), +c.cd.toFixed(6), c.level]),
+    players: w.players.map((p) => [+p.essence.toFixed(6), p.pattern, p.out, p.walking,
+      p.buildings.map((b) => [b.id, b.bt, b.level, +b.hp.toFixed(6), +b.cd.toFixed(6),
+                              +b.raise.toFixed(6), +(b.work || 0).toFixed(6), b.co]),
+      [+p.powers.storm.toFixed(6), +p.powers.trump.toFixed(6)]]),
+    units: w.units.map((u) => [u.id, u.owner, u.kind, +u.x.toFixed(6), +u.y.toFixed(6),
+                               +u.hp.toFixed(6), +u.cd.toFixed(6), u.man || 0, u.tow || 0, u.in || 0])
+  });
+  /* a REGION, which is what a country is mostly made of: one heir's ground, nobody to fight */
+  const region = (hush, men) => {
+    const w = World.createWorld(20260919, 2, null, { hush: hush ? 1 : 0 });
+    w.chaosNext = 1e9;
+    w.players[1].buildings.length = 0;
+    w.cities[1].owner = -1; w.cities[1].hp = 0;
+    w.players[0].essence = 1e9;
+    const c = World.cityOf(w, 0);
+    for (let k = 0; k < men; k++)
+      manAt(w, 0, k % 3 ? 'soldier' : 'archer', c.x + (k % 14) * 18 - 120, c.y + ((k / 14) | 0) * 18 - 90);
+    w.players[0].banner = { x: c.x, y: c.y };
+    return w;
+  };
+  const play = (hush, secs, men, both) => {
+    const w = both ? World.createWorld(20260920, 2, null, { hush: hush ? 1 : 0 }) : region(hush, men);
+    if (both) w.chaosNext = 1e9;
+    let hushed = 0;
+    for (let i = 0; i < secs * 30; i++) {
+      World.update(w, C.SIM_DT);
+      if (w.hush) hushed++;
+      w.events.length = 0;
+    }
+    return { p: print(w), hushed, ticks: secs * 30, w };
+  };
+
+  const on = play(true, 60, 60, false), off = play(false, 60, 60, false);
+  /* THE CONTROL FIRST: the rig has to have been quiet for most of the run, or "identical" is a
+   * statement about code that never ran */
+  ok('the rig is alive: a region with one heir in it is quiet nearly all the time',
+     on.hushed > on.ticks * 0.9, `${on.hushed} of ${on.ticks} ticks`);
+  eq('...and with the rule off it is never quiet', off.hushed, 0);
+  /* THE ASSERTION THE WHOLE STAGE RESTS ON */
+  eq('the quiet tick lands on exactly the state the full one does', on.p === off.p, true);
+
+  /* AND A CONTESTED WORLD REFUSES TO GO QUIET — the other half, and the one that would let a
+   * bug through if it were missing: a sim that hushed a battle would be very fast and wrong. */
+  const duel = play(true, 60, 0, true);
+  ok('two heirs on one board are not quiet for long',
+     duel.hushed < duel.ticks * 0.2, `${duel.hushed} of ${duel.ticks} ticks quiet`);
+  const dOff = play(false, 60, 0, true);
+  eq('...and a duel plays out identically either way', duel.p === dOff.p, true);
+
+  /* the reasons a world is NOT quiet, one at a time, on a board that otherwise would be */
+  {
+    const w = region(true, 4);
+    World.update(w, C.SIM_DT);
+    eq('one heir alone is quiet', w.hush, true);
+    const c = World.cityOf(w, 0);
+    const fiend = manAt(w, C.CHAOS_ID, 'fiend', c.x + 300, c.y);
+    World.update(w, C.SIM_DT);
+    eq('one fiend is enough to end it', w.hush, false);
+    fiend.hp = 0; fiend.dead = 1;
+    World.update(w, C.SIM_DT); World.update(w, C.SIM_DT);
+    eq('...and it is quiet again once he is buried', w.hush, true);
+    w.storms.push({ owner: 0, x: c.x, y: c.y, delay: 0, tLeft: 5 });
+    World.update(w, C.SIM_DT);
+    eq('a storm is a blow with no man behind it, so it counts', w.hush, false);
+    w.storms.length = 0;
+    World.update(w, C.SIM_DT);
+    eq('...and it is quiet when the weather passes', w.hush, true);
+    /* AND A HEIR AT PEACE DOES NOT WAKE IT — which is the rule that makes a truce worth
+     * something to the machine as well as to the player */
+    const v = World.createWorld(20260921, 2, null, { truce: 1 });
+    v.chaosNext = 1e9;
+    /* far enough in that both halls have raised somebody. A BOARD WITH NO MEN ON IT IS QUIET
+     * whoever is at war with whom, which is right — there is nothing that could strike anything
+     * — and asserting on the opening frame measured that and called it a failure. */
+    for (let i = 0; i < 30 * 30; i++) { World.update(v, C.SIM_DT); v.events.length = 0; }
+    ok('the rig is alive: both heirs have men', v.units.some((u) => u.owner === 0) &&
+       v.units.some((u) => u.owner === 1), 'one of them mustered nobody');
+    eq('...and two heirs at war are not quiet', v.hush, false);
+    World.applyCommand(v, 0, { c: 'pact', p: 1, on: 1 });
+    World.applyCommand(v, 1, { c: 'pact', p: 0, on: 1 });
+    World.update(v, C.SIM_DT);
+    eq('two heirs at terms are a quiet world', v.hush, true);
+  }
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

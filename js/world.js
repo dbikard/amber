@@ -582,7 +582,9 @@
      * nearest each threat sort to the front of one list and the roster fills them in turn. */
     const A2 = C.WALL.alarm * C.WALL.alarm, CL2 = C.WALL.alarmSpan * C.WALL.alarmSpan;
     const alarms = new Map();
-    for (const u of world.units) {
+    /* a quiet world has nothing to project onto the stone: the scan below skips every man whose
+     * owner is not a foe of the wall's, and in a quiet world that is all of them */
+    if (!world.hush) for (const u of world.units) {
       if (u.hp <= 0 || u.in) continue;
       /* the run he is nearest is the run he threatens — one pass, no allocation per man */
       let best = null, bd = A2;
@@ -3251,8 +3253,12 @@
      * put it forever, and a throne a lucky ridge could shade would have its guns switched
      * off from outside their reach for the whole match — the same hole the walls exemption
      * closed, reopened by terrain nobody chose. */
+    /* THE COOLDOWN STILL RUNS IN A QUIET WORLD, and only the SCAN is skipped — the gun would
+     * have found nothing and set exactly this, so the state is the same to the byte. Skipping
+     * the whole block instead would leave the cooldown undecremented, which is a different
+     * world, and the equivalence suite would say so. */
     let best = null, bd = g.range * g.range;
-    forNear(world, city.x, city.y, g.range, (u) => {
+    if (!world.hush) forNear(world, city.x, city.y, g.range, (u) => {
       if (!foe(world, pi, u.owner)) return;
       const d = d2(u.x, u.y, city.x, city.y);
       if (d < bd) { bd = d; best = u; }
@@ -3279,8 +3285,47 @@
   }
 
   /* ---------------- update ---------------- */
+  /* ---------------- THE QUIET TICK ----------------
+   * ONE SIM, AT A VARIABLE RATE — never a second, cheaper model of combat. Two models is two
+   * balance surfaces, and a player who notices the seam learns to fight every battle on the
+   * kinder one. So what varies is not the RULES, it is how much of the tick has anything to do.
+   *
+   * A world is QUIET when no two mutually hostile things are in it at all: no heir with men can
+   * reach a heir with men, works or a city he may strike. In that world `acquire` finds nothing,
+   * `hurt` is never called, the crowd has nobody to shove into anybody, the parapet roster deals
+   * places against no threat and the alarms have nothing to cluster. Those passes are SKIPPED
+   * because they provably have nothing to do — not because anything was approximated — which is
+   * why the equivalence suite can demand identical state rather than a tolerance.
+   *
+   * `world.hush` is the answer for this tick, stamped on the world so the tests and the probes
+   * can read what the sim decided rather than re-deriving it and testing their own arithmetic.
+   * `CONST.RULES.hush` off restores the old behaviour exactly, and is the one-line way back. */
+  function quiet(world) {
+    /* who has men, and who has anything a man could strike */
+    let unitMask = 0, standMask = 0;
+    const bit = (o) => (o < 0 ? 1 << 30 : 1 << o);
+    for (const u of world.units) if (u.hp > 0) unitMask |= bit(u.owner);
+    if (!unitMask) return true;
+    for (let pi = 0; pi < world.players.length; pi++)
+      if (world.players[pi].buildings.length) standMask |= bit(pi);
+    for (const c of world.cities) if (c.owner >= 0 && c.hp > 0) standMask |= bit(c.owner);
+    const all = unitMask | standMask;
+    for (let a = -1; a < world.players.length; a++) {
+      if (!(unitMask & bit(a))) continue;                 // only somebody with MEN can start one
+      for (let b = -1; b < world.players.length; b++) {
+        if (!(all & bit(b))) continue;
+        if (foe(world, a, b)) return false;
+      }
+    }
+    /* a storm is a blow with no man behind it, and Chaos is due whether or not anyone is here */
+    if (world.storms.length) return false;
+    return true;
+  }
+
   function update(world, dt) {
     if (world.winner !== null || world.paused) return;
+    /* asked ONCE, before anything moves, so every pass this tick agrees about it */
+    world.hush = world.rules.hush !== 0 && quiet(world);
     world.t += dt; world.tick++;
     const t = world.t;
     if (world.tick % 6 === 0 || !world.vis) refreshVision(world);   // 5 Hz vision refresh
@@ -3448,7 +3493,8 @@
              * curtain — which is what `onWall` is. A tower behind the wall covers the ground
              * behind the wall, and that is a real choice rather than a free one. */
             const mine = runOf(world, b.onWall);
-            forNear(world, sp.x, sp.y, st.range, (u) => {
+            /* the scan alone is skipped in a quiet world — see the Seat's gun */
+            if (!world.hush) forNear(world, sp.x, sp.y, st.range, (u) => {
               if (!foe(world, pi, u.owner)) return;
               const dd = d2(u.x, u.y, sp.x, sp.y);   // a tower guards ITS OWN ground
               if (dd >= bd) return;
@@ -3581,7 +3627,15 @@
       /* IN THE TOWER. The same bargain as the parapet, one storey higher: he throws further
        * than he ever could on the ground, and everything that can see the tower can see him. */
       const gar = u.in ? C.TOWER.over : 0;   // the long throw is the room's, not the errand's
-      const mark = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
+      /* THE HOT PATH, AND IN A QUIET WORLD IT PROVABLY FINDS NOTHING. Acquisition is a look at
+       * the nine cells around every man, profiled at 94% of a busy tick; with nobody in the
+       * world this man may strike, every one of those looks ends in `continue`. The sticky mark
+       * is cleared rather than left, because `acquire` would have cleared it — the difference
+       * would be invisible for as long as nothing read it, which is exactly the kind of drift
+       * the equivalence suite exists to refuse. */
+      let mark = null;
+      if (world.hush) u._t = null;
+      else mark = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
       /* HE GOES ON TO HIS PLACE WHILE HE FIGHTS. Every other man with a foe in reach stands
        * where he is, which is right — but a garrison's places are dealt by a roster that moves
        * with the fighting, and a man who stops the moment anything is in range can neither

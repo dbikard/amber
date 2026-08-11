@@ -185,7 +185,7 @@ taken, with its claim clock resetting every 0.93 seconds — which is a soldier'
 and the only reason the cause was findable at all. `acquire` asks about the CITY now, and the
 siege damage goes to the city that was aimed at rather than to whichever the heir holds first.
 
-## 8. The quiet tick
+## 8. The quiet tick — SHIPPED
 
 **A region ticks at `SIM_DT` whenever anything contested is in it, and is otherwise advanced
 exactly, at a coarse dt, by the passes that are linear in time.** `World.update` gains a cheap
@@ -194,10 +194,37 @@ income, build and upgrade work, muster timers and cooldowns, and nothing else. A
 damage, splash, the crowd, vision and the flow fields are skipped because they have nothing to
 do, not because anything was approximated.
 
-The licence for it is an equivalence suite: the same seeded quiet region played twice, once at
-`SIM_DT` throughout and once with the quiet tick, landing on **identical state** — with a control
-that a contested region provably refuses to go quiet. If any pass turns out not to be linear in
-dt it goes on the 1× list; it does not get approximated.
+**What shipped is the exact half, and it is the half that matters.** `world.hush` is computed
+once per tick — is any heir with MEN a foe of anything standing? — and when nothing is, the sim
+skips the passes that provably have nothing to do: target acquisition above all (profiled at 94%
+of a busy tick), the tower and Seat gunnery SCANS, and the curtain's alarm clustering. The
+gunnery cooldowns still run, because a gun that found nothing would have set exactly that
+cooldown and skipping the arithmetic would be a different world. Nothing is approximated, which
+is why the suite can demand identical state rather than a tolerance.
+
+Measured on a region with one heir in it, quiet the whole way:
+
+| men standing | quiet tick on | off | saving |
+|---|---|---|---|
+| 2 | 0.052ms | 0.054ms | 3% |
+| 62 | 0.220ms | 0.341ms | 35% |
+| 152 | 0.511ms | 0.924ms | 45% |
+| 302 | 0.990ms | 1.971ms | **2.0×** |
+
+The saving grows with the army because acquisition is the part that grows with it — which is the
+shape you want: a region costs about what is happening in it. `rules.hush = 0` is the one-line
+way back and the suite holds both halves.
+
+The licence is the equivalence suite: the same seeded region played twice, once with the quiet
+tick and once without, landing on **identical state** — with the control that it really was quiet
+for >90% of the run, that a duel is not quiet for long and plays out identically either way, and
+that one fiend, one storm or one hostile heir with men is enough to end it. Two heirs at TERMS
+are a quiet world, which falls out of `World.foe` for free.
+
+Still open, and deliberately not guessed at: the COARSE-dt half. Income, cooldowns and build
+progress are linear in dt and could be taken in one large step, but muster and rifts are discrete
+events and movement is not linear, so a safe large step is "time until the next event" — worth
+doing when the realm layer can ask for it, and not before, because nothing today would use it.
 
 ## 9. The realm
 

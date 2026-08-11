@@ -724,9 +724,26 @@ below.
             city could not change hands. So a yielded court was still a target and every blow on
             it fired the yield again, resetting the claim clock every 0.93s — a soldier's attack
             cooldown, and the only reason it was findable.
-      - [ ] Stage 4 the quiet tick ·
-            5 regions and marches · 6 lords and the mode's shell · 7 LAN. Stages 1, 3 and 4 each
-            ship something playable alone, which is the mitigation for the size of it.
+      - [x] **Stage 4 — THE QUIET TICK.** `world.hush`: a world where nothing can strike
+            anything skips the passes that provably have nothing to do — acquisition above all
+            (94% of a busy tick, by this project's own profiling), the gunnery SCANS, the alarm
+            clustering. The gunnery COOLDOWNS still run, because a gun that found nothing would
+            have set exactly that cooldown, and skipping the arithmetic would be a different
+            world. Measured on a one-heir region: 3% saving at 2 men, 35% at 62, 45% at 152,
+            **2.0x at 302** — the saving grows with the army because acquisition is what grows
+            with it. `rules.hush = 0` is the way back.
+            The licence is an equivalence suite, not an argument: the same seeded region played
+            with and without, landing on IDENTICAL state, plus the controls (it really was quiet
+            >90% of the run; a duel is not; one fiend, one storm or one hostile heir with men
+            ends it; two heirs at terms are quiet). *The rig lied once and was fixed:* a board
+            with NO MEN on it is quiet whoever is at war with whom, so asserting on the opening
+            frame measured that and called it a failure of the code.
+            Still open, deliberately: the coarse-dt half. Income, cooldowns and raise progress
+            are linear in dt, but muster and rifts are discrete and movement is not linear — a
+            safe large step is "time to the next event", worth building when the realm layer can
+            ask for it and not before.
+      - [ ] Stage 5 regions and marches · 6 lords and the mode's shell · 7 LAN. Stages 1, 3
+            and 4 each ship something playable alone, which is the mitigation for the size of it.
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
       yet answered for the ORDER, so a banner planted past a shoreline pressed the company
       into the bank in a stack, and one assertion whose target lay 350 off the board failed —
