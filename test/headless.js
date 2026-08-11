@@ -5682,6 +5682,43 @@ suite('a tick builds only so many flow fields');
   }).length;
   ok('...and every company still reaches its standard', home === men.length,
      `${home} of ${men.length} within 220 of their rally`);
+
+  /* ---- AND ZERO IS THE WAY BACK ----
+   * The ration is a TRADE, not a strict improvement: it halves the worst tick and it makes
+   * every measured pairing run a little longer (see `NAV.perTick` in const.js for the numbers).
+   * So it is a dial, and `0` restores exactly what the sim did before — every field built on
+   * the tick it is asked for. This asserts the escape hatch still works, because a way back
+   * that has quietly stopped working is worse than no way back at all. */
+  {
+    const was = C.NAV.perTick;
+    C.NAV.perTick = 0;
+    const w2 = World.createWorld(31, 2), p2 = w2.players[0];
+    p2.essence = 1e7; w2.chaosNext = 1e9;
+    const c2 = World.cityOf(w2, 0);
+    p2.companies = [];
+    for (let co = 1; co <= 4; co++) {
+      const at = spot(co - 1);
+      p2.companies.push({ id: co, rally: at || { x: c2.x, y: c2.y } });
+      for (let i = 0; i < 3; i++) {
+        const dd = C.UNITS.soldier;
+        w2.units.push({ id: w2.nextId++, owner: 0, co, kind: 'soldier', tier: 1,
+                        x: c2.x + i * 14 - 20, y: c2.y + co * 16 - 40,
+                        hp: dd.hp, maxHp: dd.hp, dmg: dd.dmg, cd: 0, goal: null, from: -1 });
+      }
+    }
+    NAV.debugFieldsReset();
+    let most = 0;
+    for (let i = 0; i < 60; i++) {
+      const b0 = NAV.debugFields().built;
+      World.update(w2, C.SIM_DT);
+      most = Math.max(most, NAV.debugFields().built - b0);
+    }
+    const d2 = NAV.debugFields();
+    C.NAV.perTick = was;
+    ok('a ration of nought defers nothing', d2.deferred === 0, `${d2.deferred} deferred`);
+    ok('...and builds every field on the tick it is wanted', most > C.NAV.perTick,
+       `${most} in one tick against a ration of ${C.NAV.perTick}`);
+  }
 }
 
 suite('a garrison at rest stands still');

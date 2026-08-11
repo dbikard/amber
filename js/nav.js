@@ -277,8 +277,14 @@
     const key = layerOf(world, owner, shut) * 1e7 + goal;
     const f = nav.fields.get(key);
     if (f) { dbgRead++; return f; }
+    /* ZERO IS THE WAY BACK. A ration of nought would otherwise mean "build nothing", which is
+     * not a thing anyone wants, so it is spelled to mean "no ration" — and that restores the
+     * old behaviour exactly: every field asked for is built on the tick it is asked for, and
+     * nothing below this line can defer. One constant, so a change of mind about the trade
+     * (a rarer hitch against slightly longer matches — see const.js) is one edit and not a
+     * revert. The suite holds both halves. */
     if (nav.buildTick !== world.tick) { nav.buildTick = world.tick; nav.builds = 0; }
-    if (nav.builds >= C.NAV.perTick) { dbgDeferred++; return null; }
+    if (C.NAV.perTick && nav.builds >= C.NAV.perTick) { dbgDeferred++; return null; }
     nav.builds++;
     dbgBuilt++;
     if (nav.fields.size >= C.NAV.cacheMax) nav.fields.clear();

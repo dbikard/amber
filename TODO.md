@@ -788,6 +788,19 @@ below.
       places change hands in thirty seconds, which is the curtain gathering toward him and is
       the rule working. `WALL.alarm` is 420 — four times an archer's reach — so a bystander
       does move the roster, and that is the one lever if it is reported again.
+- [ ] **The rebuild ration is a TRADE, and `NAV.perTick: 0` is the way back.** It halves the
+      worst tick — 27ms to 13 on today's board, 97 to 27 at twice the width, 285 to 66 at three
+      times — by building at most one cold flow field a tick and letting a man whose field is
+      not ready walk straight at his goal for that tick (0.06% of a match's ticks). It also
+      makes every measured pairing run LONGER: at forty games a matchup the outcomes do not
+      move (greedy's mirror 15-17 with eight timeouts either way, bleys' 60% against 55%) but
+      greedy's median goes 10.8m → 16.1m, bleys' 7.8 → 8.9m, and bleys' timeouts 1 → 4 of 40.
+      Inside the 5-20m band, one-directional, and not fully explained: only two steer calls a
+      match are ever deferred, so a 50% median shift is more than the mechanism obviously
+      accounts for. Worth understanding before the dial is trusted at other sizes.
+      Shipped at 1 to be PLAYED and judged by hand. `perTick: 0` restores the old behaviour
+      exactly and the suite holds both halves.
+
 - [ ] **How big can the board get?** Measured on the shipped code, `CONST.MAP` overridden in
       process, two heirs actually playing six minutes at each size. The steady state barely
       moves — mean tick 0.54ms at 2000×2400 and 1.19ms at 6000×7200, p99 1.9ms against 3.9ms —

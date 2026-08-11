@@ -272,7 +272,16 @@
      * ticks of a 10,800-tick match on this board, and on twenty-two of a four-handed match on a
      * board three times as wide — a quarter of a second, total, of some men walking straight for
      * one tick. What it buys is the worst tick: 27ms to 13 here, 97 to 27 at twice the width,
-     * 285 to 66 at three times. Two halves the win and buys nothing back. */
+     * 285 to 66 at three times. Two halves the win and buys nothing back.
+     * AND IT COSTS PACING, which is the other half of the trade and the reason this is a dial
+     * rather than a decision. Measured at forty games a matchup against the same code without
+     * it: the outcomes do not move — greedy's mirror is 15-17 with eight timeouts either way,
+     * bleys' 60% against 55%, both inside sampling error — but every pairing runs LONGER.
+     * greedy's median 10.8m → 16.1m, bleys' 7.8 → 8.9m, bleys' timeouts 1 → 4 of 40. Still
+     * inside the 5-20m band, and one-directional.
+     * SET THIS TO 0 TO GO BACK. Nought means no ration at all rather than "build nothing":
+     * every field is built on the tick it is asked for, which is exactly what the sim did
+     * before. One edit, and the suite holds both halves. */
     perTick: 1,
     shore: 4,          // world units a man keeps from the waterline (the SDF isoline he is
                        // projected back to — see NAV.ground and `grounded` in world.js)
