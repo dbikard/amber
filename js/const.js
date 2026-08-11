@@ -10,7 +10,15 @@
    * opens the Seat's sheet. ONE number, so the two can never disagree — they did, and the
    * ring between them was buildable ground you could not tap. */
   CONST.CITY = { r: 150, seatR: 74,
-                 homeAggro: 140 };  // extra acquire reach inside your own city's r — an open city's garrison sees trouble coming
+                 homeAggro: 140,   // extra acquire reach inside your own city's r — an open city's garrison sees trouble coming
+                 /* HOW A YIELDED CITY IS TAKEN (`rules.occupy`). `court` is the ground you must
+                  * be standing on — the Seat's own, so it is the disc the game already draws and
+                  * the player already reads. `take` is how long, uncontested, and it is
+                  * deliberately long enough that a raid cannot do it in passing: BREAKING a place
+                  * and HOLDING it are meant to be different problems, and that difference is the
+                  * whole reason a Seat yields rather than falling. `back` is what the throne comes
+                  * back at, which is what stops one conquest paying for the next. */
+                 court: 150, take: 20, back: 0.35 };
 
   /* ---- Free placement (open world, stage 4) ----
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is

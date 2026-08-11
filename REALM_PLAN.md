@@ -157,7 +157,7 @@ throne-collapse check read `world.players[pi].castleHp`, which had become `undef
 stale reader of a retired field fails silently in exactly this shape, which is why the suite
 asserts the field is gone rather than merely that the new one works.
 
-## 7. Yield, take, or throw down
+## 7. Yield, take, or throw down — SHIPPED
 
 With `rules.occupy` on, a city at zero hit points yields: gates open, works inert, gun stopped,
 belonging to nobody.
@@ -166,7 +166,24 @@ belonging to nobody.
   garrison gone, writ shrunk to the court. It is a liability until you invest in it.
 - **Throw it down** and nobody gets it. That is what gives "losing costs ground" its edge: losing
   a city you can win back is one thing, losing one that no longer exists is another.
-- **Relieve it**: its owner standing in his own court takes it back at full price.
+- **Relieve it**: its owner standing in his own court takes it back at full price — not a
+  special case, because from the ground's point of view there is no difference between a relief
+  and a conquest.
+
+Constants live in `CONST.CITY`: `court` (the Seat's own disc, so it is the ground the game
+already draws and the player already reads), `take` (20s uncontested — long enough that a raid
+cannot do it in passing) and `back` (0.35 of the throne, which is what stops one conquest paying
+for the next). Two heirs at TERMS standing in the same court are NOT contesting it: neither can
+push the other out, so the first to arrive keeps his claim.
+
+**The bug this stage was really about, found by a probe and not by reading:** `acquire` chose a
+Seat by walking the PLAYERS and taking `map.cities[ci]` — his BIRTH seat — which was the same
+thing for exactly as long as a city could not change hands. Two rules broke at once: a captured
+city could not be besieged by the heir who lost it, and a YIELDED one was still a target, so
+every blow that landed on it fired the yield again. It measured as a court that could never be
+taken, with its claim clock resetting every 0.93 seconds — which is a soldier's attack cooldown,
+and the only reason the cause was findable at all. `acquire` asks about the CITY now, and the
+siege damage goes to the city that was aimed at rather than to whichever the heir holds first.
 
 ## 8. The quiet tick
 

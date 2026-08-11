@@ -535,7 +535,14 @@
        * STANDS is a different question, and `seatSeen` still answers it. */
       cities: world.cities.map((c) => ({ id: c.id, site: c.site, x: Math.round(c.x), y: Math.round(c.y),
                                         owner: c.owner, hp: Math.round(c.hp), maxHp: c.maxHp,
-                                        level: c.level, name: c.name })),
+                                        level: c.level, name: c.name,
+                                        /* a yielded court and how far along somebody is in taking
+                                         * it are public: a city changing hands is the loudest
+                                         * thing that can happen on a war map, and a seat that
+                                         * could not see it could not answer it */
+                                        ...(c.yield != null ? { yield: c.yield } : {}),
+                                        ...(c.razed ? { razed: 1 } : {}),
+                                        ...(c.hold ? { hold: { pi: c.hold.pi, since: c.hold.since } } : {}) })),
       players, sites,
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),

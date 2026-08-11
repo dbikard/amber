@@ -2346,6 +2346,25 @@
       }
       return { ok: true };
     }
+    /* ---------------- throw a city down ----------------
+     * The other half of taking one, and the half that gives "the cost is ground" its edge:
+     * losing a city you can win back is one thing, losing one that no longer exists is another,
+     * and it is a decision your enemy made about you. Only a court you are standing in and that
+     * nobody holds — you cannot raze a city out from under its owner, you have to break it
+     * first, which is the whole of the difference between a raid and a conquest. */
+    if (cmd.c === 'raze') {
+      if (!world.rules.occupy) return { ok: false, err: 'noraze' };
+      const city = world.cities.find((c2) => c2.id === cmd.id);
+      if (!city) return { ok: false, err: 'id' };
+      if (city.owner >= 0) return { ok: false, err: 'held' };
+      if (city.razed) return { ok: false, err: 'gone' };
+      const r2 = C.CITY.court * C.CITY.court;
+      if (!world.units.some((u) => u.hp > 0 && u.owner === pi && d2(u.x, u.y, city.x, city.y) < r2))
+        return { ok: false, err: 'presence' };
+      city.razed = 1; city.hold = null; city.yield = null; city.hp = 0;
+      emit(world, { e: 'razed', pi, id: city.id, x: city.x, y: city.y });
+      return { ok: true };
+    }
     if (cmd.c === 'flip') {
       const s3 = bldOf(world, pi, cmd.id);
       if (!s3) return { ok: false, err: 'id' };
@@ -2966,8 +2985,6 @@
       if (!foe(world, u.owner, ci)) continue;
       const tp = world.players[ci];
       if (tp.out) continue;
-      const cs = world.map.sites[world.map.cities[ci]];
-      const dc = Math.sqrt(d2(u.x, u.y, cs.x, cs.y));
       for (const b of tp.buildings) {
         /* a shooter looks past every work but the Shrine — see the note above the loop */
         if (menOnly && b.bt !== 'shrine') continue;
@@ -2988,10 +3005,26 @@
         if (d < bestD && seen(aim.x, aim.y, ci))
           consider(d, { pi: ci, id: b.id }, 'work', aim.x, aim.y);
       }
-      /* and a Seat is stone like any other — the Shrine exception is the SHRINE, not "any
-       * work that matters". A shooter at a rival's gate still cannot take it. */
-      if (menOnly || dc > C.CITY.r + radius) continue;
-      if (dc < bestD && seen(cs.x, cs.y, ci)) consider(dc, { pi: ci }, 'tower', cs.x, cs.y);
+    }
+    /* ---- AND A SEAT IS STONE LIKE ANY OTHER ----
+     * The Shrine exception is the SHRINE, not "any work that matters": a shooter at a rival's
+     * gate still cannot take it.
+     * ASKED OF THE CITY AND NEVER OF THE SEAT INDEX. It used to walk the players and take
+     * `map.cities[ci]` — his BIRTH seat — which was the same thing for as long as a city could
+     * not change hands. It is not any more, and reading it as a seat index cost two rules at
+     * once: a captured city could not be besieged by the heir who lost it, and a YIELDED one
+     * was still a target, so every blow that landed on it fired the yield again. Measured as a
+     * court that could never be taken, its claim clock reset every 0.93 seconds — which is a
+     * soldier's attack cooldown, and the only reason it was findable at all.
+     * A city nobody holds is nobody's to break: there is nothing left to take from it but the
+     * ground, and taking ground is what standing in it is for. */
+    if (!menOnly) for (const city of world.cities) {
+      if (city.owner < 0 || city.hp <= 0 || !foe(world, u.owner, city.owner)) continue;
+      if (world.players[city.owner] && world.players[city.owner].out) continue;
+      const dc = Math.sqrt(d2(u.x, u.y, city.x, city.y));
+      if (dc > C.CITY.r + radius) continue;
+      if (dc < bestD && seen(city.x, city.y, city.owner))
+        consider(dc, { pi: city.owner, city }, 'tower', city.x, city.y);
     }
     if (!best && stone.length) {
       stone.sort((p, q) => p[0] - q[0]);
@@ -3483,6 +3516,11 @@
       if (s.tLeft <= 0) world.storms.splice(i, 1);
     }
 
+    /* A YIELDED COURT IS TAKEN BY STANDING IN IT, and the tally is taken here — after the
+     * fighting, so a court still being contested this tick does not read as held, and before
+     * the marching, so a man who takes a city this tick is under its writ on this one. Costs
+     * nothing at all in a match with no yielded city in it, which is every match today. */
+    if (world.rules.occupy) holdCities(world, dt);
     /* the parapet roster, before anyone moves or shoots: who is ON the wall this tick decides
      * both where he walks and whether he can shoot over it */
     postAll(world);
@@ -3599,10 +3637,17 @@
              * belt-and-braces the other two doors carry, and stage 2 retires it by giving a
              * city a record of its own. */
             else if (mark.kind === 'tower' && foe(world, u.owner, mark.t.pi)) {
-              const tp = world.players[mark.t.pi], seat = seatOf(world, mark.t.pi);
-              if (seat) seat.hp -= wall;
-              emit(world, { e: 'siege', pi: mark.t.pi, x: u.x, y: u.y });
-              if (seat && seat.hp <= 0 && !tp.out) { if (topple(world, mark.t.pi, u.owner)) return; }
+              /* THE CITY HE AIMED AT, not "this heir's Seat". They were the same thing while a
+               * heir had exactly one; with cities changing hands, `seatOf` would have sent every
+               * blow to whichever he holds FIRST, so a man battering his second city would have
+               * been quietly knocking down his first. */
+              const seat = mark.t.city || seatOf(world, mark.t.pi);
+              if (seat && seat.owner >= 0 && seat.hp > 0) {
+                const tp = world.players[seat.owner];
+                seat.hp -= wall;
+                emit(world, { e: 'siege', pi: seat.owner, x: u.x, y: u.y });
+                if (seat.hp <= 0 && tp && !tp.out) { if (seatDown(world, seat, u.owner)) return; }
+              }
             }
             u.cd = def.atk;
             /* WHO THREW IT. A bolt was a bolt whoever loosed it, so an archer's arrow and a
@@ -4016,6 +4061,73 @@
     if (fellChampion >= 0) pruneCos(world, fellChampion);
   }
 
+  /* ---------------- A SEAT AT NOUGHT ----------------
+   * TWO ANSWERS, AND THE RULES OF THE MATCH DECIDE WHICH. With `occupy` off — every mode that
+   * has ever shipped — it is the old one: the heir is toppled, in a duel that ends it, and the
+   * ground is nobody's because there is nobody left to want it.
+   *
+   * With `occupy` on the Seat YIELDS instead. Gates open, the gun stops, the works go inert,
+   * and the city belongs to NOBODY until somebody stands in the court and holds it. That is the
+   * whole reason the rule exists: in a country of fifteen cities, a rule that DESTROYS what you
+   * were fighting for means the reward for a hard-won assault is a hole in the ground. It also
+   * splits two things that were one — can you BREAK this place, and can you HOLD it. A bombard
+   * train does the first from beyond anyone's reach; only a surviving army does the second.
+   *
+   * The heir is not out. He has lost a city, which in a country is a loss and not a death; the
+   * elimination rule below asks whether he holds ANY, and `endOnSeat` is what says whether that
+   * ends anything at all. */
+  function seatDown(world, city, by) {
+    const pi = city.owner;
+    if (!world.rules.occupy) return topple(world, pi, by);
+    city.owner = -1;
+    city.hp = 0;
+    city.yield = world.t;
+    city.hold = null;                 // {pi, since} — who is standing in the court, and since when
+    emit(world, { e: 'yield', pi, id: city.id, x: city.x, y: city.y, by: by === C.CHAOS_ID ? -1 : by });
+    /* AND A HEIR WITH NOTHING LEFT IS DISPOSSESSED, NOT DEAD. He keeps his army, his works and
+     * his lords, and may take a city back — which is what makes a bad evening survivable in a
+     * war played over many of them. `endOnSeat` is the rule that says otherwise. */
+    if (world.rules.endOnSeat && citiesOf(world, pi).length === 0) return topple(world, pi, by);
+    return false;
+  }
+
+  /* ---- AND A YIELDED CITY IS TAKEN BY STANDING IN IT ----
+   * The same verb as a spring, which is why it needs no explaining, and the same shape: your
+   * men in the court, nobody else's, for a while. It runs once a tick over the yielded cities
+   * only, so a match with none pays nothing for the rule.
+   * A relief is not a special case: the heir who lost it takes it back exactly as a stranger
+   * would, because from the ground's point of view there is no difference. */
+  function holdCities(world, dt) {
+    for (const city of world.cities) {
+      if (city.owner >= 0 || city.razed) continue;
+      const r2 = C.CITY.court * C.CITY.court;
+      let claimant = -1, contested = false;
+      for (const u of world.units) {
+        if (u.hp <= 0 || u.owner < 0 || u.in) continue;
+        if (d2(u.x, u.y, city.x, city.y) > r2) continue;
+        if (claimant < 0) claimant = u.owner;
+        else if (foe(world, claimant, u.owner)) { contested = true; break; }
+      }
+      /* CONTESTED GROUND IS NOBODY'S GROUND, and the clock goes back to the beginning — a court
+       * you have to keep fighting for is a court you have not taken. Two heirs at TERMS standing
+       * in it are not contesting: neither can push the other out, so the first to have arrived
+       * keeps his claim, which is the honest reading of a truce. */
+      if (claimant < 0 || contested) { city.hold = null; continue; }
+      if (!city.hold || city.hold.pi !== claimant) city.hold = { pi: claimant, since: world.t };
+      if (world.t - city.hold.since < C.CITY.take) continue;
+      /* TAKEN — and it comes back HURT. Its works are gone with its old master, its throne is a
+       * fraction of what it was and its writ is the court. It is a liability until it is paid
+       * for, which is what stops a conquest paying for the next one. */
+      city.owner = claimant;
+      city.hp = Math.max(1, city.maxHp * C.CITY.back);
+      city.level = 1;
+      city.cd = 0;
+      city.yield = null;
+      city.hold = null;
+      emit(world, { e: 'taken', pi: claimant, id: city.id, x: city.x, y: city.y });
+    }
+  }
+
   /* A Seat falls. In a duel that ends it. In a free-for-all it puts one heir OUT — their
    * works and their men go with them, and the throne waits for whoever is left last. */
   function topple(world, pi, by) {
@@ -4078,7 +4190,7 @@
                    foe, pactOn,
                    /* a city is a THING with an owner now, not a property of a player — these
                     * three are the only ways anything asks about one */
-                   seatOf, citiesOf, cityAt,
+                   seatOf, citiesOf, cityAt, seatDown,
                    /* where the roster says a man belongs — exported for the probes and the
                     * suites, which otherwise have to re-derive it and end up testing their own
                     * arithmetic rather than the rule */

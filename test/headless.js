@@ -6700,6 +6700,133 @@ suite('a city is a thing with an owner');
   eq('the rig is alive: he still holds his city with the throne at nought', anyOut, 1);
 }
 
+/* ---- A SEAT YIELDS, AND IS TAKEN BY STANDING IN IT ----
+ * With `rules.occupy` off — every mode that has ever shipped — a Seat at nought topples exactly
+ * as it always did, and the first block below is what says so. With it on, breaking a place and
+ * HOLDING it become different problems, which is the whole point: a bombard train does the first
+ * from beyond anyone's reach and only a surviving army does the second. */
+suite('a Seat yields, and is taken by standing in it');
+{
+  const bare = (seed, rules) => {
+    const w = World.createWorld(seed, 2, null, rules);
+    w.chaosNext = 1e9;
+    /* no halls: the rig is about a court, and a hall in it musters a garrison into the middle
+     * of the measurement */
+    for (const p of w.players) p.buildings.length = 0;
+    return w;
+  };
+  /* THE CONTROL: with the rule off, nothing about a falling Seat has changed. */
+  {
+    const w = bare(20260915, null);
+    const c1 = World.seatOf(w, 1);
+    eq('with the rule off a Seat at nought topples', World.seatDown(w, c1, 0), true);
+    eq('...the heir is out', w.players[1].out, true);
+    eq('...and in a duel that ends it', w.winner, 0);
+    eq('...by force', w.winReason, 'castle');
+  }
+  /* AND WITH IT ON IT YIELDS. */
+  {
+    const w = bare(20260915, { occupy: 1, endOnSeat: 0 });
+    const c1 = World.seatOf(w, 1);
+    eq('with the rule on it yields instead', World.seatDown(w, c1, 0), false);
+    eq('...and belongs to nobody', c1.owner, -1);
+    eq('...the heir is not out', w.players[1].out, false);
+    eq('...and the match runs on', w.winner, null);
+    eq('...he is dispossessed: he holds no city', World.citiesOf(w, 1).length, 0);
+    ok('...but he still has a place on the map', !!World.cityOf(w, 1), 'nowhere to look');
+  }
+  /* ...unless the rules say a heir with nothing is finished, which is a duel. */
+  {
+    const w = bare(20260915, { occupy: 1, endOnSeat: 1 });
+    eq('a duel still ends when a heir has nowhere left', World.seatDown(w, World.seatOf(w, 1), 0), true);
+    eq('...and he is out', w.players[1].out, true);
+  }
+
+  const stand = (secs, mine, theirs) => {
+    const w = bare(20260916, { occupy: 1, endOnSeat: 0 });
+    const c1 = World.seatOf(w, 1);
+    World.seatDown(w, c1, 0);
+    for (const p of w.players) p.banner = { x: c1.x, y: c1.y };
+    for (let k = 0; k < mine; k++) {
+      const u = manAt(w, 0, 'soldier', c1.x + 20 + k * 8, c1.y);
+      u.hp = u.maxHp = 1e9; u.dmg = 0;         // they are here to stand, not to fight
+    }
+    for (let k = 0; k < theirs; k++) {
+      const u = manAt(w, 1, 'soldier', c1.x - 20 - k * 8, c1.y);
+      u.hp = u.maxHp = 1e9; u.dmg = 0;
+    }
+    let took = null;
+    for (let i = 0; i < secs * 30 && took == null; i++) {
+      World.update(w, C.SIM_DT);
+      for (const e of w.events) if (e.e === 'taken') took = { t: w.t, pi: e.pi };
+      w.events.length = 0;
+    }
+    return { w, c1, took };
+  };
+  const won = stand(40, 1, 0);
+  ok('a court held uncontested is taken', won.took != null,
+     won.took ? '' : 'nobody took it in forty seconds');
+  if (won.took) {
+    near('...and it takes exactly as long as the rule says', won.took.t, C.CITY.take, 0.6,
+         `${won.took.t.toFixed(1)}s against ${C.CITY.take}`);
+    eq('...by the heir who stood in it', won.c1.owner, 0);
+    near('...and it comes back hurt', won.c1.hp, won.c1.maxHp * C.CITY.back, 2,
+         `${Math.round(won.c1.hp)} of ${won.c1.maxHp}`);
+    eq('...and back to its first level', won.c1.level, 1);
+    /* THE GUN COMES WITH IT — which is the plainest possible proof that the city really changed
+     * hands rather than merely changing a number */
+    const en = manAt(won.w, 1, 'soldier', won.c1.x + C.SEAT_GUN.range * 0.6, won.c1.y);
+    en.hp = en.maxHp = 1e6;
+    const was = en.hp;
+    for (let i = 0; i < 5 * 30; i++) World.update(won.w, C.SIM_DT);
+    ok('...and its gun answers for its new master', en.hp < was, `${Math.round(was - en.hp)} dealt`);
+  }
+  const held = stand(60, 1, 1);
+  eq('a court still being fought over is nobody\'s', held.took, null);
+  eq('...and stays open', held.c1.owner, -1);
+
+  /* A YIELDED COURT IS NOBODY'S TO BREAK. It was still a target once — every blow that landed
+   * on it fired the yield again and reset the claim clock, measured as a court that could never
+   * be taken with its clock resetting every 0.93s, which is a soldier's attack cooldown. */
+  {
+    const w = bare(20260917, { occupy: 1, endOnSeat: 0 });
+    const c1 = World.seatOf(w, 1);
+    World.seatDown(w, c1, 0);
+    w.events.length = 0;
+    w.players[0].banner = { x: c1.x, y: c1.y };
+    const ram = manAt(w, 0, 'engine', c1.x + 30, c1.y);
+    ram.hp = ram.maxHp = 1e6;
+    let again = 0, sieges = 0;
+    for (let i = 0; i < 12 * 30; i++) {
+      World.update(w, C.SIM_DT);
+      for (const e of w.events) { if (e.e === 'yield') again++; if (e.e === 'siege') sieges++; }
+      w.events.length = 0;
+    }
+    eq('a yielded court cannot be yielded again', again, 0);
+    eq('...because nothing aims at it at all', sieges, 0);
+  }
+
+  /* ...AND IT MAY BE THROWN DOWN INSTEAD. */
+  {
+    const w = bare(20260918, { occupy: 1, endOnSeat: 0 });
+    const c1 = World.seatOf(w, 1);
+    eq('a city with an heir in it cannot be thrown down',
+       World.applyCommand(w, 0, { c: 'raze', id: c1.id }).err, 'held');
+    World.seatDown(w, c1, 0);
+    eq('...nor from across the board', World.applyCommand(w, 0, { c: 'raze', id: c1.id }).err, 'presence');
+    manAt(w, 0, 'soldier', c1.x + 20, c1.y);
+    eq('but a court you are standing in may be', World.applyCommand(w, 0, { c: 'raze', id: c1.id }).ok, true);
+    eq('...and it is gone', !!c1.razed, true);
+    eq('...twice is a refusal', World.applyCommand(w, 0, { c: 'raze', id: c1.id }).err, 'gone');
+    w.players[0].banner = { x: c1.x, y: c1.y };
+    for (let i = 0; i < 40 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    eq('and rubble is nobody\'s, however long you stand in it', c1.owner, -1);
+    const q = World.createWorld(20260918, 2);
+    eq('and none of it happens in a war whose rules forbid it',
+       World.applyCommand(q, 0, { c: 'raze', id: 1 }).err, 'noraze');
+  }
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

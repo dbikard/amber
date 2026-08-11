@@ -465,7 +465,11 @@
     over: 'The match is decided',
     /* terms */
     nopact: 'There are no terms to be had in this war',
-    seat: 'There is no such heir to treat with'
+    seat: 'There is no such heir to treat with',
+    /* a city taken, or thrown down */
+    noraze: 'A Seat cannot be thrown down in this war',
+    held: 'It still answers to an heir — break it first',
+    gone: 'There is nothing left of it to throw down'
   };
   /* WHOEVER SITS IN THAT SEAT. `game.names` is filled per mode — two in a duel, the seat names
    * at a LAN table — and a banner about a third heir must not read "undefined breaks the truce". */
@@ -631,6 +635,20 @@
        * news. A rival BREAKING is the loudest line in the game — the whole point of an instant
        * break is that the first you know of it is your men dying, and one banner is the least
        * the stack owes him. Ours-vs-his decides the wording, never whether to speak. */
+      /* ---- A CITY CHANGES HANDS ----
+       * The loudest thing that can happen on a war map, and none of the three is an echo of
+       * anything the player just did on his own board: a Seat yielding is the end of one problem
+       * and the start of another (the court is open and anyone may walk into it), a city taken
+       * is the map redrawn, and one thrown down is ground that will never be anybody's again.
+       * All three are told from whose side of it the viewer is on. */
+      else if (ev.e === 'yield') UI.banner(ev.pi === game.viewer
+        ? 'YOUR Seat has yielded — its court is open to anyone who can hold it'
+        : seatName(ev.pi) + '’s Seat yields — take the court and it is yours', ev.pi === game.viewer ? 'warn' : 'alert');
+      else if (ev.e === 'taken') UI.banner(ev.pi === game.viewer
+        ? 'The city is YOURS' : seatName(ev.pi) + ' takes the city', ev.pi === game.viewer ? 'alert' : 'warn');
+      else if (ev.e === 'razed') UI.banner(ev.pi === game.viewer
+        ? 'You throw the city down — it will be nobody’s now'
+        : seatName(ev.pi) + ' throws the city down', ev.pi === game.viewer ? '' : 'warn');
       else if (ev.e === 'offer' && ev.pi !== game.viewer) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
       else if (ev.e === 'pact' && ev.pi !== game.viewer) {
         /* a pact between two OTHER heirs is public and is the most important thing on the board

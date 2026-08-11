@@ -709,7 +709,22 @@ below.
             **swallowed every tap**, because `#hud` is `pointer-events: none` and a control
             inside it must take its taps back. It reads as a map-drag starting on a control
             rather than as a dead button, so it would not have been reported as broken.
-      - [ ] Stage 2 cities first-class · 3 yield/occupy · 4 the quiet tick ·
+      - [x] **Stage 2 — CITIES ARE FIRST-CLASS.** `world.cities`, `seatOf`/`citiesOf`/`cityAt`;
+            `pl.castleHp` and `pl.seatCd` retired. *Caught by the suite:* the host's
+            throne-collapse check read the retired field, and `undefined <= 0` is FALSE, so no
+            throne fell and the end screen cut straight to the tally — a stale reader of a
+            retired field fails silently and looking like nothing at all.
+      - [x] **Stage 3 — A SEAT YIELDS, AND IS TAKEN BY STANDING IN IT.** `rules.occupy`: at
+            nought a Seat yields rather than falling, belongs to nobody, and is taken by standing
+            in the court for `CITY.take` uncontested — the same verb as a spring. It comes back
+            at `CITY.back` of its throne and at level 1, so one conquest does not pay for the
+            next. `{c:'raze'}` throws it down for good. A dispossessed heir is NOT out.
+            *The bug this stage was really about:* `acquire` picked a Seat by walking the PLAYERS
+            and taking `map.cities[ci]` — his BIRTH seat — which was the same thing only while a
+            city could not change hands. So a yielded court was still a target and every blow on
+            it fired the yield again, resetting the claim clock every 0.93s — a soldier's attack
+            cooldown, and the only reason it was findable.
+      - [ ] Stage 4 the quiet tick ·
             5 regions and marches · 6 lords and the mode's shell · 7 LAN. Stages 1, 3 and 4 each
             ship something playable alone, which is the mitigation for the size of it.
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
