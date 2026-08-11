@@ -246,14 +246,23 @@ troops and spans borders freely, always with a margin into the neighbour, so the
 transition never coincides with anything a player can see or aim at. Let them coincide and the
 boundary becomes a game rule, and gets played against.
 
-## 10. Lords, and the shape of a war — SHIPPED in part
+## 10. Lords, and the shape of a war — SHIPPED
 
 - **A lord is an existing heir AI scoped to one city**, with an order — hold, build, raid,
   reinforce — which is a table in the shape of a chapter's `opts`.
-- **Lords are the brake on the snowball.** You may hold only as many cities as you have lords,
-  and lords are won rather than bought. An unlorded city produces little and defends itself
-  badly. It also makes personality matter: you have three lords and four borders, and one of the
-  lords is Bleys.
+- **Lords are the brake on the snowball, and it is enforced at the seam.** One city by right and
+  one more per lord; past that a court simply **will not swear to you** — it goes back to being
+  free and the map says which one and why, rather than a number being quietly ignored. A lord is
+  **won**: taking a city from an HEIR brings his lord over with it, taking one from a minor
+  holding wins ground and nothing else. So conquest pays for conquest only when it is conquest of
+  a rival, and a war cannot be won by eating the weak. Checked in `REALM.leave`, which is the one
+  place the country learns anything — `world.js` goes on knowing nothing above a board.
+- **One Pattern, enforced as a placement rule.** `rules.onePattern` (set by `REALM.enter`, off in
+  every single match) refuses a Shrine anywhere but the region `world.pattern` marks. So holding
+  AMBER is not winning — it is being *allowed to walk* — and the endgame is a convergence on one
+  place. A walk completed there wins the country, through `World.declare`, the same door every
+  other ending goes out of: `REALM.run` has the shape `CAMPAIGN.run` has, so game.js polls both
+  with one branch and neither ever writes to a world.
 - **Losing your last city is dispossession, not death.** You keep your army and your lords and
   may take a city back. A bad evening must not end a campaign played over weeks.
 - **Most cities belong to nobody who is playing.** Minor lords hold the rest — that is where the
@@ -281,7 +290,8 @@ the targets in `DESIGN_PRINCIPLES.md`. No stage begins before the previous is gr
 | 5 | `country.js` + `realm.js`: a generated country, biomes, closed borders, marches | **shipped** | — |
 | 6 | The mode: a map screen, enter a region, march, save and resume | **shipped — playable** | — |
 | 5c | Seamless border rendering (the neighbour drawn across the seam) | open | |
-| 6b | Lords as a countable resource, and the walk as the war's ending | open | |
+| 6b | Lords as a countable resource, and the walk as the war's ending | **shipped** | |
+| 7 | LAN over the realm | open, severable | |
 | 7 | LAN over the realm | severable | |
 
 Stages 1, 3 and 4 each ship something playable on their own. That is the mitigation for the

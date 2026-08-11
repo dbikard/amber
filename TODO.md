@@ -774,14 +774,14 @@ below.
       every guest. Re-measured, as the handoff demanded: 6 of 601,967 unit-samples on
       impassable ground (was 691 of 136,793), worst 16 units in (was 128 — one nav cell, a
       graze, not a man in a lake). Headless 1205/1205.
-- [ ] **A FLAKY BROWSER SUITE: `a new match opens on a Seat that is standing`.** Its liveness
-      assertion — "a called-for collapse really moves the Seat" — fails perhaps one run in four,
-      reporting `y -0.2 of base 0.0, lean 0.001`, i.e. the collapse animation had not visibly
-      started when the frame was read. Seen before and after the truce work with nothing between
-      them that touches a Seat's collapse, and three clean runs either side. It is the RIG that
-      is flaky, not the rule: it waits a fixed number of frames rather than on the condition.
-      Fix by waiting on `lean` crossing a threshold (`until`, as the suite guidance says), not by
-      sleeping longer.
+- [x] **A FLAKY BROWSER SUITE, FIXED: `a new match opens on a Seat that is standing`.** Its
+      liveness assertion failed about one run in four with `lean 0.001` — the collapse had not
+      visibly begun when the frame was read. The RIG was flaky, not the rule: it waited two
+      `requestAnimationFrame`s, which is a guess about how fast the page schedules them and how
+      far into a fall the second one lands. It waits on the CONDITION now (`until`, lean past a
+      threshold or the crown dropped), which is the thing the assertion actually claims. Three
+      clean runs. A flaky rig is worse than no rig — it cost a real signal three times in one
+      session, and each time the first question had to be "is this mine?".
 - [ ] **An army through a narrow path should behave like sand in an hourglass — and the maps
       have no narrow paths.** Measured, now that the terrain rule makes it meaningful. A rig
       traced the marching route city-to-city by the flow field, took the narrowest passable

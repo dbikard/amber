@@ -4267,11 +4267,18 @@ async function match(browser, base, renderer) {
     await pg.evaluate((spec) => window.Game.startSP('julian', { spec, seed: 1 }), VEIL_BOARD);
     await inMatchNow(pg);
     await until(pg, () => window.Render.ready);
-    const fell = await pg.evaluate(async () => {
-      window.Render.seatFall(0);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      return window.Render.debugSeatTower(0);
+    /* WAIT ON THE COLLAPSE, NOT ON A COUNT OF FRAMES. Two frames is a guess about how quickly
+     * the page will schedule them and how far into the fall the second one lands — and it was
+     * wrong about one run in four, reporting `lean 0.001` and failing its own liveness check.
+     * A flaky rig is worse than no rig: it costs a real signal every time it cries wolf. So the
+     * fall is STARTED here and the assertion below waits for it to have visibly begun, which is
+     * the thing actually being claimed. */
+    await pg.evaluate(() => window.Render.seatFall(0));
+    await until(pg, () => {
+      const t = window.Render.debugSeatTower(0);
+      return !!t && (Math.abs(t.lean) > 0.02 || t.y < t.base - 1);
     });
+    const fell = await pg.evaluate(() => window.Render.debugSeatTower(0));
     /* THE RIG HAS TO SHOW IT CAN TOPPLE A TOWER before "the tower is upright" means anything */
     ok('the rig is alive: a called-for collapse really moves the Seat',
        !!fell && (fell.base - fell.y > 0.5 || fell.lean > 0.001),

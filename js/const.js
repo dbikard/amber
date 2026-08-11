@@ -195,13 +195,15 @@
    *              free-for-all). Off, it yields instead and the ground must be taken.
    *   occupy     a yielded Seat may be occupied, relieved or thrown down. Needs endOnSeat off.
    *   truce      heirs may offer, seal and break pacts. Off, `World.foe` is exactly "not mine".
+   *   onePattern THERE IS ONE PATTERN IN THE WORLD. A Shrine may be raised only where it
+   *              stands. Off, every board has its own, which is what a single match is.
    *   hush       THE QUIET TICK: a world with no two hostile things in it skips the passes
    *              that provably have nothing to do — target acquisition above all, which the
    *              profiler put at 94% of a busy tick. Not an approximation and not a second
    *              model: the same rules, with the empty work not done. SET THIS TO 0 TO GO
    *              BACK, and the suite holds both halves.
    * Everything here is off or today's behaviour, so every existing mode is untouched. */
-  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1 };
+  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1, onePattern: 0 };
   /* Seat colours. You are ALWAYS gold — a player should never have to remember which of four
    * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
   CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];
@@ -250,6 +252,13 @@
      * of them, which is the point: he holds ground and does not contend for the throne */
     holder: 'greedy',
     crossing: 45,
+    /* HOW MANY CITIES YOU MAY HOLD, and it is the brake on the whole snowball. One is yours
+     * by right; every other needs a LORD to hold it, and a lord is WON — you take one when you
+     * take a city from an heir, never from a minor lord and never with essence. So conquest
+     * pays for conquest only when it is conquest of a rival, and a war cannot be won by eating
+     * the weak. Over the limit a court simply will not swear to you: it goes back to being
+     * free, which is a refusal the player can see rather than a number quietly ignored. */
+    lords0: 1,
     lords: ['a Shadow-lord', 'a Marcher Baron', 'the Warden of the Ford', 'a Petty King',
             'the Keeper of the Pass', 'a Sworn Brother', 'an Old Duke']
   };

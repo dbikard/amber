@@ -231,7 +231,17 @@
       }
       grid.appendChild(d);
     }
-    $('realm-say').textContent = RE ? RE.run(realm).say() : '';
+    /* A REFUSAL IS SAID ONCE, ON THE MAP, WHERE THE REFUSAL HAPPENED. A court that would not
+     * swear to you is not a bug and not a silent number — it is the brake on the whole war, and
+     * the player has to be told which city and why. Cleared as it is read, so it says it once. */
+    let line = RE ? RE.run(realm).say() : '';
+    if (realm.refused != null) {
+      const c = CO.cityById(co, realm.refused);
+      realm.refused = null;
+      line = (c ? c.name : 'The city') + ' will not swear to you — you have no lord to hold it. '
+           + 'Take a city from an HEIR and his lord comes with it.';
+    }
+    $('realm-say').textContent = line;
     const here = realmPick === realm.at || realmPick === null;
     $('realm-go').classList.toggle('hidden', !(realmPick === realm.at || realmPick === null));
     $('realm-march').classList.toggle('hidden', !(realmPick && realmPick !== realm.at && roads[realmPick]));

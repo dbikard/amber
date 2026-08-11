@@ -7026,7 +7026,7 @@ suite('a region is a world, left and come back to');
   ok('a region becomes a world', !!w && !!w.map && w.units != null, 'no world');
   eq('...at the size every board has always been', w.nav.W * w.nav.cw, C.MAP.W);
   eq('...playing by the rules of a war', JSON.stringify(w.rules),
-     JSON.stringify({ endOnSeat: 0, occupy: 1, truce: 1, hush: 1 }));
+     JSON.stringify({ endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 }));
   eq('...and it is his own city he is standing in', w.cities[0].owner, 0);
   eq('...with no second throne on the board', w.cities[1].owner, -1);
   for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
@@ -7090,6 +7090,84 @@ suite('a region is a world, left and come back to');
       eq('...and throwing it down is remembered too', !!target.razed, true);
       eq('...and it belongs to nobody', target.owner, -1);
     }
+  }
+}
+
+/* ---- ONE PATTERN, AND ONLY SO MANY CITIES ----
+ * The two rules that make a country a game rather than a sandbox: the war ends in one place, and
+ * conquest does not pay for itself unless it is conquest of a rival. */
+suite('there is one Pattern, and only so many cities');
+{
+  const realm = REALM.create(20260930);
+  const pat = REALM.patternCity(realm);
+  ok('the Pattern lies in one city', !!pat && pat.owner === -1, pat ? pat.region : 'nowhere');
+  ok('...and the player does not start in it', realm.at !== pat.region, realm.at);
+
+  const here = REALM.enter(realm, realm.at);
+  eq('the region you start in is not the Pattern\'s', !!here.pattern, false);
+  here.players[0].essence = 1e6;
+  const c = World.cityOf(here, 0);
+  eq('...so a Shrine may not be raised in it',
+     World.applyCommand(here, 0, { c: 'build', x: c.x + 120, y: c.y + 120, bt: 'shrine' }).err, 'elsewhere');
+  const amber = REALM.enter(realm, pat.region);
+  eq('AMBER is the Pattern\'s region', !!amber.pattern, true);
+  amber.players[0].essence = 1e6;
+  const ca = World.cityOf(amber, 0);
+  let raised = false;
+  for (let r = 100; r < 420 && !raised; r += 40)
+    for (let a = 0; a < 6 && !raised; a++)
+      if (World.applyCommand(amber, 0, { c: 'build', x: ca.x + Math.cos(a) * r, y: ca.y + Math.sin(a) * r, bt: 'shrine' }).ok) raised = true;
+  ok('...and in it a Shrine may', raised, 'refused everywhere the rig tried');
+  /* AND THE RULE IS THE WAR'S, NOT THE GAME'S: a skirmish board is a world of its own and
+   * carries its own Pattern, exactly as it always has. */
+  const skirmish = World.createWorld(20260930, 2);
+  skirmish.players[0].essence = 1e6;
+  const cs = World.cityOf(skirmish, 0);
+  let ok2 = false;
+  for (let r = 100; r < 420 && !ok2; r += 40)
+    for (let a = 0; a < 6 && !ok2; a++)
+      if (World.applyCommand(skirmish, 0, { c: 'build', x: cs.x + Math.cos(a) * r, y: cs.y + Math.sin(a) * r, bt: 'shrine' }).ok) ok2 = true;
+  ok('a single match still carries its own Pattern', ok2, 'a skirmish refused a Shrine');
+
+  /* WINNING THE WAR is a walk completed in the Pattern's own region, and it goes out through the
+   * door every other ending goes out of. */
+  const run = REALM.run(realm);
+  eq('holding cities is not winning', run.tick(here), null);
+  amber.players[0].pattern = 99;
+  eq('...nor is nearly walking it', run.tick(amber), null);
+  amber.players[0].pattern = 100;
+  eq('a walk completed in AMBER wins the country', run.tick(amber), 'won');
+  here.players[0].pattern = 100;
+  eq('...and the same walk anywhere else does not', run.tick(here), null);
+
+  /* THE LORD BRAKE. One city by right, one more per lord, and a lord is WON — from an heir and
+   * never from a minor holding, so a war cannot be won by eating the weak. */
+  const r2 = REALM.create(20260931);
+  eq('you begin with one lord', r2.lords, C.REALM.lords0);
+  eq('...and one city', REALM.holds(r2, 0).length, 1);
+  const free = r2.country.cities.filter((x) => x.owner < 0 && !x.pattern).slice(0, 2);
+  ok('the rig is alive: there are free cities to take', free.length === 2, `${free.length}`);
+  const take = (city) => {
+    const w = REALM.enter(r2, city.region);
+    w.cities[0].owner = 0;
+    REALM.leave(r2, city.region, w);
+  };
+  take(free[0]);
+  eq('a lord holds the second city', free[0].owner, 0);
+  eq('...and it is yours', REALM.holds(r2, 0).length, 2);
+  take(free[1]);
+  eq('the third will not swear to you', free[1].owner, -1);
+  eq('...and you still hold two', REALM.holds(r2, 0).length, 2);
+  eq('...and the map is told which one refused', r2.refused, free[1].id);
+  /* AND A RIVAL'S CITY BRINGS HIS LORD */
+  const rival = r2.country.cities.find((x) => x.owner >= 1);
+  ok('the rig is alive: a rival holds a city', !!rival, 'no rival city');
+  if (rival) {
+    r2.lords++;                          // room for it, so the brake is not what is being tested
+    const before = r2.lords;
+    take(rival);
+    eq('taking a rival\'s city takes it', rival.owner, 0);
+    eq('...and his lord comes with it', r2.lords, before + 1);
   }
 }
 

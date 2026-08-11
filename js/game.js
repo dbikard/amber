@@ -95,7 +95,9 @@
     const kind = (city && city.owner >= 1 && realm.heirs[city.owner]) ||
                  C.REALM.holder;                    // a minor lord fights like the plainest heir
     game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false;
-    game.chapter = null; game.run = null;
+    game.chapter = null;
+    /* the war is polled where a chapter is polled — same shape, same door out */
+    game.run = REALM.run(realm);
     game.region = realm.at;
     if (Render.clearSeatFalls) Render.clearSeatFalls();
     game.world = world;
@@ -523,7 +525,8 @@
     /* a city taken, or thrown down */
     noraze: 'A Seat cannot be thrown down in this war',
     held: 'It still answers to an heir — break it first',
-    gone: 'There is nothing left of it to throw down'
+    gone: 'There is nothing left of it to throw down',
+    elsewhere: 'There is one Pattern, and it is not here — take the city that holds it'
   };
   /* WHOEVER SITS IN THAT SEAT. `game.names` is filled per mode — two in a duel, the seat names
    * at a LAN table — and a banner about a third heir must not read "undefined breaks the truce". */
@@ -798,6 +801,10 @@
            * say and inventing a second word for it would mean teaching every screen. */
           if (game.run) {
             const r = game.run.tick(game.world);
+            /* A WAR ENDS THROUGH THE SAME DOOR A CHAPTER DOES, and there is no second door: the
+             * realm's run has the shape a chapter's has, so one branch serves both. What the
+             * war remembers is set HERE and not in `tick`, which answers and never writes. */
+            if (r && game.realm && game.region) { game.realm.done = r; REALM.save(game.realm); }
             if (r === 'won') World.declare(game.world, game.viewer, 'objective');
             else if (r === 'lost') World.declare(game.world, 1, 'objective');
           }

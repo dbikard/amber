@@ -1658,6 +1658,13 @@
     if (!def) return 'type';
     const pl = world.players[pi];
     if (def.unique && pl.buildings.some((b) => b.bt === bt)) return 'unique';
+    /* THERE IS ONE PATTERN IN THE WHOLE WORLD. In a single match every board carries its own —
+     * which is right, because the board IS the world. In a WAR the Pattern lies in one city of
+     * the country, everyone knows where, and holding that city is the only way to walk: that is
+     * what gives the map a centre nobody had to declare, and makes the endgame a convergence
+     * rather than a grind through fifteen sieges. `world.pattern` is stamped by the realm on the
+     * one region that has it; everywhere else the Shrine is simply not a work you may raise. */
+    if (world.rules.onePattern && bt === 'shrine' && !world.pattern) return 'elsewhere';
     if (!groundBears(world, x, y)) return 'ground';
     /* a wall's FIRST tap: all a single point can be judged on. The run itself is checked when
      * the second tap lands, by wallError. */

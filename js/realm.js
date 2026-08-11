@@ -41,6 +41,11 @@
       v: 1, seed: seed >>> 0, t: 0, country,
       me: 0,                       // which side of the war the player is
       heirs: ['you'].concat(heirs),
+      /* HOW MANY LORDS YOU HAVE, and therefore how many cities beyond your own you may hold.
+       * A lord is WON — taking a city from an HEIR brings his lord over with it — never bought
+       * and never taken from a minor holding. So conquest pays for conquest only when it is
+       * conquest of a rival, and a war cannot be won by eating the weak. */
+      lords: C.REALM.lords0,
       /* per-region state: null until somebody has been there. A region generated and left
        * carries its works and its garrison; a region never visited carries nothing at all and
        * is rebuilt from its seed the first time it is entered. */
@@ -118,9 +123,13 @@
      * anything, terms may be made, and the quiet tick is on. `endOnSeat` is OFF — losing a city
      * in a country is a loss and not a death, and the war ends at the Pattern or nowhere. */
     const world = W.createWorld(region.seed, 2, null,
-                                { endOnSeat: 0, occupy: 1, truce: 1, hush: 1 });
+                                { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 });
     world.realmKey = key;
     world.biome = region.biome;
+    /* THE ONE REGION A SHRINE MAY BE RAISED IN. Stamped here rather than asked of the country
+     * from inside the sim: `world.js` is headless-first and knows nothing above a board, and it
+     * must stay that way — see the note on `onePattern` in const.js. */
+    world.pattern = !!(city && city.pattern);
     /* WHOSE CITY IS IT. Seat 0 is the heir who came here; seat 1 is whoever holds it. A region
      * whose city is the player's own is a region he is defending. */
     const mine = city && city.owner === realm.me;
@@ -129,7 +138,6 @@
     /* the second seat of the board is not a city of the country — a region has ONE — so it is
      * put beyond anyone's reach rather than left standing as a second throne nobody owns */
     world.cities[1].owner = -1; world.cities[1].hp = 0; world.cities[1].razed = 1;
-    if (city && city.pattern) world.pattern = true;
     const saved = realm.state[key];
     if (saved) REALM.restore(world, saved);
     return world;
@@ -197,7 +205,25 @@
     if (city) {
       const c0 = world.cities[0];
       if (c0.razed) { city.owner = -1; city.razed = 1; city.lord = null; }
-      else if (c0.owner === 0) { city.owner = realm.me; city.lord = null; }
+      else if (c0.owner === 0 && city.owner !== realm.me) {
+        /* A COURT WILL NOT SWEAR TO A HEIR WHO CANNOT HOLD IT. You keep one city by right and
+         * one more for every lord you have; past that the city goes back to being free — a
+         * refusal the player can SEE on the map, rather than a number quietly ignored. It is
+         * checked here because here is the one place the country learns anything, and because
+         * `world.js` must go on knowing nothing above a board. */
+        if (REALM.holds(realm, realm.me).length >= 1 + realm.lords) {
+          city.owner = -1;
+          world.cities[0].owner = -1;
+          realm.refused = city.id;                  // the map says why on the next draw
+        } else {
+          /* AND HIS LORD COMES OVER WITH HIS CITY — but only a rival's. Taking from a minor
+           * holding wins ground and nothing else, which is what stops a war being won by
+           * eating the weak. */
+          const was = city.owner;
+          city.owner = realm.me; city.lord = null;
+          if (was >= 1) realm.lords++;
+        }
+      } else if (c0.owner === 0) { city.owner = realm.me; city.lord = null; }
       else if (c0.owner < 0) { city.owner = -1; }
     }
   };
@@ -260,19 +286,31 @@
       realm,
       /* asked once per simulated frame over the world game.js already holds; answers and does
        * not act, exactly as a chapter's objective does */
-      tick() {
-        const pat = REALM.patternCity(realm);
-        if (!pat) return null;
-        if (pat.owner === realm.me) return null;         // holding it is not winning it — walk
+      /* THE WAR ENDS WHERE ONE MATCH DOES, and by the same rule. Asked once per simulated frame
+       * over the world game.js already holds; it ANSWERS and never writes, exactly as a
+       * chapter's objective does, and ending anything goes through `World.declare`.
+       * There is one Pattern, in one city: holding that city is not winning, it is being ALLOWED
+       * to walk. A walk completed in the Pattern's own region wins the country. */
+      tick(world) {
+        if (realm.done) return realm.done;
+        if (!world || !world.pattern) return null;
+        const me = world.players[0];
+        if (me && me.pattern >= 100) return 'won';
         return null;
       },
       /* what the HUD says about the war, asked every frame so it can count */
       say() {
         const mine = REALM.holds(realm, realm.me).length;
+        const room = 1 + realm.lords;
         const pat = REALM.patternCity(realm);
-        if (pat && pat.owner === realm.me) return 'AMBER is yours — walk the Pattern';
-        return `${mine} ${mine === 1 ? 'city' : 'cities'} — the Pattern lies at ${pat ? pat.name : 'the centre'}`;
-      }
+        const held = `${mine} of ${room} ${room === 1 ? 'city' : 'cities'} held`;
+        if (realm.done === 'won') return 'The Pattern holds, and it answers to your name.';
+        if (pat && pat.owner === realm.me) return held + ' — AMBER is yours: raise a Shrine and walk';
+        return `${held} — the Pattern lies at ${pat ? pat.name : 'the centre'}`;
+      },
+      /* a war has no tutorial: it is not a chapter and it teaches by being played. Present so
+       * game.js may hold a realm's run exactly where it holds a chapter's, with no branch. */
+      hint() { return null; }
     };
   };
 
@@ -285,6 +323,7 @@
     try {
       global.localStorage.setItem(KEY, JSON.stringify({
         v: 1, seed: realm.seed, t: realm.t, me: realm.me, heirs: realm.heirs, at: realm.at,
+        lords: realm.lords,
         cities: realm.country.cities.map((c) => [c.id, c.owner, c.lord, c.razed ? 1 : 0]),
         state: realm.state, marches: realm.marches, done: realm.done
       }));
@@ -301,6 +340,7 @@
     const realm = REALM.create(p.seed, { heirs: (p.heirs || []).slice(1) });
     realm.t = p.t || 0; realm.me = p.me || 0; realm.at = p.at || realm.at;
     realm.state = p.state || {}; realm.marches = p.marches || []; realm.done = p.done || null;
+    realm.lords = p.lords != null ? p.lords : C.REALM.lords0;
     for (const row of p.cities || []) {
       const c = COUNTRY.cityById(realm.country, row[0]);
       if (!c) continue;
