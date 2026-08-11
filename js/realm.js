@@ -114,15 +114,20 @@
   /* ---------------- a region becomes a world ---------------- */
   /* `foe` is the seat the region is held against — an heir index, or null for a minor lord's
    * city, which the war treats as an heir with no personality of his own. */
-  REALM.enter = function (realm, key) {
+  /* `humans` is how many contenders are standing in this region — one in a solo war, more at a
+   * LAN table where two heirs have marched to the same ground. They take seats 0..n-1 and the
+   * region's HOLDER takes the last, so a board is always "everybody who came, plus whoever was
+   * already here". A region is still an ordinary world; only how many seats it has changes. */
+  REALM.enter = function (realm, key, humans) {
     const W = World();
     const region = COUNTRY.regionOf(realm.country, key);
     if (!region || region.sea) return null;
+    const seats = Math.max(2, Math.min(C.MAX_PLAYERS, (humans || 1) + 1));
     const city = COUNTRY.cityIn(realm.country, key);
     /* THE RULES OF A REGION ARE THE RULES OF THE WAR: a Seat yields rather than ending
      * anything, terms may be made, and the quiet tick is on. `endOnSeat` is OFF — losing a city
      * in a country is a loss and not a death, and the war ends at the Pattern or nowhere. */
-    const world = W.createWorld(region.seed, 2, null,
+    const world = W.createWorld(region.seed, seats, null,
                                 { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 });
     world.realmKey = key;
     world.biome = region.biome;
@@ -135,9 +140,14 @@
     const mine = city && city.owner === realm.me;
     world.cities[0].owner = mine ? 0 : (city && city.owner === realm.me ? 0 : (city && city.owner >= 0 && city.owner !== realm.me ? 1 : -1));
     if (mine) world.cities[0].owner = 0;
-    /* the second seat of the board is not a city of the country — a region has ONE — so it is
-     * put beyond anyone's reach rather than left standing as a second throne nobody owns */
-    world.cities[1].owner = -1; world.cities[1].hp = 0; world.cities[1].razed = 1;
+    /* A REGION HAS ONE CITY. The board's other seats bring thrones of their own, which would be
+     * cities of a country that has none there — so they are put beyond anyone's reach rather
+     * than left standing as thrones nobody owns and nobody may take. */
+    for (let i = 1; i < world.cities.length; i++) {
+      world.cities[i].owner = -1; world.cities[i].hp = 0; world.cities[i].razed = 1;
+    }
+    world.humans = seats - 1;
+    world.holder = seats - 1;                   // which seat the region is held against
     const saved = realm.state[key];
     if (saved) REALM.restore(world, saved);
     return world;

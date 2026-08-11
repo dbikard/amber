@@ -760,7 +760,18 @@ below.
             screen nobody could see was there; and the menu suite pinned the card COUNT at three,
             which is a number that has to be edited every time the game grows a mode — it reads
             as a floor now.
-      - [ ] Stage 7 LAN over the realm — severable, and the mode is worth playing single-player.
+      - [x] **Stage 7 — LAN OVER A COUNTRY, in part.** A table is dealt into a region of the
+            host's war. The country is NOT sent: it is generated from its seed on every machine
+            exactly as a board is, so the wire carries which country and which region and nothing
+            else — and the suite asserts two machines given only those build the IDENTICAL board,
+            because if they did not every position on the wire would be a lie. A region takes
+            `humans + 1` seats: everybody who came, plus whoever was already there. A rematch
+            stays in the same region.
+            **Left, and severable:** two players in DIFFERENT regions at once. The host would
+            have to hold a world per occupied region and dispatch each guest its own snapshot;
+            the tick cost is not the problem (unit-bound, and `NAV.perTick` is already per
+            world), it is that `hostView`, `routeEvents` and the snapshot loop all assume one
+            `game.world`. Worth doing when somebody wants two fronts at one table.
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
       yet answered for the ORDER, so a banner planted past a shoreline pressed the company
       into the bank in a stack, and one assertion whose target lay 350 off the board failed —

@@ -182,7 +182,7 @@
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
    * both out with the start message, so a guest never has to guess its own index. */
-  function startMP(seed, seats, mySeat) {
+  function startMP(seed, seats, mySeat, realm) {
     const n = Math.max(2, Math.min(C.MAX_PLAYERS, seats || 2));
     game.seats = n;
     game.mode = Net.isHost ? 'host' : 'guest';
@@ -196,8 +196,21 @@
     game.names = C.SEAT_NAMES.slice(0, n);
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     snapTurn = 0; evQ = Object.create(null); snapGap = 100;
-    game.world = Net.isHost ? World.createWorld(seed, n) : null;
-    refWorld = Net.isHost ? null : World.createWorld(seed, n);   // guest: map geometry only
+    /* ---- A LAN TABLE MAY BE FIGHTING OVER A COUNTRY ----
+     * `realm` is {seed, at}: the country's seed and the region the table is standing in. Both
+     * sides build the SAME board from it, because a region is a pure function of the country's
+     * seed and its key — which is the whole reason the country is generated rather than sent.
+     * Nothing else about the LAN path changes: a region is an ordinary board and the netcode
+     * goes on knowing nothing above one. */
+    const build = () => {
+      if (!realm) return World.createWorld(seed, n);
+      const r = REALM.create(realm.seed);
+      r.me = 0;
+      return REALM.enter(r, realm.at, n - 1) || World.createWorld(seed, n);
+    };
+    game.lanRealm = realm || null;
+    game.world = Net.isHost ? build() : null;
+    refWorld = Net.isHost ? null : build();   // guest: map geometry only
     Render.resize();
     homeCamera();
     armBack();
@@ -444,9 +457,12 @@
       toMenu(); return;
     }
     const seed = (Math.random() * 0xffffffff) >>> 0, seats = game.seats;
+    /* a rematch at a table fighting over a country is another go at the SAME region — the war
+     * has not moved, and dealing a fresh board would quietly leave it */
+    const realm = game.lanRealm || null;
     for (const p of Net.peers)
-      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
-    startMP(seed, seats, 0);
+      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, realm }, p.idx);
+    startMP(seed, seats, 0, realm);
   }
   /* the guest half of the same button: a call up the wire, and then the wait it used to show
    * without ever having asked for anything */
@@ -1286,13 +1302,17 @@
     $('lan-start').addEventListener('click', () => {
       const seed = (Math.random() * 0xffffffff) >>> 0;
       const seats = Net.seated();
+      /* AND IF THE HOST HAS A WAR OPEN, THE TABLE FIGHTS IN IT. The country is not sent — it is
+       * generated from its seed on every machine, exactly as a board is — so all that crosses
+       * the wire is which country and which region. */
+      const realm = game.realm ? { seed: game.realm.seed, at: game.realm.at } : null;
       /* each guest is told the same seed and player count, and its OWN seat */
       for (const p of Net.peers)
-        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
+        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, realm }, p.idx);
       $('lan-start').classList.add('hidden');
-      startMP(seed, seats, 0);
+      startMP(seed, seats, 0, realm);
     });
-    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx);
+    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx, m.realm || null);
     Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
     /* a call for another match is only ever answered BETWEEN matches, by the host. Mid-match
      * it is stale — a message that crossed with the winning blow — and once the host has

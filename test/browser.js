@@ -4507,6 +4507,38 @@ async function match(browser, base, renderer) {
     ok('...with the army you raised still standing in it', back && back.men === played.men,
        back ? `${back.men} against ${played.men}` : 'nothing came back');
     ok('...and the cities you held', back && back.mine >= 1, JSON.stringify(back));
+    /* ---- AND A LAN TABLE MAY FIGHT OVER THE COUNTRY ----
+     * The country is NOT sent: it is generated from its seed on every machine, exactly as a
+     * board is, so all that crosses the wire is which country and which region. The assertion
+     * that matters is that two machines given only those two things build the same board — if
+     * they did not, the host and the guest would be playing different ground and every position
+     * on the wire would be a lie. */
+    const lan = await pg.evaluate(() => {
+      const G = window.Game, Net = window.Net, REALM = window.REALM;
+      G.game.realm = REALM.load() || REALM.create(20261001);
+      const realm = { seed: G.game.realm.seed, at: G.game.realm.at };
+      Net.isHost = true; Net.active = true; Net.localIdx = 0;
+      Net.send = () => {};
+      Net.peers = [{ idx: 1, dc: { readyState: 'open', send: () => {} }, pc: null }];
+      G.startMP(12345, 2, 0, realm);
+      const host = { seats: G.game.world.players.length, rules: G.game.world.rules,
+                     mode: G.game.mode };
+      /* the same two numbers, on a machine that has never seen the host's country */
+      const r1 = REALM.create(realm.seed), r2 = REALM.create(realm.seed);
+      const fp = (w) => JSON.stringify([w.seed, Array.from(w.nav.terra).slice(0, 600),
+                                        w.map.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y)])]);
+      const same = fp(REALM.enter(r1, realm.at, 1)) === fp(REALM.enter(r2, realm.at, 1));
+      Net.active = false; Net.peers = [];
+      return { host, same, at: realm.at };
+    });
+    ok('a LAN table can be dealt into a region of the war',
+       lan.host.mode === 'host' && lan.host.seats === 2, JSON.stringify(lan.host));
+    ok('...playing by the war\'s rules', lan.host.rules && lan.host.rules.occupy === 1 &&
+       lan.host.rules.onePattern === 1, JSON.stringify(lan.host.rules));
+    /* THE ONE THING THAT MUST BE TRUE, or every position on the wire is a lie */
+    ok('...and both machines build the same region from the seed alone', lan.same,
+       'the host and the guest are on different ground');
+
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }
