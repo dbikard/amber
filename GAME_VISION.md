@@ -148,6 +148,50 @@ Campaign ladder: Julian → Bleys → Brand → Benedict (progress in localStora
 any heir — including a shadow-Corwin — can be the rival.
 AI plays fair: same information rules as a human (no map hacks, no resource cheats).
 
+## The Long War — a country of cities
+
+**A fourth mode, and a war you can put down.** Where the campaign is a story in chapters and a
+skirmish is one board, the Long War is a COUNTRY: a graph of a dozen or two regions, each of
+them a board of the size the game has always used, with a city in every one.
+
+- **A region IS today's board.** The country is large because there are many regions, never
+  because a grid got bigger — measured: a flow field is a Dijkstra over every cell and dead
+  linear in area (6.3ms today, 59ms at 3×, 4.8MB at 10×), and the ground texture self-caps, so
+  a board three times as wide is simply three times blurrier. Same `CONST.MAP`, same nav, same
+  fog, same everything.
+- **The map, and the marches.** Every region is a tile: its ground, whose city stands in it,
+  where you are, and which borders are roads. A border is either a narrow crossing or no way
+  through at all — a shore, a wall of crag. Committing a column to a border costs real time,
+  which is what makes it a decision.
+- **Biomes.** The Downs, the Fens, the Deep Wood, the High Country, the Spine, the Long Shore —
+  three terrain thresholds each and nothing else, so a biome cannot make a board the rest of the
+  game has never seen.
+- **A Seat YIELDS rather than falling.** At nought its gates open and it belongs to nobody until
+  somebody stands in the court, uncontested, and takes it — the same verb a spring is taken with.
+  So breaking a place and holding it are different problems: a bombard train does the first from
+  beyond anyone's reach, and only a surviving army does the second. It comes back hurt. Or you
+  throw it down for good, and nobody ever has it.
+- **Lords are the brake.** One city by right and one more for every lord — past that a court
+  simply will not swear to you. A lord is WON: taking a city from an HEIR brings his over, taking
+  one from a minor holding wins ground and nothing else. A war cannot be won by eating the weak.
+- **Losing your last city is dispossession, not death.** You keep your army and may take one
+  back, because a war played over many evenings has to survive a bad one.
+- **ONE PATTERN, IN ONE CITY.** There is one Shrine site in the whole country and everyone knows
+  where. Holding AMBER is not winning — it is being *allowed to walk*. The map has a centre
+  nobody declared and the endgame is a convergence rather than fifteen sieges.
+- **TERMS.** Heirs may treat with each other: a pact is two standing offers, sealed while both
+  stand and broken the instant either is withdrawn, with no notice and no grace. Being surprised
+  is the price of having trusted somebody. Each heir has a doctrine — the Warden keeps his word,
+  the Flame takes terms and betrays them, the Master of Arms makes terms against whoever is
+  ahead — and above all of them one rule none may break: nobody keeps terms with a man on the
+  lines.
+- **Put it down, pick it up.** A region compacts to about 730 bytes, so a whole country lives in
+  `localStorage`. Out of a region is back to the *country*, not to the title screen.
+- **A LAN table may fight over one.** The country is never sent: it is generated from its seed on
+  every machine, exactly as a board is.
+
+The plan, its measurements and what is still open are in `REALM_PLAN.md`.
+
 ## Multiplayer (LAN, serverless)
 
 - Pairing layer **ported from Perils**: WebRTC DataChannel, QR-code signaling (host offer QR →

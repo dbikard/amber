@@ -42,6 +42,8 @@ js/qrcode.js    — QR encoder (verbatim from perils)
 js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
 js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
 js/campaign.js  — the chapters: boards, briefings, objectives, progress (headless-safe)
+js/country.js   — the country: a graph of regions, biomes, closed borders and crossings (headless-safe)
+js/realm.js     — the war above the boards: enter/compact a region, marches, lords, the save (headless-safe)
 js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners, the Muster Roll
 js/game.js      — orchestration: modes, fixed-timestep loop, input routing, MP wiring (last)
 sim.js          — Node balance runner: mirror / gradient / round-robin / durations
@@ -379,6 +381,27 @@ Watchtower would light the map — and from the events the viewer was already ha
 sight-filtered in `routeEvents`, so it cannot show what the veil is hiding. Crimson when it is
 yours, gold when it is his: "I am attacked here" and "I am attacking there" are the two
 questions a glance at a minimap asks.
+
+## The Long War (the fourth mode) — see `REALM_PLAN.md`
+
+**A REGION IS TODAY'S BOARD.** The country is many of them, never a bigger grid: a flow field is
+a Dijkstra over every cell and dead linear in area, and the ground texture self-caps. `country.js`
+makes the graph from one seed (biomes off coarse noise; every border either a narrow crossing or
+no way through; connectivity repaired, and what is still unreachable put back to sea).
+`realm.js` holds the war and NO live world — `enter` materialises a region into an ordinary
+`humans + 1`-seat board with the war's rules on it, `compact` puts it back in ~730 bytes,
+`march` runs a column across a border. `REALM.run` mirrors `CAMPAIGN.run`: it answers and never
+writes, and endings go through `World.declare`.
+
+**The seam is the only thing the mode adds** — going down into a region is an ordinary match.
+`REALM.leave` is the ONE place the country learns what happened on a board, which is why the
+lord rule is enforced there and not in the sim: `world.js` is headless-first and must go on
+knowing nothing above a board. Likewise the netcode knows nothing above one — a LAN table sends
+which country and which region, and both machines generate the same ground.
+
+**The rules of a war**, all of them off in every other mode: `occupy` (a Seat yields and the
+ground must be taken), `endOnSeat: 0` (losing a city is a loss, not a death), `truce` and
+`onePattern` (a Shrine may be raised only where `world.pattern` says).
 
 ## Common Tasks
 
