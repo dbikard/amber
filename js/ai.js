@@ -83,7 +83,8 @@
     const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
     return {
       t: world.t, me, pl, world, have, free, raising,
-      essence: pl.essence, myCastle: pl.castleHp, enemyCastle: en.castleHp,
+      essence: pl.essence, myCastle: (World.seatOf(world, me) || {}).hp || 0,
+      enemyCastle: (World.seatOf(world, enIdx) || {}).hp || 0,
       myCity, enCity, myUnits, army: myUnits.length,
       visHostiles, threats, push, enemyArmy, mySprings, atGate,
       /* WHO CAN ACTUALLY BREAK A SEAT. Shooters have no target among works at all, so a host
@@ -122,7 +123,7 @@
       pacts: world.players.map((q, pi) => pi !== me && World.pactOn(world, me, pi)),
       offers: world.players.map((q, pi) => pi !== me && !!(q.offers && q.offers[me])),
       mine: world.players.map((q, pi) => !!(pl.offers && pl.offers[pi])),
-      castle: world.players.map((q) => q.castleHp),
+      castle: world.players.map((q, pi) => (World.seatOf(world, pi) || {}).hp || 0),
       powers: pl.powers, banner: pl.banner ? pl.banner.site : -1
     };
   }

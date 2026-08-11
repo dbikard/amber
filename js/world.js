@@ -91,9 +91,16 @@
        * the skirmish that generated it, a suite playing the same board twice) may disagree. */
       rules: Object.assign({}, C.RULES, rules || null),
       map,
+      /* the cities of this world, in seat order — see the note on `seatOf`. One apiece today;
+       * `owner` is what a conquest changes, and everything downstream already asks. */
+      cities: seats.map((siteId, i) => {
+        const s = map.sites[siteId];
+        return { id: i + 1, site: siteId, x: s.x, y: s.y, owner: i, born: i,
+                 hp: C.CASTLE_HP, maxHp: C.CASTLE_HP, cd: 0, level: 1,
+                 name: C.SEAT_NAMES[i] ? C.SEAT_NAMES[i] + '’s Seat' : 'a Seat of Power' };
+      }),
       players: seats.map(() => ({
         essence: C.START_ESSENCE,
-        castleHp: C.CASTLE_HP,
         out: false,             // toppled: still on the board as a ruin, but out of the match
         eco: 1,                 // income handicap: 1 = full strength (always 1 in a duel)
         /* COMPANIES. A standard is its own thing, not a property of a barracks: several halls
@@ -224,7 +231,38 @@
     return null;
   }
 
-  const cityOf = (world, pi) => world.map.sites[world.map.cities[pi]];
+  /* ---------------- CITIES ----------------
+   * A SEAT USED TO BE A PROPERTY OF A PLAYER: one apiece, its hit points in `pl.castleHp` and
+   * its gun's cooldown in `pl.seatCd`, because there could only ever be one and there was
+   * nowhere else to put them. A country has many, they change hands, and a heir may hold none
+   * and still be in the war — so a city is a THING now, with an owner, and a player holds a
+   * list of them.
+   * `world.cities` is that list, and it is in SEAT ORDER at the start: `cities[i]` is the seat
+   * heir `i` was born to, which is what keeps worldgen, the camera, the minimap and every
+   * mirror-fairness test reading exactly as they did.
+   * The three answers everything asks, and nothing spells them itself:
+   *   seatOf(w, pi)    the city this heir rules FROM — his first held, else the one he was
+   *                    born to, so a dispossessed heir still has a place on the map and a
+   *                    toppled one still has a ruin to draw.
+   *   citiesOf(w, pi)  every city he holds, in the order they appear on the board.
+   *   cityAt(w, x, y)  whose court is this ground, if anyone's.
+   * `cityOf` is kept and keeps its meaning — the SITE his seat stands on — because a hundred
+   * call sites want a place and not a record. */
+  /* Asked of half-worlds as well as of worlds — `visionSources` runs against a guest's snapshot
+   * dressed as one, and the suites build boards with nothing on them but a map — so the list
+   * being absent means "one seat apiece, as it always was" rather than an error. `cityOf`'s
+   * contract is unchanged by that: it has always answered with a SITE off `map.cities`. */
+  const seatOf = (world, pi) => (world.cities
+    ? (world.cities.find((c) => c.owner === pi) || world.cities[pi] || null) : null);
+  const citiesOf = (world, pi) => (world.cities || []).filter((c) => c.owner === pi);
+  const cityOf = (world, pi) => {
+    const c = seatOf(world, pi);
+    return world.map.sites[c ? c.site : world.map.cities[pi]];
+  };
+  const cityAt = (world, x, y) => {
+    for (const c of world.cities || []) if (d2(x, y, c.x, c.y) < C.CITY.r * C.CITY.r) return c;
+    return null;
+  };
   const bldOf = (world, pi, id) => world.players[pi].buildings.find((b) => b.id === id) || null;
   const nodeAt = (world, x, y) => {
     for (const s of world.map.sites)
@@ -3152,8 +3190,10 @@
 
   /* ---------------- the Tower of the Seat shoots ----------------
    * The Seat is not in `pl.buildings` — it is the city site, with its hit points in
-   * `pl.castleHp` — so its gunnery cannot live in the per-building loop and its cooldown has
-   * nowhere to sit but the player. That is the only reason this is a pass of its own.
+   * a CITY record, so its gunnery cannot live in the per-building loop. That is the only
+   * reason this is a pass of its own. (Its cooldown used to have nowhere to sit but the player,
+   * `pl.seatCd`, for want of anywhere else; it sits on the city now, where it belongs, and a
+   * heir who holds three cities has three guns on three cadences.)
    *
    * AND ITS SHOT IS NOT STOPPED BY STONE. Every other gun on the board is: that is what makes a
    * curtain worth its price, and what makes raising a tower INTO one a decision rather than a
@@ -3163,13 +3203,14 @@
    * besieger would raise is a curtain across the court, and the throne's own guns would be
    * switched off by the cheapest work in the game from outside their reach. It stands a hundred
    * feet over its own city; it shoots over everything, including its owner's walls. */
-  function seatFire(world, pi, pl, city, dt) {
-    /* a toppled heir's Seat is a ruin, and a ruin does not shoot — the update loop skips a
-     * fallen heir already, but the rule belongs with the gun rather than with the caller */
-    if (pl.out || !city) return;
+  function seatFire(world, city, dt) {
+    /* a Seat nobody holds is a ruin, and a ruin does not shoot */
+    if (!city || city.owner < 0 || city.hp <= 0) return;
+    const pi = city.owner, pl = world.players[pi];
+    if (!pl || pl.out) return;
     const g = C.SEAT_GUN;
-    pl.seatCd = (pl.seatCd || 0) - dt;
-    if (pl.seatCd > 0) return;
+    city.cd = (city.cd || 0) - dt;
+    if (city.cd > 0) return;
     /* hostile to its owner, exactly as a tower is: rivals AND the black road, and nobody of
      * his own. `forNear` walks the same spatial hash the towers do.
      * NO rockBetween HERE, DELIBERATELY — the Seat's gun is not stopped by the land's rock,
@@ -3183,7 +3224,7 @@
       const d = d2(u.x, u.y, city.x, city.y);
       if (d < bd) { bd = d; best = u; }
     });
-    if (!best) { pl.seatCd = 0.15; return; }   // ready again shortly, so an arrival is answered
+    if (!best) { city.cd = 0.15; return; }   // ready again shortly, so an arrival is answered
     hurt(world, best, g.dmg, pi);
     /* the burst is the cannon's, and it falls off the same way: a column bleeds, no single
      * foe dies to it */
@@ -3201,7 +3242,7 @@
      * the Seat has none — it is the colour a bursting shot is drawn in, and this one bursts. */
     emit(world, { e: 'shot', pi, id: 0, x: city.x, y: city.y,
                   to: { x: best.x, y: best.y }, br: 'cannon', splash: g.splash });
-    pl.seatCd = g.atk;
+    city.cd = g.atk;
   }
 
   /* ---------------- update ---------------- */
@@ -3403,7 +3444,8 @@
         }
       }
       /* and the Seat itself, which is a tower with no work to hang its gunnery on */
-      seatFire(world, pi, pl, city, dt);
+      /* ...and every Seat this heir holds answers for itself, on its own cadence */
+      for (const c of citiesOf(world, pi)) seatFire(world, c, dt);
       /* the solo handicap: an heir set to an easier footing simply draws less from the same
        * ground. It plays its own game exactly as it would otherwise — it is just poorer. */
       income *= pl.eco;
@@ -3557,10 +3599,10 @@
              * belt-and-braces the other two doors carry, and stage 2 retires it by giving a
              * city a record of its own. */
             else if (mark.kind === 'tower' && foe(world, u.owner, mark.t.pi)) {
-              const tp = world.players[mark.t.pi];
-              tp.castleHp -= wall;
+              const tp = world.players[mark.t.pi], seat = seatOf(world, mark.t.pi);
+              if (seat) seat.hp -= wall;
               emit(world, { e: 'siege', pi: mark.t.pi, x: u.x, y: u.y });
-              if (tp.castleHp <= 0 && !tp.out) { if (topple(world, mark.t.pi, u.owner)) return; }
+              if (seat && seat.hp <= 0 && !tp.out) { if (topple(world, mark.t.pi, u.owner)) return; }
             }
             u.cd = def.atk;
             /* WHO THREW IT. A bolt was a bolt whoever loosed it, so an archer's arrow and a
@@ -3978,7 +4020,8 @@
    * works and their men go with them, and the throne waits for whoever is left last. */
   function topple(world, pi, by) {
     const pl = world.players[pi];
-    pl.out = true; pl.castleHp = 0;
+    pl.out = true;
+    for (const c of citiesOf(world, pi)) c.hp = 0;
     /* a fallen heir's stone falls with him. In a duel this never mattered — the match ends
      * on the same tick — but in a free-for-all his curtains would have gone on barring the
      * ground and stopping shots for the rest of the game, with no wall left standing to
@@ -4033,6 +4076,9 @@
                     * it here rather than each writing `owner !== owner` and each having to be
                     * found again the next time the answer gains a case. */
                    foe, pactOn,
+                   /* a city is a THING with an owner now, not a property of a player — these
+                    * three are the only ways anything asks about one */
+                   seatOf, citiesOf, cityAt,
                    /* where the roster says a man belongs — exported for the probes and the
                     * suites, which otherwise have to re-derive it and end up testing their own
                     * arithmetic rather than the rule */

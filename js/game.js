@@ -268,7 +268,16 @@
       if (!game._fellAt) {
         game._fellAt = performance.now();
         for (let pi = 0; pi < game.names.length; pi++) {
-          const p2 = game.mode === 'guest' ? (snapCur && snapCur.players[pi]) : (game.world && game.world.players[pi]);
+          /* WHOSE THRONE COMES DOWN. A guest reads the snapshot, which carries the hit points
+           * of each heir's Seat as it always has; the host reads the CITY, because that is
+           * where they live now — `world.players[pi].castleHp` no longer exists, and reading
+           * it gave `undefined <= 0`, which is false, so no throne fell and the end screen
+           * cut straight to the tally. */
+          const pl2 = game.world && game.world.players[pi];
+          const seat = game.world && World.seatOf(game.world, pi);
+          const p2 = game.mode === 'guest'
+            ? (snapCur && snapCur.players[pi])
+            : (pl2 && { out: pl2.out, castleHp: seat ? seat.hp : 0 });
           if (p2 && (p2.out || p2.castleHp <= 0)) Render.seatFall(pi);
         }
         setTimeout(() => endMatch(winner, reason), 2800);
@@ -483,9 +492,16 @@
       seatSeen: world.map.cities.map((id) => !!world.players[viewer].explored[id]),
       /* the SAME fog the wire applies: a rival's works only where you can see them, and
        * ghosts (id-keyed in the world, listed on the view) for the ones you cannot */
+      /* the cities of the world, exactly as the wire sends them — public, because a Seat's hit
+       * points always were and in a country "whose is that" is the map itself */
+      cities: world.cities,
+      /* `castleHp` is DERIVED now: a city is a thing with an owner (`world.cities`) and no
+       * longer a property of a player, so the view spells out the one number the HUD, the
+       * minimap and the chronicle all want — the hit points of the Seat this heir rules from.
+       * The wire says exactly the same thing under exactly the same name. */
       players: world.players.map((pl, pi) => pi === viewer
-        ? { ...pl, ghosts: [] }
-        : { ...pl,
+        ? { ...pl, castleHp: (World.seatOf(world, pi) || {}).hp || 0, ghosts: [] }
+        : { ...pl, castleHp: (World.seatOf(world, pi) || {}).hp || 0,
             /* the SAME gate and the SAME ghost projection the wire uses — both written once
              * in world.js, so a fog rule cannot land on the host's screen and miss the wire
              * (or the other way round, which is how the wall-ends rule once forked) */
@@ -581,6 +597,10 @@
     if (!guestSeen) guestSeen = World.newSeenMask();
     World.markSeen(guestSeen, vism || src);
     return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
+             /* the same two the host's own view carries, off the wire rather than off a world:
+              * the rules so the HUD draws the same controls, and the cities so it draws the
+              * same board */
+             rules: snap.rules, cities: snap.cities,
              seen: guestSeen,
              seatSeen: refWorld.map.cities.map((id, pi) => pi === Net.localIdx ||
                !!(snap.sites[id] && snap.sites[id].live !== undefined)),

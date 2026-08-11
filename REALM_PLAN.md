@@ -135,13 +135,27 @@ two taps at once cannot cancel each other out.
 - Scoped to the new mode and to campaign chapters. Skirmish and LAN keep `rules.truce` off, so
   `node sim.js` is untouched by the whole feature.
 
-## 6. Cities as first-class
+## 6. Cities as first-class — SHIPPED
 
-`world.cities = [{id, x, y, owner, hp, maxHp, cd, level, name}]`; `pl.castleHp` and `pl.seatCd`
-retire. `World.cityOf(w, pi)` stays as *the player's first city* so existing callers read
-unchanged, and `citiesOf`/`cityAt`/`ownerOfCity` are the new answers. `pl.out` becomes "holds no
-city" — which in a one-city-each world is exactly today's rule, so **the referee run for this
-stage must come back byte-identical**; anything else is a bug in the port.
+`world.cities = [{id, site, x, y, owner, born, hp, maxHp, cd, level, name}]`, in SEAT ORDER at
+the start so worldgen, the camera, the minimap and every mirror-fairness test read exactly as
+they did. `pl.castleHp` and `pl.seatCd` are gone. Three answers, and nothing spells them itself:
+`seatOf(w, pi)` (the city he rules from — his first held, else the one he was born to, so a
+dispossessed heir still has a place and a toppled one still has a ruin to draw),
+`citiesOf(w, pi)`, `cityAt(w, x, y)`. `cityOf` is kept and keeps its meaning — the SITE his seat
+stands on — because a hundred call sites want a place and not a record, and it tolerates a world
+with no city list at all, because `visionSources` is asked of a guest's snapshot dressed as one.
+
+The gun moved with it: `seatFire` takes a CITY, so a heir who holds three has three guns on three
+cadences. On the wire the whole list rides on the snapshot root (public — a Seat's hit points
+always were, and in a country "whose is that" IS the map), and `players[pi].castleHp` survives as
+a derived convenience meaning "the hit points of the Seat he rules from".
+
+**One real regression, caught by the browser suite and not by reading it:** the host's
+throne-collapse check read `world.players[pi].castleHp`, which had become `undefined` —
+`undefined <= 0` is false, so no throne fell and the end screen cut straight to the tally. A
+stale reader of a retired field fails silently in exactly this shape, which is why the suite
+asserts the field is gone rather than merely that the new one works.
 
 ## 7. Yield, take, or throw down
 

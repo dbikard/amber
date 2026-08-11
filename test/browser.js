@@ -132,7 +132,8 @@ async function match(browser, base, renderer) {
       for (let i = 0; i < ticks; i++) {
         if (o.raising && !g.world.players[0].buildings.some((q) => q.raise > 0)) break;
         if (i % 30 === 0 && !o.letWin) {
-          for (const p of g.world.players) { p.castleHp = C.CASTLE_HP; p.pattern = 0; }
+          for (const c of g.world.cities) c.hp = c.maxHp;
+          for (const p of g.world.players) p.pattern = 0;
         }
         W.update(g.world, C.SIM_DT);
         g.world.events.length = 0;
@@ -2115,7 +2116,8 @@ async function match(browser, base, renderer) {
         shrines.push(at);
       }
       for (let i = 0; i < 30 * 40; i++) {
-        for (const p of g.world.players) { p.essence = Math.max(p.essence, 50000); p.castleHp = C.CASTLE_HP; }
+        for (const p of g.world.players) p.essence = Math.max(p.essence, 50000);
+        for (const c of g.world.cities) c.hp = c.maxHp;
         W.update(g.world, C.SIM_DT); g.world.events.length = 0;
       }
       return { ok: true, shrines,
@@ -2153,7 +2155,8 @@ async function match(browser, base, renderer) {
         /* far enough along that `breakLoss` cannot sweep the whole count away — the assertion
          * below is about ground he KEEPS, so there has to be some */
         for (let i = 0; i < 30 * 400 && pl.pattern < C.BUILDINGS.shrine.breakLoss * 2.2; i++) {
-          for (const p of g.world.players) { p.essence = Math.max(p.essence, 50000); p.castleHp = C.CASTLE_HP; }
+          for (const p of g.world.players) p.essence = Math.max(p.essence, 50000);
+        for (const c of g.world.cities) c.hp = c.maxHp;
           W.update(g.world, C.SIM_DT); g.world.events.length = 0;
         }
         const before = pl.pattern;
@@ -3118,7 +3121,7 @@ async function match(browser, base, renderer) {
       Net.peers = [1, 2, 3].map((i) => ({ idx: i, dc: { readyState: 'open', send: () => {} }, pc: null }));
       Game.startMP(9007, 4, 0);
       /* honest synthesis: the fall keys on a toppled seat, so topple one */
-      Game.game.world.players[0].castleHp = 0;
+      window.World.seatOf(Game.game.world, 0).hp = 0;
       Game.game.world.events.push({ e: 'win', winner: 2, reason: 'castle' });
       /* the hold itself, measured once here rather than paid blind six times: a second after
        * the killing blow the match must still be SHOWING (not over), and the loser's tower
@@ -3240,7 +3243,7 @@ async function match(browser, base, renderer) {
        * the fall presentation keys on the toppled seat — a fabricated win with nobody down
        * would hold the screen with no tower falling. Then wait out the HOLD (2.8s) the way a
        * player does, not a 200ms guess that the feature just made a lie. */
-      Game.game.world.players[1].castleHp = 0;
+      window.World.seatOf(Game.game.world, 1).hp = 0;
       Game.game.world.events.push({ e: 'win', winner: 0, reason: 'castle' });
       { const t0 = Date.now();
         while (!Game.game.over && Date.now() - t0 < 6500)

@@ -380,7 +380,7 @@ suite('shooters, stone, and the arts')
    * any Watchtower and stopped by no stone — and every rig below stands inside its arc, so it
    * and not the men under test would be doing the damage. Its cooldown lives on the player
    * (there is no work to hang it on), and parked past the end of time it never fires. */
-  for (const p of w.players) p.seatCd = 1e9;
+  for (const c of w.cities) c.cd = 1e9;
   const c0 = World.cityOf(w, 0), c1 = World.cityOf(w, 1);
   const p0 = w.players[0], p1 = w.players[1];
   p0.essence = p1.essence = 100000;
@@ -468,16 +468,16 @@ suite('shooters, stone, and the arts')
 
   /* A SEAT IS A WORK TOO, and it is the one that ends matches */
   w.units.length = 0;
-  const seatHp = p1.castleHp;
+  const seat1 = World.seatOf(w, 1), seatHp = seat1.hp;
   pin(0, c1.x, c1.y);
   for (let i = 0; i < 4; i++) put(0, 'archer', c1.x + i * 12 - 18, c1.y + 20);
   run(8);
-  eq('four archers at a Seat cannot take it', p1.castleHp, seatHp);
+  eq('four archers at a Seat cannot take it', seat1.hp, seatHp);
   w.units.length = 0;
   put(0, 'ram', c1.x, c1.y + 20);
   run(8);
-  ok('one Ram can', p1.castleHp < seatHp, `${Math.round(p1.castleHp)} of ${seatHp}`);
-  p1.castleHp = seatHp;
+  ok('one Ram can', seat1.hp < seatHp, `${Math.round(seat1.hp)} of ${seatHp}`);
+  seat1.hp = seatHp;
 
   /* ---- the Warden mends ---- */
   w.units.length = 0;
@@ -721,7 +721,7 @@ suite('a Seat falls')
   /* a duel ends when a Seat falls; a free-for-all only loses an heir */
   const topple = (w, pi) => {
     const by = (pi + 1) % w.players.length;
-    w.players[pi].castleHp = 1;
+    World.seatOf(w, pi).hp = 1;
     w.players[by].essence = 99999; w.players[by].powers.trump = 0;
     World.applyCommand(w, by, { c: 'power', k: 'trump' });
     const u = w.units.find((q) => q.id === w.players[by].championId);
@@ -1366,7 +1366,7 @@ suite('the curtain wall')
   /* and the Seat's own gun with it: a curtain raised inside the writ stands well within the
    * throne's reach, and it shoots over stone by design — which would answer every question
    * this suite asks about who can shoot whom through a wall before the wall got a word in */
-  for (const p of w.players) p.seatCd = 1e9;
+  for (const c of w.cities) c.cd = 1e9;
   const c = World.cityOf(w, 0);
   const pl = w.players[0];
   pl.essence = 100000;
@@ -1687,7 +1687,7 @@ suite('the curtain wall')
     World.applyCommand(f, 1, { c: 'build', bt: 'wall', x: run[0], y: run[1], x2: run[2], y2: run[3] });
     for (let i = 0; i < 30 * (def.raise + 1); i++) { World.update(f, C.SIM_DT); f.events.length = 0; }
     eq('a third heir has a curtain standing', f.walls.length, 1);
-    f.players[1].castleHp = 1;
+    World.seatOf(f, 1).hp = 1;
     const u = { id: f.nextId++, owner: 0, kind: 'soldier', x: fc.x, y: fc.y, ox: 0, oy: 0,
                 hp: 1e9, maxHp: 1e9, dmg: 9999, cd: 0, goal: null, co: 0, from: -1 };
     f.units.push(u);
@@ -2299,7 +2299,7 @@ suite('the Seat of Power holds its own gun');
   {
     const r = rig();
     const foe = r.man(1, IN, 0, 1e6);
-    r.w.players[0].out = true; r.w.players[0].castleHp = 0;
+    r.w.players[0].out = true; World.seatOf(r.w, 0).hp = 0;
     const shots = r.run(10);
     eq('a toppled heir\'s Seat is silent', shots.length, 0);
     eq('...and nothing takes a scratch from it', foe.hp, 1e6);
@@ -2538,7 +2538,7 @@ suite('a tower shelters its garrison');
    * zero. A coin toss dressed as an assertion, and it duly came up tails the first time the
    * men stood a few units further out. The muster is stopped and every man of the defender's
    * that is not INSIDE is cleared, which is what the paragraph above already said. */
-  for (const p of w.players) p.seatCd = 1e9;
+  for (const c of w.cities) c.cd = 1e9;
   w.units = w.units.filter((u) => u.owner !== 0 || inside.indexOf(u) >= 0);
   pl.buildings = pl.buildings.filter((b) => b.bt !== 'barracks');
   const raiders = [];
@@ -2573,7 +2573,7 @@ suite('a tower shelters its garrison');
    * siege — who is left standing at the end of an assault is contingent, and the claim here is
    * not "that assault killed them", it is "they can be hurt again at all". The Seats are
    * silenced for the same reason: the measurement must be the swordsman's. */
-  for (const p of w.players) p.seatCd = 1e9;
+  for (const c of w.cities) c.cd = 1e9;
   manAt(w, 1, 'soldier', tx + 6, ty + 6);
   const outHp = inside.map((u) => u.hp);
   run(600);
@@ -3751,7 +3751,7 @@ if (!QUICK('the solo ladder')) {
       peak = Math.max(peak, w.players[1].buildings.length);
     }
     if (peak > 1) built++;
-    if (w.players[1].castleHp > 0) lived++;
+    if (World.seatOf(w, 1).hp > 0) lived++;
   }
   ok('a Squire never points its banner at your Seat inside its hour',
      worst > C.CITY.r, `nearest the banner came: ${Math.round(worst)}`);
@@ -4157,11 +4157,11 @@ suite('the Siege Works')
     }
   };
   const bite = (kind, n) => {
-    w.players[1].castleHp = C.CASTLE_HP;
+    World.seatOf(w, 1).hp = C.CASTLE_HP;
     w.units.length = 0;
     put(kind, n);
     for (let i = 0; i < 30 * 20; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
-    return C.CASTLE_HP - w.players[1].castleHp;
+    return C.CASTLE_HP - World.seatOf(w, 1).hp;
   };
   /* the same money, spent two ways: five Engines or twenty-two soldiers */
   const byEngine = bite('engine', 5), bySoldier = bite('soldier', Math.round(5 * eng.cost / sol.cost));
@@ -4832,7 +4832,8 @@ const walkArena = (w, halfW, halfH) => {
 function arenaWorld(seed) {
   const w = World.createWorld(seed == null ? 1000 : seed, 2);
   w.chaosNext = 1e9;
-  for (const p of w.players) { p.seatCd = 1e9; p.essence = 100000; }
+  for (const c of w.cities) c.cd = 1e9;
+  for (const p of w.players) p.essence = 100000;
   World.applyCommand(w, 0, { c: 'muster', pause: true });
   World.applyCommand(w, 1, { c: 'muster', pause: true });
   w.units.length = 0;
@@ -4857,7 +4858,7 @@ suite('a walk is paid before the halls are')
 {
   const w = World.createWorld(1000, 2);
   w.chaosNext = 1e9;
-  for (const p of w.players) p.seatCd = 1e9;
+  for (const c of w.cities) c.cd = 1e9;
   const pl = w.players[0], en = w.players[1];
   const c = World.cityOf(w, 0);
   pl.essence = 999999;
@@ -6493,7 +6494,7 @@ suite('nothing crosses a pact');
     for (let k = 0; k < 3; k++) { const u = manAt(w, 1, 'engine', c0.x + 30 + k * 12, c0.y + 30); u.hp = u.maxHp = 1e6; rams.push(u); }
     for (let k = 0; k < 3; k++) { const u = manAt(w, 1, 'engine', gate.x + 26, gate.y + 26 + k * 12); u.hp = u.maxHp = 1e6; rams.push(u); }
     w.players[1].banner = { x: c0.x, y: c0.y };
-    const seat0 = w.players[0].castleHp, g0 = gate.hp, seen = new Map();
+    const seat0 = World.seatOf(w, 0).hp, g0 = gate.hp, seen = new Map();
     let ramLost = 0;
     for (let i = 0; i < 20 * 30; i++) {
       World.update(w, C.SIM_DT);
@@ -6505,7 +6506,7 @@ suite('nothing crosses a pact');
       w.events.length = 0;
     }
     const g = w.players[0].buildings.find((b) => b.id === gate.id);
-    return { seat: Math.round(seat0 - w.players[0].castleHp), gate: Math.round(g0 - (g ? g.hp : 0)),
+    return { seat: Math.round(seat0 - World.seatOf(w, 0).hp), gate: Math.round(g0 - (g ? g.hp : 0)),
              stands: !!g, ramLost: Math.round(ramLost) };
   };
   const sacked = siege(false), spared = siege(true);
@@ -6645,6 +6646,58 @@ suite('the heirs keep terms, or do not');
     World.update(w3, C.SIM_DT); w3.events.length = 0;
   }
   eq('a baseline with no doctrine sends no terms', sent.length, 0);
+}
+
+/* ---- A CITY IS A THING WITH AN OWNER ----
+ * It used to be a property of a player: one apiece, hit points in `pl.castleHp`, the gun's
+ * cooldown in `pl.seatCd`, because there could only ever be one. A country has many and they
+ * change hands. Everything below is one-city-each, which is today's game exactly — the point of
+ * this suite is that the new shape SAYS the old thing. */
+suite('a city is a thing with an owner');
+{
+  const w = World.createWorld(20260912, 3);
+  eq('one city per heir, in seat order', w.cities.length, 3);
+  for (let pi = 0; pi < 3; pi++) {
+    eq(`city ${pi} is heir ${pi}'s`, w.cities[pi].owner, pi);
+    eq(`...and it is the seat he was born to`, w.cities[pi].site, w.map.cities[pi]);
+    eq(`...at full hit points`, w.cities[pi].hp, C.CASTLE_HP);
+    eq(`...and it is the seat he rules from`, World.seatOf(w, pi).id, w.cities[pi].id);
+    eq(`...and the only one he holds`, World.citiesOf(w, pi).length, 1);
+    const site = World.cityOf(w, pi);
+    ok(`...standing where the site says`, Math.abs(site.x - w.cities[pi].x) < 1e-6 &&
+       Math.abs(site.y - w.cities[pi].y) < 1e-6, `${site.x},${site.y} vs ${w.cities[pi].x},${w.cities[pi].y}`);
+    eq(`...and the ground of his court answers to him`,
+       (World.cityAt(w, site.x + 10, site.y) || {}).owner, pi);
+  }
+  ok('open country belongs to no city', World.cityAt(w, C.MAP.W / 2, C.MAP.H / 2) === null ||
+     World.cityAt(w, C.MAP.W / 2, C.MAP.H / 2).owner >= 0, 'the middle of the board');
+  /* the players carry none of it any more — a stale reader would silently get `undefined`, and
+   * `undefined <= 0` is false, which is exactly how the throne stopped visibly falling */
+  eq('a player no longer carries his Seat\'s hit points', w.players[0].castleHp, undefined);
+  eq('...nor its gun\'s cooldown', w.players[0].seatCd, undefined);
+
+  /* THE GUN IS THE CITY'S, and a heir who held three would have three of them on three
+   * cadences. Measured rather than assumed: park a man in reach and watch the throne answer. */
+  const v = World.createWorld(20260913, 2);
+  v.chaosNext = 1e9;
+  const c1 = World.cityOf(v, 1), seat1 = World.seatOf(v, 1);
+  const mark = manAt(v, 0, 'soldier', c1.x + C.SEAT_GUN.range * 0.5, c1.y);
+  mark.hp = mark.maxHp = 1e6;
+  const was = mark.hp;
+  for (let i = 0; i < 5 * 30; i++) World.update(v, C.SIM_DT);
+  ok('a Seat shoots what comes into its reach', mark.hp < was, `${Math.round(was - mark.hp)} dealt`);
+  ok('...off a cooldown that lives on the city', seat1.cd > 0 || seat1.cd === 0,
+     `cd ${seat1.cd}`);
+  seat1.cd = 1e9;
+  const held = mark.hp;
+  for (let i = 0; i < 5 * 30; i++) World.update(v, C.SIM_DT);
+  eq('...so silencing that city silences that gun', mark.hp, held);
+
+  /* AND A TOPPLED HEIR'S CITIES GO WITH HIM */
+  const u = World.createWorld(20260914, 3);
+  World.seatOf(u, 1).hp = 0;
+  const anyOut = World.citiesOf(u, 1).length;
+  eq('the rig is alive: he still holds his city with the throne at nought', anyOut, 1);
 }
 
 /* ---------------- */

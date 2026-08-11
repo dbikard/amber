@@ -52,7 +52,8 @@
         rising: pl.buildings.filter((b) => b.raise > 0).length,
         gates: pl.buildings.filter((b) => b.bt === 'gate' && !b.raise).length,
         army: world.units.reduce((n, u) => n + (u.owner === pi ? 1 : 0), 0),
-        pattern: pl.pattern, hp: pl.castleHp, walking: !!pl.walking, out: !!pl.out
+        pattern: pl.pattern, hp: ((global.World.seatOf(world, pi) || {}).hp) || 0,
+        walking: !!pl.walking, out: !!pl.out
       }))
     };
   };

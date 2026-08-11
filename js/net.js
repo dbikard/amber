@@ -445,7 +445,10 @@
     const players = world.players.map((pl, pi) => {
       const mine = pi === viewer;
       return {
-        castleHp: Math.round(pl.castleHp),
+        /* HIS SEAT'S HIT POINTS. A city is a thing with an owner now (`world.cities`), so this
+         * is derived rather than stored — the seat he rules from. Castle HP has always been
+         * public; the whole list rides on the root as `cities` beside it. */
+        castleHp: Math.round(((World.seatOf(world, pi) || {}).hp) || 0),
         essence: mine ? pl.essence : null,
         incomeRate: mine ? pl.incomeRate : null,
         drainRate: mine ? pl.drainRate : null,
@@ -527,6 +530,12 @@
       /* the rules of this match, so a guest's `World.foe` answers what the host's answers.
        * Without them a guest reads every heir as a foe and draws a war nobody is fighting. */
       rules: world.rules,
+      /* the cities of the world, and every one of them public: a Seat's hit points always
+       * were, and in a country the question "whose is that" is the map. Where the court
+       * STANDS is a different question, and `seatSeen` still answers it. */
+      cities: world.cities.map((c) => ({ id: c.id, site: c.site, x: Math.round(c.x), y: Math.round(c.y),
+                                        owner: c.owner, hp: Math.round(c.hp), maxHp: c.maxHp,
+                                        level: c.level, name: c.name })),
       players, sites,
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
