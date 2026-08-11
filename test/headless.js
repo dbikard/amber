@@ -8,8 +8,8 @@
 const path = require('path');
 const R = (f) => require(path.join(__dirname, '..', 'js', f));
 R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('net.js');
-R('record.js'); R('campaign.js');
-const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN } = globalThis;
+R('record.js'); R('campaign.js'); R('country.js'); R('realm.js');
+const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN, COUNTRY, REALM, RNG } = globalThis;
 const { suite, ok, eq, near, report, wallRig } = require('./lib.js');
 
 /* ---- --quick: a partial pass for the edit loop ----
@@ -6922,6 +6922,174 @@ suite('a quiet world skips only what has nothing to do');
     World.applyCommand(v, 1, { c: 'pact', p: 0, on: 1 });
     World.update(v, C.SIM_DT);
     eq('two heirs at terms are a quiet world', v.hush, true);
+  }
+}
+
+/* ---- THE COUNTRY, AND THE WAR OVER IT ----
+ * A region is TODAY'S BOARD and the country is many of them, because the thing that must never
+ * grow is the grid: a flow field is a Dijkstra over every cell and dead linear in area, and the
+ * ground texture self-caps, so a board three times as wide is three times blurrier and 59ms a
+ * field. Everything below is about the graph above the boards, and about a region surviving
+ * being left and come back to. */
+suite('a country is a graph of boards');
+{
+  let least = 99, most = 0, cut = 0, noPattern = 0, mismatch = 0;
+  const seen = {};
+  for (let s = 1; s <= 120; s++) {
+    const co = COUNTRY.build(s);
+    const land = COUNTRY.landRegions(co);
+    least = Math.min(least, land.length); most = Math.max(most, land.length);
+    if (!COUNTRY.connected(co)) cut++;
+    if (!co.pattern) noPattern++;
+    if (co.cities.length !== land.length) mismatch++;
+    seen[co.pattern] = 1;
+  }
+  ok('a country is big enough to fight over', least >= C.COUNTRY.least, `smallest was ${least}`);
+  ok('...and not bigger than its grid', most <= C.COUNTRY.cols * C.COUNTRY.rows, `largest ${most}`);
+  /* EVERY SHORE REACHABLE FROM EVERY OTHER. A country cut in half is a country half of which
+   * can never be fought over — and the coin that shuts a border will do it sooner or later, so
+   * it is repaired, and what still cannot be reached goes back to the sea. */
+  eq('every land region can be marched to from every other', cut, 0);
+  eq('there is always exactly one Pattern', noPattern, 0);
+  eq('and one city per land region', mismatch, 0);
+  ok('the Pattern does not always land in the same place', Object.keys(seen).length > 1,
+     Object.keys(seen).join(' '));
+
+  /* DETERMINISM IS THE WHOLE CONTRACT. A region is generated when somebody goes there and never
+   * before, so the same seed must produce the same country on every machine and at any hour. */
+  const a = COUNTRY.build(4242), b = COUNTRY.build(4242);
+  const fingerprint = (co) => JSON.stringify(co.regions.map((r) =>
+    [r.key, r.sea, r.biome, r.seed, r.nbrs.map((n) => [n.to, n.open, +n.at.toFixed(6)])]));
+  eq('the same seed is the same country', fingerprint(a), fingerprint(b));
+  ok('...and a different seed is a different one', fingerprint(a) !== fingerprint(COUNTRY.build(4243)),
+     'two seeds made the same country');
+
+  /* A CROSSING IS A PLACE ON A BOARD. It is where a column steers and where it is handed over —
+   * the wall-gateway trick one level up — so the two sides must be the same point on the shared
+   * edge, and both must be inside the board rather than on its very rim. */
+  const co = COUNTRY.build(4242);
+  let doors = 0;
+  for (const r of COUNTRY.landRegions(co)) for (const d of COUNTRY.doors(co, r.key)) {
+    doors++;
+    const near = COUNTRY.gate(d, 'near'), far = COUNTRY.gate(d, 'far');
+    ok(`a crossing lies on the board (${r.key} ${d.side})`,
+       near.x > 0 && near.x < C.MAP.W && near.y > 0 && near.y < C.MAP.H &&
+       far.x > 0 && far.x < C.MAP.W && far.y > 0 && far.y < C.MAP.H,
+       JSON.stringify([near, far]));
+    /* it must be on the FAR side of the neighbour from the side you left by */
+    const back = COUNTRY.doorTo(co, d.to, r.key);
+    ok(`...and the neighbour agrees about it (${r.key}→${d.to})`, !!back && back.at === d.at,
+       back ? `${back.at} vs ${d.at}` : 'no way back');
+  }
+  ok('the rig is alive: there are crossings to check', doors > 4, `${doors} crossings`);
+
+  /* A BIOME CHANGES THE GROUND AND NOTHING ELSE. The noise, the ridges and the rim are the same
+   * code; only the three thresholds the terrain is read off move. So a biome cannot produce a
+   * board the rest of the game has never seen, and every one of them must still make a playable
+   * board with springs on it. */
+  for (const k of Object.keys(C.BIOMES)) {
+    const g = WG.build(555, RNG, 2, { biome: k });
+    ok(`the ${k} makes a board`, !!g && g.nodes.length >= C.WORLD.nodesMin,
+       g ? `${g.nodes.length} springs` : 'no board at all');
+    if (g) eq(`...and says what it is`, g.biome, k);
+  }
+  const plain = WG.build(555, RNG, 2), downs = WG.build(555, RNG, 2, { biome: 'downs' });
+  eq('and `downs` is provably the country the game has always had',
+     JSON.stringify(Array.from(plain.terra)), JSON.stringify(Array.from(downs.terra)));
+}
+
+suite('a region is a world, left and come back to');
+{
+  const realm = REALM.create(20260922);
+  const land = COUNTRY.landRegions(realm.country);
+  ok('a war has a country under it', land.length >= C.COUNTRY.least, `${land.length} regions`);
+  const mine = REALM.holds(realm, 0);
+  eq('the player holds one city to start with', mine.length, 1);
+  ok('...and it is where he is standing', mine[0].region === realm.at, `${mine[0].region} vs ${realm.at}`);
+  const pat = REALM.patternCity(realm);
+  ok('the Pattern belongs to nobody', pat && pat.owner === -1, pat ? String(pat.owner) : 'no Pattern');
+  ok('...and to no lord either', pat && pat.lord == null, 'somebody was given AMBER');
+  /* THE HEIRS DO NOT START NEXT DOOR. A war that opens with two thrones in neighbouring regions
+   * is a war decided in its first ten minutes. */
+  const starts = realm.country.cities.filter((c) => c.owner >= 0).map((c) => realm.country.index[c.region]);
+  eq('every heir has a city', starts.length, realm.heirs.length);
+  let touching = 0;
+  for (let i = 0; i < starts.length; i++) for (let j = i + 1; j < starts.length; j++)
+    if (Math.abs(starts[i].cx - starts[j].cx) + Math.abs(starts[i].cy - starts[j].cy) <= 1) touching++;
+  eq('...and none of them is his rival\'s neighbour', touching, 0);
+  ok('the rest of the country is held by lesser lords',
+     realm.country.cities.filter((c) => c.owner < 0 && !c.pattern && c.lord).length > 2,
+     'nobody to take anything from');
+
+  /* --- A REGION MATERIALISES INTO AN ORDINARY WORLD --- */
+  const w = REALM.enter(realm, realm.at);
+  ok('a region becomes a world', !!w && !!w.map && w.units != null, 'no world');
+  eq('...at the size every board has always been', w.nav.W * w.nav.cw, C.MAP.W);
+  eq('...playing by the rules of a war', JSON.stringify(w.rules),
+     JSON.stringify({ endOnSeat: 0, occupy: 1, truce: 1, hush: 1 }));
+  eq('...and it is his own city he is standing in', w.cities[0].owner, 0);
+  eq('...with no second throne on the board', w.cities[1].owner, -1);
+  for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const men = w.units.filter((u) => u.hp > 0).length, works = w.players[0].buildings.length;
+  ok('the rig is alive: a minute in the region raised men', men > 2, `${men} men, ${works} works`);
+
+  /* --- LEFT, AND COME BACK TO --- */
+  const packed = REALM.compact(w);
+  ok('a region compacts small enough to save a country of them',
+     JSON.stringify(packed).length < 8000, `${JSON.stringify(packed).length} bytes`);
+  REALM.leave(realm, realm.at, w);
+  const w2 = REALM.enter(realm, realm.at);
+  eq('...and comes back with its army', w2.units.filter((u) => u.hp > 0).length, men);
+  eq('...and its works', w2.players[0].buildings.length, works);
+  near('...and its clock', w2.t, w.t, 0.001, `${w2.t} vs ${w.t}`);
+  eq('...and its city', w2.cities[0].owner, 0);
+  const before = w2.units.length;
+  for (let i = 0; i < 30 * 30; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  ok('...and it runs on from there', w2.units.filter((u) => u.hp > 0).length >= before,
+     `${before} → ${w2.units.filter((u) => u.hp > 0).length}`);
+
+  /* --- A COLUMN CROSSES A BORDER --- */
+  const doors = COUNTRY.doors(realm.country, realm.at);
+  ok('the rig is alive: there is somewhere to march to', doors.length > 0, 'the region is sealed');
+  if (doors.length) {
+    const to = doors[0].to;
+    const column = w2.units.filter((u) => u.owner === 0 && u.hp > 0).slice(0, 3)
+      .map((u) => ({ kind: u.kind, tier: u.tier, hp: u.hp }));
+    REALM.march(realm, realm.at, to, column, 0);
+    eq('a column ordered past a border is on the road', realm.marches.length, 1);
+    REALM.tick(realm, C.REALM.crossing * 0.5);
+    eq('...and is still on it half way', realm.marches.length, 1);
+    ok('...and has not arrived', !realm.state[to] || !realm.state[to].units.length, 'it teleported');
+    REALM.tick(realm, C.REALM.crossing * 0.6);
+    eq('...and arrives', realm.marches.length, 0);
+    const there = REALM.enter(realm, to);
+    eq('...in the neighbouring region', there.units.filter((u) => u.owner === 0).length, column.length);
+    /* AT THE FAR GATE, and not in the middle of somebody's court */
+    const far = COUNTRY.gate(COUNTRY.doorTo(realm.country, realm.at, to), 'far');
+    const u0 = there.units.find((u) => u.owner === 0);
+    ok('...at the crossing on that side', Math.hypot(u0.x - far.x, u0.y - far.y) < 40,
+       `${Math.round(u0.x)},${Math.round(u0.y)} against ${Math.round(far.x)},${Math.round(far.y)}`);
+    /* and a border that is shut is not a road at all */
+    const shut = realm.country.index[realm.at].nbrs.find((nb) => !nb.open);
+    if (shut) eq('a closed border is not a road', REALM.march(realm, realm.at, shut.to, column, 0), null);
+  }
+
+  /* --- AND A CITY TAKEN IN A REGION IS A CITY TAKEN IN THE WAR --- */
+  {
+    const r2 = REALM.create(20260923);
+    const target = r2.country.cities.find((c) => c.owner < 0 && !c.pattern);
+    ok('the rig is alive: there is a lord\'s city to take', !!target, 'nobody to take from');
+    if (target) {
+      const wv = REALM.enter(r2, target.region);
+      wv.cities[0].owner = 0;                  // as `holdCities` would have left it
+      REALM.leave(r2, target.region, wv);
+      eq('taking a city in the region takes it in the country', target.owner, r2.me);
+      const wr = REALM.enter(r2, target.region);
+      wr.cities[0].razed = 1; wr.cities[0].owner = -1;
+      REALM.leave(r2, target.region, wr);
+      eq('...and throwing it down is remembered too', !!target.razed, true);
+      eq('...and it belongs to nobody', target.owner, -1);
+    }
   }
 }
 

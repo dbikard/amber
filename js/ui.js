@@ -36,6 +36,16 @@
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
     $('btn-skirmish').addEventListener('click', () => UI.rivals());
     $('btn-lan').addEventListener('click', () => UI.lan());
+    $('btn-realm').addEventListener('click', () => H.onRealm());
+    $('realm-close').addEventListener('click', () => UI.screensClose());
+    $('realm-new').addEventListener('click', () => H.onRealmNew());
+    $('realm-go').addEventListener('click', () => H.onRealmEnter());
+    $('realm-march').addEventListener('click', () => H.onRealmMarch(UI.realmPicked()));
+    /* the tiles are rebuilt on every draw, so the listener is on the GRID and not on a tile */
+    $('realm-grid').addEventListener('click', (e) => {
+      const t = e.target.closest ? e.target.closest('.rgn') : null;
+      if (t && t.dataset.key) H.onRealmPick(t.dataset.key);
+    });
     $('rivals-close').addEventListener('click', () => UI.screensClose());
     $('lan-close').addEventListener('click', () => UI.screensClose());
     $('btn-build').addEventListener('click', () => H.onBuildMenu());
@@ -160,11 +170,79 @@
     if (H.onLanOpen) H.onLanOpen();
   };
   UI.screensOpen = () => !$('rivals').classList.contains('hidden')
-                      || !$('lan-screen').classList.contains('hidden');
+                      || !$('lan-screen').classList.contains('hidden')
+                      || !$('realm').classList.contains('hidden');
   UI.screensClose = function () {
     $('rivals').classList.add('hidden');
     $('lan-screen').classList.add('hidden');
+    $('realm').classList.add('hidden');
     $('menu').classList.remove('hidden');
+  };
+
+  /* ---------------- THE MAP OF THE COUNTRY ----------------
+   * Every region as a tile: the ground it is made of, whose city stands in it, and where you
+   * are. Tap where you are to go down into it and play; tap a neighbour across an open border to
+   * march. A CLOSED border is drawn as no road at all rather than as a greyed-out one — it is
+   * not a place you were refused, it is a place with no way through, and the two say different
+   * things. Rebuilt whole on every open, which costs nothing: a country is a couple of dozen
+   * tiles, not a scene. */
+  let realmPick = null;
+  UI.realm = function (realm) {
+    UI.toMenuScreens();
+    $('realm').classList.remove('hidden');
+    realmPick = null;
+    UI.realmDraw(realm);
+  };
+  UI.realmOpen = () => !$('realm').classList.contains('hidden');
+  UI.realmClose = function () { $('realm').classList.add('hidden'); };
+  UI.realmDraw = function (realm) {
+    const CO = global.COUNTRY, RE = global.REALM;
+    if (!realm || !CO) return;
+    const co = realm.country, grid = $('realm-grid');
+    grid.style.gridTemplateColumns = `repeat(${co.cols}, 1fr)`;
+    grid.innerHTML = '';
+    /* the regions you may march to from where you stand — the country's own answer, not one
+     * this screen works out for itself, so the map and the order can never disagree */
+    const roads = {};
+    for (const d of CO.doors(co, realm.at)) roads[d.to] = 1;
+    for (let cy = 0; cy < co.rows; cy++) for (let cx = 0; cx < co.cols; cx++) {
+      const r = co.index[cx + ',' + cy], d = document.createElement('div');
+      d.className = 'rgn' + (r.sea ? ' sea' : '');
+      if (!r.sea) {
+        const city = CO.cityIn(co, r.key);
+        if (r.key === realm.at) d.className += ' here';
+        else if (roads[r.key]) d.className += ' road';
+        if (city && city.pattern) d.className += ' pattern';
+        if (realmPick === r.key) d.className += ' pick';
+        d.dataset.key = r.key;
+        const b = C.BIOMES[r.biome];
+        d.style.background = b ? '#' + (b.tint | 0).toString(16).padStart(6, '0') + '33' : '#22203a';
+        const nm = document.createElement('div');
+        nm.className = 'r-name';
+        nm.textContent = city ? (city.razed ? '⌁ ruin' : city.name.replace(/^.* — /, '')) : (b ? b.name : '');
+        const who = document.createElement('div');
+        who.className = 'r-lord';
+        who.textContent = !city ? '' : city.razed ? 'nobody'
+          : city.owner === realm.me ? 'YOURS'
+          : city.owner >= 0 ? (realm.heirs[city.owner] || 'a rival')
+          : (city.lord || 'free');
+        if (city && city.owner >= 0) who.style.color = UI.seatColor(city.owner, realm.me);
+        d.appendChild(nm); d.appendChild(who);
+      }
+      grid.appendChild(d);
+    }
+    $('realm-say').textContent = RE ? RE.run(realm).say() : '';
+    const here = realmPick === realm.at || realmPick === null;
+    $('realm-go').classList.toggle('hidden', !(realmPick === realm.at || realmPick === null));
+    $('realm-march').classList.toggle('hidden', !(realmPick && realmPick !== realm.at && roads[realmPick]));
+    $('realm-go').textContent = 'ENTER ' + (CO.cityIn(co, realm.at) || {}).name;
+  };
+  UI.realmPicked = () => realmPick;
+  UI.realmPick = function (realm, key) {
+    const r = realm.country.index[key];
+    if (!r || r.sea) return;
+    realmPick = (realmPick === key) ? null : key;
+    UI.realmDraw(realm);
   };
   /* ---------------- the campaign ----------------
    * A CHAPTER SCREEN AND A BRIEFING, in one panel, because they are one gesture: pick the

@@ -226,7 +226,7 @@ progress are linear in dt and could be taken in one large step, but muster and r
 events and movement is not linear, so a safe large step is "time until the next event" — worth
 doing when the realm layer can ask for it, and not before, because nothing today would use it.
 
-## 9. The realm
+## 9. The realm — SHIPPED
 
 `js/country.js` generates the country from one seed: coarse elevation and moisture at country
 scale, a graph of regions, a biome each, and for every border either **closed** (ocean, a
@@ -246,7 +246,7 @@ troops and spans borders freely, always with a margin into the neighbour, so the
 transition never coincides with anything a player can see or aim at. Let them coincide and the
 boundary becomes a game rule, and gets played against.
 
-## 10. Lords, and the shape of a war
+## 10. Lords, and the shape of a war — SHIPPED in part
 
 - **A lord is an existing heir AI scoped to one city**, with an order — hold, build, raid,
   reinforce — which is a table in the shape of a chapter's `opts`.
@@ -278,10 +278,10 @@ the targets in `DESIGN_PRINCIPLES.md`. No stage begins before the previous is gr
 | 2 | Cities first-class | invisible | **byte-identical** |
 | 3 | Yield / take / throw down | yes, as a variant | its own run |
 | 4 | The quiet tick + the equivalence suite | yes — cheaper 4-player | unchanged |
-| 5a | Two hand-authored regions, one crossing, a march across it | a demo board | — |
-| 5b | `country.js`: a generated country, biomes, closed borders | | |
-| 5c | Seamless border rendering + the realm map screen | | |
-| 6 | Lords, the Pattern city, victory, save and resume | **yes — the mode** | its own run |
+| 5 | `country.js` + `realm.js`: a generated country, biomes, closed borders, marches | **shipped** | — |
+| 6 | The mode: a map screen, enter a region, march, save and resume | **shipped — playable** | — |
+| 5c | Seamless border rendering (the neighbour drawn across the seam) | open | |
+| 6b | Lords as a countable resource, and the walk as the war's ending | open | |
 | 7 | LAN over the realm | severable | |
 
 Stages 1, 3 and 4 each ship something playable on their own. That is the mitigation for the

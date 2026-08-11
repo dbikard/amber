@@ -742,8 +742,25 @@ below.
             are linear in dt, but muster and rifts are discrete and movement is not linear — a
             safe large step is "time to the next event", worth building when the realm layer can
             ask for it and not before.
-      - [ ] Stage 5 regions and marches · 6 lords and the mode's shell · 7 LAN. Stages 1, 3
-            and 4 each ship something playable alone, which is the mitigation for the size of it.
+      - [x] **Stage 5 — THE COUNTRY AND THE REALM.** `js/country.js` makes a graph of regions
+            from one seed — biomes off coarse noise, borders either CLOSED (sea, a wall of crag)
+            or a narrow crossing, connectivity REPAIRED rather than hoped for and whatever is
+            still unreachable put back to sea, so `connected` is true by construction. 300
+            countries: mean 21.5 land regions, min 10, none cut. `js/realm.js` holds the war and
+            no live world: `enter` materialises a region into an ordinary two-seat board with the
+            war's rules on it, `compact` puts it back in ~730 bytes, `march` runs a column across
+            a border in `REALM.crossing` seconds. Biomes are three thresholds in `WorldGen` and
+            nothing else, and `downs` is provably the ground the game has always had.
+      - [x] **Stage 6 — THE MODE.** A card on the menu, a map screen (one tile per region: its
+            ground, whose city, where you are, which borders are roads), ENTER to go down into a
+            region and play it as an ordinary match, MARCH to cross a border. Out of a region is
+            back to the COUNTRY and not to the title screen — a battle put down is not a war put
+            down. `amber_realm`, versioned and wrapped. *Two defects the page found:* entering a
+            region left the map standing, so every menu control underneath was covered by a
+            screen nobody could see was there; and the menu suite pinned the card COUNT at three,
+            which is a number that has to be edited every time the game grows a mode — it reads
+            as a floor now.
+      - [ ] Stage 7 LAN over the realm — severable, and the mode is worth playing single-player.
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
       yet answered for the ORDER, so a banner planted past a shoreline pressed the company
       into the bank in a stack, and one assertion whose target lay 350 off the board failed —

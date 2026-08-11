@@ -51,8 +51,20 @@
   /* what will bear a building */
   G.BUILDABLE = { 3: true, 4: true, 6: true };
 
-  G.generate = function (seed) {
-    const N = C.WORLD, cw = C.NAV.cell;
+  /* ---- A REGION HAS A CHARACTER, and it is three numbers ----
+   * A country is many boards, and a country where every board is drawn from the same
+   * distribution is a country with one kind of ground in it. A BIOME shifts the three
+   * thresholds the terrain is read off — where the water line is, where the high ground
+   * starts, where it stops being passable — and nothing else: the noise, the ridges and the
+   * rim are the same code, so a biome cannot produce a board the rest of the game has never
+   * seen. `CONST.BIOMES` is the table and `null` is the country the game has always had. */
+  G.biomeOf = function (key) {
+    return (key && C.BIOMES && C.BIOMES[key]) || null;
+  };
+  G.generate = function (seed, biome) {
+    const b = G.biomeOf(biome);
+    const N = b ? Object.assign({}, C.WORLD, b.world) : C.WORLD;
+    const cw = C.NAV.cell;
     const W = Math.round(C.MAP.W / cw), H = Math.round(C.MAP.H / cw), n = W * H;
     const sd = (seed >>> 0) || 1;
     const elev = new Float32Array(n), terra = new Uint8Array(n);
@@ -316,12 +328,13 @@
   }
 
   /* ---------------- the whole world ---------------- */
-  G.build = function (seed, RNG, players) {
+  G.build = function (seed, RNG, players, opts) {
     const want = Math.max(2, Math.min(4, players || 2));
+    const biome = opts && opts.biome ? opts.biome : null;
     for (let attempt = 0; attempt < 24; attempt++) {
       const s = (seed + attempt * 7919) >>> 0;
       const rng = RNG.make(s);
-      const land = G.generate(s);
+      const land = G.generate(s, biome);
       const reach = mainland(land);
       if (reach.count < land.W * land.H * C.WORLD.minLand) continue;
 
@@ -409,7 +422,10 @@
         W: land.W, H: land.H, cw: land.cw, elev: land.elev, terra: land.terra,
         nodes: kept.filter((x) => x.kind === 'node').map((x) => x.id),
         homeGates,
-        seed: s, skew: seats.skew, apart: Math.round(seats.far), attempt
+        seed: s, skew: seats.skew, apart: Math.round(seats.far), attempt,
+        /* the character of this ground, carried out with it so the renderer, the realm and the
+         * chronicle can name a region rather than re-deriving what it was made from */
+        biome: biome || null
       };
     }
     return null;

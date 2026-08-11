@@ -173,8 +173,12 @@ async function match(browser, base, renderer) {
       heirsOnMenu: document.querySelectorAll('#menu [data-heir]').length
     }));
     ok('nothing unfolds on the menu any more', shape.folds === 0, String(shape.folds));
+    /* four ways to play now — the campaign, a skirmish, the LAN table and the long war — and
+       exactly one of them primary. The COUNT is not the rule; "every way to play is a card, and
+       one of them is the way in" is, so this reads as a range with a floor rather than as a
+       number that has to be edited every time the game grows a mode. */
     ok('...the ways to play are cards, one of them primary',
-       shape.cards === 3 && shape.primary === 1, JSON.stringify(shape));
+       shape.cards >= 3 && shape.primary === 1, JSON.stringify(shape));
     ok('...the rivals are not on it at all', shape.heirsOnMenu === 0, String(shape.heirsOnMenu));
     ok('...and the codex is a link rather than a fourth way to play', shape.links >= 1, String(shape.links));
 
@@ -4396,6 +4400,106 @@ async function match(browser, base, renderer) {
     await pg.waitForTimeout(250);
     const broken = await read();
     ok('and a second tap breaks it', broken.pact === false, String(broken.pact));
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- the long war ----------------
+   * The whole mode, driven the way a player drives it: open the map, go down into a region, play
+   * it, come back up, and find the war where you left it after the page has forgotten everything
+   * but `localStorage`. Every assertion below is about the SEAM between the country and a board,
+   * because that seam is the only thing the mode adds — a region is an ordinary match. */
+  {
+    suite('the long war: a country, a region, and a war put down');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate(() => window.REALM.forget());
+
+    await pg.click('#btn-realm');
+    await pg.waitForTimeout(350);
+    const map = await pg.evaluate(() => ({
+      shown: !document.getElementById('realm').classList.contains('hidden'),
+      tiles: document.querySelectorAll('#realm-grid .rgn').length,
+      land: document.querySelectorAll('#realm-grid .rgn:not(.sea)').length,
+      here: document.querySelectorAll('#realm-grid .rgn.here').length,
+      roads: document.querySelectorAll('#realm-grid .rgn.road').length,
+      say: document.getElementById('realm-say').textContent,
+      at: window.Game.game.realm.at,
+      cols: window.Game.game.realm.country.cols
+    }));
+    ok('the map of the country opens', map.shown && map.tiles === map.cols * map.cols,
+       JSON.stringify(map));
+    ok('...with land to fight over', map.land >= 10, `${map.land} regions`);
+    /* WHERE YOU ARE, EXACTLY ONCE. Two marks or none is a map you cannot read. */
+    ok('...and exactly one of them is where you are', map.here === 1, `${map.here} marked`);
+    ok('...with at least one road out of it', map.roads >= 1, `${map.roads} roads`);
+    ok('...and it says where the Pattern lies', /Pattern/.test(map.say), map.say);
+
+    await pg.click('#realm-go');
+    await pg.waitForTimeout(1200);
+    const inside = await pg.evaluate(() => ({
+      mode: window.Game.game.mode, region: window.Game.game.region,
+      hud: !document.getElementById('hud').classList.contains('hidden'),
+      /* the map must be PEELED, or it stays over the menu when the region is left and every
+       * control underneath is covered by a screen nobody can see is there */
+      mapGone: document.getElementById('realm').classList.contains('hidden'),
+      rules: window.Game.game.world && window.Game.game.world.rules,
+      terms: document.querySelectorAll('#terms .term').length
+    }));
+    ok('going down into a region is an ordinary match', inside.mode === 'sp' && inside.hud,
+       JSON.stringify(inside));
+    ok('...on the region you were standing in', inside.region === map.at, inside.region);
+    ok('...and the map is peeled behind it', inside.mapGone, 'the map stayed up');
+    ok('...playing by the rules of a war', inside.rules && inside.rules.occupy === 1 &&
+       inside.rules.endOnSeat === 0 && inside.rules.truce === 1, JSON.stringify(inside.rules));
+    ok('...so terms may be offered in it', inside.terms >= 1, `${inside.terms} chips`);
+
+    /* a minute of it, so there is something worth remembering */
+    await pg.evaluate(() => {
+      for (let i = 0; i < 60 * 30; i++) {
+        window.World.update(window.Game.game.world, 1 / 30);
+        window.Game.game.world.events.length = 0;
+      }
+    });
+    const played = await pg.evaluate(() => ({
+      men: window.Game.game.world.units.filter((u) => u.hp > 0).length,
+      works: window.Game.game.world.players[0].buildings.length
+    }));
+    ok('the rig is alive: a minute in the region raised an army', played.men > 2,
+       `${played.men} men, ${played.works} works`);
+
+    await pg.evaluate(() => window.Game.toMenu());
+    await pg.waitForTimeout(350);
+    const out = await pg.evaluate(() => ({
+      onMap: !document.getElementById('realm').classList.contains('hidden'),
+      region: window.Game.game.region,
+      saved: window.REALM.saved(),
+      stored: Object.keys(window.Game.game.realm.state).length
+    }));
+    /* OUT OF A REGION IS BACK TO THE COUNTRY. Leaving the region you were fighting in is putting
+     * the battle down, not the war; being dumped to the title screen would make a country feel
+     * like a list of skirmishes. */
+    ok('coming out of a region lands on the map, not the menu', out.onMap, 'it went to the menu');
+    ok('...the region is put away', out.region === null && out.stored === 1, JSON.stringify(out));
+    ok('...and the war is written down', out.saved, 'nothing was saved');
+
+    /* THE WHOLE POINT OF THE MODE: the page forgets everything but `localStorage` and the war is
+     * still there, with the army that was raised in it. */
+    const back = await pg.evaluate(() => {
+      window.Game.game.realm = null;
+      const r = window.REALM.load();
+      return r ? { at: r.at, stored: Object.keys(r.state).length,
+                   men: (r.state[r.at] || { units: [] }).units.length,
+                   mine: r.country.cities.filter((c) => c.owner === r.me).length } : null;
+    });
+    ok('a war put down is a war you can pick up', back && back.at === map.at, JSON.stringify(back));
+    ok('...with the army you raised still standing in it', back && back.men === played.men,
+       back ? `${back.men} against ${played.men}` : 'nothing came back');
+    ok('...and the cities you held', back && back.mine >= 1, JSON.stringify(back));
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

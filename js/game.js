@@ -7,6 +7,7 @@
 
   const C = global.CONST, World = global.World, AI = global.AI;
   const Render = global.Render, UI = global.UI, Net = global.Net, Rec = global.Rec;
+  const REALM = global.REALM, COUNTRY = global.COUNTRY;
   const $ = (id) => document.getElementById(id);
 
   /* The succession, in the order you face it. There used to be a private difficulty ramp here
@@ -77,6 +78,50 @@
     startSP(ch.heir, Object.assign({}, foot, ch.opts, { seed: ch.seed, spec: ch.spec }), ch);
     return true;
   }
+  /* ---------------- going down into a region ----------------
+   * A region of the country is played as an ordinary single-player match, on a world the realm
+   * built rather than one this function generated: same loop, same HUD, same input, same
+   * everything. What makes it a war rather than a skirmish is the RULES the realm stamped on it
+   * (a Seat yields, terms may be made) and the fact that leaving compacts it back into the
+   * country instead of throwing it away. That is the whole of the mode's machinery.
+   * The rival is the region's holder, in seat 1, and he plays his own doctrine like any heir. */
+  function startRegion(world) {
+    const realm = game.realm;
+    /* the map is a screen over the menu, and going DOWN into a region has to peel it — left
+     * standing it stays over the menu when the region is left, and every control on the menu
+     * underneath is covered by a map nobody can see is there */
+    if (UI.realmClose) UI.realmClose();
+    const city = COUNTRY.cityIn(realm.country, realm.at);
+    const kind = (city && city.owner >= 1 && realm.heirs[city.owner]) ||
+                 C.REALM.holder;                    // a minor lord fights like the plainest heir
+    game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false;
+    game.chapter = null; game.run = null;
+    game.region = realm.at;
+    if (Render.clearSeatFalls) Render.clearSeatFalls();
+    game.world = world;
+    game.bot = AI.make(kind, C.DIFFICULTY[UI.difficulty()] || {});
+    game.world.players[1].eco = (C.DIFFICULTY[UI.difficulty()] || {}).eco || 1;
+    game.names = ['Corwin', (AI.HEIRS[kind] && AI.HEIRS[kind].title) || (city && city.lord) || 'a lord'];
+    game.targeting = false; game.placing = null; game.span = null; Render.span = null;
+    game.hints = [];
+    Render.resize();
+    homeCamera();
+    armBack();
+    Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
+                mode: 'the long war · ' + realm.at,
+                footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
+    UI.startMatch(game.names[1]);
+  }
+  /* AND COMING BACK UP. Everything the region did is compacted into the country and the country
+   * is written down — a war you can put down is a war that must survive the app being shut on
+   * the very next frame. */
+  function leaveRegion() {
+    if (!game.realm || !game.region || !game.world) return;
+    REALM.leave(game.realm, game.region, game.world);
+    REALM.save(game.realm);
+    game.region = null;
+  }
+
   function startSP(kind, opts, chapter) {
     const isCampaign = !!chapter;
     game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
@@ -211,6 +256,10 @@
   }
 
   function toMenu() {
+    /* A REGION IS PUT BACK INTO THE COUNTRY, not thrown away — walking out of a region is how a
+     * war is put down for the evening, so it has to be the same door as any other way out. */
+    const wasRegion = !!game.region;
+    leaveRegion();
     /* a match walked out of never reaches the end screen, and it is often the one worth
      * sending — close the chronicle here so the menu can still offer it */
     if (Rec.on && !game.over) {
@@ -221,6 +270,11 @@
     if (Render.lookAt) Render._homed = false;
     if (Net.active) Net.close();
     if (game.updateReady) { applyUpdate(); return; }   // a new version waited politely for match end
+    /* OUT OF A REGION IS BACK TO THE COUNTRY, not out to the main menu. A war is a place you are
+     * standing in — leaving the region you were fighting in is putting the battle down, not the
+     * war — and being dumped to the title screen after every engagement would make a country
+     * feel like a list of skirmishes. The menu is one more tap from here. */
+    if (wasRegion && game.realm) { UI.realm(game.realm); return; }
     UI.showMenu(campaignLabel(), campaignNote());
   }
 
@@ -1314,6 +1368,48 @@
         issue({ c: 'pause', on: !on });
       },
       onFix: (id) => issue({ c: 'fix', id }),
+      /* ---------------- THE LONG WAR ----------------
+       * game.js holds a realm for the length of a war exactly as it holds a `CAMPAIGN.run` for
+       * the length of a chapter: the layer above answers questions and never writes to a world,
+       * and going down into a region is an ordinary single-player match with the region's rules.
+       * Nothing below this line knows the country exists. */
+      onRealm: () => {
+        game.realm = game.realm || REALM.load() || REALM.create((Math.random() * 0xffffffff) >>> 0);
+        UI.realm(game.realm);
+      },
+      onRealmNew: () => {
+        REALM.forget();
+        game.realm = REALM.create((Math.random() * 0xffffffff) >>> 0);
+        UI.realm(game.realm);
+      },
+      onRealmPick: (key) => { if (game.realm) UI.realmPick(game.realm, key); },
+      onRealmEnter: () => {
+        if (!game.realm) return;
+        const w = REALM.enter(game.realm, game.realm.at);
+        if (!w) return;
+        startRegion(w);
+      },
+      /* A MARCH IS A COMMITMENT, AND THE COUNTRY CHARGES FOR IT. The column leaves the region
+       * it is standing in and is on the road for `REALM.crossing` — which is why a border is a
+       * decision and not a menu. It takes the men who are actually THERE, so an army you left
+       * three regions back cannot be summoned. */
+      onRealmMarch: (to) => {
+        const realm = game.realm;
+        if (!realm || !to) return;
+        const w = REALM.enter(realm, realm.at);
+        const men = w ? w.units.filter((u) => u.owner === 0 && u.hp > 0)
+                         .map((u) => ({ kind: u.kind, tier: u.tier || 1, hp: u.hp })) : [];
+        if (!men.length) { UI.banner('You have no men in this country to send', 'warn'); return; }
+        /* they leave: the region they came from keeps everything else it had */
+        w.units = w.units.filter((u) => !(u.owner === 0 && u.hp > 0));
+        REALM.leave(realm, realm.at, w);
+        if (!REALM.march(realm, realm.at, to, men, 0)) { UI.banner('There is no road that way', 'warn'); return; }
+        REALM.tick(realm, C.REALM.crossing);        // the road is walked; the country moves on
+        realm.at = to;
+        REALM.save(realm);
+        UI.realmDraw(realm);
+        UI.banner('Your column crosses into ' + ((COUNTRY.cityIn(realm.country, to) || {}).name || 'the marches'), 'alert');
+      },
       /* TERMS. The chip sets MY offer and nothing else — a pact is the two of them standing, so
        * the order says what I want and the sim works out whether that seals or breaks anything.
        * Asking for a STATE rather than a toggle, like the halt and the flip: read the offer off
