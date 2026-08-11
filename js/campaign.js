@@ -294,7 +294,46 @@
       ]
     },
     {
-      key: 'throne', title: 'VI · The Throne', heir: 'benedict', seed: 0x5ade06,
+      /* ---- VI · THE TRUCE ----
+       * The one chapter that teaches a rule by giving it to you and then taking it away. It
+       * opens with terms already standing — `rules.truce` on and `opts.pact` sealing them — so
+       * the board begins quiet and the lesson is what quiet is FOR: an heir at peace is not a
+       * foe, his men walk past yours, and every second of it is a second you are not paying for
+       * an army. And it ends when Bleys decides it does. Nothing scripts that: it is his own
+       * doctrine, which takes any terms offered while he is still mustering and withdraws them
+       * the moment he has fourteen men to spend. `CAMPAIGN.run` never writes to the world and
+       * this chapter does not make it start — the betrayal is the RIVAL's, on his own clock,
+       * exactly as it would be in a skirmish.
+       * The objective is springs and not a Seat, deliberately: what the truce buys is TIME, and
+       * the chapter has to be won by having spent it on something. */
+      key: 'truce', title: 'VI · The Truce', heir: 'bleys', seed: 0x5ade07,
+      opts: { eco: 0.9, hold: 200, rules: { truce: 1 }, pact: [1] },
+      brief: 'Bleys again, and this time he sends a herald before he sends a column. Terms: '
+           + 'neither of you lifts a hand against the other. They are already sworn — you will '
+           + 'find them in the corner of your board, and while they stand his men will walk '
+           + 'past yours without a blow struck.\n\n'
+           + 'Understand what you have bought. Not safety — TIME. An heir at peace needs no '
+           + 'army to hold what he has, so every drop of essence that would have gone into a '
+           + 'hall can go into the ground instead. Take springs. Take all of them.\n\n'
+           + 'And understand what you have sold. He is raising men with the same quiet you '
+           + 'are, and the Flame has never yet kept a promise longer than it was useful to '
+           + 'him. There is no notice and there is no grace: the first you will know of it is '
+           + 'your men dying. Tap his name to break first, if you think you can read the hour.\n\n'
+           + 'Hold four springs of Shadow, and keep them for two minutes.',
+      obj: OBJ.hold(4, 120),
+      won: 'The wells of Shadow answer to you, and Bleys of the Flame has learned what his '
+         + 'word is worth to a brother who was counting.',
+      hints: [
+        { when: (w) => w.t > 8,
+          text: '⚑ TERMS STAND, top right — while they do, neither of you may strike the other' },
+        { when: (w, me) => w.players[me].buildings.filter((b) => b.bt === 'gate' && !b.raise).length >= 2,
+          text: '◆ Peace is time. Spend it on the ground, not on halls you do not yet need' },
+        { when: (w, me) => !World().pactOn(w, me, 1),
+          text: '⚔ The truce is over — he has been mustering the whole time you were digging' }
+      ]
+    },
+    {
+      key: 'throne', title: 'VII · The Throne', heir: 'benedict', seed: 0x5ade06,
       /* no leash at all: the heir the other heirs face */
       opts: { eco: 1.0, hold: 60 },
       brief: 'Nothing is held back now. Benedict, Master of Arms, with a realm behind him and '

@@ -8,11 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.9.61';</script>
-<link rel="manifest" href="manifest.json?v=0.9.61">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.9.61">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.9.61">
-<link rel="stylesheet" href="styles.css?v=0.9.61">
+<script>window.GAME_VERSION = '0.9.62';</script>
+<link rel="manifest" href="manifest.json?v=0.9.62">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.9.62">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.9.62">
+<link rel="stylesheet" href="styles.css?v=0.9.62">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -36,6 +36,11 @@
   <div id="masons" title="mason crews — idle of total"><span class="m-ico">🔨</span><b id="m-free">1</b><span id="m-of">/1</span></div>
   <!-- every heir currently on the Pattern, and how far along: a race everyone can see -->
   <div id="walkers"></div>
+  <!-- TERMS. One chip per living rival, and the chip IS the readout — which is what lets
+       offering be silent: a banner would say once, for 3.4 seconds, a thing that stays true.
+       Tapping sets your own offer; a truce is the two of them standing. Only ever shown in a
+       war whose rules allow terms, so a skirmish sees nothing. -->
+  <div id="terms"></div>
   <!-- WHAT THE CHAPTER IS ASKING, for as long as it is true. A briefing is read once; an
        objective has to be answerable at a glance three minutes later. Centred under the clock,
        clear of both thumbs and of the flag tray. -->
@@ -190,21 +195,21 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.9.61"></script>
-<script src="js/rng.js?v=0.9.61"></script>
-<script src="js/const.js?v=0.9.61"></script>
-<script src="js/worldgen.js?v=0.9.61"></script>
-<script src="js/nav.js?v=0.9.61"></script>
-<script src="js/world.js?v=0.9.61"></script>
-<script src="js/ai.js?v=0.9.61"></script>
-<script src="js/terrain.js?v=0.9.61"></script>
-<script src="js/render3d.js?v=0.9.61"></script>
-<script src="js/render_select.js?v=0.9.61"></script>
-<script src="js/qrcode.js?v=0.9.61"></script>
-<script src="js/net.js?v=0.9.61"></script>
-<script src="js/record.js?v=0.9.61"></script>
-<script src="js/campaign.js?v=0.9.61"></script>
-<script src="js/ui.js?v=0.9.61"></script>
-<script src="js/game.js?v=0.9.61"></script>
+<script src="js/vendor/three.min.js?v=0.9.62"></script>
+<script src="js/rng.js?v=0.9.62"></script>
+<script src="js/const.js?v=0.9.62"></script>
+<script src="js/worldgen.js?v=0.9.62"></script>
+<script src="js/nav.js?v=0.9.62"></script>
+<script src="js/world.js?v=0.9.62"></script>
+<script src="js/ai.js?v=0.9.62"></script>
+<script src="js/terrain.js?v=0.9.62"></script>
+<script src="js/render3d.js?v=0.9.62"></script>
+<script src="js/render_select.js?v=0.9.62"></script>
+<script src="js/qrcode.js?v=0.9.62"></script>
+<script src="js/net.js?v=0.9.62"></script>
+<script src="js/record.js?v=0.9.62"></script>
+<script src="js/campaign.js?v=0.9.62"></script>
+<script src="js/ui.js?v=0.9.62"></script>
+<script src="js/game.js?v=0.9.62"></script>
 </body>
 </html>

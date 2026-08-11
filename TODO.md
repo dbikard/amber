@@ -691,7 +691,25 @@ below.
             peaceful board is IDENTICAL to the warring one (throne down for its full 2500, Gate
             razed, 186 back off the Seat's gun); after, every reading is nought and the warring
             board is unchanged to the byte.
-      - [ ] Stage 1 truces · 2 cities first-class · 3 yield/occupy · 4 the quiet tick ·
+      - [x] **Stage 1 — TRUCES.** `{c:'pact', p, on}` sets ONE offer and a truce is the two of
+            them standing, so there is no agreement object to keep in step and two seats cannot
+            disagree about whether they are at war. Breaking is instant and unannounced, which
+            is the point. The tray is top-right under the walkers, one chip per rival, and the
+            CHIP IS THE READOUT — which is what lets offering be silent under the banner rules.
+            A sealed pact rides to everyone (you cannot play against a diplomacy you cannot
+            see); an unanswered offer reaches only the seat it was made to. Sealing sweeps every
+            man's cached mark, or `acquire`'s dozen-tick stagger leaves two companies swinging
+            past the order. Doctrines: the Warden keeps his word, the Flame takes terms and
+            withdraws them at fourteen men, the Unmaker buys quiet for a walk, the Master of
+            Arms makes terms against whoever is ahead — and above all of them a rule no
+            personality may be foolish enough to break, that nobody keeps terms with a man on
+            the lines. Chapter VI · The Truce opens with them already sworn and does NOT script
+            the betrayal: it is Bleys's own doctrine, on his own clock (measured, 71s).
+            *One real defect the suite found:* the chip was drawn, styled as a button and
+            **swallowed every tap**, because `#hud` is `pointer-events: none` and a control
+            inside it must take its taps back. It reads as a map-drag starting on a control
+            rather than as a dead button, so it would not have been reported as broken.
+      - [ ] Stage 2 cities first-class · 3 yield/occupy · 4 the quiet tick ·
             5 regions and marches · 6 lords and the mode's shell · 7 LAN. Stages 1, 3 and 4 each
             ship something playable alone, which is the mitigation for the size of it.
 - [x] **Terrain refuses a man — FINISHED.** The rule (`63885d9`) refused the STEP; nothing
@@ -707,6 +725,14 @@ below.
       every guest. Re-measured, as the handoff demanded: 6 of 601,967 unit-samples on
       impassable ground (was 691 of 136,793), worst 16 units in (was 128 — one nav cell, a
       graze, not a man in a lake). Headless 1205/1205.
+- [ ] **A FLAKY BROWSER SUITE: `a new match opens on a Seat that is standing`.** Its liveness
+      assertion — "a called-for collapse really moves the Seat" — fails perhaps one run in four,
+      reporting `y -0.2 of base 0.0, lean 0.001`, i.e. the collapse animation had not visibly
+      started when the frame was read. Seen before and after the truce work with nothing between
+      them that touches a Seat's collapse, and three clean runs either side. It is the RIG that
+      is flaky, not the rule: it waits a fixed number of frames rather than on the condition.
+      Fix by waiting on `lean` crossing a threshold (`until`, as the suite guidance says), not by
+      sleeping longer.
 - [ ] **An army through a narrow path should behave like sand in an hourglass — and the maps
       have no narrow paths.** Measured, now that the terrain rule makes it meaningful. A rig
       traced the marching route city-to-city by the flow field, took the narrowest passable

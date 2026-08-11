@@ -92,7 +92,20 @@
      * is what lets a test put a wall, a crag or a wood exactly where the camera is looking.
      * Everything downstream reads the same world either way. */
     const seed = (opts && opts.seed != null) ? (opts.seed >>> 0) : ((Math.random() * 0xffffffff) >>> 0);
-    game.world = World.createWorld(seed, opts && opts.players, opts && opts.spec);
+    /* `opts.rules` is how a MODE or a chapter changes the rules of the match — see CONST.RULES.
+     * It rides in the same bag as the seed and the spec, because a chapter that opens at terms
+     * is exactly as much "the board somebody chose" as a chapter that pins its ground. */
+    game.world = World.createWorld(seed, opts && opts.players, opts && opts.spec, opts && opts.rules);
+    /* AND A CHAPTER MAY OPEN WITH THE TERMS ALREADY STANDING. `opts.pact` is a list of seats
+     * you begin at peace with — set as two OFFERS and never as a pact, so there is one spelling
+     * of the state and the heir's own doctrine may withdraw his half whenever it likes. That is
+     * what makes a scripted betrayal the RIVAL's doing rather than a trigger in the campaign:
+     * `CAMPAIGN.run` never writes to the world, and this does not change that. */
+    for (const p of (opts && opts.pact) || []) {
+      if (p === 0 || !game.world.players[p]) continue;
+      game.world.players[0].offers[p] = 1;
+      game.world.players[p].offers[0] = 1;
+    }
     game.bot = AI.make(kind, opts);
     /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
     game.world.players[1].eco = (opts && opts.eco) || 1;
@@ -440,8 +453,16 @@
     alive: 'Your champion already walks the board',
     /* the orders a player cannot phrase wrongly by tapping — reached by a stale tap on a match
      * that has just ended, or by a guest whose snapshot is a moment behind */
-    over: 'The match is decided'
+    over: 'The match is decided',
+    /* terms */
+    nopact: 'There are no terms to be had in this war',
+    seat: 'There is no such heir to treat with'
   };
+  /* WHOEVER SITS IN THAT SEAT. `game.names` is filled per mode — two in a duel, the seat names
+   * at a LAN table — and a banner about a third heir must not read "undefined breaks the truce". */
+  function seatName(pi) {
+    return (game.names && game.names[pi]) || C.SEAT_NAMES[pi] || 'An heir';
+  }
   function sayErr(err) {
     if (!err) return;
     UI.banner(REFUSAL[err] || ('The order was refused: ' + err), 'warn');
@@ -454,6 +475,9 @@
     const mem = world.players[viewer].explored;
     return {
       t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed,
+      /* the rules of this match, so the HUD asks the world rather than the mode — the same
+       * field the wire carries, so a host and a guest draw the same controls */
+      rules: world.rules,
       /* a rival's Seat is a rumour until you have seen it — one flag per seat now, since
        * with four heirs you may have found one court and not another */
       seatSeen: world.map.cities.map((id) => !!world.players[viewer].explored[id]),
@@ -579,6 +603,23 @@
         const msg = ev.e === 'walk' ? ' has set foot upon the Pattern!' : C.PATTERN_ALERTS[ev.idx].msg;
         if (mine) UI.banner('You' + msg.replace(' has ', ' have '), 'alert');
         else UI.knell(at ? Math.round(at) + '%' : '⟡', game.names[ev.pi] + msg);
+      }
+      /* ---- TERMS, AGAINST THE THREE TESTS ----
+       * OFFERING IS SILENT: it is an echo of the tap the player has just made, and the tray's
+       * own chip says "offered" for as long as it is true. An offer made TO him is a thing he
+       * did not cause and would act differently for knowing, so it speaks. A rival ACCEPTING is
+       * news. A rival BREAKING is the loudest line in the game — the whole point of an instant
+       * break is that the first you know of it is your men dying, and one banner is the least
+       * the stack owes him. Ours-vs-his decides the wording, never whether to speak. */
+      else if (ev.e === 'offer' && ev.pi !== game.viewer) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
+      else if (ev.e === 'pact' && ev.pi !== game.viewer) {
+        /* a pact between two OTHER heirs is public and is the most important thing on the board
+         * for the seat left out of it, so it is named rather than skipped */
+        const third = ev.p !== game.viewer;
+        if (ev.on) UI.banner(third ? seatName(ev.pi) + ' and ' + seatName(ev.p) + ' come to terms'
+                                   : seatName(ev.pi) + ' agrees to terms', 'alert');
+        else UI.banner(third ? seatName(ev.pi) + ' breaks with ' + seatName(ev.p)
+                             : seatName(ev.pi) + ' BREAKS the truce!', 'warn');
       }
       else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner('Chaos tears open a rift in the black road', 'chaos'); }
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
@@ -1235,6 +1276,17 @@
         issue({ c: 'pause', on: !on });
       },
       onFix: (id) => issue({ c: 'fix', id }),
+      /* TERMS. The chip sets MY offer and nothing else — a pact is the two of them standing, so
+       * the order says what I want and the sim works out whether that seals or breaks anything.
+       * Asking for a STATE rather than a toggle, like the halt and the flip: read the offer off
+       * the picture the player is actually looking at, so a tap on a stale frame cannot invert
+       * an order the other seat has already changed. */
+      onTerms: (p) => {
+        if (game.over) return;
+        const view = game.mode === 'guest' ? snapCur : game.world;
+        const me = view && view.players[game.viewer];
+        issue({ c: 'pact', p, on: !(me && me.offers && me.offers[p]) });
+      },
       /* the run's sheltered face, turned over. It asks for a STATE rather than a toggle for the
        * same reason the halt does: two seats tapping it at once must not cancel each other. */
       onFlip: (id) => {

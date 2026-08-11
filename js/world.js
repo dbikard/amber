@@ -2274,6 +2274,40 @@
      * It costs nothing, takes no crew and may be given while the run is still going up: it is
      * an ORDER about a wall, not work done to one. Like the halt it asks for a STATE rather
      * than a toggle, so two seats tapping it in the same tick cannot cancel each other out. */
+    /* ---------------- terms ----------------
+     * A PACT IS TWO STANDING OFFERS, and this order sets ONE of them: mine. It asks for a
+     * STATE and not a toggle, like the halt and the flip, so two heirs tapping at the same
+     * moment cannot cancel each other out — and because a truce is the AND of the two offers,
+     * there is no agreement object to keep in step and no way for two seats to disagree about
+     * whether they are at war.
+     * BREAKING IS INSTANT AND IT IS MEANT TO BE. Withdrawing an offer ends the truce on this
+     * tick, with no notice and no grace: being surprised is the price of having trusted
+     * somebody, and a betrayal you can see coming is not one.
+     * A seat that is OUT keeps whatever offers it had — it has no men to honour them with, and
+     * clearing them would make an elimination a diplomatic event. */
+    if (cmd.c === 'pact') {
+      if (!world.rules.truce) return { ok: false, err: 'nopact' };
+      const p = +cmd.p;
+      if (!isFinite(p) || p === pi || !world.players[p]) return { ok: false, err: 'seat' };
+      const on = !!cmd.on;
+      const was = pactOn(world, pi, p);
+      if (!!pl.offers[p] === on) return { ok: true };     // already said; not a refusal
+      pl.offers[p] = on ? 1 : 0;
+      const now = pactOn(world, pi, p);
+      if (now !== was) {
+        /* THE MEN DISENGAGE ON THIS TICK. `acquire` keeps the man it is fighting for a dozen
+         * ticks at a time (see RETARGET), so without this a sealed truce would leave two
+         * companies swinging at each other until the stagger came round — the one moment a
+         * player is certainly watching to see whether the order took. */
+        for (const u of world.units) if (u._t && !foe(world, u.owner, u._t.owner)) u._t = null;
+        emit(world, { e: 'pact', pi, p, on: now });
+      } else if (on) {
+        /* an offer that seals nothing yet is still worth telling the seat it was made TO —
+         * it is the only way an offer can be answered */
+        emit(world, { e: 'offer', pi, p });
+      }
+      return { ok: true };
+    }
     if (cmd.c === 'flip') {
       const s3 = bldOf(world, pi, cmd.id);
       if (!s3) return { ok: false, err: 'id' };

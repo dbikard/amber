@@ -19,7 +19,16 @@
      * heir this one should be worrying about: the one it has FOUND and whose Seat is nearest,
      * else the nearest it has not found — so an heir still orients on somebody, and a
      * four-way does not crash on `players[1 - me]`. */
-    const others = world.players.map((q, pi) => pi).filter((pi) => pi !== me && !world.players[pi].out);
+    /* A HEIR AT PEACE IS NOT A RIVAL — and that is nearly the whole of teaching the heirs
+     * diplomacy. `enIdx` below is what everything downstream orients on: where to face the
+     * towers, where to send the banner, where to storm. Drop a pact partner out of the list and
+     * every one of those decisions re-aims on its own, with no doctrine having to know.
+     * Two lists, though, and not one: with every rival at peace `foes` is EMPTY, and a heir
+     * with no `enIdx` at all falls back to `players[me]` and starts orienting on his own Seat.
+     * So orientation keeps the full list and only aggression reads `foes`. */
+    const living = world.players.map((q, pi) => pi).filter((pi) => pi !== me && !world.players[pi].out);
+    const foes = living.filter((pi) => World.foe(world, me, pi));
+    const others = foes.length ? foes : living;
     const byNear = others.slice().sort((a, b) =>
       d2(World.cityOf(world, a).x, World.cityOf(world, a).y, myCity.x, myCity.y) -
       d2(World.cityOf(world, b).x, World.cityOf(world, b).y, myCity.x, myCity.y));
@@ -101,6 +110,19 @@
        * table knows and no more. `enemyWalking` above is fog-limited and covers ONE opponent,
        * which is the wrong answer at a table of four. */
       walkers: World.walkers(world).filter((q) => q.pi !== me),
+      /* ---- TERMS, and only what a human at this seat could see ----
+       * `pacts[s]` — sealed, and a sealed pact is public because you cannot play against a
+       * diplomacy you cannot see. `offers[s]` — HIS offer to ME, which is mine to know and
+       * nobody else's. `castle[s]` — public, as it has always been, and the only honest way an
+       * heir can tell who is winning without reading the fog. `atPeace` says every living rival
+       * is at terms, which is the one board state where there is nobody to march on. */
+      seats: living,
+      foes,
+      atPeace: living.length > 0 && foes.length === 0,
+      pacts: world.players.map((q, pi) => pi !== me && World.pactOn(world, me, pi)),
+      offers: world.players.map((q, pi) => pi !== me && !!(q.offers && q.offers[me])),
+      mine: world.players.map((q, pi) => !!(pl.offers && pl.offers[pi])),
+      castle: world.players.map((q) => q.castleHp),
       powers: pl.powers, banner: pl.banner ? pl.banner.site : -1
     };
   }
@@ -362,6 +384,19 @@
     });
   }
 
+  /* ---------------- doctrines of terms ----------------
+   * A `pact(v, seat)` answers one question — do I want my offer standing with THIS seat right
+   * now — and the sim does the rest, because a pact is the AND of two offers and the order asks
+   * for a state. So a doctrine never has to know whether it is proposing, accepting, keeping or
+   * betraying: it only ever says what it wants to be true.
+   * An heir with no entry never offers and never accepts, which is today's game exactly.
+   * All four read public facts only: castle hit points, who is on the lines, and an offer made
+   * to this heir, which is his own. */
+  const leader = (v) => v.seats.reduce((best, s) => (best < 0 || v.castle[s] > v.castle[best] ? s : best), -1);
+  /* RECIPROCATE: the plainest doctrine there is, and the one that makes a human's offer mean
+   * something. Offered terms, he takes them; not offered, he asks for nothing. */
+  const reciprocate = (v, s) => v.offers[s];
+
   /* ---------------- the heirs ---------------- */
   const HEIRS = {
     julian: {
@@ -387,6 +422,10 @@
         wants.push('tower', 'barracks', 'siege', 'tower', 'gate');
         return wants;
       },
+      /* THE WARDEN KEEPS HIS WORD. Offered terms he takes them and he does not break them —
+       * which is exactly the heir a player wants to be able to trust, and exactly the heir who
+       * loses to somebody who cannot be. He is stone and patience; treachery is not in it. */
+      pact: reciprocate,
       upPref: ['tower', 'gate', 'barracks', 'siege'],
       /* the Warden holds a line: crowds break lines, so the cannon; and he is the one heir
        * who raises the stone that archers are worth having — but ONLY once it is standing.
@@ -416,6 +455,11 @@
       interval: 1.8, noise: 0.20,
       plan: () => ['gate', 'barracks', 'barracks', 'gate', 'barracks', 'spire', 'gate', 'siege',
                    'spire', 'barracks', 'siege', 'spire', 'barracks', 'tower'],
+      /* THE FLAME TAKES TERMS AND BREAKS THEM. He accepts anything offered while he is still
+       * mustering — a truce he did not ask for is free time to raise halls in — and withdraws
+       * the moment he has an army to spend, with no warning, because there is none to give.
+       * He is the reason the offer is worth thinking about rather than worth taking. */
+      pact: (v, s) => reciprocate(v, s) && v.army < 14,
       upPref: ['barracks', 'siege', 'spire', 'gate', 'tower'],
       /* Bleys keeps few towers; they must hit hard and far. Everything else is the assault:
        * outriders to arrive, a ram to get in, and Chaos turned on whoever is in the way.
@@ -445,6 +489,13 @@
        * level — so the Unmaker fielded Sorcerers and Engines every match while `branch.spire`
        * said 'warden' and `branch.siege` said 'bombard'. A doctrine written and never run is
        * worse than none: it reads as a decision that was made. */
+      /* THE UNMAKER BUYS QUIET FOR THE WALK. He offers terms to everyone the moment he means
+       * to step on the lines, and the point of them is not friendship: the drain is taken
+       * before his halls are paid, so a walking Brand musters nobody and needs the board to
+       * leave him alone for five and a half minutes. Note the rule above this call outranks it
+       * — nobody stays at terms with a walker — so what he is really buying is the quiet
+       * BEFORE he steps on, and it is withdrawn from him the instant he does. */
+      pact: (v, s) => (v.have.shrine ? true : reciprocate(v, s)),
       upPref: ['tower', 'gate', 'barracks', 'spire', 'siege'],
       /* the walk is answered by an army, and an army is a crowd — and a walker must HOLD, so
        * shieldmen on the ground and a warden keeping them standing */
@@ -465,6 +516,8 @@
       interval: 1.4, noise: 0.10,
       plan: () => ['gate', 'barracks', 'tower', 'gate', 'barracks', 'spire', 'shrine', 'barracks',
                    'siege', 'tower', 'barracks', 'spire', 'gate'],
+      /* A shadow-self takes terms and holds them until his own road is open. */
+      pact: reciprocate,
       upPref: ['barracks', 'gate', 'siege', 'spire', 'tower'],
       branch: { tower: () => 'bolt', barracks: () => 'raid', spire: () => 'binder', siege: () => 'ram' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
@@ -502,6 +555,12 @@
         if (v.t > 540) wants.push('siege');
         return wants;
       },
+      /* THE MASTER OF ARMS MAKES TERMS AGAINST WHOEVER IS WINNING. He offers to every seat
+       * except the one with the most throne left, which is the only public measure of who is
+       * ahead — so at a table of four he assembles a field against the leader, and in a duel he
+       * offers to nobody at all, because there is nobody to make terms against. He is adaptive:
+       * this is the same policy pointed at the diplomacy. */
+      pact: (v, s) => v.seats.length > 1 && s !== leader(v),
       upPref: ['gate', 'barracks', 'siege', 'tower', 'spire'],
       /* THE MASTER ANSWERS WHAT HE SEES, and that is his whole character — every fork is a
        * read of the board rather than a doctrine he brought with him. */
@@ -584,6 +643,27 @@
       const v = view(world, me);
       if (P.custom) { P.custom(v, issue, rng); return; }
       if (noise > 0 && rng.chance(noise)) return;
+
+      /* ---------------- terms ----------------
+       * ONE OFFER PER RIVAL, SET TO WHAT THE DOCTRINE WANTS IT TO BE. `{c:'pact'}` asks for a
+       * state, so the heir simply says what it wants standing and the sim works out whether
+       * that seals or breaks anything. An heir with no `pact` doctrine never offers and never
+       * accepts, which is exactly today's game — and the whole block is skipped when the rule
+       * is off, so a skirmish and `node sim.js` never see one of these orders.
+       * The heirs read only what a human at their seat reads: a sealed pact (public), an offer
+       * made TO them (theirs), castle hit points (public) and who is on the lines (public,
+       * pillar 3). Nothing here reaches past the veil — see DESIGN_PRINCIPLES, "AI plays fair". */
+      if (world.rules && world.rules.truce && P.pact) {
+        for (const s of v.seats) {
+          /* AND NO HEIR KEEPS TERMS WITH A MAN ON THE LINES. This is not a doctrine, it is the
+           * same rule that makes a walk public in the first place: a walk cannot be called off,
+           * every heir walks at one rate, and the only answer to one is an army at his Shrine.
+           * A pact with a walker is therefore a loss agreed to in advance, and no personality
+           * gets to be foolish enough to sign it. Above every doctrine, so none can forget. */
+          const want = !v.walkers.some((q) => q.pi === s) && !!P.pact(v, s);
+          if (want !== v.mine[s]) issue({ c: 'pact', p: s, on: want });
+        }
+      }
 
       /* powers */
       if (v.powers.storm <= 0) { const p = P.storm(v); if (p) issue({ c: 'power', k: 'storm', x: p.x, y: p.y }); }

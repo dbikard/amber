@@ -6519,6 +6519,134 @@ suite('nothing crosses a pact');
   eq('...and the Seat\'s own gun holds its fire', spared.ramLost, 0);
 }
 
+/* ---- THE ORDER, THE WIRE AND THE DOCTRINE ---- */
+suite('terms are offered, sealed and broken');
+{
+  const w = World.createWorld(20260905, 3, null, { truce: 1 });
+  const say = (pi, cmd) => World.applyCommand(w, pi, cmd);
+  const evs = () => { const e = w.events.map((x) => x.e + (x.on === undefined ? '' : ':' + x.on)); w.events.length = 0; return e; };
+  evs();
+  eq('an offer is accepted as an order', say(0, { c: 'pact', p: 1, on: 1 }).ok, true);
+  eq('...and says so to the seat it was made to', evs().join(), 'offer');
+  eq('...but seals nothing on its own', World.pactOn(w, 0, 1), false);
+  eq('the answer seals it', say(1, { c: 'pact', p: 0, on: 1 }).ok, true);
+  eq('...and that is the whole table\'s news', evs().join(), 'pact:true');
+  eq('saying it twice is not a refusal', say(1, { c: 'pact', p: 0, on: 1 }).ok, true);
+  eq('...and is silent', evs().length, 0);
+  eq('withdrawing breaks it', say(0, { c: 'pact', p: 1, on: 0 }).ok, true);
+  eq('...loudly', evs().join(), 'pact:false');
+  eq('you may not treat with yourself', say(0, { c: 'pact', p: 0, on: 1 }).err, 'seat');
+  eq('...nor with a seat that is not at the table', say(0, { c: 'pact', p: 9, on: 1 }).err, 'seat');
+  eq('...nor with Chaos', say(0, { c: 'pact', p: C.CHAOS_ID, on: 1 }).err, 'seat');
+  const q = World.createWorld(20260905, 3);
+  eq('and there are no terms in a war whose rules forbid them',
+     World.applyCommand(q, 0, { c: 'pact', p: 1, on: 1 }).err, 'nopact');
+
+  /* THE MEN LET GO ON THE TICK IT SEALS. `acquire` keeps its man for a dozen ticks at a time,
+   * so without the sweep two companies would go on swinging past the order — at the one moment
+   * a player is certainly watching to see whether it took. */
+  const v = World.createWorld(20260906, 2, null, { truce: 1 });
+  v.chaosNext = 1e9;
+  const c0 = World.cityOf(v, 0);
+  for (let k = 0; k < 4; k++) {
+    manAt(v, 0, 'soldier', c0.x + 20 + k * 10, c0.y);
+    manAt(v, 1, 'soldier', c0.x + 30 + k * 10, c0.y + 10);
+  }
+  for (let i = 0; i < 30; i++) World.update(v, C.SIM_DT);
+  const held = v.units.filter((u) => u.owner >= 0 && u._t).length;
+  ok('the rig is alive: men in contact have each other marked', held > 0, `${held} holding a mark`);
+  World.applyCommand(v, 0, { c: 'pact', p: 1, on: 1 });
+  World.applyCommand(v, 1, { c: 'pact', p: 0, on: 1 });
+  eq('sealing terms drops every mark across it',
+     v.units.filter((u) => u._t && !World.foe(v, u.owner, u._t.owner)).length, 0);
+}
+
+suite('a sealed pact is public and an offer is not');
+{
+  const w = World.createWorld(20260907, 4, null, { truce: 1 });
+  World.applyCommand(w, 1, { c: 'pact', p: 2, on: 1 });     // 1 asks 2 — nobody else's business
+  World.applyCommand(w, 2, { c: 'pact', p: 3, on: 1 });     // 2 asks 3
+  World.applyCommand(w, 3, { c: 'pact', p: 2, on: 1 });     // ...and 3 answers: SEALED
+  const s0 = Net.snapFor(w, 0, []);
+  eq('the rules ride, so a guest asks the same question the host does', s0.rules.truce, 1);
+  eq('a seat left out sees the sealed pact', !!(s0.players[2].offers[3] && s0.players[3].offers[2]), true);
+  eq('...and can therefore work it out for himself',
+     World.pactOn({ rules: s0.rules, players: s0.players }, 2, 3), true);
+  eq('...but not the offer nobody has answered', s0.players[1].offers[2], 0);
+  const s2 = Net.snapFor(w, 2, []);
+  eq('the seat it was made to sees it', s2.players[1].offers[2], 1);
+  const s1 = Net.snapFor(w, 1, []);
+  eq('and so does the seat that made it', s1.players[1].offers[2], 1);
+  /* the events follow the same rule */
+  const off = [{ e: 'offer', pi: 1, p: 2 }], pac = [{ e: 'pact', pi: 3, p: 2, on: true }];
+  eq('an offer reaches its target', Net.snapFor(w, 2, off).events.length, 1);
+  eq('...and nobody else', Net.snapFor(w, 0, off).events.length, 0);
+  eq('a sealed pact reaches the whole table', Net.snapFor(w, 0, pac).events.length, 1);
+}
+
+/* ---- AND THE HEIRS HAVE A DOCTRINE, or terms are decoration ---- */
+suite('the heirs keep terms, or do not');
+{
+  const play = (heir, secs) => {
+    const w = World.createWorld(20260908, 2, null, { truce: 1 });
+    w.chaosNext = 1e9;
+    const bot = AI.make(heir, {});
+    World.applyCommand(w, 0, { c: 'pact', p: 1, on: 1 });   // the player asks
+    let sealed = null, broke = null;
+    for (let i = 0; i < secs * 30; i++) {
+      bot.step(w, 1, (cmd) => World.applyCommand(w, 1, cmd), C.SIM_DT);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      const on = World.pactOn(w, 0, 1);
+      if (on && sealed == null) sealed = w.t;
+      if (!on && sealed != null && broke == null) broke = w.t;
+    }
+    return { sealed, broke };
+  };
+  const j = play('julian', 240), b = play('bleys', 240);
+  ok('the Warden takes the terms he is offered', j.sealed != null && j.sealed < 30,
+     j.sealed == null ? 'never' : j.sealed.toFixed(1) + 's');
+  eq('...and keeps them', j.broke, null);
+  ok('the Flame takes them too', b.sealed != null && b.sealed < 30,
+     b.sealed == null ? 'never' : b.sealed.toFixed(1) + 's');
+  ok('...and breaks them the moment he has an army to spend', b.broke != null && b.broke < 240,
+     b.broke == null ? 'never' : b.broke.toFixed(1) + 's');
+
+  /* NOBODY KEEPS TERMS WITH A MAN ON THE LINES. Not a doctrine — the rule above every doctrine,
+   * because a walk cannot be called off and the only answer to one is an army at his Shrine. */
+  const w2 = World.createWorld(20260909, 2, null, { truce: 1 });
+  w2.chaosNext = 1e9;
+  const sd = C.BUILDINGS.shrine, c = World.cityOf(w2, 0);
+  w2.players[0].buildings.push({ id: w2.nextId++, bt: 'shrine', level: 1, x: c.x + 60, y: c.y + 60,
+                                 cd: 0, raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp,
+                                 lastHurt: -99, node: -1, co: 0 });
+  w2.players[0].essence = 1e6;
+  const bot2 = AI.make('julian', {});
+  World.applyCommand(w2, 0, { c: 'pact', p: 1, on: 1 });
+  for (let i = 0; i < 20 * 30; i++) {
+    bot2.step(w2, 1, (cmd) => World.applyCommand(w2, 1, cmd), C.SIM_DT);
+    World.update(w2, C.SIM_DT); w2.events.length = 0;
+  }
+  ok('the rig is alive: the Warden had taken the terms before the walk', World.pactOn(w2, 0, 1),
+     'he never took them at all');
+  World.applyCommand(w2, 0, { c: 'walk', on: true });
+  for (let i = 0; i < 20 * 30; i++) {
+    bot2.step(w2, 1, (cmd) => World.applyCommand(w2, 1, cmd), C.SIM_DT);
+    World.update(w2, C.SIM_DT); w2.events.length = 0;
+  }
+  eq('...and withdraws them the moment you set foot on the Pattern', World.pactOn(w2, 0, 1), false);
+
+  /* AND AN HEIR WITH NO DOCTRINE NEVER OFFERS — which is what keeps every existing mode, and
+   * `node sim.js`, exactly as it was. */
+  const w3 = World.createWorld(20260910, 2, null, { truce: 1 });
+  w3.chaosNext = 1e9;
+  const g = AI.make('greedy', {}), sent = [];
+  for (let i = 0; i < 60 * 30; i++) {
+    g.step(w3, 1, (cmd) => { if (cmd.c === 'pact') sent.push(cmd); World.applyCommand(w3, 1, cmd); }, C.SIM_DT);
+    World.update(w3, C.SIM_DT); w3.events.length = 0;
+  }
+  eq('a baseline with no doctrine sends no terms', sent.length, 0);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

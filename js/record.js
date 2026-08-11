@@ -162,6 +162,18 @@
         if (!mine) tally.torn++;
         notes.push([t, (mine ? 'YOUR Shrine is thrown down' : head.names[ev.pi] + ' is torn off the Pattern') +
                        ' — ' + Math.round(ev.pattern) + '% left']);
+      } else if (ev.e === 'pact') {
+        /* TERMS BELONG IN THE CHRONICLE ABOVE ALMOST ANYTHING ELSE. A report from play about a
+         * four-cornered war is unreadable without knowing who was at peace with whom and when
+         * it ended — and a betrayal is a MOMENT in the plainest sense: the shape of the match
+         * before it and after it are different games. Named from the viewer's seat, and a pact
+         * between two other heirs is named as what it is, because it is public. */
+        const other = ev.p === me ? ev.pi : ev.p;
+        const a = head.names[ev.pi] || 'an heir', b = head.names[ev.p] || 'an heir';
+        if (ev.pi === me || ev.p === me)
+          notes.push([t, ev.on ? 'terms with ' + (head.names[other] || 'an heir')
+                               : (mine ? 'YOU break with ' + b : (head.names[ev.pi] || 'an heir') + ' BREAKS the truce')]);
+        else notes.push([t, ev.on ? a + ' and ' + b + ' come to terms' : a + ' breaks with ' + b]);
       } else if (ev.e === 'surge') notes.push([t, 'the black road SURGES']);
       else if (ev.e === 'rift') {
         if (t - lastRift < RIFT_QUIET) continue;

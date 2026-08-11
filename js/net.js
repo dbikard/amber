@@ -455,6 +455,15 @@
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
         banner: mine ? pl.banner : null,   // the banner is a strategic secret
         musterPaused: mine ? pl.musterPaused : false,
+        /* TERMS: A SEALED PACT IS PUBLIC, AN OFFER IS NOT. You cannot play against a diplomacy
+         * you cannot see — who is at peace with whom decides where every army on the board is
+         * safe to stand — so a standing pact rides to everyone. An offer nobody has answered is
+         * seen only by the two seats it concerns: mine, because it is mine, and the seat it was
+         * made to, because that is the only way it can be answered. Sent as the OFFERS rather
+         * than as the pacts so a guest computes `World.pactOn` off the same fields the host
+         * does, and there is no second spelling of the rule to drift. */
+        offers: world.players.map((q, j) => (((pl.offers || [])[j]) &&
+          (mine || j === viewer || World.pactOn(world, pi, j))) ? 1 : 0),
         /* your own companies and where their standards stand; a rival's are a secret */
         /* the Trump's own standard is flagged, so a guest's tray can draw it as what it is */
         /* the BEARER rides with the company and is the owner's alone, like the rest of it —
@@ -515,6 +524,9 @@
     });
     return {
       t: world.t, winner: world.winner, winReason: world.winReason,
+      /* the rules of this match, so a guest's `World.foe` answers what the host's answers.
+       * Without them a guest reads every heir as a foe and draws a war nobody is fighting. */
+      rules: world.rules,
       players, sites,
       units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
@@ -554,6 +566,9 @@
       events: (events || []).filter((ev) => {
         if (ev.pi === viewer) return true;
         if (ev.e === 'build' || ev.e === 'up' || ev.e === 'shot' || ev.e === 'banner' || ev.e === 'rally' || ev.e === 'muster') return false;
+        /* an OFFER is between two seats; a sealed or broken PACT is the whole table's business
+         * and falls through to the rule below, which lets anything without a position pass */
+        if (ev.e === 'offer') return ev.p === viewer;
         if (ev.x != null) return see(ev.x, ev.y);
         return true;   // walk/pattern/surge/win/trump — power echoes through Shadow
       })

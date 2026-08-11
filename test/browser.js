@@ -4330,6 +4330,73 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- the terms tray ----------------
+   * The chip IS the readout — that is what lets offering be silent, and it means the tray has
+   * to say all four states and has to take a tap. Driven through the real page: the click goes
+   * through the listener, the command through `applyCommand`, and the state comes back off the
+   * DOM the way a player would read it. */
+  {
+    suite('terms are offered from the tray');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+
+    /* THE CONTROL FIRST: an ordinary skirmish has no terms in it at all, and if the tray showed
+     * up there the rest of this suite would be measuring nothing. */
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 20260911 }, false));
+    await pg.waitForTimeout(400);
+    const plain = await pg.evaluate(() => {
+      const t = document.getElementById('terms');
+      return { hidden: t.classList.contains('hidden'), chips: t.querySelectorAll('.term').length };
+    });
+    ok('a skirmish has no terms to be had, and shows none',
+       plain.hidden && plain.chips === 0, JSON.stringify(plain));
+
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 20260911, rules: { truce: 1 } }, false));
+    await pg.waitForTimeout(400);
+    const read = () => pg.evaluate(() => {
+      const t = document.getElementById('terms'), c = t.querySelector('.term');
+      return { hidden: t.classList.contains('hidden'), chips: t.querySelectorAll('.term').length,
+               cls: c ? c.className : null, text: c ? c.textContent : null,
+               pact: window.World.pactOn(window.Game.game.world, 0, 1),
+               /* it must clear the walkers' board rather than sit on top of it */
+               below: (() => { const r = document.getElementById('walkers').getBoundingClientRect();
+                               return t.getBoundingClientRect().top >= r.top - 1; })() };
+    });
+    const war = await read();
+    ok('a war with terms in it shows one chip per rival',
+       !war.hidden && war.chips === 1, JSON.stringify(war));
+    ok('...saying they are at war, and what a tap would do', /at war/.test(war.text || ''), war.text);
+    ok('...and it hangs below the walkers, not over them', war.below, 'the two boards overlap');
+    ok('...and nothing is sealed yet', war.pact === false, String(war.pact));
+
+    await pg.click('#terms .term');
+    await pg.waitForTimeout(250);
+    const asked = await read();
+    ok('a tap offers terms', /offered/.test(asked.cls || ''), asked.cls + ' — ' + asked.text);
+    ok('...which seals nothing on its own', asked.pact === false, String(asked.pact));
+
+    /* the Warden takes them — let his own doctrine answer, which is the whole point of having
+     * one, rather than reaching into the world and setting the bit */
+    await pg.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+    await pg.waitForFunction(() => window.World.pactOn(window.Game.game.world, 0, 1), { timeout: 15000 });
+    await pg.waitForTimeout(300);
+    const sealed = await read();
+    ok('the Warden answers, and the chip says so',
+       /sealed/.test(sealed.cls || '') && /at terms/.test(sealed.text || ''),
+       sealed.cls + ' — ' + sealed.text);
+
+    await pg.click('#terms .term');
+    await pg.waitForTimeout(250);
+    const broken = await read();
+    ok('and a second tap breaks it', broken.pact === false, String(broken.pact));
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   await browser.close();
   srv.close();
   process.exit(report('browser'));

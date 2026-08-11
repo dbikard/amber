@@ -41,6 +41,12 @@
     $('btn-build').addEventListener('click', () => H.onBuildMenu());
     $('btn-pause').addEventListener('click', () => H.onPause());
     $('halt').addEventListener('click', () => H.onPause());
+    /* the terms tray is rebuilt every time its picture changes, so the listener is on the TRAY
+     * and not on the chips — a handler per chip would be a handler leaked per rebuild */
+    $('terms').addEventListener('click', (e) => {
+      const chip = e.target.closest ? e.target.closest('.term') : null;
+      if (chip && chip.dataset.seat != null) H.onTerms(+chip.dataset.seat);
+    });
     $('pw-storm').addEventListener('click', () => H.onPower('storm'));
     $('pw-trump').addEventListener('click', () => H.onPower('trump'));
     $('end-next').addEventListener('click', () => H.onEndNext());
@@ -484,11 +490,57 @@
                         ' ' + q.pattern.toFixed(0) + '%';
         race.appendChild(d);
       }
-      /* tell the map how far down to start, so the two never overlap */
-      if (global.Render) {
-        const b = race.getBoundingClientRect();
-        global.Render.miniTop = on.length ? Math.ceil(b.bottom) + 6 : 0;
+    }
+    /* ---- TERMS ----
+     * One chip per living rival, and each says exactly one of four things. The state is derived
+     * from the two OFFERS and never stored, which is the same rule the sim keeps: a pact is the
+     * AND of them, so there is nothing here that can disagree with `World.pactOn`.
+     * Rebuilt only when the picture changes, like the board above it — this runs every frame. */
+    const tray = $('terms');
+    const truce = !!(view.rules && view.rules.truce);
+    tray.classList.toggle('hidden', !truce);
+    /* it hangs off the bottom of the walkers' board, which grows and shrinks as heirs step on
+     * and off the lines — so the offset is measured rather than written down */
+    if (truce) {
+      const rb = race.getBoundingClientRect();
+      tray.style.top = (race.children.length ? Math.ceil(rb.bottom) + 6 : Math.ceil(rb.top)) + 'px';
+    }
+    if (truce) {
+      const rows = view.players.map((q, pi) => ({ q, pi }))
+        .filter(({ q, pi }) => pi !== viewer && !q.out);
+      const mineOffers = (view.players[viewer] || {}).offers || [];
+      const tkey = rows.map(({ q, pi }) => pi + (mineOffers[pi] ? 'm' : '') +
+                                           ((q.offers || [])[viewer] ? 'h' : '')).join(',');
+      if (tkey !== tray._key) {
+        tray._key = tkey;
+        tray.innerHTML = '';
+        for (const { q, pi } of rows) {
+          const mine2 = !!mineOffers[pi], his = !!(q.offers || [])[viewer];
+          const d = document.createElement('div');
+          d.className = 'term' + (mine2 && his ? ' sealed' : his ? ' asked' : mine2 ? ' offered' : '');
+          d.dataset.seat = String(pi);
+          const nm = document.createElement('b');
+          nm.style.color = UI.seatColor(pi, viewer);
+          nm.textContent = (C.SEAT_NAMES[pi] || 'a rival').toUpperCase();
+          const st = document.createElement('span');
+          st.className = 't-state';
+          /* what the NEXT tap does is what the chip has to make obvious, so each line is
+           * written as the state and the tap reads as its opposite */
+          st.textContent = mine2 && his ? '⚑ at terms — tap to break'
+                         : his ? 'asks terms — tap to accept'
+                         : mine2 ? 'terms offered' : 'at war — tap to offer';
+          d.appendChild(nm); d.appendChild(st);
+          tray.appendChild(d);
+        }
       }
+    } else if (tray._key !== null) { tray._key = null; tray.innerHTML = ''; }
+    /* tell the map how far down to start, so it clears BOTH right-rail boards. Measured rather
+     * than summed: the terms tray is laid out under the walkers by the stylesheet, and a guess
+     * at its height is a guess that goes wrong the first time a fourth heir joins. */
+    if (global.Render) {
+      const rb = race.getBoundingClientRect(), tb = tray.getBoundingClientRect();
+      const low = Math.max(race.children.length ? rb.bottom : 0, truce && tray.children.length ? tb.bottom : 0);
+      global.Render.miniTop = low > 0 ? Math.ceil(low) + 6 : 0;
     }
     for (const k of ['storm', 'trump']) {
       const btn = $('pw-' + k), cd = me.powers ? me.powers[k] : 99;

@@ -74,6 +74,41 @@ body {
  * still his the moment he raises another, but it is not a walk in progress and must not
  * read like one. */
 .walker.stalled { opacity: 0.55; font-weight: normal; border-style: dashed; }
+/* ---- TERMS ----
+ * Under the walkers' board, on the same right rail, because the two answer the same question:
+ * what is every OTHER heir doing. One chip per living rival, and the chip is the readout — a
+ * banner for offering would say a thing once that stays true for minutes. It takes taps, so
+ * unlike the boards above it `pointer-events` is on, and the chip is sized for a thumb. */
+#terms {
+  position: absolute; right: 10px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+  /* `#hud` is `pointer-events: none` so the map can be dragged through it, and every control
+   * inside it has to take its taps back. Without this the chip is drawn, is styled as a
+   * button, and the canvas underneath swallows every tap on it — which is a map-drag starting
+   * on a control, not a dead button, and so looks like nothing at all is wrong. */
+  pointer-events: auto;
+}
+#terms.hidden { display: none; }
+.term {
+  font-size: 12px; letter-spacing: 0.5px; font-weight: bold;
+  text-shadow: 0 1px 3px #000, 0 0 10px #0009;
+  background: rgba(10, 8, 18, 0.62); border-radius: 4px; padding: 4px 9px;
+  border: 1px solid #ffffff33; color: #e8e2d4;
+  min-height: 26px; display: flex; align-items: center; gap: 6px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.term .t-state { opacity: 0.75; font-weight: normal; letter-spacing: 0; }
+/* AT TERMS is the one state worth a colour of its own: it is the state that changes where your
+ * army is safe to stand, and it is the state a betrayal takes away. */
+.term.sealed { border-color: #9fe6b0aa; background: rgba(16, 34, 22, 0.7); }
+.term.sealed .t-state { color: #9fe6b0; opacity: 1; }
+/* HE HAS ASKED AND YOU HAVE NOT ANSWERED — the only one of the four that is waiting on you */
+.term.asked { border-color: #ffe9a8cc; animation: termpulse 1.6s ease-in-out infinite; }
+.term.asked .t-state { color: #ffe9a8; opacity: 1; }
+/* yours is standing and his is not: said, and unanswered */
+.term.offered { border-style: dashed; opacity: 0.85; }
+@keyframes termpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
+@media (prefers-reduced-motion: reduce) { .term.asked { animation: none; } }
 /* THE HALL'S STANDARD, IN THE SHEET'S HEADER. A hall's whole point is the men it raises and
  * the flag they answer to, so that flag reads first — pennant, name in the company's colour,
  * and what it is doing — rather than as small print under the upgrade card. It sits directly

@@ -110,7 +110,7 @@ Proved rather than asserted, with a control that fails on the pre-refactor code 
 to the warring one (the throne falls for its full 2500, the Gate is razed, the Seat's gun answers
 for 186); on the new one every reading is nought, and the warring board is unchanged to the byte.
 
-## 5. Truces — a pact is two standing offers
+## 5. Truces — a pact is two standing offers — SHIPPED
 
 Deliberately not a state machine. `pl.offers[j]` is a boolean — *"I am willing"* — and a pact is
 sealed while both stand. Symmetric by construction, so two seats cannot disagree about whether
