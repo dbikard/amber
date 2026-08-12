@@ -61,11 +61,16 @@
   G.biomeOf = function (key) {
     return (key && C.BIOMES && C.BIOMES[key]) || null;
   };
-  G.generate = function (seed, biome) {
+  /* `dims` is the land's size in world units, `{W, H}`. Omitted, it is `CONST.MAP` — the
+   * board every existing mode plays on. THE SIZE IS THE WORLD'S, NOT THE GAME'S: a country
+   * and the duel that referees the balance tables must be able to disagree in one process,
+   * which is the same reason `world.rules` is a copy and not a global. */
+  G.generate = function (seed, biome, dims) {
     const b = G.biomeOf(biome);
     const N = b ? Object.assign({}, C.WORLD, b.world) : C.WORLD;
     const cw = C.NAV.cell;
-    const W = Math.round(C.MAP.W / cw), H = Math.round(C.MAP.H / cw), n = W * H;
+    const D = dims || C.MAP;
+    const W = Math.round(D.W / cw), H = Math.round(D.H / cw), n = W * H;
     const sd = (seed >>> 0) || 1;
     const elev = new Float32Array(n), terra = new Uint8Array(n);
 
@@ -115,18 +120,37 @@
     }
     return { seen, count };
   }
-  /* the largest walkable landmass — everything worth placing goes on it */
+  /* the largest walkable landmass — everything worth placing goes on it.
+   * ONE labelling pass over the grid, not a flood-and-copy per component: the old shape was
+   * O(components × n) with an allocation per component, which is invisible on a board and the
+   * first thing that bites on a country full of lakes. The labels ride out with the answer
+   * because "which piece of ground is this" is exactly the question country generation asks
+   * when it nudges a city onto the mainland. */
   function mainland(land) {
     const { W, H, terra } = land, n = W * H;
-    let best = null;
-    const done = new Uint8Array(n);
+    const label = new Int32Array(n);
+    const q = [];
+    let next = 0, bestLabel = 0, bestCount = 0;
     for (let i = 0; i < n; i++) {
-      if (done[i] || G.COST[terra[i]] === 0) continue;
-      const r = floodFrom(land, i);
-      for (let k = 0; k < n; k++) if (r.seen[k]) done[k] = 1;
-      if (!best || r.count > best.count) best = r;
+      if (label[i] || G.COST[terra[i]] === 0) continue;
+      const L = ++next;
+      let count = 1;
+      label[i] = L; q.length = 0; q.push(i);
+      while (q.length) {
+        const cur = q.pop(), cx = cur % W, cy = (cur - cx) / W;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          const ni = ny * W + nx;
+          if (label[ni] || G.COST[terra[ni]] === 0) continue;
+          label[ni] = L; count++; q.push(ni);
+        }
+      }
+      if (count > bestCount) { bestCount = count; bestLabel = L; }
     }
-    return best || { seen: new Uint8Array(n), count: 0 };
+    const seen = new Uint8Array(n);
+    if (bestLabel) for (let i = 0; i < n; i++) if (label[i] === bestLabel) seen[i] = 1;
+    return { seen, count: bestCount, label, main: bestLabel };
   }
 
   /* ---------------- placing things on the land ---------------- */
@@ -223,7 +247,7 @@
       const p = cellXY(land, i);
       /* inland: there must be world on every side to explore */
       if (p.x < C.WORLD.inland || p.y < C.WORLD.inland ||
-          p.x > C.MAP.W - C.WORLD.inland || p.y > C.MAP.H - C.WORLD.inland) continue;
+          p.x > W * cw - C.WORLD.inland || p.y > H * cw - C.WORLD.inland) continue;
       if (roomAt(land, i, C.CITY.r + 60) < C.WORLD.seatRoom) continue;
       seats.push(i);
     }
@@ -331,10 +355,11 @@
   G.build = function (seed, RNG, players, opts) {
     const want = Math.max(2, Math.min(4, players || 2));
     const biome = opts && opts.biome ? opts.biome : null;
+    const dims = opts && opts.dims ? opts.dims : null;
     for (let attempt = 0; attempt < 24; attempt++) {
       const s = (seed + attempt * 7919) >>> 0;
       const rng = RNG.make(s);
-      const land = G.generate(s, biome);
+      const land = G.generate(s, biome, dims);
       const reach = mainland(land);
       if (reach.count < land.W * land.H * C.WORLD.minLand) continue;
 
@@ -461,7 +486,9 @@
     if (!Array.isArray(spec.springs) || !spec.springs.length) fail('needs at least one spring');
 
     const cw = C.NAV.cell;
-    const W = Math.round(C.MAP.W / cw), H = Math.round(C.MAP.H / cw), n = W * H;
+    /* a spec may declare its own land size (`map: {W, H}`); without one it is a board */
+    const D = (spec.map && spec.map.W && spec.map.H) ? spec.map : C.MAP;
+    const W = Math.round(D.W / cw), H = Math.round(D.H / cw), n = W * H;
     const terraOf = (name) => {
       const v = T[String(name || '').toUpperCase()];
       if (v === undefined) fail(`unknown terrain "${name}" (want one of ${Object.keys(T).join(', ')})`);
@@ -507,7 +534,7 @@
     const sites = [];
     const push = (kind, p) => {
       if (typeof p.x !== 'number' || typeof p.y !== 'number') fail(`a ${kind} has no x,y`);
-      if (p.x < 0 || p.y < 0 || p.x > C.MAP.W || p.y > C.MAP.H) fail(`a ${kind} lies off the map at ${p.x | 0},${p.y | 0}`);
+      if (p.x < 0 || p.y < 0 || p.x > W * cw || p.y > H * cw) fail(`a ${kind} lies off the map at ${p.x | 0},${p.y | 0}`);
       sites.push({ id: sites.length, kind, x: p.x, y: p.y, lastHurt: -99 });
       return sites[sites.length - 1];
     };

@@ -64,10 +64,10 @@
   /* ---------------- the world ----------------
    * Generated fresh, every match, by js/worldgen.js. No template, no mirror, no corridors —
    * and therefore no way to know where the other Seat stands until somebody walks there. */
-  function buildMap(seed, players, spec) {
+  function buildMap(seed, players, spec, opts) {
     /* a board somebody CHOSE, or the land made new from noise — everything downstream reads
      * the same structure either way, which is the whole point of routing both through here */
-    const gen = spec ? WG.fromSpec(spec, players) : WG.build(seed, RNG, players);
+    const gen = spec ? WG.fromSpec(spec, players) : WG.build(seed, RNG, players, opts);
     if (!gen) return null;
     for (const s of gen.sites) { s.lastHurt = -99; }
     return { sites: gen.sites, cities: gen.cities, nodes: gen.nodes,
@@ -78,13 +78,18 @@
    * free-for-all, where toppling a Seat ELIMINATES that heir rather than ending the match,
    * and the last one left takes the throne.
    * `rules` is the MODE's business (see `CONST.RULES`): omitted, the world plays today's game. */
-  function createWorld(seed, players, spec, rules) {
+  function createWorld(seed, players, spec, rules, opts) {
     const rng = RNG.make(seed >>> 0);
-    const map = buildMap(seed >>> 0, players, spec);
+    const map = buildMap(seed >>> 0, players, spec, opts);
     const seats = map.cities;
+    /* THE SIZE IS THE WORLD'S, NOT THE GAME'S. Stamped from the land that actually came out,
+     * so a country and the duel refereeing the balance tables can share one process — the same
+     * reason `world.rules` is a copy. `CONST.MAP` is only the default handed to worldgen. */
+    const mapW = map.gen.W * map.gen.cw, mapH = map.gen.H * map.gen.cw;
     const world = {
       seed: seed >>> 0, rng,
       t: 0, tick: 0,
+      mapW, mapH,
       winner: null, winReason: null,
       /* THE RULES ARE THE WORLD'S, NOT A GLOBAL'S. Copied so a mode cannot edit the defaults
        * out from under a match already running, and so two worlds in one process (a region and
@@ -122,7 +127,7 @@
          * turns `rules.truce` on. */
         offers: [],
         explored: {},           // siteId -> last-known {kind, owner}
-        seen: newSeenMask(),    // coarse grid of ground you have ever had eyes on
+        seen: newSeenMask(mapW, mapH),  // coarse grid of ground you have ever had eyes on
         ghosts: {}              // buildingId -> last-seen {bt, level, x, y, owner} (fog memory)
       })),
       units: [], storms: [], events: [],
@@ -213,7 +218,7 @@
    * yet when this runs. */
   function openingHall(world, pi) {
     const c = cityOf(world, pi);
-    const mid = { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    const mid = { x: world.mapW / 2, y: world.mapH / 2 };
     /* facing the middle of the board: the hall belongs between the Seat and the war, not
      * tucked behind it where its muster has the length of the map to walk */
     const base = Math.atan2(mid.y - c.y, mid.x - c.x);
@@ -292,7 +297,7 @@
     return false;
   }
   function groundBears(world, x, y) {
-    if (x < 0 || y < 0 || x > C.MAP.W || y > C.MAP.H) return false;
+    if (x < 0 || y < 0 || x > world.mapW || y > world.mapH) return false;
     const nav = world.nav, c = NAV.cellOf(nav, x, y);
     if (c < 0) return false;
     /* plain, meadow and hill will bear a building; wood, marsh, water and crag will not */
@@ -1747,8 +1752,10 @@
    * `explored` remembers SITES; this remembers the LAND. One byte per cell, marked wherever
    * a vision source has ever reached, so the renderers can keep walked country on the map
    * under a lighter veil instead of letting it go black the moment the column leaves. */
-  function newSeenMask() {
-    const gw = Math.ceil(C.MAP.W / C.FOG.cell), gh = Math.ceil(C.MAP.H / C.FOG.cell);
+  function newSeenMask(mw, mh) {
+    /* dims are passed in because this runs inside `createWorld` before `world.nav` exists;
+     * without them it is a board — the guest's duel mask (game.js) asks for exactly that */
+    const gw = Math.ceil((mw || C.MAP.W) / C.FOG.cell), gh = Math.ceil((mh || C.MAP.H) / C.FOG.cell);
     return { g: new Uint8Array(gw * gh), gw, gh, cell: C.FOG.cell, v: 0 };
   }
   /* Marks ground as remembered. Takes either a raw source list (plain discs — a guest's
@@ -1794,7 +1801,7 @@
    * Walls are the third layer, rebuilt by noteWalls whenever the standing set changes,
    * because stone rises and falls mid-match and the terrain never does. */
   function bakeSight(world) {
-    const gw = Math.ceil(C.MAP.W / C.FOG.cell), gh = Math.ceil(C.MAP.H / C.FOG.cell);
+    const gw = Math.ceil(world.mapW / C.FOG.cell), gh = Math.ceil(world.mapH / C.FOG.cell);
     const cw = C.FOG.cell, nav = world.nav, T = WG.T;
     const opq = new Uint8Array(gw * gh), cost = new Float32Array(gw * gh);
     const fw = C.VISION.forest - 1;
@@ -2462,8 +2469,8 @@
       if (pl.powers[cmd.k] > 0) return { ok: false, err: 'cd' };
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       if (cmd.k === 'storm') {
-        const x = Math.max(0, Math.min(C.MAP.W, +cmd.x || 0));
-        const y = Math.max(0, Math.min(C.MAP.H, +cmd.y || 0));
+        const x = Math.max(0, Math.min(world.mapW, +cmd.x || 0));
+        const y = Math.max(0, Math.min(world.mapH, +cmd.y || 0));
         if (!canSee(world, pi, x, y)) return { ok: false, err: 'fog' };   // no storming the unseen
         pl.essence -= def.cost;
         world.storms.push({ owner: pi, x, y, delay: def.delay, tLeft: def.dur });
@@ -2522,8 +2529,8 @@
     const s = cmd && cmd.site != null && cmd.site >= 0 ? world.map.sites[cmd.site] : null;
     if (s) return { x: s.x, y: s.y, site: s.id };
     if (!cmd || cmd.x == null || cmd.y == null) return null;
-    return { x: Math.max(0, Math.min(C.MAP.W, +cmd.x || 0)),
-             y: Math.max(0, Math.min(C.MAP.H, +cmd.y || 0)), site: -1 };
+    return { x: Math.max(0, Math.min(world.mapW, +cmd.x || 0)),
+             y: Math.max(0, Math.min(world.mapH, +cmd.y || 0)), site: -1 };
   }
 
   /* ---------------- units ---------------- */
@@ -2634,7 +2641,7 @@
    * has no business standing on. It is folded back toward the flag until it is ground. */
   function standable(world, x, y) {
     const m = C.CROWD.space;
-    if (x < m || y < m || x > C.MAP.W - m || y > C.MAP.H - m) return false;
+    if (x < m || y < m || x > world.mapW - m || y > world.mapH - m) return false;
     const c = NAV.cellOf(world.nav, x, y);
     return c >= 0 && world.nav.cost[c] > 0;
   }
@@ -2650,21 +2657,42 @@
    * rides the snapshot verbatim (net.js) and a cache written onto it would leak to every
    * guest. Terrain cost never changes within a match (walls live in the nav MASKS, not the
    * cost), so a fold is true for as long as the order stands, and a new order arrives as a
-   * new object and falls out of the map with the old one. The scan is the whole grid, once
-   * per bad order: exact, and cheaper than being clever about rings. */
+   * new object and falls out of the map with the old one.
+   * The search walks RINGS outward from the bad point, still exact: a ring is abandoned only
+   * once the best ground found is provably nearer than anything a wider ring could offer, and
+   * ties go to the lowest cell index — the order the old whole-grid scan met them in, so the
+   * answer is the same cell to the byte. The grid scan was fine when the grid was one board
+   * ("the whole grid, once per bad order"); a country's grid is sixteen boards and an order in
+   * a lake is still a local question. */
   function foldOrder(world, p) {
     if (!p || standable(world, p.x, p.y)) return p;
     const folds = world._folds || (world._folds = new WeakMap());
     let f = folds.get(p);
     if (f) return f;
     const nav = world.nav, cw = nav.cw;
-    let bx = p.x, by = p.y, bd = Infinity;
-    for (let cy = 0; cy < nav.H; cy++) for (let cx = 0; cx < nav.W; cx++) {
-      if (nav.cost[cy * nav.W + cx] === 0) continue;
+    const pgx = Math.max(0, Math.min(nav.W - 1, Math.floor(p.x / cw)));
+    const pgy = Math.max(0, Math.min(nav.H - 1, Math.floor(p.y / cw)));
+    let bx = p.x, by = p.y, bd = Infinity, bi = Infinity;
+    const look = (cx, cy) => {
+      if (cx < 0 || cy < 0 || cx >= nav.W || cy >= nav.H) return;
+      const i = cy * nav.W + cx;
+      if (nav.cost[i] === 0) return;
       const x = (cx + 0.5) * cw, y = (cy + 0.5) * cw;
-      if (!standable(world, x, y)) continue;   // the board's margin is part of "standable"
+      if (!standable(world, x, y)) return;   // the board's margin is part of "standable"
       const d = (x - p.x) * (x - p.x) + (y - p.y) * (y - p.y);
-      if (d < bd) { bd = d; bx = x; by = y; }
+      if (d < bd || (d === bd && i < bi)) { bd = d; bi = i; bx = x; by = y; }
+    };
+    look(pgx, pgy);
+    const rMax = Math.max(nav.W, nav.H);
+    for (let r = 1; r <= rMax; r++) {
+      /* every cell in ring r stands at least (r-1)·cw from p; once the best found beats that,
+       * no wider ring can better it */
+      const floor = (r - 1) * cw;
+      if (bd <= floor * floor) break;
+      for (let k = -r; k <= r; k++) {
+        look(pgx + k, pgy - r); look(pgx + k, pgy + r);
+        if (k > -r && k < r) { look(pgx - r, pgy + k); look(pgx + r, pgy + k); }
+      }
     }
     f = { x: bx, y: by, site: p.site != null ? p.site : -1 };
     folds.set(p, f);
@@ -2700,7 +2728,7 @@
      * cannot arise from the march any more. */
     const m = C.CROWD.space;
     const hold = (p, hi) => Math.max(m, Math.min(hi - m, p));
-    return { x: hold(cx + off.x, C.MAP.W), y: hold(cy + off.y, C.MAP.H) };
+    return { x: hold(cx + off.x, world.mapW), y: hold(cy + off.y, world.mapH) };
   }
   /* WHO IS STANDING AT WHICH FLAG, counted once a tick, before anyone moves. The key is the
    * ORDER'S POINT and not the company: every company without a rally of its own follows the War
@@ -2710,6 +2738,7 @@
   function musterAll(world) {
     const at = world._muster || (world._muster = new Map());
     at.clear();
+    const msY = world.mapW + 1, msO = msY * (world.mapH + 1);   // goal-key strides, see below
     for (const u of world.units) {
       if (u.hp <= 0) continue;
       if (u.owner !== C.CHAOS_ID) {
@@ -2725,8 +2754,11 @@
        * ranks 3 to 12 would leave ten empty places in the middle of the company outside. */
       if (u.man || u.toBerth || u.tow || !u.goal) { u.rank = 0; continue; }
       /* a NUMBER for a key, not a string: this runs for every man every tick and building
-       * "0:1234:567" thirty times a second for an army is a measurable share of the sim */
-      const k = (u.owner + 2) * 33554432 + Math.round(u.goal.y) * 4096 + Math.round(u.goal.x);
+       * "0:1234:567" thirty times a second for an army is a measurable share of the sim.
+       * The strides come from the WORLD'S dims — a fixed 4096 collided the moment a
+       * coordinate passed it, which no board reaches and any country does. Doubles hold the
+       * product exactly to 2^53, a long way past thirty owners on the widest land. */
+      const k = (u.owner + 2) * msO + Math.round(u.goal.y) * msY + Math.round(u.goal.x);
       let g = at.get(k);
       if (!g) {
         at.set(k, g = { n: 0, m: 0, want: 0, sx: 0, sy: 0, bx: 0, by: 0, r0: 0,

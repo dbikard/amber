@@ -34,15 +34,17 @@
   function bake(view, viewer, opts) {
     opts = opts || {};
     const map = view.map, nav = view.nav, T = global.WorldGen.T;
+    /* the land's own size — the nav grid the view carries is the truth of it, so a country
+     * and a board bake at their own dimensions without asking a global */
+    const MW = nav.W * nav.cw, MH = nav.H * nav.cw, cw = nav.cw;
     /* cap the longest edge (WebGL limits) and the total pixels, so a big board never asks
      * a phone for a thirty-megapixel canvas */
-    const px = Math.min(1.4, 4000 / Math.max(C.MAP.W, C.MAP.H), Math.sqrt(6.0e6 / (C.MAP.W * C.MAP.H)));
+    const px = Math.min(1.4, 4000 / Math.max(MW, MH), Math.sqrt(6.0e6 / (MW * MH)));
     const cv2 = document.createElement('canvas');
-    cv2.width = Math.ceil(C.MAP.W * px); cv2.height = Math.ceil(C.MAP.H * px);
+    cv2.width = Math.ceil(MW * px); cv2.height = Math.ceil(MH * px);
     const g = cv2.getContext('2d');
     g.scale(px, px);
     const rng = global.RNG.make(view.mapSeed || 7);
-    const MW = C.MAP.W, MH = C.MAP.H, cw = nav.cw;
 
     g.fillStyle = '#0a0810'; g.fillRect(0, 0, MW, MH);
 

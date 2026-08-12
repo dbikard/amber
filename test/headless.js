@@ -114,6 +114,70 @@ for (const seed of SEEDS) {
   }
 }
 
+/* ---------------- the size is the world's, not the game's ----------------
+ * `CONST.MAP` is only the DEFAULT handed to worldgen; a world carries its own `mapW/mapH`
+ * and everything in the sim reads the world's. This is what lets a country-size land and the
+ * default boards that referee the balance tables share one process — the same bargain
+ * `world.rules` struck. The far-corner order is the tripwire: any clamp still reading the
+ * global folds it back to 2000x2400, and the man never arrives. */
+suite('the size is the world\'s, not the game\'s');
+{
+  const def = World.createWorld(1);
+  eq('a default world is the default size', def.mapW + 'x' + def.mapH, C.MAP.W + 'x' + C.MAP.H);
+
+  /* one process, two sizes, no bleed: the big world is built BETWEEN two default builds,
+   * and the two defaults must agree to the byte */
+  const wfp = (w) => JSON.stringify([
+    w.mapW, w.mapH, w.nav.W, w.nav.H,
+    Array.from(w.nav.terra.slice(0, 400)),
+    w.map.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y)]),
+    w.players.map((p) => p.buildings.map((b) => [b.bt, Math.round(b.x), Math.round(b.y)]))
+  ]);
+  const before = wfp(World.createWorld(7));
+  let big = null;
+  for (let seed = 40; seed < 70 && !big; seed++)
+    big = World.createWorld(seed, 2, null, null, { dims: { W: 4000, H: 4800 } });
+  ok('a 2x world builds through the same door', !!big, 'no seed in 40..69 produced one');
+  const after = wfp(World.createWorld(7));
+  eq('a default world built beside it is identical to the byte', before, after);
+
+  if (big) {
+    eq('the 2x world knows its size', big.mapW + 'x' + big.mapH, '4000x4800');
+    eq('...its nav grid follows', big.nav.W + 'x' + big.nav.H, '200x240');
+    eq('...and its fog grid follows', big.players[0].seen.gw + 'x' + big.players[0].seen.gh,
+       Math.ceil(4000 / C.FOG.cell) + 'x' + Math.ceil(4800 / C.FOG.cell));
+    ok('its sites stand on its own mainland', NAV.audit(big.nav, big.map).length === 0);
+
+    /* THE FAR-CORNER ORDER. A banner past the old board's edge must survive every clamp on
+     * the way in (applyCommand, aimAt, foldOrder, placeAt) and men must actually walk out
+     * there — a single missed `C.MAP` read quietly folds all of this back to the old world
+     * and reads as men refusing an order. */
+    const r = World.applyCommand(big, 0, { c: 'banner', x: big.mapW - 100, y: big.mapH - 100 });
+    ok('an order past the old edge is accepted', !!r.ok, JSON.stringify(r));
+    const goal = big.players[0].banner;
+    ok('...and is not folded back inside it', !!goal && goal.x > C.MAP.W && goal.y > C.MAP.H,
+       goal ? Math.round(goal.x) + ',' + Math.round(goal.y) : 'no goal');
+    let crossed = false;
+    for (let i = 0; i < 30 * 240 && !crossed; i++) {
+      World.update(big, C.SIM_DT);
+      for (const u of big.units)
+        if (u.owner === 0 && u.x > C.MAP.W + 100 && u.y > C.MAP.H + 100) crossed = true;
+    }
+    ok('and a man MARCHES past the old edge', crossed,
+       'nobody crossed 2100,2500 in 240 simulated seconds');
+
+    /* a storm may be called on the far country too — the other command clamp */
+    big.players[0].essence = 9999;
+    big.players[0].seen.g.fill(1);
+    if (big.vis && big.vis[0]) big.vis[0].g.fill(1);
+    const st = World.applyCommand(big, 0, { c: 'power', k: 'storm', x: big.mapW - 60, y: big.mapH - 60 });
+    const s = big.storms[big.storms.length - 1];
+    ok('a storm called past the old edge is accepted and lands there',
+       !!st.ok && !!s && s.x > C.MAP.W && s.y > C.MAP.H,
+       st.ok ? (s ? Math.round(s.x) + ',' + Math.round(s.y) : 'no storm') : JSON.stringify(st));
+  }
+}
+
 /* ---------------- a board built by hand ----------------
  * The land is noise by default. A spec is the other road in: a declarative board that comes
  * out as EXACTLY what G.build produces, so nothing downstream can tell which made it. It is

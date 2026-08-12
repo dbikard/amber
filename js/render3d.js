@@ -26,6 +26,11 @@
   let curViewer = 0, curView = null, lastKey = '', T = 0;
   let ground = null;
   let groundGrid = null, gridW = 0, gridH = 0;
+  /* THE LAND'S SIZE IS THE VIEW'S, NOT THE GAME'S — set from the world this renderer was
+   * handed (buildWorld), so a country and a board draw at their own extents. `CONST.MAP` is
+   * only the value before the first world arrives. */
+  let mapW = C.MAP.W, mapH = C.MAP.H;
+  let underM = null;
   const GRES = 10;
   function groundH(x, z) {
     if (!groundGrid) return 0;
@@ -981,10 +986,10 @@
     scene.add(rig);
     worldG = new THREE.Group();
     scene.add(worldG);
-    const under = new THREE.Mesh(new THREE.PlaneGeometry(6000, 9000).rotateX(-Math.PI / 2),
+    underM = new THREE.Mesh(new THREE.PlaneGeometry(mapW * 3, mapH * 3.75).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0x0b0912 }));
-    under.position.set(C.MAP.W / 2, -5, C.MAP.H / 2);
-    scene.add(under);
+    underM.position.set(mapW / 2, -5, mapH / 2);
+    scene.add(underM);
     MAT = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }));
     MATB = fogPatch(new THREE.MeshBasicMaterial({ vertexColors: true }));
     overlay = document.getElementById('overlay');
@@ -1054,8 +1059,8 @@
       R.clampCam();
     }
   };
-  R.maxCamX = () => Math.max(0, C.MAP.W - viewW);
-  R.maxCamY = () => Math.max(0, C.MAP.H - viewH);
+  R.maxCamX = () => Math.max(0, mapW - viewW);
+  R.maxCamY = () => Math.max(0, mapH - viewH);
   R.pan = function (dpx, dpy) {
     R.camX -= (dpx || 0) / scale;
     R.camY -= (dpy || 0) / scale;
@@ -1065,7 +1070,7 @@
   /* A corner map, and a SMALL one. Sized off the map's aspect it grew to half the screen
    * width on a squarer world and started swallowing taps meant for the ground under it. */
   const MINI = () => {
-    const mw = Math.min(W * 0.26, 120), mh = Math.min(H * 0.30, mw * (C.MAP.H / C.MAP.W));
+    const mw = Math.min(W * 0.26, 120), mh = Math.min(H * 0.30, mw * (mapH / mapW));
     /* the walkers' board owns the top-right corner when anyone is on the Pattern; the map
      * slides under it rather than through it */
     return { mw, mh, mx: W - mw - 6, my: Math.max(62, R.miniTop || 0) };
@@ -1086,7 +1091,7 @@
       for (let ix = 0; ix <= N; ix++) {
         const w2 = R.toWorld((ix / N) * W, (iy / N) * H);
         if (!w2 || !isFinite(w2.x) || !isFinite(w2.y)) continue;
-        const cx = Math.max(0, Math.min(C.MAP.W, w2.x)), cy = Math.max(0, Math.min(C.MAP.H, w2.y));
+        const cx = Math.max(0, Math.min(mapW, w2.x)), cy = Math.max(0, Math.min(mapH, w2.y));
         hits++;
         if (cx < x0) x0 = cx;
         if (cy < y0) y0 = cy;
@@ -1096,7 +1101,7 @@
     }
     if (hits < 4) { x0 = R.camX; y0 = R.camY; x1 = R.camX + viewW; y1 = R.camY + viewH; }
     return { x0: Math.max(0, x0), y0: Math.max(0, y0),
-             x1: Math.min(C.MAP.W, x1), y1: Math.min(C.MAP.H, y1) };
+             x1: Math.min(mapW, x1), y1: Math.min(mapH, y1) };
   };
   R.hitMinimap = (px, py) => {
     const m = MINI();
@@ -1104,8 +1109,8 @@
   };
   R.minimapJump = function (px, py) {
     const m = MINI();
-    R.camX = ((px - m.mx) / m.mw) * C.MAP.W - viewW / 2;
-    R.camY = ((py - m.my) / m.mh) * C.MAP.H - viewH * 0.62;
+    R.camX = ((px - m.mx) / m.mw) * mapW - viewW / 2;
+    R.camY = ((py - m.my) / m.mh) * mapH - viewH * 0.62;
     R.clampCam();
   };
 
@@ -1132,7 +1137,7 @@
     groundPlane.constant = -h;
     if (rc.ray.intersectPlane(groundPlane, hitV)) return { x: hitV.x, y: hitV.z };
     groundPlane.constant = 0;
-    return { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    return { x: mapW / 2, y: mapH / 2 };
   };
   /* the id of the viewer's own work under the finger, or -1 */
   /* `out`, if given, receives `d` — the squared distance from the finger to whatever was hit.
@@ -1685,6 +1690,19 @@
     /* REAL relief: the ground mesh is the sim's own elevation field, so a hill you see is a
      * hill units pay to climb and a crag you see is one they cannot cross at all. */
     const nav = view.nav;
+    /* this world's own extents, and everything sized by them follows: the backdrop under the
+     * board, and a far plane that must clear the whole land through the distance fog — both
+     * work out to exactly their old constants on a default board */
+    mapW = nav.W * nav.cw; mapH = nav.H * nav.cw;
+    if (underM) {
+      underM.geometry.dispose();
+      underM.geometry = new THREE.PlaneGeometry(mapW * 3, mapH * 3.75).rotateX(-Math.PI / 2);
+      underM.position.set(mapW / 2, -5, mapH / 2);
+    }
+    if (cam) {
+      cam.far = Math.max(9000, Math.hypot(mapW, mapH) * 1.5);
+      cam.updateProjectionMatrix();
+    }
     let lo = Infinity, hi = -Infinity;
     for (let i = 0; i < nav.elev.length; i++) {
       const e = nav.elev[i];
@@ -1704,14 +1722,14 @@
       return ((a * (1 - tz) + b * tz) - lo) / span * relief;
     };
     const seg = [Math.min(180, nav.W), Math.min(180, nav.H)];
-    const geo = new THREE.PlaneGeometry(C.MAP.W, C.MAP.H, seg[0], seg[1]);
+    const geo = new THREE.PlaneGeometry(mapW, mapH, seg[0], seg[1]);
     geo.rotateX(-Math.PI / 2);
-    geo.translate(C.MAP.W / 2, 0, C.MAP.H / 2);
+    geo.translate(mapW / 2, 0, mapH / 2);
     const pp = geo.attributes.position;
     for (let i = 0; i < pp.count; i++) pp.setY(i, hFn(pp.getX(i), pp.getZ(i)));
     geo.computeVertexNormals();
     /* sample into a grid for cheap per-frame lookups */
-    gridW = Math.ceil(C.MAP.W / GRES) + 1; gridH = Math.ceil(C.MAP.H / GRES) + 1;
+    gridW = Math.ceil(mapW / GRES) + 1; gridH = Math.ceil(mapH / GRES) + 1;
     groundGrid = new Float32Array(gridW * gridH);
     for (let gz = 0; gz < gridH; gz++)
       for (let gx = 0; gx < gridW; gx++)
@@ -3222,7 +3240,7 @@
     g.beginPath();
     g.roundRect ? g.roundRect(mx, my, mw, mh, 6) : g.rect(mx, my, mw, mh);
     g.fill(); g.stroke();
-    const mpx = (x) => mx + (x / C.MAP.W) * mw, mpy = (y) => my + (y / C.MAP.H) * mh;
+    const mpx = (x) => mx + (x / mapW) * mw, mpy = (y) => my + (y / mapH) * mh;
     for (const s of view.map.sites) {
       const st = view.sites[s.id];
       const X = mpx(s.x), Y = mpy(s.y);
@@ -3308,8 +3326,8 @@
     }
     g.strokeStyle = '#ffe9a8'; g.lineWidth = 1.5;
     const vr = R.viewRect();
-    g.strokeRect(mx + (vr.x0 / C.MAP.W) * mw, my + (vr.y0 / C.MAP.H) * mh,
-                 ((vr.x1 - vr.x0) / C.MAP.W) * mw, ((vr.y1 - vr.y0) / C.MAP.H) * mh);
+    g.strokeRect(mx + (vr.x0 / mapW) * mw, my + (vr.y0 / mapH) * mh,
+                 ((vr.x1 - vr.x0) / mapW) * mw, ((vr.y1 - vr.y0) / mapH) * mh);
     /* A WALL IS TWO TAPS, and between them the run has to be VISIBLE — a length you cannot
      * see is a length you cannot judge, and the span limits would just read as refusals.
      * The line follows the ground from the anchor to wherever the finger is, and says how

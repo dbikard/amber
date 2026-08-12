@@ -210,7 +210,7 @@
    * way until the ground and the writ will take one. Returns the two ends. */
   function spanFor(v, bt) {
     const W = global.World, c = v.myCity;
-    const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    const face = v.enCity || v.frontier || { x: v.world.mapW / 2, y: v.world.mapH / 2 };
     const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
     const def = C.BUILDINGS[bt];
     /* as long a run as the idle crews will cover, and no longer — the mason budget is the
@@ -267,7 +267,7 @@
     }
     /* the front is wherever trouble is expected: the found Seat, else the nearest unknown
      * ground, else the middle of the world */
-    const face = v.enCity || v.frontier || { x: C.MAP.W / 2, y: C.MAP.H / 2 };
+    const face = v.enCity || v.frontier || { x: v.world.mapW / 2, y: v.world.mapH / 2 };
     const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
     /* a Gate stands on a spring or nowhere — there is no waystone to settle for any more */
     if (bt === 'gate') {
@@ -602,7 +602,7 @@
         } else if (r < 0.45) {
           issue({ c: 'banner', site: Math.floor(rng.next() * v.world.map.sites.length) });
         } else if (r < 0.55) {
-          issue({ c: 'power', k: rng.next() < 0.5 ? 'storm' : 'trump', x: rng.next() * C.MAP.W, y: rng.next() * C.MAP.H });
+          issue({ c: 'power', k: rng.next() < 0.5 ? 'storm' : 'trump', x: rng.next() * v.world.mapW, y: rng.next() * v.world.mapH });
         } else if (r < 0.6) issue({ c: 'walk', on: rng.next() < 0.5 });
       }
     },
