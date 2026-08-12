@@ -4512,11 +4512,13 @@ async function match(browser, base, renderer) {
     const ran = await pg.evaluate(async () => {
       const g = window.Game.game, W = window.World, w = g.world;
       const t0 = w.t;
-      /* BOUNDED, or a throttled tab hangs the whole suite: three sim-seconds or fifteen wall,
-       * whichever comes first — the assertion below reports which it was */
+      /* BOUNDED, or a throttled tab hangs the whole suite: a sim-second or fifteen wall,
+       * whichever comes first. One SIM second is the claim — the loop lives — because on
+       * this box's software GL a 4x country renders slowly enough that demanding three
+       * outran the wall cap and read as a dead loop. */
       await new Promise((res) => {
         const t1 = performance.now();
-        const spin = () => (w.t - t0 > 3 || performance.now() - t1 > 15000)
+        const spin = () => (w.t - t0 > 1.2 || performance.now() - t1 > 15000)
           ? res() : requestAnimationFrame(spin);
         spin();
       });
@@ -4528,7 +4530,7 @@ async function match(browser, base, renderer) {
       const out = ((amber.x - c0.x) ** 2 + (amber.y - c0.y) ** 2) >= c0.reach * c0.reach;
       return { far: far.err || 'ok', near: near.ok === true, out, t: w.t - t0 };
     });
-    ok('the world runs under the real loop', ran.t > 2.5, `${ran.t.toFixed(1)}s passed`);
+    ok('the world runs under the real loop', ran.t > 1.0, `${ran.t.toFixed(1)}s passed`);
     ok('an order inside the reach is taken', ran.near === true, JSON.stringify(ran));
     if (ran.out) ok('...and AMBER is beyond an opening company\'s', ran.far === 'reach', ran.far);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));

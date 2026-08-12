@@ -44,10 +44,15 @@
   /* ---------------- the land ----------------
    * elevation and moisture decide everything; ridges come from a folded noise so mountains
    * run in chains rather than sitting in blobs. */
-  G.T = { WATER: 1, MARSH: 2, PLAIN: 3, MEADOW: 4, FOREST: 5, HILL: 6, CLIFF: 7 };
+  G.T = { WATER: 1, MARSH: 2, PLAIN: 3, MEADOW: 4, FOREST: 5, HILL: 6, CLIFF: 7,
+          ROAD: 8, BRIDGE: 9 };
   const T = G.T;
-  /* movement cost by land; 0 is impassable. Slope is charged on top (see nav.js). */
-  G.COST = { 1: 0, 2: 5, 3: 1, 4: 2, 5: 3, 6: 2, 7: 0 };
+  /* movement cost by land; 0 is impassable. Slope is charged on top (see nav.js).
+   * A ROAD is the cheapest ground there is and a BRIDGE is a road over water — which is the
+   * whole reason to carve them: columns funnel onto them on their own, and a bridge is a
+   * chokepoint nobody had to declare. Neither will bear a work (absent from BUILDABLE), so
+   * the king's highway stays clear. */
+  G.COST = { 1: 0, 2: 5, 3: 1, 4: 2, 5: 3, 6: 2, 7: 0, 8: 1, 9: 1 };
   /* what will bear a building */
   G.BUILDABLE = { 3: true, 4: true, 6: true };
 
@@ -125,14 +130,17 @@
    * O(components × n) with an allocation per component, which is invisible on a board and the
    * first thing that bites on a country full of lakes. The labels ride out with the answer
    * because "which piece of ground is this" is exactly the question country generation asks
-   * when it nudges a city onto the mainland. */
-  function mainland(land) {
+   * when it nudges a city onto the mainland.
+   * `soft` marks cells IMPASSABLE ON THE GROUND but passable FOR PLANNING — a river, before
+   * anybody has bridged it. Placement plans across rivers so two cities may face each other
+   * over one, and the road carver then builds the bridge the plan was counting on. */
+  function mainland(land, soft) {
     const { W, H, terra } = land, n = W * H;
     const label = new Int32Array(n);
     const q = [];
     let next = 0, bestLabel = 0, bestCount = 0;
     for (let i = 0; i < n; i++) {
-      if (label[i] || G.COST[terra[i]] === 0) continue;
+      if (label[i] || (G.COST[terra[i]] === 0 && !(soft && soft[i]))) continue;
       const L = ++next;
       let count = 1;
       label[i] = L; q.length = 0; q.push(i);
@@ -142,7 +150,7 @@
           const nx = cx + dx, ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
           const ni = ny * W + nx;
-          if (label[ni] || G.COST[terra[ni]] === 0) continue;
+          if (label[ni] || (G.COST[terra[ni]] === 0 && !(soft && soft[ni]))) continue;
           label[ni] = L; count++; q.push(ni);
         }
       }
@@ -468,9 +476,9 @@
   /* the prototype's linkUp question, asked of the raw cost grid (no walls exist at genesis):
    * "can men ordered only inside this disc stand over there?" 8-connected, with buildField's
    * own corner-cut rule, so genesis and the march never disagree about a route */
-  function reachFlood(land, fromX, fromY, cx, cy, r2) {
+  function reachFlood(land, fromX, fromY, cx, cy, r2, soft) {
     const { W, H, cw, terra } = land;
-    const pass = (i) => G.COST[terra[i]] > 0;
+    const pass = (i) => G.COST[terra[i]] > 0 || !!(soft && soft[i]);
     const inDisc = (gx, gy) => {
       const wx = (gx + 0.5) * cw - cx, wy = (gy + 0.5) * cw - cy;
       return wx * wx + wy * wy <= r2;
@@ -496,6 +504,193 @@
     return seen;
   }
 
+  /* ---------------- the rivers ----------------
+   * A river RUNS: from a source on high ground, always downhill with a little momentum and
+   * a seeded meander, until it meets standing water or the world's rim. Stamped as real
+   * WATER one to two cells wide, so it bars a column exactly as a lake does — and unlike a
+   * lake it CROSSES the country, which is what makes a bridge worth its toll. The cells are
+   * remembered in a mask: placement plans across them (see `mainland`'s `soft`), and the
+   * road carver is what turns the plan into planks. Momentum is what carries a young river
+   * out of the little hollows the noise leaves everywhere — real rivers erode through;
+   * a walk that only ever descended would end in the first dimple it met. */
+  function carveRivers(land, rng, count) {
+    const { W, H, cw, terra, elev } = land, n = W * H;
+    const mask = new Uint8Array(n);
+    /* measured, not guessed: how many sources took, how far each actually ran, and how it
+     * ended — a river that stubs out in a hollow is invisible in the terra counts and the
+     * first explanation for a country without bridges */
+    const dbg = (G.debugRivers = { sources: 0, runs: [] });
+    /* sources: high ground, inland, apart from each other */
+    const springs = [];
+    /* sources lean toward the interior: a river down the rim separates nobody, and what a
+     * river is FOR here is standing between cities until a bridge is paid for */
+    for (let t = 0; t < 6000 && springs.length < count; t++) {
+      const inX = Math.floor(W / 6), inY = Math.floor(H / 6);
+      const gx = inX + Math.floor(rng.next() * (W - 2 * inX)), gy = inY + Math.floor(rng.next() * (H - 2 * inY));
+      const i = gy * W + gx;
+      if (elev[i] < (t < 3000 ? 0.62 : 0.55) || terra[i] === T.WATER) continue;
+      if (springs.some((s) => (s.gx - gx) ** 2 + (s.gy - gy) ** 2 < 40 * 40)) continue;
+      springs.push({ gx, gy });
+    }
+    dbg.sources = springs.length;
+    for (const s of springs) {
+      let gx = s.gx, gy = s.gy, mx = 0, my = 0;
+      let ran = 0, how = 'len';
+      const maxLen = W + H;
+      for (let step = 0; step < maxLen; step++) {
+        ran = step;
+        const i = gy * W + gx;
+        if (terra[i] === T.WATER && !mask[i]) { how = 'sea'; break; }   // found the sea, or a lake
+        if (terra[i] !== T.CLIFF) { terra[i] = T.WATER; mask[i] = 1; }
+        /* widen downstream: a mature river is two cells, which reads as a river and still
+         * bridges in one or two spans */
+        if (step > maxLen * 0.25) {
+          const wx = gx + (Math.abs(mx) > Math.abs(my) ? 0 : 1), wy = gy + (Math.abs(mx) > Math.abs(my) ? 1 : 0);
+          if (wx < W && wy < H) {
+            const wi = wy * W + wx;
+            if (terra[wi] !== T.CLIFF && terra[wi] !== T.WATER) { terra[wi] = T.WATER; mask[wi] = 1; }
+          }
+        }
+        /* the next cell: the lowest neighbour, leaned on by momentum and a small meander */
+        let bi = -1, bs = Infinity;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = gx + dx, ny = gy + dy;
+          if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1) { bi = -2; continue; }  // the rim: done
+          const ni = ny * W + nx;
+          if (mask[ni]) continue;                          // never back up its own bed
+          const lean = -(dx * mx + dy * my) * 0.006 + (rng.next() - 0.5) * 0.004;
+          const score = elev[ni] + lean + (terra[ni] === T.CLIFF ? 0.05 : 0);
+          if (score < bs) { bs = score; bi = ni; }
+        }
+        if (bi === -2 || bi < 0) { how = bi === -2 ? 'rim' : 'stuck'; break; }
+        const nx2 = bi % W, ny2 = (bi - nx2) / W;
+        mx = mx * 0.6 + (nx2 - gx) * 0.4; my = my * 0.6 + (ny2 - gy) * 0.4;
+        /* erosion: the bed never rises, so the walk cannot climb back out of its own valley */
+        elev[bi] = Math.min(elev[bi], elev[gy * W + gx]);
+        gx = nx2; gy = ny2;
+      }
+      dbg.runs.push(ran + how[0]);
+    }
+    return mask;
+  }
+
+  /* ---------------- the king's highway ----------------
+   * ROADS ARE FOUND, NOT DRAWN. A road between two cities is the least-cost path over the
+   * land's own ground with the climb charged dearly — the same kind of question an army's
+   * flow field answers, asked once at genesis — so a road goes around a wood because a wood
+   * is dear, hugs a contour because a slope is dearer, and crosses water only where a BRIDGE
+   * is worth its steep price: exactly where the water is narrow. An existing road is cheaper
+   * than any raw ground, so later pairs merge onto earlier ones and the country grows trunk
+   * roads nobody designed. Stamped as real terrain (ROAD/BRIDGE, cost 1), it is gameplay and
+   * not decoration: columns funnel onto the highway on their own, and every bridge is a
+   * chokepoint nobody had to declare. */
+  function carveRoads(land, ends, pairs, nodes) {
+    const { W, H, cw, terra, elev } = land, n = W * H;
+    const SLOPE = 40;                 // dearer than the march's own 26: a road hates a climb
+    /* a bridge's price per cell of water. Priced so a two-cell river span (~16) beats any
+     * detour past thirty-odd cells of open ground, while a lake ten cells wide (80+) never
+     * does — rivers get bridged, lakes get walked around, which is the difference the eye
+     * expects between the two */
+    const WATER_TOLL = 8;
+    let toll = WATER_TOLL;            // per-carve: a surveyed crossing pays less, see below
+    const stepCost = (i) => {
+      const t = terra[i];
+      if (t === T.CLIFF) return -1;   // a road does not tunnel
+      if (t === T.WATER) return toll;
+      if (t === T.ROAD || t === T.BRIDGE) return 0.51;   // reuse beats even open plain
+      return G.COST[t];
+    };
+    const cellOf = (p) => Math.floor(p.y / cw) * W + Math.floor(p.x / cw);
+    /* A*, octile heuristic against the cheapest possible step, binary heap in flat arrays */
+    const dist = new Float32Array(n), from = new Int32Array(n), seen = new Uint8Array(n);
+    const hi = new Int32Array(n + 1), hd = new Float32Array(n + 1);
+    const carveOne = (A, B) => {
+      dist.fill(Infinity); from.fill(-1); seen.fill(0);
+      let hn = 0;
+      const push = (i, d) => { let k = ++hn; hi[k] = i; hd[k] = d;
+        while (k > 1) { const p = k >> 1; if (hd[p] <= hd[k]) break;
+          const ti = hi[p], td = hd[p]; hi[p] = hi[k]; hd[p] = hd[k]; hi[k] = ti; hd[k] = td; k = p; } };
+      const pop = () => { const top = hi[1]; hi[1] = hi[hn]; hd[1] = hd[hn]; hn--;
+        let k = 1; for (;;) { const l = k << 1, r = l + 1; let s = k;
+          if (l <= hn && hd[l] < hd[s]) s = l; if (r <= hn && hd[r] < hd[s]) s = r;
+          if (s === k) break; const ti = hi[s], td = hd[s]; hi[s] = hi[k]; hd[s] = hd[k]; hi[k] = ti; hd[k] = td; k = s; } return top; };
+      const a = cellOf(A), b = cellOf(B);
+      const bx = b % W, by = (b - bx) / W;
+      const hFn = (i) => { const x = i % W, y = (i - x) / W;
+        const dx = Math.abs(x - bx), dy = Math.abs(y - by);
+        return (Math.max(dx, dy) + 0.41 * Math.min(dx, dy)) * 0.5; };   // admissible vs road 0.51
+      dist[a] = 0; push(a, hFn(a));
+      while (hn > 0) {
+        const cur = pop();
+        if (cur === b) break;
+        if (seen[cur]) continue;
+        seen[cur] = 1;
+        const cx = cur % W, cy = (cur - cx) / W;
+        for (let dy = -1; dy <= 1; dy++) { const ny = cy + dy; if (ny < 0 || ny >= H) continue;
+          for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue;
+            const nx = cx + dx; if (nx < 0 || nx >= W) continue;
+            const ni = ny * W + nx, cc = stepCost(ni);
+            if (cc < 0) continue;
+            /* the march's own corner rule (buildField): no diagonal past impassable ground.
+             * Without it a road slipped BETWEEN two diagonal river cells and paid no toll —
+             * measured as countries of long rivers and no bridges at all. It also means a
+             * road enters water squarely, which is what a bridge is. */
+            if (dx && dy) {
+              const t1 = terra[cy * W + nx], t2 = terra[ny * W + cx];
+              if (t1 === T.CLIFF || t2 === T.CLIFF || t1 === T.WATER || t2 === T.WATER) continue;
+            }
+            const climb = Math.abs(elev[ni] - elev[cur]) * SLOPE;
+            const nd = dist[cur] + (cc + climb) * (dx && dy ? Math.SQRT2 : 1);
+            if (nd < dist[ni]) { dist[ni] = nd; from[ni] = cur; push(ni, nd + hFn(ni)); }
+          } }
+      }
+      if (!isFinite(dist[b])) return 0;
+      /* walk it back and stamp it — but never inside a court, whose ground is the court's,
+       * and never through a spring's hollow, where a Gate has to be able to stand */
+      const clear = (i) => {
+        const x = (i % W) * cw + cw / 2, y = ((i - i % W) / W) * cw + cw / 2;
+        if ((x - A.x) ** 2 + (y - A.y) ** 2 < (C.CITY.r * 0.8) ** 2) return false;
+        if ((x - B.x) ** 2 + (y - B.y) ** 2 < (C.CITY.r * 0.8) ** 2) return false;
+        for (const q of nodes || [])
+          if ((x - q.x) ** 2 + (y - q.y) ** 2 < 70 * 70) return false;
+        return true;
+      };
+      let laid = 0;
+      for (let i = b; i >= 0; i = from[i]) {
+        if (clear(i)) {
+          terra[i] = terra[i] === T.WATER ? T.BRIDGE : (terra[i] === T.BRIDGE ? T.BRIDGE : T.ROAD);
+          laid++;
+        }
+        if (i === a) break;
+      }
+      return laid;
+    };
+    let total = 0;
+    /* a pair marked as a CROSSING was chosen because a river runs between the two — its
+     * surveyors mean to cross, so its water is half-toll and the A* fords at the river's
+     * narrowest instead of fleeing around the head. Ordinary roads keep the full price. */
+    for (const [ai, bi, cross2] of pairs) {
+      toll = cross2 ? WATER_TOLL / 2 : WATER_TOLL;
+      total += carveOne(ends[ai], ends[bi]);
+    }
+    /* a bridge stands at BANK height, not on the seabed: without this the relief mesh dips
+     * the road into the water and every column marching it visibly wades */
+    for (let i = 0; i < n; i++) {
+      if (terra[i] !== T.BRIDGE) continue;
+      const x = i % W, y = (i - x) / W;
+      let sum = 0, k = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const t = terra[ny * W + nx];
+        if (t !== T.WATER && t !== T.BRIDGE) { sum += elev[ny * W + nx]; k++; }
+      }
+      if (k) elev[i] = sum / k;
+    }
+    return total;
+  }
+
   /* G.buildCountry(seed, RNG, opts) -> a gen in exactly G.build's shape, plus `reaches[]`,
    * `nbrs[][]` and `pattern` (a seat index). Seat order: the PLAYER first — his is the one
    * start held to the board's own fairness bar (one usable writ spring, room, two roads out),
@@ -511,7 +706,10 @@
       const s = (seed + attempt * 7919) >>> 0;
       const rng = RNG.make(s);
       const land = G.generate(s, RW.biome || null, RW.dims);
-      const main = mainland(land);
+      /* the rivers run before anything is placed: placement PLANS across them (`soft`), and
+       * the road carver builds the bridges the plan was counting on */
+      const rivers = carveRivers(land, rng, RW.rivers != null ? RW.rivers : 4);
+      const main = mainland(land, rivers);
       if (main.count < land.W * land.H * C.WORLD.minLand) { why.land++; continue; }
       const { W, H, cw } = land;
 
@@ -563,7 +761,7 @@
       const baseReach = RW.spacing * RW.reachMul;
       const zone = new Uint8Array(W * H);
       const admit = (p) => {
-        const seen = reachFlood(land, p.x, p.y, p.x, p.y, baseReach * baseReach);
+        const seen = reachFlood(land, p.x, p.y, p.x, p.y, baseReach * baseReach, rivers);
         if (seen) for (let i = 0; i < zone.length; i++) if (seen[i]) zone[i] = 1;
       };
       const picked = [];
@@ -631,10 +829,73 @@
         if (!G.BUILDABLE[land.terra[i]]) land.terra[i] = T.PLAIN;
       }
 
+      /* ---- the roads, found over the finished ground ----
+       * Every city to its two nearest fellows, deduplicated — later pairs merge onto earlier
+       * roads (reuse is cheaper than any raw ground), which is how trunks happen. Carved
+       * BEFORE linkUp, because a bridge is a route and the neighbour graph should know it. */
+      {
+        const pairSet = new Set(), pairs = [];
+        const put = (a2, b2) => {
+          const key = Math.min(a2, b2) + ':' + Math.max(a2, b2);
+          if (!pairSet.has(key)) { pairSet.add(key); pairs.push([a2, b2]); }
+        };
+        /* RIVERS ATTRACT CROSSINGS — that is what river towns are. Any two cities facing
+         * each other over a NARROW water (a river's width of cells on the line between
+         * them, at least one of them a riverbed — a wide count is a lake, and lakes are
+         * walked around) get a road of their own, one per city, nearest first. Without
+         * this the nearest-two pairing follows the banks, because cities cluster where
+         * the ground is, and a country of long rivers grows no bridges at all — measured:
+         * three bridges in twelve seeds, and the facing pairs sat at 2200-3900 apart,
+         * past any single march. A crossing road is longer than a reach; that is fine —
+         * a road is TERRAIN, and the city in the middle of tomorrow's war will use it. */
+        const crossing = (A, B2) => {
+          const d = Math.hypot(B2.x - A.x, B2.y - A.y);
+          const steps = Math.ceil(d / (cw / 2));
+          let water = 0, river = false;
+          for (let st = 0; st <= steps; st++) {
+            const x = A.x + (B2.x - A.x) * st / steps, y = A.y + (B2.y - A.y) * st / steps;
+            const i2 = Math.floor(y / cw) * W + Math.floor(x / cw);
+            if (i2 < 0 || i2 >= rivers.length) continue;
+            if (land.terra[i2] === T.WATER) { water++; if (rivers[i2]) river = true; }
+          }
+          return river && water >= 1 && water <= 20;
+        };
+        /* CROSSINGS ARE CARVED FIRST, while there is no network to lean on: an existing
+         * road is half-price to reuse, so a crossing carved last rides the trunks the long
+         * way round the river's head and never pays for a single plank — measured, again,
+         * as a country of rivers and no bridges. First, its straight economics hold and
+         * the bridge wins; the nearest-two network then merges INTO the crossing roads. */
+        for (let a2 = 0; a2 < picked.length; a2++) {
+          const facing = picked.map((q, b2) => ({ b2, d: Math.hypot(q.x - picked[a2].x, q.y - picked[a2].y) }))
+            .filter((e) => e.b2 !== a2 && e.d < 3200 && crossing(picked[a2], picked[e.b2]))
+            .sort((u, v2) => u.d - v2.d);
+          if (facing.length) { const key = Math.min(a2, facing[0].b2) + ':' + Math.max(a2, facing[0].b2);
+            if (!pairSet.has(key)) { pairSet.add(key); pairs.push([a2, facing[0].b2, 1]); } }
+        }
+        for (let a2 = 0; a2 < picked.length; a2++) {
+          const near2 = picked.map((q, b2) => ({ b2, d: (q.x - picked[a2].x) ** 2 + (q.y - picked[a2].y) ** 2 }))
+            .filter((e) => e.b2 !== a2).sort((u, v2) => u.d - v2.d).slice(0, 2);
+          for (const e of near2) put(a2, e.b2);
+        }
+        carveRoads(land, picked, pairs, nodes);
+      }
+
       /* ---- reaches and the neighbour graph: a REAL search, after the flattening ----
-       * Base reach a shade past the spacing; a city whose reach can path to nobody grows it
-       * until it can. Run after flatten because levelling ground joins and cuts routes. */
-      const reaches = picked.map(() => RW.spacing * RW.reachMul);
+       * A reach is sized from the city's OWN nearest neighbour, capped, and floored at the
+       * nominal spacing — so every city reaches well past its nearest rival's court and into
+       * its writ springs (raiding an economy is the anti-turtle engine), whatever distance
+       * the max-min placement actually dealt it. A city whose reach can path to nobody still
+       * grows it until it can. Run after flatten because levelling joins and cuts routes. */
+      const reaches = picked.map((p, i2) => {
+        let nd = Infinity;
+        for (let j2 = 0; j2 < picked.length; j2++) {
+          if (j2 === i2) continue;
+          const d = Math.hypot(picked[j2].x - p.x, picked[j2].y - p.y);
+          if (d < nd) nd = d;
+        }
+        return Math.min(RW.reachCap || 3000,
+                        Math.max(RW.spacing * RW.reachMul, nd * RW.reachMul));
+      });
       const nbrs = picked.map(() => []);
       const linkUp = () => {
         for (let a = 0; a < picked.length; a++) {

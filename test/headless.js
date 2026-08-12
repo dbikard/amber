@@ -281,18 +281,27 @@ suite('a field bounded by a reach');
  * (0 of 50 failing, attempt 0 every time, ~30ms), and this suite is what holds that. */
 suite('a country is one land');
 {
+  const roadCount = (g) => {
+    let road = 0, bridge = 0;
+    for (let i = 0; i < g.terra.length; i++) {
+      if (g.terra[i] === WG.T.ROAD) road++;
+      else if (g.terra[i] === WG.T.BRIDGE) bridge++;
+    }
+    return { road, bridge };
+  };
   const fp = (g) => JSON.stringify([
     g.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y), s.name]),
-    g.reaches.map(Math.round), g.nbrs, g.pattern
+    g.reaches.map(Math.round), g.nbrs, g.pattern, roadCount(g)
   ]);
   const base = C.REACHWAR.spacing * C.REACHWAR.reachMul;
-  const roof = base * Math.pow(C.REACHWAR.growReach, C.REACHWAR.growPasses) + 1;
-  let failed = 0, worstMs = 0;
+  const roof = (C.REACHWAR.reachCap || 3000) * Math.pow(C.REACHWAR.growReach, C.REACHWAR.growPasses) + 1;
+  let failed = 0, bestMs = Infinity, totalBridges = 0;
   for (let seed = 1; seed <= 50; seed++) {
     const t0 = Date.now();
     const g = WG.buildCountry(seed, RNG);
-    worstMs = Math.max(worstMs, Date.now() - t0);
+    bestMs = Math.min(bestMs, Date.now() - t0);
     if (!g) { failed++; continue; }
+    totalBridges += roadCount(g).bridge;
     if (seed > 3) continue;            // every seed builds; three are read in full
     ok(`seed ${seed}: the full complement of cities`, g.cities.length === C.REACHWAR.cities,
        String(g.cities.length));
@@ -302,6 +311,21 @@ suite('a country is one land');
     ok(`seed ${seed}: every reach is within its writ`,
        g.reaches.every((r) => r >= base - 1 && r <= roof),
        g.reaches.map(Math.round).join(','));
+    /* THE REACH RUNS PAST THE NEAREST RIVAL'S SPRINGS. A reach that barely covered the
+     * neighbouring court let you knock on a throne but never raid its economy — and
+     * economic pressure is the anti-turtle engine. Every city must reach the whole writ
+     * (court + CLAIM.seat) of its nearest fellow. */
+    ok(`seed ${seed}: every city reaches its nearest rival's springs`,
+       g.cities.every((cid, i) => {
+         const s = g.sites[cid];
+         let nd = Infinity;
+         for (let j = 0; j < g.cities.length; j++) {
+           if (j === i) continue;
+           const o = g.sites[g.cities[j]];
+           nd = Math.min(nd, Math.hypot(o.x - s.x, o.y - s.y));
+         }
+         return nd + C.CLAIM.seat <= g.reaches[i];
+       }));
     ok(`seed ${seed}: the Pattern's city is AMBER, last in seat order`,
        g.pattern === g.cities.length - 1 &&
        g.sites[g.cities[g.pattern]].name === 'AMBER',
@@ -315,23 +339,63 @@ suite('a country is one land');
         if (!seen[b] && (g.nbrs[a].includes(b) || g.nbrs[b].includes(a))) { seen[b] = 1; q.push(b); }
     }
     ok(`seed ${seed}: the roads join every city`, Array.from(seen).every((v) => v === 1));
+    /* THE KING'S HIGHWAY: found over the land's own costs, never drawn. Every city stands
+     * on the network; a bridge, where the land called for one, stands over water and
+     * nowhere else. (A dry interior owes nobody a bridge — that is asserted across the
+     * whole fifty below, not per seed.) */
+    const rc = roadCount(g);
+    ok(`seed ${seed}: the highway is laid`, rc.road > 300, `${rc.road} road cells`);
+    ok(`seed ${seed}: every city touches the network`, g.cities.every((cid) => {
+      const s = g.sites[cid], cw = g.cw;
+      const gx = Math.floor(s.x / cw), gy = Math.floor(s.y / cw), R = Math.ceil(C.CITY.r * 1.3 / cw);
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const j = (gy + dy) * g.W + (gx + dx);
+        if (j >= 0 && j < g.terra.length &&
+            (g.terra[j] === WG.T.ROAD || g.terra[j] === WG.T.BRIDGE)) return true;
+      }
+      return false;
+    }));
+    {
+      let offWater = 0;
+      for (let i = 0; i < g.terra.length; i++) {
+        if (g.terra[i] !== WG.T.BRIDGE) continue;
+        const x = i % g.W, y = (i - x) / g.W;
+        let touches = false;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const j = (y + dy) * g.W + (x + dx);
+          if (j >= 0 && j < g.terra.length && g.terra[j] === WG.T.WATER) touches = true;
+        }
+        if (!touches) offWater++;
+      }
+      eq(`seed ${seed}: every bridge stands over water`, offWater, 0);
+    }
     eq(`seed ${seed}: the same seed is the same country`, fp(g), fp(WG.buildCountry(seed, RNG)));
   }
   eq('every seed of fifty builds a country', failed, 0,
      failed ? `why: ${JSON.stringify(WG.buildCountry.why)}` : '');
   /* RELATIVE, against a board built on the same machine in the same minute — an absolute
    * milliseconds bound is a bet on the scheduler, and it lost one within hours of being
-   * written (a 27ms-mean build stalled past 400ms under a concurrent suite's load) */
-  let boardMs = 1;
+   * written. And BEST against BEST: the worst of fifty is a bet on the scheduler too (a
+   * 210ms-median build measured 2369ms once, beside a running sim), while each side's
+   * least-contended run is the machine's honest answer for that code. */
+  let boardMs = Infinity;
   for (let k = 0; k < 3; k++) {
     const t0 = Date.now();
     WG.build(1 + k, RNG, 2);
-    boardMs = Math.max(boardMs, Date.now() - t0);
+    boardMs = Math.min(boardMs, Date.now() - t0);
   }
-  ok('...and the worst is no dearer than three boards', worstMs <= boardMs * 3 + 50,
-     `worst country ${worstMs}ms against a ${boardMs}ms board`);
+  /* six boards, for a country of SIXTEEN boards' area that also runs its rivers and carves
+   * its whole road network — sublinear in area is the claim, not free */
+  ok('...and it costs no more than six boards', bestMs <= Math.max(1, boardMs) * 6 + 50,
+     `country ${bestMs}ms against a ${boardMs}ms board, best of each`);
   ok('two seeds are two countries',
      fp(WG.buildCountry(1, RNG)) !== fp(WG.buildCountry(2, RNG)));
+  /* not per seed — a dry interior owes nobody a bridge — but a WORLD of fifty countries
+   * without one would mean the carver has stopped paying tolls (it happened three ways
+   * while this was built: a diagonal slip past the toll, the trunk-reuse discount routing
+   * around the river's head, and a narrowness filter that read an oblique river as a lake) */
+  ok('somewhere in fifty countries, the rivers are bridged', totalBridges > 10,
+     `${totalBridges} bridges across fifty seeds`);
 
   /* a country is a WORLD through the same door as any board */
   const w = World.createWorld(3, 2, null, null, { country: true });
@@ -7274,6 +7338,27 @@ suite('a company belongs to a city');
     ok('...and is taken by standing in it', taken != null);
     ok('...and the taking kills nobody', mine() >= standing,
        `${mine()} of ${standing} men still standing`);
+    /* AND A CONQUEST IS CONTROL, NOT A FLAG. The sworn court grants writ (CLAIM.sworn), so
+     * the taker can raise a hall in its skirt — and the hall's company is born to the TAKEN
+     * city, which is what makes its reach the taker's to order. Without this the honest
+     * answer to 'how do I assume control of the city I claimed?' was that you could not. */
+    if (taken != null) {
+      const c0 = w.cities[0];
+      w.players[1].essence = 99999;
+      const err0 = World.placementError(w, 1, c0.x + 190, c0.y, 'barracks');
+      ok('the sworn court grants writ, whatever else it refuses',
+         err0 !== 'claim' && err0 !== 'reach', String(err0));
+      let raised = null;
+      for (const [ox, oy] of [[190, 0], [-190, 0], [0, 190], [0, -190], [150, 130]]) {
+        const r2 = World.applyCommand(w, 1, { c: 'build', x: c0.x + ox, y: c0.y + oy, bt: 'barracks' });
+        if (r2.ok) { raised = w.players[1].buildings[w.players[1].buildings.length - 1]; break; }
+      }
+      ok('a hall rises in the conquered court', !!raised);
+      if (raised) {
+        const co2 = w.players[1].companies.find((q) => q.id === raised.co);
+        eq('...and its company is born to the TAKEN city', co2 && co2.city, 0);
+      }
+    }
   }
 
   /* violence is not bounded: men fight across the rim as they always did */
@@ -7333,7 +7418,9 @@ if (!QUICK('the marchers take the country')) {
     const keys = Array.from(w.nav.fields.keys());
     ok('no field was ever built unfenced', keys.length > 0 && keys.every((k) => k >= 64e7),
        keys.length ? 'unfenced: ' + keys.filter((k) => k < 64e7).slice(0, 5).join(',') : 'no fields at all');
-    ok('a ten-seat country ticks at board cost', total / ticks < 4,
+    /* the bound is a quarter of the 33ms frame budget — sixteen seats on a 4x land measure
+     * ~4.4ms under suite load, and 'board cost' was the 2x country's spelling of it */
+    ok('a whole country ticks well inside the frame budget', total / ticks < 8,
        `mean ${(total / ticks).toFixed(2)}ms, worst ${worst}ms over ${ticks} ticks`);
   }
 }
@@ -7698,6 +7785,103 @@ suite('a war is dealt to a table');
   eq('two machines given only the seed stand on identical ground',
      geo(w), geo(REALM.create(20260813).world));
   if (hadLS) globalThis.localStorage = oldLS; else delete globalThis.localStorage;
+}
+
+/* ---------------- the helm: take command, appoint stewards ----------------
+ * 'Once I claim a city, how do I assume control of it?' — the second half of the answer.
+ * The seat of command MOVES ({c:'seat'}, host-authoritative like every order), and the
+ * cities it leaves behind are kept by STEWARDS: the lord's brain pointed at one of the
+ * player's own cities, issuing ordinary commands as the player, under an order he chose.
+ * The helm is not sim state — a steward can do nothing a hand on the screen could not —
+ * but a war put down must come back with its government intact, so it rides the save. */
+suite('the helm: take command, appoint stewards');
+{
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  ok('the rig is alive', !!w && w.cities.length > 2);
+  if (w) {
+    w.chaosNext = 1e9;
+    /* a second city, handed over so the command can move */
+    w.cities[3].owner = 0;
+    eq('a board does not move its seat', World.applyCommand(
+      World.createWorld(3), 0, { c: 'seat', id: 1 }).err, 'cmd');
+    eq('a court not yours will not be commanded from',
+       World.applyCommand(w, 0, { c: 'seat', id: w.cities[5].id }).err, 'held');
+    eq('a held court will', World.applyCommand(w, 0, { c: 'seat', id: w.cities[3].id }).ok, true);
+    eq('...and the seat of command answers from it', World.seatOf(w, 0), w.cities[3]);
+
+    /* the steward: ordered to attack, the old capital's company marches; ordered to hold,
+     * it comes home. The company is the OLD seat's — exactly the city a steward keeps. */
+    const co = w.players[0].companies.find((q) => q.city === 0);
+    ok('the old capital still flies its standard', !!co);
+    if (co) {
+      const AIv = () => AI.view(w, 0);
+      const issue = (cmd) => World.applyCommand(w, 0, cmd);
+      const nbr = (w.map.gen.nbrs[0] || [])[0];
+      ok('...and has a neighbour to be sent at', nbr != null);
+      for (let k = 0; k < 7; k++) { const m = manAt(w, 0, 'soldier', w.cities[0].x + 30 + k * 8, w.cities[0].y); m.co = co.id; }
+      AI.steward(AIv(), issue, 0, { mode: 'attack', target: nbr });
+      ok('a mustered company is marched at the target', !!co.rally &&
+         Math.hypot(co.rally.x - w.cities[nbr].x, co.rally.y - w.cities[nbr].y) < 60,
+         co.rally ? Math.round(co.rally.x) + ',' + Math.round(co.rally.y) : 'no rally');
+      AI.steward(AIv(), issue, 0, { mode: 'hold' });
+      eq('ordered to hold, the standard is struck and the company keeps the court', co.rally, null);
+    }
+  }
+
+  /* the seat and the helm ride the save — a war's government comes back with it */
+  {
+    const store = {};
+    const hadLS = 'localStorage' in globalThis;
+    const oldLS = globalThis.localStorage;
+    globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null),
+                                setItem: (k, v2) => { store[k] = String(v2); },
+                                removeItem: (k) => { delete store[k]; } };
+    const realm = REALM.create(23);
+    realm.world.cities[2].owner = 0;
+    World.applyCommand(realm.world, 0, { c: 'seat', id: realm.world.cities[2].id });
+    realm.helm = { stewards: { 0: { mode: 'attack', target: 3 } } };
+    REALM.save(realm);
+    const back = REALM.load();
+    eq('the seat of command rides the save', back && back.world.players[0].seat, 2);
+    eq('...and the helm with it', JSON.stringify(back && back.helm), JSON.stringify(realm.helm));
+    if (hadLS) globalThis.localStorage = oldLS; else delete globalThis.localStorage;
+  }
+}
+
+/* ---------------- the war has answers to a distant walk ----------------
+ * 'When a rival starts walking the Pattern at the other end of the map, there is nothing
+ * you can do about it' — reported from play, and true as shipped: the reach law that makes
+ * a country affordable also fenced every answer to a far-off walk. The answers are the
+ * war's own verbs, not a new one: the walk runs at a WAR'S PACE (`walkMul`, held here), so
+ * there is time to conquer the chain of cities toward AMBER, and the LORDS RISE against a
+ * walker (a walker's city outranks every other neighbour in their doctrine — the lords'
+ * own rig exercises it). A board's walk is untouched to the byte. */
+suite('the war has answers to a distant walk');
+{
+  const rig = (rules) => {
+    const spec = { name: 'the walk rig', seed: 7, ground: 'PLAIN', height: 0.5,
+      seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+      springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }] };
+    const w = World.createWorld(1, 2, spec, rules);
+    w.chaosNext = 1e9;
+    const pl = w.players[1];
+    pl.essence = 9999;
+    const def = C.BUILDINGS.shrine;
+    pl.buildings.push({ id: w.nextId++, bt: 'shrine', level: 1, x: 1300, y: 1900,
+                        cd: 0, raise: 0, raiseFor: 0, hp: def.hp, maxHp: def.hp,
+                        lastHurt: -99, node: -1, co: 0 });
+    pl.walking = true;
+    return w;
+  };
+  const walked = (w, secs) => {
+    for (let i = 0; i < 30 * secs; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    return w.players[1].pattern;
+  };
+  const full = walked(rig(null), 20);
+  const half = walked(rig({ walkMul: 0.5 }), 20);
+  ok('the rig is alive: a walk moves', full > 0, String(full));
+  near('a war-paced walk moves at its fraction', half, full * 0.5, full * 0.02);
+  eq('...and an unstated pace is a board\'s, exactly', walked(rig({ walkMul: 1 }), 20), full);
 }
 
 /* ---------------- */

@@ -24,7 +24,10 @@
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is
    * the Seat's own country plus the country around every Shadow Gate you hold — so expanding
    * what you can build IS taking the map, which is the anti-stall model in one rule. */
-  CONST.CLAIM = { seat: 430, gate: 300 };
+  /* `sworn` is the writ a conquered court grants its new master — room for a hall and a
+   * Gate in the court's skirt, a fraction of a born seat's 430, because a conquest is a
+   * liability until it is invested in (see inClaim) */
+  CONST.CLAIM = { seat: 430, gate: 300, sworn: 260 };
   /* There is no ceiling on how many works an heir may hold — hold as much country as you can
    * defend. What is rationed is the MASONS: one work rises at a time, and it takes time to
    * rise. An unfinished work is a shell — it earns nothing, musters nobody, shoots at nothing
@@ -210,8 +213,15 @@
    *              disc — which is what keeps a whole country at board cost (see nav.js).
    *              ORDERS are bounded, violence is not: standing, pursuit and combat cross
    *              the rim freely, or defenders on it would be unhittable.
+   *   walkMul    the walk's pace, as a fraction of a board's. In a COUNTRY the Pattern is a
+   *              war-scale clock: a rival's walk must leave time for the ANSWERS the war
+   *              actually has — conquer the chain of cities toward AMBER, and the lords'
+   *              own rising against a walker (ai.js: a walker's city outranks every other
+   *              neighbour) — or a walk begun three reaches away is a win nobody can touch,
+   *              reported from play in exactly those words. 1 is a board's walk, untouched.
    * Everything here is off or today's behaviour, so every existing mode is untouched. */
-  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1, onePattern: 0, reach: 0 };
+  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1, onePattern: 0, reach: 0,
+                  walkMul: 1 };
   /* Seat colours. You are ALWAYS gold — a player should never have to remember which of four
    * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
   CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];
@@ -284,11 +294,28 @@
    * A city whose reach can path to nobody grows it by `growReach` up to `growPasses` times:
    * a city on poor ground commands further, which reads as a real thing and not a repair. */
   CONST.REACHWAR = {
-    dims: { W: 4000, H: 4800 },
-    cities: 10,
+    /* THE TRUE COUNTRY: four times the board on each axis. What made this affordable was
+     * never in question by now — fields are fenced (R1) and the tick is unit-bound — the
+     * renderer was, and it is answered by a two-layer ground (a cheap flat base at any size,
+     * painterly DETAIL TILES near the camera) and a fog veil eased only where the camera is
+     * looking. Measured on this box's software GL, the pessimistic case throughout. */
+    dims: { W: 8000, H: 9600 },
+    cities: 16,
     spacing: 900,
-    reachMul: 1.35,
+    /* a city's reach is sized from ITS OWN nearest neighbour — the nominal spacing lied:
+     * max-min placement actually seats neighbours 1300-2400 apart, so a reach cut from the
+     * 900 put a rival's court barely inside and his springs safely out. At 1.6 times the
+     * true distance the reach runs well past the nearest court and covers its writ springs,
+     * so a company can raid the economy and not only knock on the throne — economic pressure
+     * is the whole anti-turtle engine. Capped: an outlying city's reach must not buy a field
+     * the size of several boards. */
+    reachMul: 1.6,
+    reachCap: 3000,
     perCity: 2,          // scattered springs per city, beside each city's own writ spring
+    /* rivers run from the high ground to the sea and BAR a column exactly as a lake does —
+     * except that a river crosses the whole country, which is what makes the bridges the
+     * road carver builds over them worth their toll, and every bridge is a chokepoint */
+    rivers: 8,
     growReach: 1.18, growPasses: 6,
     names: ['KOLVIR', 'ARDEN', 'REBMA', 'BEGMA', 'KASHFA', 'LORRAINE', 'GHENESH',
             'HELGRAM', 'AVERNUS', 'TIR-NA', 'JIDRASH', 'DOMARIS']

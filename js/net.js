@@ -457,6 +457,7 @@
         revealed: pl.revealed,
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
         banner: mine ? pl.banner : null,   // the banner is a strategic secret
+        seat: mine && pl.seat != null ? pl.seat : null,   // where he commands from: his own business
         musterPaused: mine ? pl.musterPaused : false,
         /* TERMS: A SEALED PACT IS PUBLIC, AN OFFER IS NOT. You cannot play against a diplomacy
          * you cannot see — who is at peace with whom decides where every army on the board is

@@ -24,8 +24,14 @@
   const REALM = {};
   const World = () => global.World;
 
-  /* the rules of a war, all of them off in every other mode */
-  const WAR = { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1, reach: 1 };
+  /* the rules of a war, all of them off in every other mode. The walk runs at two-fifths a
+   * board's pace — a war-scale clock a rival can ANSWER with the war's own verbs: conquer
+   * the chain of cities toward AMBER while the lords rise against the walker (a walker's
+   * city outranks every other neighbour in their doctrine), and a Shrine besieged is a walk
+   * stopped. Without the slower clock a walk begun three reaches away was a win nobody
+   * could touch — reported from play in exactly those words. */
+  const WAR = { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1, reach: 1,
+                walkMul: 0.4 };
   /* WHO CONTENDS. Seat 0 is the player; worldgen dealt seats 1 and 2 the thrones furthest
    * from AMBER, so they are the rivals with room to grow into. Everyone else is a minor
    * lord — he holds ground and does not contend, which is where the early game lives.
@@ -116,6 +122,7 @@
                                    c.fell != null ? c.fell : -1]),
       players: w.players.map((p) => ({
         e: Math.round(p.essence), out: p.out ? 1 : 0, lords: p.lords, pattern: p.pattern,
+        seat: p.seat != null ? p.seat : -1,
         walking: p.walking ? 1 : 0, revealed: p.revealed ? 1 : 0, nextCo: p.nextCo,
         musterPaused: p.musterPaused ? 1 : 0,
         offers: Array.from(p.offers || [], (o) => (o ? 1 : 0)),
@@ -133,7 +140,11 @@
         .map((u) => [u.owner, u.kind, u.tier || 1, Math.round(u.x), Math.round(u.y),
                      Math.round(u.hp), u.co || 0, u.from != null ? u.from : -1]),
       ghosts: w.players[0].ghosts,
-      seen: w.players.map((p) => rle(p.seen.g))
+      seen: w.players.map((p) => rle(p.seen.g)),
+      /* the HELM is the player's own arrangement of the war — which city commands, which
+       * stewards keep the rest and under what orders. Not sim state (a steward only ISSUES
+       * ordinary commands), but a war put down must come back with its government intact. */
+      helm: realm.helm || null
     };
   }
 
@@ -156,6 +167,7 @@
       const p = world.players[pi], r = rec.players[pi];
       p.essence = r.e; p.out = !!r.out; p.pattern = r.pattern || 0;
       if (r.lords != null) p.lords = r.lords;
+      if (r.seat != null && r.seat >= 0) p.seat = r.seat;
       p.walking = !!r.walking; p.revealed = !!r.revealed;
       p.nextCo = r.nextCo || 1; p.musterPaused = !!r.musterPaused;
       p.offers = (r.offers || []).map((o) => (o ? 1 : 0));
@@ -251,7 +263,7 @@
     /* the old region war cannot be poured into a continuous country: lost, and said once */
     if (p && p.v === 1) { REALM.lost = true; return null; }
     if (!p || p.v !== 2 || p.seed == null) return null;
-    try { return { v: 2, seed: p.seed >>> 0, world: unpack(p) }; }
+    try { return { v: 2, seed: p.seed >>> 0, world: unpack(p), helm: p.helm || null }; }
     catch (e) { return null; }
   };
   REALM.forget = function () { try { global.localStorage.removeItem(KEY); } catch (e) {} };

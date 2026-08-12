@@ -31,6 +31,10 @@
    * only the value before the first world arrives. */
   let mapW = C.MAP.W, mapH = C.MAP.H;
   let underM = null;
+  /* the detail tiles over a country's cheap base — see buildWorld's two-grounds note */
+  let tiled = false, tileMap = null;
+  const tileQueue = [];
+  const TILE = 1200;
   const GRES = 10;
   function groundH(x, z) {
     if (!groundGrid) return 0;
@@ -1321,7 +1325,7 @@
      * — a pool that animates by rebuilding geometry would cost a draw call per ring. */
     uTime: { value: 0 } };
   let fogTex = null, fogPix = null, fogL = null, fogM = null, fogT = null;
-  function fogUpload(gw, gh, cell, liveA, memA) {
+  function fogUpload(gw, gh, cell, liveA, memA, win) {
     const n = gw * gh;
     if (!fogTex || fogPix.length !== n * 4) {
       fogPix = new Uint8Array(n * 4);
@@ -1344,18 +1348,23 @@
      * because it happens in WORLD space it softens equally at every zoom — the screen-space
      * blur had to be re-tuned against `cellPx` every frame to manage that. */
     if (!fogL || fogL.length !== n) { fogL = new Float32Array(n); fogM = new Float32Array(n); fogT = new Float32Array(n); }
+    /* the window, padded so the blur's own reach never samples an unblurred edge in view */
+    const wx0 = win ? Math.max(0, win.x0 - C.FOG.soften * 2) : 0;
+    const wx1 = win ? Math.min(gw - 1, win.x1 + C.FOG.soften * 2) : gw - 1;
+    const wy0 = win ? Math.max(0, win.y0 - C.FOG.soften * 2) : 0;
+    const wy1 = win ? Math.min(gh - 1, win.y1 + C.FOG.soften * 2) : gh - 1;
     /* separable [1,2,1] in each axis. Safe to call with src === dst: the across pass lands in
      * the scratch first, so nothing is read after it has been overwritten. */
     const blur1 = (src, dst) => {
-      for (let y = 0; y < gh; y++) {
+      for (let y = wy0; y <= wy1; y++) {
         const r = y * gw;
-        for (let x = 0; x < gw; x++) {
+        for (let x = wx0; x <= wx1; x++) {
           const l = src[r + (x > 0 ? x - 1 : 0)], c = src[r + x], q = src[r + (x < gw - 1 ? x + 1 : gw - 1)];
           fogT[r + x] = (l + 2 * c + q) * 0.25;
         }
       }
-      for (let x = 0; x < gw; x++) {
-        for (let y = 0; y < gh; y++) {
+      for (let y = wy0; y <= wy1; y++) {
+        for (let x = wx0; x <= wx1; x++) {
           const u = fogT[(y > 0 ? y - 1 : 0) * gw + x], c = fogT[y * gw + x],
                 d = fogT[(y < gh - 1 ? y + 1 : gh - 1) * gw + x];
           dst[y * gw + x] = (u + 2 * c + d) * 0.25;
@@ -1366,9 +1375,11 @@
      * shroud most of that ramp is already dark, so the edge still reads as a line. Four is
      * ~1.4 cells of Gaussian and matches the softness the overlay got from its upscale. */
     for (let k = 0; k < C.FOG.soften; k++) { blur1(k ? fogL : liveA, fogL); blur1(k ? fogM : memA, fogM); }
-    for (let i = 0, j = 0; i < n; i++, j += 4) {
-      fogPix[j] = fogL[i] * 255;
-      fogPix[j + 1] = fogM[i] * 255;
+    for (let y = wy0; y <= wy1; y++) {
+      for (let x = wx0, i = y * gw + wx0, j = i * 4; x <= wx1; x++, i++, j += 4) {
+        fogPix[j] = fogL[i] * 255;
+        fogPix[j + 1] = fogM[i] * 255;
+      }
     }
     fogTex.needsUpdate = true;
   }
@@ -1540,11 +1551,26 @@
   const VEIL_BANDS = 4;
   const veilT = {};
   let fogA = null;   // seen-minus-sight, rebuilt each frame into the same buffer
-  function easeVeil(key, bits, n, dt) {
+  /* `win` bounds the easing to the cells the camera can see (plus a margin): this runs every
+   * frame, and a country's fog grid is sixteen boards' worth of cells the player is looking
+   * at three percent of. Ground outside the window keeps its last eased value and catches up
+   * in ~FOG.ease seconds when the camera arrives — which is exactly the fade the veil plays
+   * everywhere anyway, so a pan cannot tell the difference. */
+  function easeVeil(key, bits, n, dt, win) {
     let a = veilT[key];
     if (!a || a.length !== n) { a = veilT[key] = Float32Array.from(bits); return a; }
     const k = 1 - Math.exp(-Math.max(0, dt) / C.FOG.ease);
-    for (let i = 0; i < n; i++) a[i] += (bits[i] - a[i]) * k;
+    if (win) {
+      for (let y = win.y0; y <= win.y1; y++) {
+        const r = y * win.gw;
+        for (let x = win.x0; x <= win.x1; x++) {
+          const i = r + x;
+          a[i] += (bits[i] - a[i]) * k;
+        }
+      }
+    } else {
+      for (let i = 0; i < n; i++) a[i] += (bits[i] - a[i]) * k;
+    }
     return a;
   }
   /* cumulative source-over to alpha*i/BANDS after the i'th band: inc = step / (1 - reached) */
@@ -1700,7 +1726,16 @@
     for (const f of fx) if (f.obj) f.obj.removeFromParent();
     fx = [];
 
-    const bake = global.Terrain.bake(view, viewer, { props: false, labels: false });
+    /* TWO GROUNDS PAST A BOARD'S SIZE. The painterly bake's pixel budget (6MP) binds at
+     * exactly a board, so a country under it is a colour wash painted over several seconds
+     * of freeze. Past the gate the whole land bakes CHEAPLY (bakeBase: one ImageData pass,
+     * flat colour and arithmetic relief, milliseconds at any size) and the painterly pass is
+     * spent where the camera is: detail TILES, a few at a time, baked one per frame and kept
+     * on a small LRU — see updateTiles. A board keeps today's single bake to the byte. */
+    tiled = view.nav.W * view.nav.cw > 6000;
+    tileMap = new Map(); tileQueue.length = 0;
+    const bake = tiled ? global.Terrain.bakeBase(view, viewer)
+                       : global.Terrain.bake(view, viewer, { props: false, labels: false });
     /* REAL relief: the ground mesh is the sim's own elevation field, so a hill you see is a
      * hill units pay to climb and a crag you see is one they cannot cross at all. */
     const nav = view.nav;
@@ -2445,6 +2480,72 @@
     }
     updateHalo(marked, armed);
     updateReachRing(view, viewer, armed);
+    updateTiles(view, viewer);
+  }
+
+  /* ---------------- the detail tiles ----------------
+   * The painterly ground, spent where the camera is. A 3×3 neighbourhood of 1200-unit tiles
+   * follows the view; a missing tile is baked ONE PER FRAME (a tile is a small painterly
+   * bake — the hitch budget is one tile), stood a hair above the cheap base on the same
+   * relief, and the stalest off-view tile is retired past twelve resident. Every mesh hangs
+   * in worldG, so a new match's sweep disposes them wholesale — the manager only has to
+   * forget its handles (buildWorld resets tileMap). */
+  function updateTiles(view, viewer) {
+    if (!tiled || !tileMap) return;
+    const cx = R.camX + viewW / 2, cy = R.camY + viewH * 0.5;
+    const tx = Math.floor(cx / TILE), ty = Math.floor(cy / TILE);
+    const want = new Set();
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const ix = tx + dx, iy = ty + dy;
+      if (ix < 0 || iy < 0 || ix * TILE >= mapW || iy * TILE >= mapH) continue;
+      want.add(ix + ':' + iy);
+    }
+    for (const key of want) {
+      const t = tileMap.get(key);
+      if (t) { t.at = T; continue; }
+      if (!tileQueue.includes(key)) tileQueue.push(key);
+    }
+    /* one bake a frame, and only if it is still wanted by the time its turn comes */
+    let key = null;
+    while (tileQueue.length && key == null) {
+      const k = tileQueue.shift();
+      if (want.has(k) && !tileMap.has(k)) key = k;
+    }
+    if (key != null) {
+      const ix = +key.split(':')[0], iy = +key.split(':')[1];
+      const rect = { x0: ix * TILE, y0: iy * TILE,
+                     x1: Math.min(mapW, (ix + 1) * TILE), y1: Math.min(mapH, (iy + 1) * TILE) };
+      const bk = global.Terrain.bake(view, viewer, { props: false, labels: false, rect, px: 1.1 });
+      const w = rect.x1 - rect.x0, h = rect.y1 - rect.y0;
+      const geo = new THREE.PlaneGeometry(w, h,
+        Math.min(96, Math.round(w / 25)), Math.min(96, Math.round(h / 25)));
+      geo.rotateX(-Math.PI / 2);
+      geo.translate(rect.x0 + w / 2, 0, rect.y0 + h / 2);
+      const pp = geo.attributes.position;
+      /* a hair above the base: the two reliefs are the same field sampled at two densities,
+       * so they cross — the offset plus the polygon offset keeps the painterly one on top */
+      for (let i = 0; i < pp.count; i++) pp.setY(i, groundH(pp.getX(i), pp.getZ(i)) + 3.0);
+      geo.computeVertexNormals();
+      const tex = new THREE.CanvasTexture(bk.canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mesh = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({
+        map: tex, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2
+      }), 'slope'));
+      worldG.add(mesh);
+      tileMap.set(key, { mesh, tex, at: T });
+    }
+    if (tileMap.size > 12) {
+      let oldK = null, oldAt = Infinity;
+      for (const [k, t] of tileMap) if (!want.has(k) && t.at < oldAt) { oldAt = t.at; oldK = k; }
+      if (oldK) {
+        const t = tileMap.get(oldK);
+        t.mesh.removeFromParent();
+        t.mesh.geometry.dispose();
+        t.mesh.material.map.dispose();
+        t.mesh.material.dispose();
+        tileMap.delete(oldK);
+      }
+    }
   }
 
   /* THE REACH, DRAWN WHERE THE DECISION IS MADE. Arming a standard in a reach world is the
@@ -2983,15 +3084,31 @@
     const cg = cgSrc ? cornerGrid(cgSrc.cell,
       Math.max((sm && sm.gw) || 0, (view.visMask && view.visMask.gw) || 0),
       Math.max((sm && sm.gh) || 0, (view.visMask && view.visMask.gh) || 0)) : null;
+    /* THE VEIL'S CPU IS WINDOWED TO THE VIEW. Easing and blurring run per frame, and on a
+     * country the fog grid is sixteen boards of cells the camera sees three percent of. A
+     * generous margin (twelve cells ≈ three hundred units) keeps the fastest pan inside
+     * ground that was eased before it arrived. */
+    let fogWin = null;
+    if (sm && R.viewRect) {
+      const vr = R.viewRect();
+      if (vr) {
+        const M = 12;
+        fogWin = { gw: sm.gw,
+                   x0: Math.max(0, Math.floor(vr.x0 / sm.cell) - M),
+                   x1: Math.min(sm.gw - 1, Math.ceil(vr.x1 / sm.cell) + M),
+                   y0: Math.max(0, Math.floor(vr.y0 / sm.cell) - M),
+                   y1: Math.min(sm.gh - 1, Math.ceil(vr.y1 / sm.cell) + M) };
+      }
+    }
     /* eased ONCE a frame each — the rim reads the same weights the veil does, and easing them
      * twice would run the clock at double speed for whichever pass asked second */
     const liveA = (cg && view.visMask)
-      ? easeVeil('live', view.visMask.g, view.visMask.gw * view.visMask.gh, lastDt) : null;
-    const memA = (cg && sm && sm.g) ? easeVeil('mem', sm.g, sm.gw * sm.gh, lastDt) : null;
+      ? easeVeil('live', view.visMask.g, view.visMask.gw * view.visMask.gh, lastDt, fogWin) : null;
+    const memA = (cg && sm && sm.g) ? easeVeil('mem', sm.g, sm.gw * sm.gh, lastDt, fogWin) : null;
     /* EXPERIMENT (R.shaderFog): hand the same field to the materials and draw no veil here.
      * The 2D passes below are skipped wholesale — the dark fill, the bands, and the rim. */
     const shaderFog = !!R.shaderFog && !!(sm && liveA && memA);
-    if (shaderFog) { fogUpload(sm.gw, sm.gh, sm.cell, liveA, memA); FOGU.uFogOn.value = 1; }
+    if (shaderFog) { fogUpload(sm.gw, sm.gh, sm.cell, liveA, memA, fogWin); FOGU.uFogOn.value = 1; }
     else if (FOGU.uFogOn.value) FOGU.uFogOn.value = 0;
     if ((sm || cut.length) && !shaderFog) {
       /* HOW COARSE THE MASK IS DRAWN is how soft its edge comes out, and that is the whole
@@ -3285,6 +3402,40 @@
       g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y - 4, 92, 8);
       g.fillStyle = pi === viewer ? '#ffd98a' : '#ff8a96';
       g.fillRect(p.x - 45, p.y - 3, 90 * Math.max(0, pl.castleHp / C.CASTLE_HP), 6);
+    }
+    /* ---- A YIELDED CITY SAYS WHAT IT WANTS ----
+     * Break a city and... then what? The rule (stand in the court, uncontested, twenty
+     * seconds) was invisible: no state on the ground, no progress while the claim ran, and
+     * the whole verb read as a bug — 'I don't understand how to claim a city I conquered',
+     * from play. A yielded court now wears its ask, and a running claim wears a filling bar
+     * in the claimant's colour with the seconds left beside it. All of it is PUBLIC state
+     * (cities ride the snapshot whole — a city changing hands is the loudest thing on a war
+     * map), so a guest reads the same picture the host does. */
+    if (view.cities) {
+      for (const c of view.cities) {
+        if (c.owner !== -1 || c.razed) continue;
+        const p = proj(c.x, groundH(c.x, c.y) + 150, c.y);
+        if (!p.ok) continue;
+        g.textAlign = 'center';
+        if (c.hold && view.t != null) {
+          const f = Math.max(0, Math.min(1, (view.t - c.hold.since) / C.CITY.take));
+          const left = Math.max(0, C.CITY.take - (view.t - c.hold.since));
+          g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y - 4, 92, 8);
+          g.fillStyle = UI && UI.seatColor ? UI.seatColor(c.hold.pi, viewer) : '#ffd98a';
+          g.fillRect(p.x - 45, p.y - 3, 90 * f, 6);
+          g.font = '600 11px Georgia, serif';
+          g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 3;
+          const line = (c.hold.pi === viewer ? 'CLAIMING — ' : 'BEING CLAIMED — ') + Math.ceil(left) + 's';
+          g.strokeText(line, p.x, p.y + 18);
+          g.fillText(line, p.x, p.y + 18);
+        } else {
+          g.font = '600 11px Georgia, serif';
+          g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 3;
+          g.strokeText('YIELDED — HOLD THE COURT TO CLAIM', p.x, p.y + 4);
+          g.fillStyle = 'rgba(222,204,164,0.9)';
+          g.fillText('YIELDED — HOLD THE COURT TO CLAIM', p.x, p.y + 4);
+        }
+      }
     }
     /* minimap (same math as 2D, display space) */
     const mb = R.miniBox(), mw = mb.mw, mx = mb.mx, mh = mb.mh, my = mb.my;

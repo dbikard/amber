@@ -648,14 +648,20 @@
           if (v.visHostiles.some((u) => d2(u.x, u.y, seat.x, seat.y) < 500 * 500)) {
             if (co.rally) issue({ c: 'rally', co: co.id });
           } else {
-            /* MARCH: the marcher's sentence, verbatim — a full company on the nearest
-             * neighbouring court that is not ours, a spent one home. */
+            /* MARCH: the marcher's sentence — a full company on the nearest neighbouring
+             * court that is not ours, a spent one home. EXCEPT WHEN SOMEBODY IS ON THE
+             * PATTERN: a walker's city within reach outranks every other target, because a
+             * country that did not rise against the usurper would hand him the throne — a
+             * walk begun far away must be answerable by the LAND between, not only by the
+             * player. The walk is public (World.walkers), so a lord reads exactly what a
+             * human at the table reads. */
             const nbrs = (w.map.gen.nbrs && w.map.gen.nbrs[seatIdx]) || [];
+            const walking = new Set(W.walkers(w).filter((q) => q.pi !== v.me).map((q) => q.pi));
             let tgt = null, bd = Infinity;
             for (const i of nbrs) {
               const o = w.cities[i];
               if (!o || o.owner === v.me) continue;
-              const d = d2(o.x, o.y, seat.x, seat.y);
+              const d = d2(o.x, o.y, seat.x, seat.y) - (walking.has(o.owner) ? 1e12 : 0);
               if (d < bd) { bd = d; tgt = o; }
             }
             if (tgt && men >= 8) {
@@ -1320,6 +1326,88 @@
     };
   }
 
-  global.AI = { make, view, HEIRS, BASELINES };
+  /* ---------------- the STEWARD: the player's own lord ----------------
+   * 'Take control' of a conquered city moves the seat of command there, and somebody must
+   * keep everything else — a steward is this brain, run by game.js over a city the PLAYER
+   * holds, issuing ordinary commands AS the player. Nothing about it exists in the sim, so
+   * a steward can never do anything a hand on the screen could not; put the war down and
+   * pick it up and the helm rides the save (realm.helm).
+   * `order` is the player's instruction:
+   *   hold             keep the company home, raise what the city lacks (the default)
+   *   gates            hunt free springs inside THIS city's reach and Gate them
+   *   walls            garrison thinking: towers on the court's rim toward the nearest foe
+   *                    (a true curtain is spanFor's business and spanFor anchors on the
+   *                    SEAT — an honest v1, said here rather than hidden)
+   *   attack {target}  march the city's company on a city, re-pointed as it refills
+   *   support {target} hold home until the target is pressed, then march to its court */
+  function steward(v, issue, cityIdx, order) {
+    const w = v.world, W = global.World;
+    if (!w.rules.reach || !w.cities[cityIdx] || w.cities[cityIdx].owner !== v.me) return;
+    const home = w.cities[cityIdx];
+    const mode = (order && order.mode) || 'hold';
+    const tgt = order && order.target != null && w.cities[order.target]
+      ? w.cities[order.target] : null;
+    const co = v.pl.companies.find((q) => q.city === cityIdx) || null;
+    const men = co ? v.myUnits.filter((u) => u.co === co.id).length : 0;
+    const rallyAt = (p) => {
+      if (!co.rally || Math.hypot(co.rally.x - p.x, co.rally.y - p.y) > 40)
+        issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
+    };
+    const rallyHome = () => { if (co.rally) issue({ c: 'rally', co: co.id }); };
+    if (co) {
+      /* hostiles at the court outrank every order — a steward that marched out while its
+       * own city burned would not be worth appointing */
+      const threatened = v.visHostiles.some((u) => d2(u.x, u.y, home.x, home.y) < 520 * 520);
+      if (threatened) rallyHome();
+      else if (mode === 'attack' && tgt) {
+        if (men >= 6) rallyAt(tgt);
+        else if (men < 3) rallyHome();
+      } else if (mode === 'support' && tgt) {
+        const pressed = w.units.some((u) => u.hp > 0 && W.foe(w, v.me, u.owner) &&
+                                            d2(u.x, u.y, tgt.x, tgt.y) < 650 * 650);
+        if (pressed && men >= 5) rallyAt(tgt);
+        else if (!pressed) rallyHome();
+      } else rallyHome();   // hold, gates, walls: the company keeps the court
+    }
+    /* works: one wish per think, and a hall of its own before anything — without one the
+     * city has no company and its reach is nobody's to order */
+    if (v.free > 0 && v.essence > 350) {
+      if (!co) {
+        const at = sweep(v, 'barracks', home.x, home.y,
+                         Math.atan2(w.mapH / 2 - home.y, w.mapW / 2 - home.x), 190, 30, 3);
+        if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks', co: 'new' });
+        return;
+      }
+      if (mode === 'gates' || mode === 'hold') {
+        for (const s of w.map.sites) {
+          if (s.kind !== 'node') continue;
+          if (d2(s.x, s.y, home.x, home.y) > home.reach * home.reach) continue;
+          if (W.nodeHolder(w, s) !== -1) continue;
+          if (!W.placementError(w, v.me, s.x, s.y, 'gate')) {
+            issue({ c: 'build', x: s.x, y: s.y, bt: 'gate' });
+            return;
+          }
+        }
+      }
+      if (mode === 'walls' && v.essence > 500) {
+        const towers = v.pl.buildings.filter((b) => b.bt === 'tower' &&
+          d2(b.x, b.y, home.x, home.y) < 420 * 420).length;
+        if (towers < 3) {
+          let foeCity = null, fd = Infinity;
+          for (const c2 of w.cities) {
+            if (c2.owner === v.me || c2.owner < 0) continue;
+            const d = d2(c2.x, c2.y, home.x, home.y);
+            if (d < fd) { fd = d; foeCity = c2; }
+          }
+          const a = foeCity ? Math.atan2(foeCity.y - home.y, foeCity.x - home.x)
+                            : Math.atan2(w.mapH / 2 - home.y, w.mapW / 2 - home.x);
+          const at = sweep(v, 'tower', home.x, home.y, a + (towers - 1) * 0.5, 205, 25, 2);
+          if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'tower' });
+        }
+      }
+    }
+  }
+
+  global.AI = { make, view, steward, HEIRS, BASELINES };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.AI;
 })(typeof window !== 'undefined' ? window : globalThis);

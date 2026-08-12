@@ -91,6 +91,7 @@
    * lords, one bot apiece, exactly as the ?reach rig seats them. */
   function startRealm(realm) {
     game.realm = realm;
+    realm.helm = realm.helm || { stewards: {} };   // the player's government of the war
     game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false;
     game.chapter = null;
     game.war = true;
@@ -104,6 +105,7 @@
     game.bots = game.world.players.map((_, i) => (i === 0 ? null : AI.make(kind, {})));
     game.names = game.world.players.map((_, i) => i === 0 ? 'Corwin'
       : game.world.map.sites[game.world.cities[i].site].name);
+    UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
     game.hints = [];
     Render.resize();
@@ -169,6 +171,7 @@
       ? game.world.players.map((_, i) => i === 0 ? 'Corwin'
           : game.world.map.sites[game.world.cities[i].site].name)
       : ['Corwin', kindTitle];
+    UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
     /* A CHAPTER BRINGS ITS OWN TUTORIAL, and it is predicates rather than a clock — see
      * `CAMPAIGN.run().hint`. The timed onboarding below fires on `world.t` alone and says its
@@ -240,6 +243,7 @@
       game.world = Net.isHost ? build() : null;
       refWorld = Net.isHost ? null : build();   // guest: map geometry only
     }
+    UI.names = game.names;   // the HUD's chips and walkers wear the same names
     Render.resize();
     homeCamera();
     armBack();
@@ -751,10 +755,17 @@
         ? 'YOUR Seat has yielded — its court is open to anyone who can hold it'
         : seatName(ev.pi) + '’s Seat yields — take the court and it is yours', ev.pi === game.viewer ? 'warn' : 'alert');
       else if (ev.e === 'taken') UI.banner(ev.pi === game.viewer
-        ? 'The city is YOURS' : seatName(ev.pi) + ' takes the city', ev.pi === game.viewer ? 'alert' : 'warn');
+        ? 'The city is YOURS — raise a hall in its court, and its whole reach answers to you'
+        : seatName(ev.pi) + ' takes the city', ev.pi === game.viewer ? 'alert' : 'warn');
       else if (ev.e === 'razed') UI.banner(ev.pi === game.viewer
         ? 'You throw the city down — it will be nobody’s now'
         : seatName(ev.pi) + ' throws the city down', ev.pi === game.viewer ? '' : 'warn');
+      /* THE REFUSAL MUST SPEAK LOUDEST OF ALL: the player did everything right — broke the
+       * city, held the court, waited out the claim — and the brake said no. Silent, it reads
+       * as a bug ('I don't understand how to claim a city I conquered' — reported from play,
+       * because this event was emitted and never routed). */
+      else if (ev.e === 'refused' && ev.pi === game.viewer)
+        UI.banner('The court will not swear to you — you have no lord to hold it. Take a city from an HEIR and his lord comes with it', 'warn');
       else if (ev.e === 'offer' && ev.pi !== game.viewer) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
       else if (ev.e === 'pact' && ev.pi !== game.viewer) {
         /* a pact between two OTHER heirs is public and is the most important thing on the board
@@ -870,6 +881,22 @@
            * often is the one nobody's code sees: the OS swipe. An 80KB stringify twice a
            * minute is nothing. */
           if (game.war && game.realm && game.world.tick % 900 === 0) REALM.save(game.realm);
+          /* THE HELM: the player's stewards run their cities between his taps — the same
+           * brain as a lord's, issuing ordinary commands AS the player, never his own seat */
+          if (game.war && game.realm && game.realm.helm && game.realm.helm.stewards &&
+              game.world.tick % 60 === 0) {
+            const w2 = game.world, me2 = w2.players[0];
+            const seatIdx = me2.seat != null && w2.cities[me2.seat] && w2.cities[me2.seat].owner === 0
+              ? me2.seat : w2.cities.findIndex((c2) => c2.owner === 0);
+            let v2 = null;
+            for (const k of Object.keys(game.realm.helm.stewards)) {
+              const ci = +k;
+              if (ci === seatIdx) continue;
+              if (!w2.cities[ci] || w2.cities[ci].owner !== 0) continue;
+              if (!v2) v2 = AI.view(w2, 0);
+              AI.steward(v2, (cmd) => World.applyCommand(w2, 0, cmd), ci, game.realm.helm.stewards[k]);
+            }
+          }
         }
       }
       const view = hostView();
@@ -1100,9 +1127,31 @@
     if (siteId >= 0) {
       /* every site opens a sheet — including the rival's city (the assault order) */
       const site = view.map.sites[siteId];
-      const foeCity = view.map.cities[1 - game.viewer] === siteId;
+      const ci = view.cities ? view.cities.findIndex((c2) => c2.site === siteId) : -1;
+      const cRec = ci >= 0 ? view.cities[ci] : null;
+      const foeCity = cRec ? cRec.owner !== game.viewer
+                           : view.map.cities[1 - game.viewer] === siteId;
+      /* THE WAR'S OWN CONTEXT for a city sheet: whether this court can be COMMANDED FROM,
+       * who its neighbours are (an attack order wants names, not coordinates), and what
+       * steward — if any — already keeps it. Nothing here for a board. */
+      let war = null;
+      if (view.rules && view.rules.reach && cRec && game.war) {
+        const me2 = view.players[game.viewer];
+        const firstHeld = view.cities.findIndex((c2) => c2.owner === game.viewer);
+        const seatIdx = me2.seat != null && view.cities[me2.seat] &&
+                        view.cities[me2.seat].owner === game.viewer ? me2.seat : firstHeld;
+        war = {
+          idx: ci, id: cRec.id, mine: cRec.owner === game.viewer, isSeat: ci === seatIdx,
+          steward: (game.realm && game.realm.helm && game.realm.helm.stewards &&
+                    game.realm.helm.stewards[ci]) || null,
+          nbrs: ((view.map.gen.nbrs && view.map.gen.nbrs[ci]) || []).map((i) => ({
+            idx: i, name: view.map.sites[view.cities[i].site].name, owner: view.cities[i].owner })),
+          own: view.cities.map((c2, i) => ({ idx: i, name: view.map.sites[c2.site].name, owner: c2.owner }))
+            .filter((e) => e.owner === game.viewer && e.idx !== ci)
+        };
+      }
       UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
-                   view.players[game.viewer], view.players[1 - game.viewer]);
+                   view.players[game.viewer], view.players[1 - game.viewer], war);
       return;
     }
     /* bare ground does nothing now: raising a work begins at the BUILD button, so the map is
@@ -1514,6 +1563,33 @@
        * the flag and its roster. The order it sent, if it is ever wanted again anywhere, is
        * `{ c: 'rally', co, site: -1 }` — a rally with nowhere to go clears the standard. */
       onAssign: (id, co) => issue({ c: 'assign', id, co }),
+      /* TAKE COMMAND of a held city: the seat moves there (a real order, host-authoritative)
+       * and a steward is appointed over the seat just left, so conquest rolls FORWARD — the
+       * old capital keeps mustering and holding without another tap. */
+      onTakeSeat: (cityId) => {
+        const w = game.world;
+        if (!w || !game.war || !game.realm) return;
+        const me = w.players[0];
+        const before = me.seat != null && w.cities[me.seat] && w.cities[me.seat].owner === 0
+          ? me.seat : w.cities.findIndex((c2) => c2.owner === 0);
+        const r = World.applyCommand(w, 0, { c: 'seat', id: cityId });
+        if (!r.ok) { UI.banner(REFUSAL[r.err] || 'The court refuses', 'warn'); return; }
+        const helm = game.realm.helm || (game.realm.helm = { stewards: {} });
+        if (before >= 0 && before !== me.seat && !helm.stewards[before])
+          helm.stewards[before] = { mode: 'hold' };
+        REALM.save(game.realm);
+        UI.banner('You command from ' + w.map.sites[w.cities[me.seat].site].name +
+                  ' now — a steward keeps your former seat', 'alert');
+      },
+      /* a steward's order, or its dismissal (mode null). Not a sim command — a steward only
+       * ISSUES ordinary orders — so it lives on the helm and rides the save. */
+      onSteward: (ci, mode, target) => {
+        if (!game.realm) return;
+        const helm = game.realm.helm || (game.realm.helm = { stewards: {} });
+        if (!mode) delete helm.stewards[ci];
+        else helm.stewards[ci] = Object.assign({ mode }, target != null ? { target } : null);
+        REALM.save(game.realm);
+      },
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;

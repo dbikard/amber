@@ -395,9 +395,16 @@ speak: 'reach', 'city'); and every flow field is FENCED by the owning city's dis
 first hold the one between — the affordability rule IS the strategic rule. ORDERS are bounded;
 violence is not: standing, pursuit and combat cross the rim freely.
 
-`WG.buildCountry` grows the land (CONST.REACHWAR: 4000×4800, 10 cities; connectivity is a
+`WG.buildCountry` grows the land (CONST.REACHWAR: 8000×9600, 16 cities; connectivity is a
 PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an already-placed reach);
-AMBER, the Pattern's city, is the neighbour graph's centre and last in seat order. `realm.js` v2
+AMBER, the Pattern's city, is the neighbour graph's centre and last in seat order. RIVERS run
+from the interior to the sea and ROADS are FOUND over the land's own costs (climb charged
+dearly, reuse half-price so trunks emerge), with BRIDGES where a crossing beats the toll — all
+stamped as real terrain (`WG.T.ROAD/BRIDGE`, cost 1, unbuildable), so columns funnel onto the
+highway on their own and a bridge is a chokepoint nobody declared. The renderer draws a country
+as TWO GROUNDS: a cheap ImageData base at any size, and painterly detail tiles that follow the
+camera (one baked per frame, twelve resident, seams killed by pad-and-crop plus per-site
+seeding); the veil's per-frame CPU is windowed to the view. `realm.js` v2
 is only persistence + `REALM.run` (CAMPAIGN.run's shape; endings via `World.declare`): the save
 regenerates the country from its seed and writes down only what was DONE (~7-100KB under
 `amber_realm` v2; a v1 record loads as null and `REALM.lost` says so once). The lord brake lives

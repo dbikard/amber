@@ -143,6 +143,7 @@
         buildings: [],          // free placement: every work knows where it stands
         powers: { storm: 0, trump: 0 },
         championId: 0,
+        seat: null,             // the city he COMMANDS from ({c:'seat'}); null = first held
         banner: -1,             // site id the army marches on; -1 = defend home
         musterPaused: false,    // the Seat can halt the muster to hoard essence
         /* A PACT IS TWO STANDING OFFERS, and that is the whole state machine. `offers[j]` is
@@ -282,8 +283,14 @@
    * dressed as one, and the suites build boards with nothing on them but a map — so the list
    * being absent means "one seat apiece, as it always was" rather than an error. `cityOf`'s
    * contract is unchanged by that: it has always answered with a SITE off `map.cities`. */
-  const seatOf = (world, pi) => (world.cities
-    ? (world.cities.find((c) => c.owner === pi) || world.cities[pi] || null) : null);
+  const seatOf = (world, pi) => {
+    if (!world.cities) return null;
+    /* the seat of command a player CHOSE ({c:'seat'}), while he still holds it */
+    const pl2 = world.players && world.players[pi];
+    if (pl2 && pl2.seat != null && world.cities[pl2.seat] &&
+        world.cities[pl2.seat].owner === pi) return world.cities[pl2.seat];
+    return world.cities.find((c) => c.owner === pi) || world.cities[pi] || null;
+  };
   const citiesOf = (world, pi) => (world.cities || []).filter((c) => c.owner === pi);
   const cityOf = (world, pi) => {
     const c = seatOf(world, pi);
@@ -317,6 +324,18 @@
   function inClaim(world, pi, x, y) {
     const c = cityOf(world, pi);
     if (d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat) return true;
+    /* EVERY HELD CITY GRANTS WRIT, or a conquest is a flag and nothing else — 'once I claim
+     * a city, how do I assume control of it?', from play, and the honest answer was that
+     * you could not: no writ meant no hall, no hall meant no company born to it, and its
+     * reach was a picture. Your born seat carries the full writ; a court merely SWORN to
+     * you grants its skirt (`CLAIM.sworn`) — enough to raise a hall and a Gate inside, thin
+     * enough that a conquest is still a liability until it is invested in. On a board every
+     * player holds exactly his own seat and this loop repeats the test above, so nothing a
+     * duel does changes by a byte. */
+    for (const cc of citiesOf(world, pi)) {
+      const r = cc.born === pi ? C.CLAIM.seat : (C.CLAIM.sworn || C.CLAIM.seat);
+      if (d2(x, y, cc.x, cc.y) < r * r) return true;
+    }
     for (const b of world.players[pi].buildings)
       if (!b.raise && C.BUILDINGS[b.bt].claim && d2(x, y, b.x, b.y) < C.CLAIM.gate * C.CLAIM.gate) return true;
     return false;
@@ -2404,6 +2423,19 @@
      * and it is a decision your enemy made about you. Only a court you are standing in and that
      * nobody holds — you cannot raze a city out from under its owner, you have to break it
      * first, which is the whole of the difference between a raid and a conquest. */
+    if (cmd.c === 'seat') {
+      /* THE SEAT OF COMMAND MOVES WITH THE WAR. `seatOf` used to answer 'the first city he
+       * holds', which no player chose: conquer forward and your banner, your camera and
+       * your default muster all stayed home. Now a held city may be TAKEN COMMAND OF —
+       * host-authoritative like every order, so at a LAN table each seat moves its own. */
+      if (!world.rules.reach) return { ok: false, err: 'cmd' };
+      const city = world.cities.find((c2) => c2.id === cmd.id);
+      if (!city) return { ok: false, err: 'id' };
+      if (city.owner !== pi) return { ok: false, err: 'held' };
+      pl.seat = world.cities.indexOf(city);
+      emit(world, { e: 'seat', pi, id: city.id, x: city.x, y: city.y });
+      return { ok: true };
+    }
     if (cmd.c === 'raze') {
       if (!world.rules.occupy) return { ok: false, err: 'noraze' };
       const city = world.cities.find((c2) => c2.id === cmd.id);
@@ -3560,7 +3592,7 @@
             pl.essence -= pay;
             drain += pay / dt;   // actual, not theoretical — and the muster adds to it below
           }
-          pl.pattern += sdef.rate[shrine.level - 1] * dt;
+          pl.pattern += sdef.rate[shrine.level - 1] * dt * (world.rules.walkMul || 1);
           while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
             emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
           }

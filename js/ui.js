@@ -489,7 +489,8 @@
         d.className = 'walker' + (pi === viewer ? ' mine' : '') + (q.walking ? '' : ' stalled');
         d.style.color = UI.seatColor(pi, viewer);
         d.textContent = (q.walking ? '✴ ' : '✧ ') +
-                        (pi === viewer ? 'YOU' : (C.SEAT_NAMES[pi] || 'a rival').toUpperCase()) +
+                        (pi === viewer ? 'YOU'
+                          : ((UI.names && UI.names[pi]) || C.SEAT_NAMES[pi] || 'a rival').toUpperCase()) +
                         ' ' + q.pattern.toFixed(0) + '%';
         race.appendChild(d);
       }
@@ -509,9 +510,24 @@
       tray.style.top = (race.children.length ? Math.ceil(rb.bottom) + 6 : Math.ceil(rb.top)) + 'px';
     }
     if (truce) {
-      const rows = view.players.map((q, pi) => ({ q, pi }))
-        .filter(({ q, pi }) => pi !== viewer && !q.out);
       const mineOffers = (view.players[viewer] || {}).offers || [];
+      let rows = view.players.map((q, pi) => ({ q, pi }))
+        .filter(({ q, pi }) => pi !== viewer && !q.out);
+      /* A COUNTRY'S TABLE SEATS SIXTEEN, and fifteen chips is a wall over half the map.
+       * In a reach war the tray shows the rivals the war is actually AGAINST — anyone
+       * across a border from a city of yours — plus every rival an offer or a pact stands
+       * with, which must never be hidden behind a filter. A duel's tray is unchanged. */
+      if (view.rules.reach && view.cities && view.map && view.map.gen && view.map.gen.nbrs) {
+        const fronts = new Set();
+        view.cities.forEach((c, ci) => {
+          if (c.owner !== viewer) return;
+          for (const b of view.map.gen.nbrs[ci] || []) {
+            const o = view.cities[b] ? view.cities[b].owner : null;
+            if (o != null && o >= 0 && o !== viewer) fronts.add(o);
+          }
+        });
+        rows = rows.filter(({ q, pi }) => fronts.has(pi) || mineOffers[pi] || (q.offers || [])[viewer]);
+      }
       const tkey = rows.map(({ q, pi }) => pi + (mineOffers[pi] ? 'm' : '') +
                                            ((q.offers || [])[viewer] ? 'h' : '')).join(',');
       if (tkey !== tray._key) {
@@ -524,7 +540,9 @@
           d.dataset.seat = String(pi);
           const nm = document.createElement('b');
           nm.style.color = UI.seatColor(pi, viewer);
-          nm.textContent = (C.SEAT_NAMES[pi] || 'a rival').toUpperCase();
+          /* the match's own names — at a country's table a seat IS a city, and 'A RIVAL'
+           * fifteen times over said nothing about any of them */
+          nm.textContent = ((UI.names && UI.names[pi]) || C.SEAT_NAMES[pi] || 'a rival').toUpperCase();
           const st = document.createElement('span');
           st.className = 't-state';
           /* what the NEXT tap does is what the chip has to make obvious, so each line is
@@ -941,7 +959,7 @@
     road: 'A milestone of the black road. Chaos favors this ground.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo) {
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, war) {
     freshSheet();
     const el = $('sheet');
     el._me = pinfo || null;
@@ -992,6 +1010,77 @@
           : '<span class="c-name">⏸ Halt the Muster</span><span class="c-blurb">Stop paying for new troops while the treasury gathers</span>';
         mu.addEventListener('click', () => { H.onMuster(!pinfo.musterPaused); UI.closeSheet(); });
         el.appendChild(mu);
+      }
+      /* ---- THE WAR'S COMMAND OF A CITY ----
+       * A held court that is not the seat of command offers two things: TAKE COMMAND (the
+       * seat moves here; a steward is appointed over the one just left) and the STEWARD'S
+       * ORDER — hold, raise Gates, wall up, attack a neighbour, support another city. The
+       * seat itself offers neither: the player IS its steward. */
+      if (war && war.mine && !war.isSeat) {
+        const tk = document.createElement('button');
+        tk.className = 'card walkbtn';
+        tk.innerHTML = '<span class="c-name">👑 Take Command Here</span>' +
+                       '<span class="c-blurb">Rule the war from this court — a steward keeps your former seat</span>';
+        tk.addEventListener('click', () => { H.onTakeSeat(war.id); UI.closeSheet(); });
+        el.appendChild(tk);
+
+        const lbl = document.createElement('div');
+        lbl.className = 'sheet-blurb';
+        const sayOrder = (o) => !o ? 'no steward — the court waits on your own orders'
+          : o.mode === 'attack' ? 'steward: march on ' + ((war.nbrs.find((n) => n.idx === o.target) || {}).name || 'a neighbour')
+          : o.mode === 'support' ? 'steward: support ' + ((war.own.find((n) => n.idx === o.target) || {}).name || 'a city')
+          : o.mode === 'gates' ? 'steward: raise Shadow Gates'
+          : o.mode === 'walls' ? 'steward: fortify the court'
+          : 'steward: hold the city';
+        lbl.textContent = '⚑ ' + sayOrder(war.steward);
+        el.appendChild(lbl);
+
+        const row = document.createElement('div');
+        row.className = 'lan-row';
+        const btn = (txt, fn) => {
+          const b = document.createElement('button');
+          b.className = 'mbtn small';
+          b.textContent = txt;
+          b.addEventListener('click', fn);
+          row.appendChild(b);
+        };
+        const set = (mode, target) => () => { H.onSteward(war.idx, mode, target); UI.closeSheet(); };
+        btn('HOLD', set('hold'));
+        btn('GATES', set('gates'));
+        btn('WALL UP', set('walls'));
+        el.appendChild(row);
+        /* the orders that need a NAME get one row each — a picker inside a picker on a phone
+         * is a maze, and there are only ever a handful of neighbours */
+        const foes2 = war.nbrs.filter((n) => n.owner !== viewer);
+        if (foes2.length) {
+          const row2 = document.createElement('div');
+          row2.className = 'lan-row';
+          for (const n of foes2.slice(0, 3)) {
+            const b = document.createElement('button');
+            b.className = 'mbtn small';
+            b.textContent = '⚔ ' + n.name;
+            b.addEventListener('click', set('attack', n.idx));
+            row2.appendChild(b);
+          }
+          el.appendChild(row2);
+        }
+        if (war.own.length) {
+          const row3 = document.createElement('div');
+          row3.className = 'lan-row';
+          for (const n of war.own.slice(0, 3)) {
+            const b = document.createElement('button');
+            b.className = 'mbtn small';
+            b.textContent = '🛡 ' + n.name;
+            b.addEventListener('click', set('support', n.idx));
+            row3.appendChild(b);
+          }
+          el.appendChild(row3);
+        }
+      } else if (war && war.mine && war.isSeat) {
+        const here = document.createElement('div');
+        here.className = 'sheet-blurb';
+        here.textContent = '👑 You command the war from this court.';
+        el.appendChild(here);
       }
     }
     /* AND NOTHING TO BUILD. This sheet used to carry the whole build tray, because there was a

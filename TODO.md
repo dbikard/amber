@@ -691,12 +691,50 @@ below.
       walk-only stasis); R5 realm v2 (one persistent world, the pocket save regenerates the
       country from its seed and writes only what was DONE — ~7KB measured, <300KB asserted;
       v1 saves load as null and say so; the lord brake in `holdCities`, the one Pattern in
-      `placementError`, AMBER's holder walks and that is the clock). The 2× ground bake:
-      984ms vs a 382ms board on the same engine — shippable. R6 landed beside it: a LAN
-      table is dealt INTO the host's open war (`{war:{seed}}` on the wire, geometry from the
-      seed, history from the snapshots, humans in the contender seats, lords on the rest;
-      the snapshot carries every city's reach and your own companies' cities). Tiling stays
-      severed: R7 is the true 4-5× country, gated on a real phone.
+      `placementError`, AMBER's holder walks and that is the clock). R6 landed beside it: a
+      LAN table is dealt INTO the host's open war (`{war:{seed}}` on the wire, geometry from
+      the seed, history from the snapshots, humans in the contender seats, lords on the rest;
+      the snapshot carries every city's reach and your own companies' cities).
+      **R7 — THE TRUE COUNTRY (v0.9.77): 8000×9600, 16 cities, rivers, roads, bridges.**
+      Two grounds past a board's size: the whole land bakes cheaply (one ImageData pass,
+      milliseconds at any size) and the painterly bake became RECT-SCOPED — detail tiles
+      follow the camera, one baked per frame, twelve resident on an LRU, padded-and-cropped
+      so the blur never shows a seam, everything that can straddle a seam painted from its
+      OWN seed (a court from its site id, a sparkle from its cell hash). The veil's per-frame
+      CPU (ease, blur, pack) is WINDOWED to the view plus a twelve-cell margin — ground
+      outside keeps its last eased value and catches up exactly as the veil fades anyway.
+      RIVERS run from the interior high ground to the sea (momentum + erosion, so a young
+      river cannot strand in the noise's hollows); ROADS are FOUND, not drawn — least-cost
+      paths over the land's own ground with the climb charged dearly, around woods, along
+      contours, merging onto earlier roads (reuse is half-price, so trunks emerge) — and
+      BRIDGES stand where a crossing beats the toll, stamped as real terrain (ROAD/BRIDGE,
+      cost 1, unbuildable) so columns funnel onto the highway on their own and every bridge
+      is a chokepoint nobody declared. Three ways the carver silently failed on the way, all
+      measured and all held by the suite now: a diagonal slip between two river cells paid
+      no toll; the trunk-reuse discount routed crossings around the river's head; and an
+      oblique river read as a lake to the narrowness filter. Boot-to-ready for the whole 4×
+      country through the real renderer: 4.0s on this box's software GL, no page errors.
+      STILL OWED TO A REAL PHONE: frame rate at the strategic zoom, texture upload traffic,
+      and the tile-bake hitch — this box's SwiftShader numbers are CPU-pessimistic but they
+      are not a phone.
+      **THE FIRST PLAYTEST'S FIVE FINDINGS (v0.9.76, all landed with R7):** the terms tray
+      was fifteen chips of 'A RIVAL' (now: border rivals + standing agreements only, named
+      by their CITIES — UI.names); claiming a conquered city was invisible (the `refused`
+      event was emitted and never routed — the lord brake fired in silence — and the
+      twenty-second claim had no state on the ground: both speak now, banner + a filling
+      claim bar over the court); a claimed city was a flag and not a conquest (`inClaim`
+      never granted writ beyond the birth seat — a sworn court now grants `CLAIM.sworn`,
+      so a hall can rise and its company is born to the TAKEN city); a distant Pattern walk
+      was unanswerable (the walk runs at `walkMul` 0.4 in a war and the LORDS RISE — a
+      walker's city outranks every neighbour in their doctrine; the Jewel-strikes-stone
+      idea was built, rejected by the designer, and reverted the same hour); and the reach
+      barely covered a neighbour's court (each city's reach is now sized from its OWN
+      nearest neighbour ×1.6 capped, so every city reaches its nearest rival's springs —
+      economic raiding is the anti-turtle engine). Plus THE HELM: tap a held court to TAKE
+      COMMAND there (`{c:'seat'}`, host-authoritative; a steward is appointed over the seat
+      just left) or to give its steward an order — hold, raise Gates, wall up, attack a
+      named neighbour, support a named city (`AI.steward`, the lord's brain issuing
+      ordinary commands as the player; rides the save as `realm.helm`).
       cities, truces that can be broken, conquest that yields ground rather than rubble, and one
       Pattern in one city. The load-bearing decision, taken from measurement rather than taste:
       **a region IS today's board** — a cold flow field is dead linear in area (6.3ms → 59ms at
