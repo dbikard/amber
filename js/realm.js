@@ -1,342 +1,244 @@
 /* realm.js — the war, one step above a match. Headless-safe: no DOM, no Date.
  *
- * WHAT IT HOLDS AND WHAT IT DOES NOT. The realm knows what the country IS (js/country.js), who
- * holds each city, where every army stands, and what has been done to each region. It holds NO
- * live world: a region is materialised into one when somebody goes there and compacted back to a
- * few kilobytes when they leave. That is the whole reason a country of a dozen boards fits in
- * `localStorage` and on a phone at once.
+ * V2: THE COUNTRY IS ONE WORLD. v1 held a graph of regions and materialised each into a
+ * little two-seat board when somebody went there — enter/compact/march, a seam, and the
+ * war's two rules enforced AT the seam because only the realm could see across it. The
+ * Reach War removed the seam: `createWorld(seed, 2, null, rules, {country: true})` grows
+ * one continuous land with every city on it at once, so the lord brake lives in the sim's
+ * own take (holdCities) and the one Pattern in its own placement rule (placementError),
+ * both gated on the war's `world.rules`. What is left up here is exactly three things:
+ * making a war, answering the HUD about it, and fitting it in a pocket.
  *
- * A REGION IS A WORLD, and that is the load-bearing decision of the entire design. Same
- * `CONST.MAP`, same `NAV.cell`, same ground mesh, same fog, same `World.createWorld`. Everything
- * the game already knows how to do it goes on doing unchanged, `sim.js` stays a referee, and the
- * headless suite keeps meaning what it meant. The country is large because there are many
- * regions, never because a grid got bigger — see the measurements at the top of country.js.
+ * `REALM.run` keeps `CAMPAIGN.run`'s shape deliberately: game.js holds one for the length
+ * of a war, polls it once per simulated frame, and it NEVER writes to a world — anything
+ * that ends goes through `World.declare`, the one door out of the sim.
  *
- * SEATS. A region's world is an ordinary two-seat board: seat 0 is the heir who is THERE, seat 1
- * is whoever holds the region against him. That is not a simplification of the design, it is the
- * design — a war is fought one region at a time, and the realm decides who seat 1 is before the
- * board is built.
- *
- * `REALM.run` mirrors `CAMPAIGN.run` deliberately: game.js holds one for the length of a war,
- * polls it once per simulated frame, and it NEVER writes to the world. Anything that ends goes
- * through `World.declare`, which is the one door out of the sim.
- */
+ * THE SAVE writes down what was DONE and regenerates the rest from the seed: the ground,
+ * the springs, the sight bake and the opening works all come back from `createWorld`, and
+ * the record is the delta — owners, works, men, treasuries, remembered ground. That is why
+ * a whole country's war fits under one localStorage key on a phone. */
 (function (global) {
   'use strict';
 
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
-  const COUNTRY = global.COUNTRY || (typeof require !== 'undefined' ? require('./country.js') : null);
   const REALM = {};
   const World = () => global.World;
 
-  /* ---------------- making a war ---------------- */
-  /* `heirs` is the AI personalities that hold a city each at the start; everything else is a
-   * minor lord, which is where the early game lives — you grow by taking from people who are not
-   * playing to win, and a LAN opening is not "rush your friend before he has built anything". */
-  REALM.create = function (seed, opts) {
-    opts = opts || {};
-    const country = COUNTRY.build(seed, opts);
-    const heirs = opts.heirs || C.REALM.heirs;
-    const realm = {
-      v: 1, seed: seed >>> 0, t: 0, country,
-      me: 0,                       // which side of the war the player is
-      heirs: ['you'].concat(heirs),
-      /* HOW MANY LORDS YOU HAVE, and therefore how many cities beyond your own you may hold.
-       * A lord is WON — taking a city from an HEIR brings his lord over with it — never bought
-       * and never taken from a minor holding. So conquest pays for conquest only when it is
-       * conquest of a rival, and a war cannot be won by eating the weak. */
-      lords: C.REALM.lords0,
-      /* per-region state: null until somebody has been there. A region generated and left
-       * carries its works and its garrison; a region never visited carries nothing at all and
-       * is rebuilt from its seed the first time it is entered. */
-      state: {},
-      marches: [],                 // columns between regions: {owner, from, to, at, arrive, men}
-      at: null,                    // the region the player is standing in
-      done: null                   // 'won' | 'lost' once the war is over
-    };
-    /* --- hand out the cities --- */
-    /* THE PATTERN'S CITY BELONGS TO NOBODY. It is the centre of the map and the only way to
-     * walk; starting anybody in it would decide the war before it began. */
-    const land = COUNTRY.landRegions(country).slice();
-    const spread = pickApart(country, land, realm.heirs.length);
-    for (let i = 0; i < realm.heirs.length; i++) {
-      const r = spread[i];
-      if (!r) continue;
-      const city = COUNTRY.cityIn(country, r.key);
-      if (city) { city.owner = i; city.lord = i === 0 ? null : realm.heirs[i]; }
-    }
-    for (const c of country.cities) {
-      if (c.owner >= 0 || c.pattern) continue;
-      c.owner = -1;
-      c.lord = C.REALM.lords[Math.floor(hashFrac(seed, c.id) * C.REALM.lords.length)];
-    }
-    realm.at = spread[0] ? spread[0].key : (land[0] && land[0].key) || null;
-    return realm;
-  };
+  /* the rules of a war, all of them off in every other mode */
+  const WAR = { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1, reach: 1 };
+  /* WHO CONTENDS. Seat 0 is the player; worldgen dealt seats 1 and 2 the thrones furthest
+   * from AMBER, so they are the rivals with room to grow into. Everyone else is a minor
+   * lord — he holds ground and does not contend, which is where the early game lives.
+   * `world.heirs` is the sim's copy: the lord brake pays a lord for conquest of a
+   * CONTENDER only, and the sim cannot ask the realm. */
+  const HEIRS = [0, 1, 2];
 
-  function hashFrac(a, b) {
-    let h = Math.imul((a >>> 0) ^ 0x9e3779b9, 0x85ebca6b) >>> 0;
-    h = Math.imul(h ^ (b >>> 0), 0xc2b2ae35) >>> 0;
-    h ^= h >>> 15;
-    return (h >>> 8) / 0x1000000;
-  }
-  /* THE HEIRS START AS FAR APART AS THE COUNTRY ALLOWS — and not in the Pattern's city. The same
-   * rule the board itself uses for two Seats, one level up: a war that opens with two heirs in
-   * neighbouring regions is a war decided in its first ten minutes. Greedy and deterministic:
-   * the first is the land region furthest from the Pattern, and each after it is the one whose
-   * nearest already-taken region is furthest away. */
-  function pickApart(country, land, n) {
-    const open = land.filter((r) => {
-      const c = COUNTRY.cityIn(country, r.key);
-      return c && !c.pattern;
-    });
-    if (!open.length) return [];
-    const pat = country.index[country.pattern];
-    const d2 = (a, b) => (a.cx - b.cx) * (a.cx - b.cx) + (a.cy - b.cy) * (a.cy - b.cy);
-    const out = [];
-    let first = open[0], fd = -1;
-    for (const r of open) { const d = pat ? d2(r, pat) : 0; if (d > fd) { fd = d; first = r; } }
-    out.push(first);
-    while (out.length < n) {
-      let best = null, bd = -1;
-      for (const r of open) {
-        if (out.indexOf(r) >= 0) continue;
-        let near = Infinity;
-        for (const q of out) near = Math.min(near, d2(r, q));
-        if (near > bd) { bd = near; best = r; }
-      }
-      if (!best) break;
-      out.push(best);
-    }
-    return out;
-  }
-
-  /* ---------------- a region becomes a world ---------------- */
-  /* `foe` is the seat the region is held against — an heir index, or null for a minor lord's
-   * city, which the war treats as an heir with no personality of his own. */
-  /* `humans` is how many contenders are standing in this region — one in a solo war, more at a
-   * LAN table where two heirs have marched to the same ground. They take seats 0..n-1 and the
-   * region's HOLDER takes the last, so a board is always "everybody who came, plus whoever was
-   * already here". A region is still an ordinary world; only how many seats it has changes. */
-  REALM.enter = function (realm, key, humans) {
-    const W = World();
-    const region = COUNTRY.regionOf(realm.country, key);
-    if (!region || region.sea) return null;
-    const seats = Math.max(2, Math.min(C.MAX_PLAYERS, (humans || 1) + 1));
-    const city = COUNTRY.cityIn(realm.country, key);
-    /* THE RULES OF A REGION ARE THE RULES OF THE WAR: a Seat yields rather than ending
-     * anything, terms may be made, and the quiet tick is on. `endOnSeat` is OFF — losing a city
-     * in a country is a loss and not a death, and the war ends at the Pattern or nowhere. */
-    const world = W.createWorld(region.seed, seats, null,
-                                { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 });
-    world.realmKey = key;
-    world.biome = region.biome;
-    /* THE ONE REGION A SHRINE MAY BE RAISED IN. Stamped here rather than asked of the country
-     * from inside the sim: `world.js` is headless-first and knows nothing above a board, and it
-     * must stay that way — see the note on `onePattern` in const.js. */
-    world.pattern = !!(city && city.pattern);
-    /* WHOSE CITY IS IT. Seat 0 is the heir who came here; seat 1 is whoever holds it. A region
-     * whose city is the player's own is a region he is defending. */
-    const mine = city && city.owner === realm.me;
-    world.cities[0].owner = mine ? 0 : (city && city.owner === realm.me ? 0 : (city && city.owner >= 0 && city.owner !== realm.me ? 1 : -1));
-    if (mine) world.cities[0].owner = 0;
-    /* A REGION HAS ONE CITY. The board's other seats bring thrones of their own, which would be
-     * cities of a country that has none there — so they are put beyond anyone's reach rather
-     * than left standing as thrones nobody owns and nobody may take. */
-    for (let i = 1; i < world.cities.length; i++) {
-      world.cities[i].owner = -1; world.cities[i].hp = 0; world.cities[i].razed = 1;
-    }
-    world.humans = seats - 1;
-    world.holder = seats - 1;                   // which seat the region is held against
-    const saved = realm.state[key];
-    if (saved) REALM.restore(world, saved);
-    return world;
+  REALM.create = function (seed) {
+    const world = World().createWorld(seed >>> 0, 2, null, WAR, { country: true, heirs: HEIRS });
+    return { v: 2, seed: seed >>> 0, world };
   };
-
-  /* ---------------- ...and back again ----------------
-   * Everything a region must remember and nothing it can rebuild: the ground comes from the
-   * seed, so only what was DONE to it is written down. A few kilobytes a region, which is what
-   * lets a whole country live in `localStorage`. */
-  REALM.compact = function (world) {
-    return {
-      t: world.t,
-      cities: world.cities.map((c) => [c.owner, Math.round(c.hp), c.level, c.razed ? 1 : 0]),
-      players: world.players.map((p) => ({
-        e: Math.round(p.essence),
-        b: p.buildings.map((b) => [b.id, b.bt, b.level, Math.round(b.hp), b.br || 0, b.node,
-                                   Math.round(b.x), Math.round(b.y),
-                                   b.x2 == null ? null : Math.round(b.x2),
-                                   b.y2 == null ? null : Math.round(b.y2),
-                                   b.breach ? 1 : 0, b.crews || 1, b.co || 0]),
-        u: p !== null ? null : null
-      })),
-      units: world.units.filter((u) => u.hp > 0 && u.owner >= 0)
-        .map((u) => [u.owner, u.kind, u.tier || 1, Math.round(u.x), Math.round(u.y), Math.round(u.hp)]),
-      next: world.nextId
-    };
-  };
-  REALM.restore = function (world, s) {
-    const W = World();
-    world.t = s.t || 0;
-    for (let i = 0; i < world.cities.length && i < s.cities.length; i++) {
-      const c = world.cities[i], r = s.cities[i];
-      c.owner = r[0]; c.hp = r[1]; c.level = r[2]; if (r[3]) c.razed = 1;
-    }
-    for (let pi = 0; pi < world.players.length && pi < s.players.length; pi++) {
-      const p = world.players[pi], r = s.players[pi];
-      p.essence = r.e;
-      p.buildings = r.b.map((b) => {
-        const def = C.BUILDINGS[b[1]] || {};
-        return { id: b[0], bt: b[1], level: b[2], hp: b[3], maxHp: b[3], br: b[4] || undefined,
-                 node: b[5], x: b[6], y: b[7],
-                 ...(b[8] == null ? {} : { x2: b[8], y2: b[9] }),
-                 ...(b[10] ? { breach: 1 } : {}), crews: b[11], co: b[12],
-                 cd: 0, raise: 0, raiseFor: def.raise || 1, work: 0, lastHurt: -99 };
-      });
-    }
-    world.units = s.units.map((u) => {
-      const def = C.UNITS[u[1]];
-      return { id: world.nextId++, owner: u[0], kind: u[1], tier: u[2], x: u[3], y: u[4],
-               ox: 0, oy: 0, hp: u[5], maxHp: def.hp * (C.TIER[u[2] - 1] || 1),
-               dmg: def.dmg * (C.TIER[u[2] - 1] || 1), cd: 0, goal: null, co: 0, from: -1 };
-    });
-    world.nextId = Math.max(world.nextId, s.next || 1);
-    world.navVersion++;
-    if (W.refreshVision) W.refreshVision(world);
-  };
-  /* leaving a region is compacting it and putting the record away */
-  REALM.leave = function (realm, key, world) {
-    if (!world) return;
-    realm.state[key] = REALM.compact(world);
-    /* AND THE COUNTRY LEARNS WHAT HAPPENED HERE. A city taken inside a region is a city taken
-     * in the war — the two must not be able to disagree, so the region's world is the truth and
-     * this is the one place it is copied up. */
-    const city = COUNTRY.cityIn(realm.country, key);
-    if (city) {
-      const c0 = world.cities[0];
-      if (c0.razed) { city.owner = -1; city.razed = 1; city.lord = null; }
-      else if (c0.owner === 0 && city.owner !== realm.me) {
-        /* A COURT WILL NOT SWEAR TO A HEIR WHO CANNOT HOLD IT. You keep one city by right and
-         * one more for every lord you have; past that the city goes back to being free — a
-         * refusal the player can SEE on the map, rather than a number quietly ignored. It is
-         * checked here because here is the one place the country learns anything, and because
-         * `world.js` must go on knowing nothing above a board. */
-        if (REALM.holds(realm, realm.me).length >= 1 + realm.lords) {
-          city.owner = -1;
-          world.cities[0].owner = -1;
-          realm.refused = city.id;                  // the map says why on the next draw
-        } else {
-          /* AND HIS LORD COMES OVER WITH HIS CITY — but only a rival's. Taking from a minor
-           * holding wins ground and nothing else, which is what stops a war being won by
-           * eating the weak. */
-          const was = city.owner;
-          city.owner = realm.me; city.lord = null;
-          if (was >= 1) realm.lords++;
-        }
-      } else if (c0.owner === 0) { city.owner = realm.me; city.lord = null; }
-      else if (c0.owner < 0) { city.owner = -1; }
-    }
-  };
-
-  /* ---------------- marching between regions ----------------
-   * A column ordered past a border steers at its CROSSING and is handed to the neighbour at the
-   * matching point on its side — the wall-gateway trick one level up, and the same shape
-   * `postWalls` already uses. Between the two it is a record on the realm and not a world, which
-   * is what makes a march across a country cost nothing while nobody is watching it. */
-  REALM.march = function (realm, from, to, men, owner) {
-    const door = COUNTRY.doorTo(realm.country, from, to);
-    if (!door) return null;
-    const m = { owner: owner == null ? realm.me : owner, from, to, men: men.slice(),
-                at: 0, arrive: C.REALM.crossing };
-    realm.marches.push(m);
-    return m;
-  };
-  REALM.tick = function (realm, dt) {
-    realm.t += dt;
-    for (let i = realm.marches.length - 1; i >= 0; i--) {
-      const m = realm.marches[i];
-      m.at += dt;
-      if (m.at < m.arrive) continue;
-      realm.marches.splice(i, 1);
-      REALM.arrive(realm, m);
-    }
-  };
-  /* A COLUMN ARRIVES AT THE FAR GATE — into the saved state of a region nobody is standing in,
-   * or straight into the live world if somebody is. Both go through the same record, so a
-   * region does not behave differently for being watched. */
-  REALM.arrive = function (realm, m) {
-    const door = COUNTRY.doorTo(realm.country, m.from, m.to);
-    if (!door) return;
-    const at = COUNTRY.gate(door, 'far');
-    const st = realm.state[m.to] || (realm.state[m.to] = emptyState());
-    for (const u of m.men)
-      st.units.push([m.owner === realm.me ? 0 : 1, u.kind, u.tier || 1,
-                     Math.round(at.x), Math.round(at.y), Math.round(u.hp)]);
-  };
-  function emptyState() {
-    return { t: 0, cities: [], players: [{ e: C.START_ESSENCE, b: [] }, { e: C.START_ESSENCE, b: [] }],
-             units: [], next: 1 };
-  }
 
   /* ---------------- who is winning ----------------
-   * ONE PATTERN, IN ONE CITY. Holding it is the only way to walk, so the country has a centre
-   * without anybody declaring one and the endgame is a convergence rather than fifteen sieges.
-   * `REALM.run().tick` NEVER writes to a world — it answers, and game.js ends things through
-   * `World.declare`, exactly as a chapter does. */
-  REALM.holds = (realm, pi) => realm.country.cities.filter((c) => c.owner === pi);
-  REALM.patternCity = (realm) => realm.country.cities.find((c) => c.pattern) || null;
-  REALM.lordsOf = (realm, pi) => REALM.holds(realm, pi).filter((c) => c.lord != null).length;
-  /* AND YOU MAY HOLD ONLY AS MANY CITIES AS YOU HAVE LORDS TO HOLD THEM — the brake on the
-   * snowball, and the reason a lord is a resource rather than a convenience. An unlorded city
-   * beyond the first produces little and defends itself badly. */
-  REALM.overheld = (realm, pi) => Math.max(0, REALM.holds(realm, pi).length - 1 - (realm.lords || 0));
-
+   * There is one Pattern, in one city: holding AMBER is not winning, it is being ALLOWED to
+   * walk — the Shrine can rise nowhere else (rules.onePattern), so a hundred on the Pattern
+   * cannot happen anywhere else either, and the tick needs no second question. */
   REALM.run = function (realm) {
     return {
       realm,
-      /* asked once per simulated frame over the world game.js already holds; answers and does
-       * not act, exactly as a chapter's objective does */
-      /* THE WAR ENDS WHERE ONE MATCH DOES, and by the same rule. Asked once per simulated frame
-       * over the world game.js already holds; it ANSWERS and never writes, exactly as a
-       * chapter's objective does, and ending anything goes through `World.declare`.
-       * There is one Pattern, in one city: holding that city is not winning, it is being ALLOWED
-       * to walk. A walk completed in the Pattern's own region wins the country. */
+      /* asked once per simulated frame over the world game.js already holds; it ANSWERS and
+       * never writes, exactly as a chapter's objective does, and ending anything goes
+       * through `World.declare` */
       tick(world) {
-        if (realm.done) return realm.done;
-        if (!world || !world.pattern) return null;
+        if (!world) return null;
         const me = world.players[0];
-        if (me && me.pattern >= 100) return 'won';
-        return null;
+        return me && me.pattern >= 100 ? 'won' : null;
       },
       /* what the HUD says about the war, asked every frame so it can count */
       say() {
-        const mine = REALM.holds(realm, realm.me).length;
-        const room = 1 + realm.lords;
-        const pat = REALM.patternCity(realm);
+        const w = realm.world, me = w.players[0];
+        if (me.pattern >= 100) return 'The Pattern holds, and it answers to your name.';
+        const mine = World().citiesOf(w, 0).length;
+        const room = 1 + (me.lords != null ? me.lords : C.REALM.lords0);
+        const pc = w.pattern != null ? w.cities[w.pattern] : null;
+        const at = pc ? (w.map.sites[pc.site].name || 'AMBER') : 'the centre';
         const held = `${mine} of ${room} ${room === 1 ? 'city' : 'cities'} held`;
-        if (realm.done === 'won') return 'The Pattern holds, and it answers to your name.';
-        if (pat && pat.owner === realm.me) return held + ' — AMBER is yours: raise a Shrine and walk';
-        return `${held} — the Pattern lies at ${pat ? pat.name : 'the centre'}`;
+        if (pc && pc.owner === 0) return `${held} — ${at} is yours: raise a Shrine and walk`;
+        return `${held} — the Pattern lies in ${at}`;
       },
-      /* a war has no tutorial: it is not a chapter and it teaches by being played. Present so
-       * game.js may hold a realm's run exactly where it holds a chapter's, with no branch. */
+      /* a war has no tutorial; present so game.js holds a war exactly where it holds a
+       * chapter, with no branch */
       hint() { return null; }
     };
   };
 
   /* ---------------- the record of a war ----------------
-   * One key, versioned, and every `localStorage` reach wrapped — a private-mode browser that
-   * throws must still be able to open the menu. Same shape as `CAMPAIGN.progress`, deliberately:
-   * two persistence idioms in one game is one too many. */
+   * One key, versioned, every localStorage reach wrapped — a private-mode browser that
+   * throws must still be able to open the menu. A v1 record was a graph of little region
+   * boards; there is no honest way to pour those into one continuous country, so it loads
+   * as null and `REALM.lost` says so, once, for the UI to break the news. */
   const KEY = 'amber_realm';
+  REALM.lost = false;
+
+  /* the seen mask, run-length coded: alternating run lengths, zeros first. A country's mask
+   * is ~28k cells a seat and almost all of it is a few long runs. */
+  function rle(g) {
+    const out = [];
+    let val = 0, run = 0;
+    for (let i = 0; i < g.length; i++) {
+      const b = g[i] ? 1 : 0;
+      if (b === val) { run++; continue; }
+      out.push(run); val = b; run = 1;
+    }
+    out.push(run);
+    return out;
+  }
+  function unrle(runs, mask) {
+    let at = 0, val = 0, marked = 0;
+    mask.g.fill(0);
+    for (const n of runs || []) {
+      if (val) { mask.g.fill(1, at, at + n); marked += n; }
+      at += n; val ^= 1;
+    }
+    mask.v = marked;
+  }
+
+  /* WHAT IS WRITTEN DOWN: what was DONE, never what the seed can rebuild. Works keep the
+   * shape v1's compact used — 13 slots, walls carrying their far end, breach and crews —
+   * plus `flip`, which is an ORDER about a run and so belongs in the record; a run's
+   * `units`/`gated` are facts about its length and are re-derived. Fog memory (`ghosts`)
+   * is the human seat's alone: a lord re-scouts, and it costs him nothing. */
+  function pack(realm) {
+    const w = realm.world;
+    return {
+      v: 2, seed: realm.seed, t: w.t, tick: w.tick, nextId: w.nextId,
+      chaosNext: w.chaosNext, chaosParity: w.chaosParity, heirs: w.heirs,
+      cities: w.cities.map((c) => [c.owner, Math.round(c.hp), c.level, c.razed ? 1 : 0,
+                                   c.fell != null ? c.fell : -1]),
+      players: w.players.map((p) => ({
+        e: Math.round(p.essence), out: p.out ? 1 : 0, lords: p.lords, pattern: p.pattern,
+        walking: p.walking ? 1 : 0, revealed: p.revealed ? 1 : 0, nextCo: p.nextCo,
+        musterPaused: p.musterPaused ? 1 : 0,
+        offers: Array.from(p.offers || [], (o) => (o ? 1 : 0)),
+        companies: p.companies.map((co) => [co.id, co.city != null ? co.city : -1,
+          co.rally ? Math.round(co.rally.x) : null, co.rally ? Math.round(co.rally.y) : 0,
+          co.rally ? co.rally.site : -1, co.paused ? 1 : 0, co.trump ? 1 : 0]),
+        b: p.buildings.map((b) => [b.id, b.bt, b.level, Math.round(b.hp), b.br || 0, b.node,
+                                   Math.round(b.x), Math.round(b.y),
+                                   b.x2 == null ? null : Math.round(b.x2),
+                                   b.y2 == null ? null : Math.round(b.y2),
+                                   b.breach ? 1 : 0, b.crews || 1, b.co || 0, b.flip ? 1 : 0]),
+        explored: Object.keys(p.explored).map(Number)
+      })),
+      units: w.units.filter((u) => u.hp > 0)
+        .map((u) => [u.owner, u.kind, u.tier || 1, Math.round(u.x), Math.round(u.y),
+                     Math.round(u.hp), u.co || 0, u.from != null ? u.from : -1]),
+      ghosts: w.players[0].ghosts,
+      seen: w.players.map((p) => rle(p.seen.g))
+    };
+  }
+
+  /* fresh ground from the seed, the record laid over it — v1's restore idiom, one level up */
+  function unpack(rec) {
+    const W = World();
+    const world = W.createWorld(rec.seed >>> 0, 2, null, WAR,
+                                { country: true, heirs: rec.heirs || HEIRS });
+    world.t = rec.t || 0; world.tick = rec.tick || 0;
+    if (rec.chaosNext != null) world.chaosNext = rec.chaosNext;
+    world.chaosParity = rec.chaosParity || 0;
+    for (let i = 0; i < world.cities.length && i < rec.cities.length; i++) {
+      const c = world.cities[i], r = rec.cities[i];
+      c.owner = r[0]; c.hp = r[1]; c.level = r[2];
+      if (r[3]) c.razed = 1;
+      if (r[4] >= 0) c.fell = r[4];
+      c.hold = null; c.cd = 0;
+    }
+    for (let pi = 0; pi < world.players.length && pi < rec.players.length; pi++) {
+      const p = world.players[pi], r = rec.players[pi];
+      p.essence = r.e; p.out = !!r.out; p.pattern = r.pattern || 0;
+      if (r.lords != null) p.lords = r.lords;
+      p.walking = !!r.walking; p.revealed = !!r.revealed;
+      p.nextCo = r.nextCo || 1; p.musterPaused = !!r.musterPaused;
+      p.offers = (r.offers || []).map((o) => (o ? 1 : 0));
+      p.companies = (r.companies || []).map((co) => {
+        const out = { id: co[0], rally: co[2] == null ? null : { x: co[2], y: co[3], site: co[4] } };
+        if (co[1] >= 0) out.city = co[1];
+        if (co[5]) out.paused = true;
+        if (co[6]) out.trump = true;
+        return out;
+      });
+      p.buildings = (r.b || []).map((b) => {
+        const def = C.BUILDINGS[b[1]] || {};
+        const out = { id: b[0], bt: b[1], level: b[2], hp: b[3], maxHp: b[3],
+                      br: b[4] || undefined, node: b[5], x: b[6], y: b[7],
+                      cd: 0, raise: 0, raiseFor: def.raise || 1, work: 0, lastHurt: -99,
+                      crews: b[11], co: b[12] };
+        if (b[8] != null) {
+          out.x2 = b[8]; out.y2 = b[9];
+          /* a run is stored by its MIDPOINT, so its length is twice the reach to its far
+           * end — and `units`/`gated` follow from the length exactly as the build did */
+          const len = 2 * Math.hypot(out.x2 - out.x, out.y2 - out.y);
+          out.units = len / C.WALL.unit;
+          if (len >= C.WALL.gateMin) out.gated = 1;
+        }
+        if (b[10]) out.breach = 1;
+        if (b[13]) out.flip = 1;
+        return out;
+      });
+      /* a site once seen stays on the map; what it IS comes back from the map itself */
+      p.explored = {};
+      for (const id of r.explored || []) {
+        const s = world.map.sites[id];
+        if (s) p.explored[id] = { kind: s.kind, name: s.name };
+      }
+    }
+    world.players[0].ghosts = rec.ghosts || {};
+    world.units.length = 0;
+    for (const u of rec.units || []) {
+      const def = C.UNITS[u[1]];
+      if (!def) continue;
+      const chaos = u[0] === C.CHAOS_ID;
+      const vet = chaos ? C.CHAOS.hpScale(world.t) : (C.TIER[u[2] - 1] || 1);
+      const un = { id: world.nextId++, owner: u[0], kind: u[1], tier: u[2], x: u[3], y: u[4],
+                   rank: 0, hp: u[5], maxHp: Math.max(u[5], def.hp * vet),
+                   dmg: def.dmg * (chaos ? C.CHAOS.dmgScale(world.t) : (C.TIER[u[2] - 1] || 1)),
+                   cd: 0, goal: null, co: u[6] || 0, from: u[7] != null ? u[7] : -1 };
+      if (chaos) {
+        /* a fiend is re-bound to the nearest city, as spawnUnit binds a fresh one — an
+         * unbounded chaos field would cost a country-wide Dijkstra (see world.js) */
+        let bi = -1, bd = Infinity;
+        for (let i = 0; i < world.cities.length; i++) {
+          const d = (un.x - world.cities[i].x) ** 2 + (un.y - world.cities[i].y) ** 2;
+          if (d < bd) { bd = d; bi = i; }
+        }
+        if (bi >= 0) {
+          un.bnd = bi;
+          un.goal = { x: world.cities[bi].x, y: world.cities[bi].y, site: world.cities[bi].site };
+        }
+      }
+      world.units.push(un);
+    }
+    /* the champion is found again by what he IS — his id was minted afresh just now, and a
+     * dangling championId would let the Trump be played over a living champion */
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const ch = world.units.find((u) => u.owner === pi && u.kind === 'champion');
+      if (ch) world.players[pi].championId = ch.id;
+    }
+    world.nextId = Math.max(world.nextId, rec.nextId || 1);
+    /* the ground changed under every cache: the flow fields, the standing wall set and the
+     * fog are all stale against a fresh board with a war laid over it. The seen masks come
+     * LAST, wholesale — refreshVision marks live sight into them, and the saved mask is
+     * already its superset; overlaying after keeps the popcount exactly what was saved. */
+    world.navVersion++;
+    W.noteWalls(world);
+    W.refreshVision(world);
+    for (let pi = 0; pi < world.players.length; pi++)
+      unrle(rec.seen && rec.seen[pi], world.players[pi].seen);
+    return world;
+  }
+
   REALM.save = function (realm) {
     try {
-      global.localStorage.setItem(KEY, JSON.stringify({
-        v: 1, seed: realm.seed, t: realm.t, me: realm.me, heirs: realm.heirs, at: realm.at,
-        lords: realm.lords,
-        cities: realm.country.cities.map((c) => [c.id, c.owner, c.lord, c.razed ? 1 : 0]),
-        state: realm.state, marches: realm.marches, done: realm.done
-      }));
+      global.localStorage.setItem(KEY, JSON.stringify(pack(realm)));
       return true;
     } catch (e) { return false; }
   };
@@ -346,21 +248,18 @@
     if (!raw) return null;
     let p = null;
     try { p = JSON.parse(raw); } catch (e) { return null; }
-    if (!p || p.v !== 1 || p.seed == null) return null;
-    const realm = REALM.create(p.seed, { heirs: (p.heirs || []).slice(1) });
-    realm.t = p.t || 0; realm.me = p.me || 0; realm.at = p.at || realm.at;
-    realm.state = p.state || {}; realm.marches = p.marches || []; realm.done = p.done || null;
-    realm.lords = p.lords != null ? p.lords : C.REALM.lords0;
-    for (const row of p.cities || []) {
-      const c = COUNTRY.cityById(realm.country, row[0]);
-      if (!c) continue;
-      c.owner = row[1]; c.lord = row[2]; if (row[3]) c.razed = 1;
-    }
-    return realm;
+    /* the old region war cannot be poured into a continuous country: lost, and said once */
+    if (p && p.v === 1) { REALM.lost = true; return null; }
+    if (!p || p.v !== 2 || p.seed == null) return null;
+    try { return { v: 2, seed: p.seed >>> 0, world: unpack(p) }; }
+    catch (e) { return null; }
   };
   REALM.forget = function () { try { global.localStorage.removeItem(KEY); } catch (e) {} };
   REALM.saved = function () {
-    try { return !!(global.localStorage && global.localStorage.getItem(KEY)); } catch (e) { return false; }
+    try {
+      const raw = global.localStorage && global.localStorage.getItem(KEY);
+      return !!raw && JSON.parse(raw).v === 2;
+    } catch (e) { return false; }
   };
 
   global.REALM = REALM;

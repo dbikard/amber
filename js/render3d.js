@@ -1015,10 +1015,22 @@
   /* zoom moves the camera in and out; the rig keeps the same pitch, so the view simply gets
    * closer to the ground rather than changing character */
   R.applyZoom = function () {
-    R.zoom = Math.max(C.VIEW.min, Math.min(C.VIEW.max, R.zoom || 1));
+    /* THE FLOOR SCALES WITH THE LAND. `VIEW.min` was set so the furthest zoom shows a
+     * board's worth of ground; on a country that same floor shows a postage stamp of it, so
+     * the floor drops with the world's width — exactly today's floor on a default board, and
+     * a strategic pull-back on anything wider. The far plane already grew with the land
+     * (buildWorld), and the distance fog stretches below only past today's deepest zoom, so
+     * every duel frame is untouched to the pixel. */
+    const zmin = C.VIEW.min * Math.min(1, C.MAP.W / mapW);
+    R.zoom = Math.max(zmin, Math.min(C.VIEW.max, R.zoom || 1));
     scale = W * R.zoom / C.VIEW_W;
     viewW = W / scale; viewH = H / scale;
     if (cam) aimCam(viewW);
+    if (scene && scene.fog) {
+      const f = Math.max(1, viewW / (C.VIEW_W / C.VIEW.min));
+      scene.fog.near = 2000 * f;
+      scene.fog.far = 4600 * f;
+    }
     R.clampCam();
   };
   R.setZoom = function (z) { R.zoom = z; R.applyZoom(); };
@@ -1665,8 +1677,10 @@
      * THIS match's fog, not fade out of the last one's */
     for (const k in veilT) delete veilT[k];
     /* the halo hangs in worldG, which was just emptied — forget the handle or the next frame
-     * writes instances into a mesh that is no longer in the scene */
+     * writes instances into a mesh that is no longer in the scene. The reach ring hangs
+     * there too, and forgetting its key with it is what lets the next match rebuild it. */
     haloIM = null; haloCo = null;
+    reachLine = null; reachKey = '';
     /* the darts and the chains hang in worldG too, and it was just emptied — their geometry is
      * disposed with everything else, so the handles must go with it or the next frame writes
      * instances into a mesh that is no longer in the scene */
@@ -2430,6 +2444,44 @@
       for (const id of unitFace.keys()) if (!live.has(id)) unitFace.delete(id);
     }
     updateHalo(marked, armed);
+    updateReachRing(view, viewer, armed);
+  }
+
+  /* THE REACH, DRAWN WHERE THE DECISION IS MADE. Arming a standard in a reach world is the
+   * moment the border matters — the next tap is refused past it — so the armed company's
+   * city wears its whole disc as a ground-following line, the writ outline's own idiom. An
+   * `affordance` by name (the veil's one sanctioned exemption), rebuilt only when the armed
+   * city or its reach changes, because the ground under the ring never moves mid-match. */
+  let reachLine = null, reachKey = '';
+  function updateReachRing(view, viewer, armed) {
+    let key = '', c = null;
+    if (armed != null && view.rules && view.rules.reach && view.players[viewer]) {
+      const co = (view.players[viewer].companies || []).find((q) => q.id === armed);
+      c = co && co.city != null && view.cities ? view.cities[co.city] : null;
+      if (c && c.reach) key = co.city + ':' + Math.round(c.reach); else c = null;
+    }
+    if (key !== reachKey) {
+      if (reachLine) {
+        reachLine.removeFromParent(); reachLine.geometry.dispose(); reachLine.material.dispose();
+        reachLine = null;
+      }
+      reachKey = key;
+      if (c) {
+        const pts = [];
+        for (let i = 0; i <= 128; i++) {
+          const a = (i / 128) * Math.PI * 2;
+          const x = c.x + Math.cos(a) * c.reach, y = c.y + Math.sin(a) * c.reach;
+          pts.push(new THREE.Vector3(x, groundH(x, y) + 2.5, y));
+        }
+        reachLine = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(pts),
+          new THREE.LineBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.5, depthWrite: false }));
+        reachLine.name = 'affordance';
+        worldG.add(reachLine);
+      }
+    }
+    /* the same slow breath the halo takes, so the border reads as live rather than painted */
+    if (reachLine) reachLine.material.opacity = 0.35 + 0.18 * Math.sin(T * 2.5);
   }
 
   function updateSites(view, viewer) {

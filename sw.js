@@ -13,7 +13,7 @@
  *  - cross-origin passes through untouched */
 'use strict';
 
-const VERSION = '0.9.74';
+const VERSION = '0.9.75';
 const CACHE = 'amber-' + VERSION;
 const CORE = [
   './', './index.html', './styles.css', './manifest.json',
@@ -21,7 +21,8 @@ const CORE = [
   './js/vendor/three.min.js',
   './js/rng.js', './js/const.js', './js/worldgen.js', './js/nav.js', './js/world.js', './js/ai.js',
   './js/terrain.js', './js/render3d.js', './js/render_select.js',
-  './js/qrcode.js', './js/net.js', './js/record.js', './js/campaign.js', './js/ui.js', './js/game.js'
+  './js/qrcode.js', './js/net.js', './js/record.js', './js/campaign.js', './js/realm.js',
+  './js/ui.js', './js/game.js'
 ].map((u) => (u.endsWith('/') || u.endsWith('.html') ? u : u + '?v=' + VERSION));
 
 self.addEventListener('install', (event) => {

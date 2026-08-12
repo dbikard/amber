@@ -1,5 +1,17 @@
 # Amber — The Long War (v1.0+ design)
 
+> **SUPERSEDED IN PART (2026-08-12): THE REACH WAR.** Stages 0–4 (rules, foe, cities,
+> occupation, the quiet tick) shipped exactly as written below and stand. Stages 5–7 — the
+> country as a GRAPH OF BOARDS — shipped, played, and were then replaced by the Reach War:
+> one continuous land where every city owns a REACH, a company belongs to a city, and every
+> flow field is fenced by its city's disc — which is what §1's own measurement said a big
+> map needed and this plan solved with regions instead. The reach turned out to be the
+> better spelling: the border became a rule of play rather than a seam. `js/country.js`,
+> enter/compact/march and the map screen are gone (this file and git history are their
+> record); the lord brake, `onePattern`, the save idiom and the run shape were ported. See
+> CLAUDE.md "The Reach War" for what stands now, and `proto/reach/` for the rig that
+> decided it.
+
 The plan for a fourth mode: a country-size world of many regions and many cities, conquest that
 yields ground rather than rubble, truces that can be made and broken, and a war you can put down
 and pick up over many evenings.

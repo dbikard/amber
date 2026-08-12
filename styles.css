@@ -637,41 +637,5 @@ body {
 .c-rate.up { color: #b0e8a0; }
 .c-rate.dn { color: #ff9a9f; }
 
-/* ---------------- THE MAP OF THE COUNTRY ----------------
- * A screen like the chapters and the rivals: it sits over the menu and peels the same way. The
- * country is a GRID of regions, so it is drawn as one — a phone reads a grid instantly and a
- * hand-drawn map of a dozen boards is a picture nobody can tap accurately. */
-#realm {
-  position: fixed; inset: 0; z-index: 40; overflow-y: auto;
-  background: radial-gradient(120% 90% at 50% 0%, #1b1730 0%, #0d0b18 70%);
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: calc(env(safe-area-inset-top, 0) + 16px) 14px calc(env(safe-area-inset-bottom, 0) + 16px);
-}
-#realm.hidden { display: none; }
-#realm h2 { margin: 0; letter-spacing: 3px; color: #ffe9a8; font-size: 20px; }
-#realm-say { color: #cfc6b4; font-size: 13px; text-align: center; min-height: 18px; }
-#realm-grid { display: grid; gap: 4px; width: 100%; max-width: 460px; }
-.rgn {
-  position: relative; aspect-ratio: 1; border-radius: 5px; border: 1px solid #ffffff1c;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px; padding: 3px; font-size: 9px; line-height: 1.15; text-align: center;
-  color: #e8e2d4; cursor: pointer; overflow: hidden;
-  -webkit-tap-highlight-color: transparent;
-}
-/* the sea is not a place: it takes no taps and says nothing */
-.rgn.sea { background: #10182a; border-color: #ffffff0d; cursor: default; opacity: 0.5; }
-.rgn .r-name { font-weight: bold; letter-spacing: 0.3px; }
-.rgn .r-lord { opacity: 0.65; }
-/* WHERE YOU ARE, and it must be unmistakable at a glance on a phone */
-.rgn.here { border-color: #ffe9a8; box-shadow: inset 0 0 0 1px #ffe9a8aa, 0 0 12px #ffe9a855; }
-.rgn.here::after { content: '⚑'; position: absolute; top: 2px; right: 4px; color: #ffe9a8; font-size: 11px; }
-/* a neighbour you may march to. A CLOSED border is drawn as nothing at all — it is not a place
- * you were refused, it is a place with no road, and a greyed-out button says the wrong thing. */
-.rgn.road { border-color: #9cc8ff66; }
-.rgn.road::before { content: '⇢'; position: absolute; top: 2px; left: 4px; color: #9cc8ff; font-size: 10px; }
-.rgn.pick { outline: 2px solid #ffe9a8; outline-offset: -2px; }
-.rgn.pattern .r-name { color: #dff0ff; text-shadow: 0 0 8px #9cc8ff; }
-#realm-foot { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-#realm-foot .hidden { display: none; }
 /* a wide card on the menu: the long war is its own kind of thing and gets its own row */
 .mcard.wide { width: 100%; }

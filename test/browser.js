@@ -4411,13 +4411,14 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
-  /* ---------------- the long war ----------------
-   * The whole mode, driven the way a player drives it: open the map, go down into a region, play
-   * it, come back up, and find the war where you left it after the page has forgotten everything
-   * but `localStorage`. Every assertion below is about the SEAM between the country and a board,
-   * because that seam is the only thing the mode adds — a region is an ordinary match. */
+  /* ---------------- the long war, on one land ----------------
+   * The mode, driven the way a player drives it: one tap from the menu into the war, orders
+   * that obey the reach, out to the menu, and the same war found again after the page has
+   * forgotten everything but localStorage. Every assertion is about the SEAM the mode adds —
+   * persistence and the one-tap door — because the war itself is an ordinary reach world.
+   */
   {
-    suite('the long war: a country, a region, and a war put down');
+    suite('the long war: one land, put down and picked up');
     const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
     const errs = [];
     pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
@@ -4425,120 +4426,55 @@ async function match(browser, base, renderer) {
     await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await ready(pg);
     await pg.evaluate(() => window.REALM.forget());
-
+    /* one tap: the card boots the war itself — no screen between the menu and the ground */
     await pg.click('#btn-realm');
-    await pg.waitForTimeout(350);
-    const map = await pg.evaluate(() => ({
-      shown: !document.getElementById('realm').classList.contains('hidden'),
-      tiles: document.querySelectorAll('#realm-grid .rgn').length,
-      land: document.querySelectorAll('#realm-grid .rgn:not(.sea)').length,
-      here: document.querySelectorAll('#realm-grid .rgn.here').length,
-      roads: document.querySelectorAll('#realm-grid .rgn.road').length,
-      say: document.getElementById('realm-say').textContent,
-      at: window.Game.game.realm.at,
-      cols: window.Game.game.realm.country.cols
-    }));
-    ok('the map of the country opens', map.shown && map.tiles === map.cols * map.cols,
-       JSON.stringify(map));
-    ok('...with land to fight over', map.land >= 10, `${map.land} regions`);
-    /* WHERE YOU ARE, EXACTLY ONCE. Two marks or none is a map you cannot read. */
-    ok('...and exactly one of them is where you are', map.here === 1, `${map.here} marked`);
-    ok('...with at least one road out of it', map.roads >= 1, `${map.roads} roads`);
-    ok('...and it says where the Pattern lies', /Pattern/.test(map.say), map.say);
-
-    await pg.click('#realm-go');
-    await pg.waitForTimeout(1200);
-    const inside = await pg.evaluate(() => ({
-      mode: window.Game.game.mode, region: window.Game.game.region,
-      hud: !document.getElementById('hud').classList.contains('hidden'),
-      /* the map must be PEELED, or it stays over the menu when the region is left and every
-       * control underneath is covered by a screen nobody can see is there */
-      mapGone: document.getElementById('realm').classList.contains('hidden'),
-      rules: window.Game.game.world && window.Game.game.world.rules,
-      terms: document.querySelectorAll('#terms .term').length
-    }));
-    ok('going down into a region is an ordinary match', inside.mode === 'sp' && inside.hud,
-       JSON.stringify(inside));
-    ok('...on the region you were standing in', inside.region === map.at, inside.region);
-    ok('...and the map is peeled behind it', inside.mapGone, 'the map stayed up');
-    ok('...playing by the rules of a war', inside.rules && inside.rules.occupy === 1 &&
-       inside.rules.endOnSeat === 0 && inside.rules.truce === 1, JSON.stringify(inside.rules));
-    ok('...so terms may be offered in it', inside.terms >= 1, `${inside.terms} chips`);
-
-    /* a minute of it, so there is something worth remembering */
-    await pg.evaluate(() => {
-      for (let i = 0; i < 60 * 30; i++) {
-        window.World.update(window.Game.game.world, 1 / 30);
-        window.Game.game.world.events.length = 0;
-      }
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const boot = await pg.evaluate(() => {
+      const g = window.Game.game, w = g.world;
+      return { war: g.war === true, seats: w.players.length, reach: w.rules.reach,
+               onePattern: w.rules.onePattern, saved: window.REALM.saved(),
+               bots: g.bots ? g.bots.filter(Boolean).length : 0 };
     });
-    const played = await pg.evaluate(() => ({
-      men: window.Game.game.world.units.filter((u) => u.hp > 0).length,
-      works: window.Game.game.world.players[0].buildings.length
-    }));
-    ok('the rig is alive: a minute in the region raised an army', played.men > 2,
-       `${played.men} men, ${played.works} works`);
-
-    await pg.evaluate(() => window.Game.toMenu());
-    await pg.waitForTimeout(350);
-    const out = await pg.evaluate(() => ({
-      onMap: !document.getElementById('realm').classList.contains('hidden'),
-      region: window.Game.game.region,
-      saved: window.REALM.saved(),
-      stored: Object.keys(window.Game.game.realm.state).length
-    }));
-    /* OUT OF A REGION IS BACK TO THE COUNTRY. Leaving the region you were fighting in is putting
-     * the battle down, not the war; being dumped to the title screen would make a country feel
-     * like a list of skirmishes. */
-    ok('coming out of a region lands on the map, not the menu', out.onMap, 'it went to the menu');
-    ok('...the region is put away', out.region === null && out.stored === 1, JSON.stringify(out));
-    ok('...and the war is written down', out.saved, 'nothing was saved');
-
-    /* THE WHOLE POINT OF THE MODE: the page forgets everything but `localStorage` and the war is
-     * still there, with the army that was raised in it. */
+    ok('the card is one tap into a war', boot.war && boot.seats >= 8, JSON.stringify(boot));
+    ok("...playing by the war's rules", boot.reach === 1 && boot.onePattern === 1,
+       JSON.stringify(boot));
+    ok('...with a lord on every other seat', boot.bots === boot.seats - 1, String(boot.bots));
+    /* the reach speaks in the real UI path */
+    const orders = await pg.evaluate(() => {
+      const W = window.World, w = window.Game.game.world;
+      const co = w.players[0].companies[0], c0 = w.cities[0];
+      const amber = w.cities[w.map.gen.pattern];
+      const far = W.applyCommand(w, 0, { c: 'rally', co: co.id, x: amber.x, y: amber.y });
+      const near = W.applyCommand(w, 0, { c: 'rally', co: co.id, x: c0.x + 130, y: c0.y + 40 });
+      const out = ((amber.x - c0.x) ** 2 + (amber.y - c0.y) ** 2) >= c0.reach * c0.reach;
+      return { far: far.err || 'ok', near: !!near.ok, out };
+    });
+    ok('an order inside the reach is taken', orders.near, JSON.stringify(orders));
+    if (orders.out) ok('...and one beyond it is refused by name', orders.far === 'reach', orders.far);
+    /* mark the war so the reload can prove it found THIS one, then put it down */
+    const mark = await pg.evaluate(() => {
+      const w = window.Game.game.world;
+      w.players[0].essence = 4321;
+      window.Game.toMenu();
+      return { seed: w.seed, saved: window.REALM.saved() };
+    });
+    ok('walking out saves the war', mark.saved === true);
+    const menuAfter = await pg.evaluate(() => !document.getElementById('menu').classList.contains('hidden'));
+    ok('...and lands on the menu, not a map screen', menuAfter);
+    /* the page forgets everything but localStorage; the war comes back */
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.click('#btn-realm');
+    await inMatchNow(pg);
     const back = await pg.evaluate(() => {
-      window.Game.game.realm = null;
-      const r = window.REALM.load();
-      return r ? { at: r.at, stored: Object.keys(r.state).length,
-                   men: (r.state[r.at] || { units: [] }).units.length,
-                   mine: r.country.cities.filter((c) => c.owner === r.me).length } : null;
+      const g = window.Game.game, w = g.world;
+      return { seed: w.seed, essence: Math.round(w.players[0].essence), war: g.war === true };
     });
-    ok('a war put down is a war you can pick up', back && back.at === map.at, JSON.stringify(back));
-    ok('...with the army you raised still standing in it', back && back.men === played.men,
-       back ? `${back.men} against ${played.men}` : 'nothing came back');
-    ok('...and the cities you held', back && back.mine >= 1, JSON.stringify(back));
-    /* ---- AND A LAN TABLE MAY FIGHT OVER THE COUNTRY ----
-     * The country is NOT sent: it is generated from its seed on every machine, exactly as a
-     * board is, so all that crosses the wire is which country and which region. The assertion
-     * that matters is that two machines given only those two things build the same board — if
-     * they did not, the host and the guest would be playing different ground and every position
-     * on the wire would be a lie. */
-    const lan = await pg.evaluate(() => {
-      const G = window.Game, Net = window.Net, REALM = window.REALM;
-      G.game.realm = REALM.load() || REALM.create(20261001);
-      const realm = { seed: G.game.realm.seed, at: G.game.realm.at };
-      Net.isHost = true; Net.active = true; Net.localIdx = 0;
-      Net.send = () => {};
-      Net.peers = [{ idx: 1, dc: { readyState: 'open', send: () => {} }, pc: null }];
-      G.startMP(12345, 2, 0, realm);
-      const host = { seats: G.game.world.players.length, rules: G.game.world.rules,
-                     mode: G.game.mode };
-      /* the same two numbers, on a machine that has never seen the host's country */
-      const r1 = REALM.create(realm.seed), r2 = REALM.create(realm.seed);
-      const fp = (w) => JSON.stringify([w.seed, Array.from(w.nav.terra).slice(0, 600),
-                                        w.map.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y)])]);
-      const same = fp(REALM.enter(r1, realm.at, 1)) === fp(REALM.enter(r2, realm.at, 1));
-      Net.active = false; Net.peers = [];
-      return { host, same, at: realm.at };
-    });
-    ok('a LAN table can be dealt into a region of the war',
-       lan.host.mode === 'host' && lan.host.seats === 2, JSON.stringify(lan.host));
-    ok('...playing by the war\'s rules', lan.host.rules && lan.host.rules.occupy === 1 &&
-       lan.host.rules.onePattern === 1, JSON.stringify(lan.host.rules));
-    /* THE ONE THING THAT MUST BE TRUE, or every position on the wire is a lie */
-    ok('...and both machines build the same region from the seed alone', lan.same,
-       'the host and the guest are on different ground');
-
+    ok('the same war is picked up from the seed alone', back.war && back.seed === mark.seed,
+       `seed ${back.seed}, want ${mark.seed}`);
+    ok('...with what was done still done', back.essence >= 4321 - 50 && back.essence < 6000,
+       String(back.essence));
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

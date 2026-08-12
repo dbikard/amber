@@ -8,8 +8,8 @@
 const path = require('path');
 const R = (f) => require(path.join(__dirname, '..', 'js', f));
 R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('net.js');
-R('record.js'); R('campaign.js'); R('country.js'); R('realm.js');
-const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN, COUNTRY, REALM, RNG } = globalThis;
+R('record.js'); R('campaign.js'); R('realm.js');
+const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN, REALM, RNG } = globalThis;
 const { suite, ok, eq, near, report, wallRig } = require('./lib.js');
 
 /* ---- --quick: a partial pass for the edit loop ----
@@ -7338,62 +7338,13 @@ if (!QUICK('the marchers take the country')) {
   }
 }
 
-suite('a country is a graph of boards');
+/* A BIOME CHANGES THE GROUND AND NOTHING ELSE. The noise, the ridges and the rim are the same
+ * code; only the three thresholds the terrain is read off move. So a biome cannot produce a
+ * board the rest of the game has never seen, and every one of them must still make a playable
+ * board with springs on it. (Kept from the region realm's suite: the regions are gone, the
+ * biomes are not.) */
+suite('a biome changes the ground and nothing else');
 {
-  let least = 99, most = 0, cut = 0, noPattern = 0, mismatch = 0;
-  const seen = {};
-  for (let s = 1; s <= 120; s++) {
-    const co = COUNTRY.build(s);
-    const land = COUNTRY.landRegions(co);
-    least = Math.min(least, land.length); most = Math.max(most, land.length);
-    if (!COUNTRY.connected(co)) cut++;
-    if (!co.pattern) noPattern++;
-    if (co.cities.length !== land.length) mismatch++;
-    seen[co.pattern] = 1;
-  }
-  ok('a country is big enough to fight over', least >= C.COUNTRY.least, `smallest was ${least}`);
-  ok('...and not bigger than its grid', most <= C.COUNTRY.cols * C.COUNTRY.rows, `largest ${most}`);
-  /* EVERY SHORE REACHABLE FROM EVERY OTHER. A country cut in half is a country half of which
-   * can never be fought over — and the coin that shuts a border will do it sooner or later, so
-   * it is repaired, and what still cannot be reached goes back to the sea. */
-  eq('every land region can be marched to from every other', cut, 0);
-  eq('there is always exactly one Pattern', noPattern, 0);
-  eq('and one city per land region', mismatch, 0);
-  ok('the Pattern does not always land in the same place', Object.keys(seen).length > 1,
-     Object.keys(seen).join(' '));
-
-  /* DETERMINISM IS THE WHOLE CONTRACT. A region is generated when somebody goes there and never
-   * before, so the same seed must produce the same country on every machine and at any hour. */
-  const a = COUNTRY.build(4242), b = COUNTRY.build(4242);
-  const fingerprint = (co) => JSON.stringify(co.regions.map((r) =>
-    [r.key, r.sea, r.biome, r.seed, r.nbrs.map((n) => [n.to, n.open, +n.at.toFixed(6)])]));
-  eq('the same seed is the same country', fingerprint(a), fingerprint(b));
-  ok('...and a different seed is a different one', fingerprint(a) !== fingerprint(COUNTRY.build(4243)),
-     'two seeds made the same country');
-
-  /* A CROSSING IS A PLACE ON A BOARD. It is where a column steers and where it is handed over —
-   * the wall-gateway trick one level up — so the two sides must be the same point on the shared
-   * edge, and both must be inside the board rather than on its very rim. */
-  const co = COUNTRY.build(4242);
-  let doors = 0;
-  for (const r of COUNTRY.landRegions(co)) for (const d of COUNTRY.doors(co, r.key)) {
-    doors++;
-    const near = COUNTRY.gate(d, 'near'), far = COUNTRY.gate(d, 'far');
-    ok(`a crossing lies on the board (${r.key} ${d.side})`,
-       near.x > 0 && near.x < C.MAP.W && near.y > 0 && near.y < C.MAP.H &&
-       far.x > 0 && far.x < C.MAP.W && far.y > 0 && far.y < C.MAP.H,
-       JSON.stringify([near, far]));
-    /* it must be on the FAR side of the neighbour from the side you left by */
-    const back = COUNTRY.doorTo(co, d.to, r.key);
-    ok(`...and the neighbour agrees about it (${r.key}→${d.to})`, !!back && back.at === d.at,
-       back ? `${back.at} vs ${d.at}` : 'no way back');
-  }
-  ok('the rig is alive: there are crossings to check', doors > 4, `${doors} crossings`);
-
-  /* A BIOME CHANGES THE GROUND AND NOTHING ELSE. The noise, the ridges and the rim are the same
-   * code; only the three thresholds the terrain is read off move. So a biome cannot produce a
-   * board the rest of the game has never seen, and every one of them must still make a playable
-   * board with springs on it. */
   for (const k of Object.keys(C.BIOMES)) {
     const g = WG.build(555, RNG, 2, { biome: k });
     ok(`the ${k} makes a board`, !!g && g.nodes.length >= C.WORLD.nodesMin,
@@ -7405,179 +7356,314 @@ suite('a country is a graph of boards');
      JSON.stringify(Array.from(plain.terra)), JSON.stringify(Array.from(downs.terra)));
 }
 
-suite('a region is a world, left and come back to');
+/* ---- ONE PATTERN, IN ONE CITY ----
+ * `world.pattern` is a CITY INDEX now, stamped at genesis by the country's own worldgen —
+ * the old region realm stamped a boolean on the one region that had it, and there is no
+ * region any more. Holding AMBER is not winning: it is being ALLOWED to walk, and the
+ * placement rule is what makes that true. */
+suite('there is one Pattern, and it lies in AMBER');
 {
-  const realm = REALM.create(20260922);
-  const land = COUNTRY.landRegions(realm.country);
-  ok('a war has a country under it', land.length >= C.COUNTRY.least, `${land.length} regions`);
-  const mine = REALM.holds(realm, 0);
-  eq('the player holds one city to start with', mine.length, 1);
-  ok('...and it is where he is standing', mine[0].region === realm.at, `${mine[0].region} vs ${realm.at}`);
-  const pat = REALM.patternCity(realm);
-  ok('the Pattern belongs to nobody', pat && pat.owner === -1, pat ? String(pat.owner) : 'no Pattern');
-  ok('...and to no lord either', pat && pat.lord == null, 'somebody was given AMBER');
-  /* THE HEIRS DO NOT START NEXT DOOR. A war that opens with two thrones in neighbouring regions
-   * is a war decided in its first ten minutes. */
-  const starts = realm.country.cities.filter((c) => c.owner >= 0).map((c) => realm.country.index[c.region]);
-  eq('every heir has a city', starts.length, realm.heirs.length);
-  let touching = 0;
-  for (let i = 0; i < starts.length; i++) for (let j = i + 1; j < starts.length; j++)
-    if (Math.abs(starts[i].cx - starts[j].cx) + Math.abs(starts[i].cy - starts[j].cy) <= 1) touching++;
-  eq('...and none of them is his rival\'s neighbour', touching, 0);
-  ok('the rest of the country is held by lesser lords',
-     realm.country.cities.filter((c) => c.owner < 0 && !c.pattern && c.lord).length > 2,
-     'nobody to take anything from');
+  const w = World.createWorld(42, 2, null,
+    { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1, reach: 1 },
+    { country: true, heirs: [0, 1, 2] });
+  ok('the rig is alive: a country world with the war\'s rules on', !!w && w.rules.onePattern === 1,
+     w ? JSON.stringify(w.rules) : 'no world');
+  ok('the Pattern is a city of the country', w.pattern != null && !!w.cities[w.pattern],
+     String(w.pattern));
+  const pc = w.cities[w.pattern];
+  eq('...whose site is named AMBER', w.map.sites[pc.site].name, 'AMBER');
+  eq('...and a plain board carries null, not a boolean', World.createWorld(1).pattern, null);
 
-  /* --- A REGION MATERIALISES INTO AN ORDINARY WORLD --- */
-  const w = REALM.enter(realm, realm.at);
-  ok('a region becomes a world', !!w && !!w.map && w.units != null, 'no world');
-  eq('...at the size every board has always been', w.nav.W * w.nav.cw, C.MAP.W);
-  /* the war's OVERRIDES on today's defaults — spelt as a merge so the table may grow a rule
-   * (as it did: `reach`) without this suite claiming the war changed */
-  eq('...playing by the rules of a war', JSON.stringify(w.rules),
-     JSON.stringify(Object.assign({}, C.RULES,
-       { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 })));
-  eq('...and it is his own city he is standing in', w.cities[0].owner, 0);
-  eq('...with no second throne on the board', w.cities[1].owner, -1);
-  for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
-  const men = w.units.filter((u) => u.hp > 0).length, works = w.players[0].buildings.length;
-  ok('the rig is alive: a minute in the region raised men', men > 2, `${men} men, ${works} works`);
-
-  /* --- LEFT, AND COME BACK TO --- */
-  const packed = REALM.compact(w);
-  ok('a region compacts small enough to save a country of them',
-     JSON.stringify(packed).length < 8000, `${JSON.stringify(packed).length} bytes`);
-  REALM.leave(realm, realm.at, w);
-  const w2 = REALM.enter(realm, realm.at);
-  eq('...and comes back with its army', w2.units.filter((u) => u.hp > 0).length, men);
-  eq('...and its works', w2.players[0].buildings.length, works);
-  near('...and its clock', w2.t, w.t, 0.001, `${w2.t} vs ${w.t}`);
-  eq('...and its city', w2.cities[0].owner, 0);
-  const before = w2.units.length;
-  for (let i = 0; i < 30 * 30; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
-  ok('...and it runs on from there', w2.units.filter((u) => u.hp > 0).length >= before,
-     `${before} → ${w2.units.filter((u) => u.hp > 0).length}`);
-
-  /* --- A COLUMN CROSSES A BORDER --- */
-  const doors = COUNTRY.doors(realm.country, realm.at);
-  ok('the rig is alive: there is somewhere to march to', doors.length > 0, 'the region is sealed');
-  if (doors.length) {
-    const to = doors[0].to;
-    const column = w2.units.filter((u) => u.owner === 0 && u.hp > 0).slice(0, 3)
-      .map((u) => ({ kind: u.kind, tier: u.tier, hp: u.hp }));
-    REALM.march(realm, realm.at, to, column, 0);
-    eq('a column ordered past a border is on the road', realm.marches.length, 1);
-    REALM.tick(realm, C.REALM.crossing * 0.5);
-    eq('...and is still on it half way', realm.marches.length, 1);
-    ok('...and has not arrived', !realm.state[to] || !realm.state[to].units.length, 'it teleported');
-    REALM.tick(realm, C.REALM.crossing * 0.6);
-    eq('...and arrives', realm.marches.length, 0);
-    const there = REALM.enter(realm, to);
-    eq('...in the neighbouring region', there.units.filter((u) => u.owner === 0).length, column.length);
-    /* AT THE FAR GATE, and not in the middle of somebody's court */
-    const far = COUNTRY.gate(COUNTRY.doorTo(realm.country, realm.at, to), 'far');
-    const u0 = there.units.find((u) => u.owner === 0);
-    ok('...at the crossing on that side', Math.hypot(u0.x - far.x, u0.y - far.y) < 40,
-       `${Math.round(u0.x)},${Math.round(u0.y)} against ${Math.round(far.x)},${Math.round(far.y)}`);
-    /* and a border that is shut is not a road at all */
-    const shut = realm.country.index[realm.at].nbrs.find((nb) => !nb.open);
-    if (shut) eq('a closed border is not a road', REALM.march(realm, realm.at, shut.to, column, 0), null);
-  }
-
-  /* --- AND A CITY TAKEN IN A REGION IS A CITY TAKEN IN THE WAR --- */
-  {
-    const r2 = REALM.create(20260923);
-    const target = r2.country.cities.find((c) => c.owner < 0 && !c.pattern);
-    ok('the rig is alive: there is a lord\'s city to take', !!target, 'nobody to take from');
-    if (target) {
-      const wv = REALM.enter(r2, target.region);
-      wv.cities[0].owner = 0;                  // as `holdCities` would have left it
-      REALM.leave(r2, target.region, wv);
-      eq('taking a city in the region takes it in the country', target.owner, r2.me);
-      const wr = REALM.enter(r2, target.region);
-      wr.cities[0].razed = 1; wr.cities[0].owner = -1;
-      REALM.leave(r2, target.region, wr);
-      eq('...and throwing it down is remembered too', !!target.razed, true);
-      eq('...and it belongs to nobody', target.owner, -1);
-    }
-  }
-}
-
-/* ---- ONE PATTERN, AND ONLY SO MANY CITIES ----
- * The two rules that make a country a game rather than a sandbox: the war ends in one place, and
- * conquest does not pay for itself unless it is conquest of a rival. */
-suite('there is one Pattern, and only so many cities');
-{
-  const realm = REALM.create(20260930);
-  const pat = REALM.patternCity(realm);
-  ok('the Pattern lies in one city', !!pat && pat.owner === -1, pat ? pat.region : 'nowhere');
-  ok('...and the player does not start in it', realm.at !== pat.region, realm.at);
-
-  const here = REALM.enter(realm, realm.at);
-  eq('the region you start in is not the Pattern\'s', !!here.pattern, false);
-  here.players[0].essence = 1e6;
-  const c = World.cityOf(here, 0);
-  eq('...so a Shrine may not be raised in it',
-     World.applyCommand(here, 0, { c: 'build', x: c.x + 120, y: c.y + 120, bt: 'shrine' }).err, 'elsewhere');
-  const amber = REALM.enter(realm, pat.region);
-  eq('AMBER is the Pattern\'s region', !!amber.pattern, true);
-  amber.players[0].essence = 1e6;
-  const ca = World.cityOf(amber, 0);
+  const p0 = w.players[0];
+  p0.essence = 1e6;
+  const c0 = w.cities[0];
+  /* the refusal comes BEFORE any other placement question, so it is 'elsewhere' by name and
+   * never 'ground' or 'claim' wearing its clothes */
+  ok('the rig is alive: the probed ground lies beyond AMBER\'s reach',
+     (c0.x + 120 - pc.x) ** 2 + (c0.y + 120 - pc.y) ** 2 >= pc.reach * pc.reach,
+     `${Math.round(Math.hypot(c0.x + 120 - pc.x, c0.y + 120 - pc.y))} vs reach ${Math.round(pc.reach)}`);
+  eq('a Shrine outside the Pattern city\'s reach is refused, by name',
+     World.applyCommand(w, 0, { c: 'build', x: c0.x + 120, y: c0.y + 120, bt: 'shrine' }).err,
+     'elsewhere');
+  eq('...and inside its reach a non-holder is refused the same way',
+     World.applyCommand(w, 0, { c: 'build', x: pc.x + 120, y: pc.y + 120, bt: 'shrine' }).err,
+     'elsewhere');
+  /* the holder, inside: allowed. AMBER is made his SEAT, which is exactly the state of an
+   * heir who took it after losing his first city — the writ question is then his own court's
+   * and the one being tested is the Pattern's. */
+  c0.owner = -1; pc.owner = 0;
   let raised = false;
   for (let r = 100; r < 420 && !raised; r += 40)
-    for (let a = 0; a < 6 && !raised; a++)
-      if (World.applyCommand(amber, 0, { c: 'build', x: ca.x + Math.cos(a) * r, y: ca.y + Math.sin(a) * r, bt: 'shrine' }).ok) raised = true;
-  ok('...and in it a Shrine may', raised, 'refused everywhere the rig tried');
+    for (let a = 0; a < 8 && !raised; a++)
+      if (World.applyCommand(w, 0,
+          { c: 'build', x: pc.x + Math.cos(a) * r, y: pc.y + Math.sin(a) * r, bt: 'shrine' }).ok)
+        raised = true;
+  ok('the holder of AMBER may raise the Shrine in it', raised, 'refused everywhere the rig tried');
+
   /* AND THE RULE IS THE WAR'S, NOT THE GAME'S: a skirmish board is a world of its own and
    * carries its own Pattern, exactly as it always has. */
   const skirmish = World.createWorld(20260930, 2);
+  eq('a skirmish plays with onePattern off', skirmish.rules.onePattern, 0);
   skirmish.players[0].essence = 1e6;
   const cs = World.cityOf(skirmish, 0);
   let ok2 = false;
   for (let r = 100; r < 420 && !ok2; r += 40)
     for (let a = 0; a < 6 && !ok2; a++)
-      if (World.applyCommand(skirmish, 0, { c: 'build', x: cs.x + Math.cos(a) * r, y: cs.y + Math.sin(a) * r, bt: 'shrine' }).ok) ok2 = true;
+      if (World.applyCommand(skirmish, 0,
+          { c: 'build', x: cs.x + Math.cos(a) * r, y: cs.y + Math.sin(a) * r, bt: 'shrine' }).ok)
+        ok2 = true;
   ok('a single match still carries its own Pattern', ok2, 'a skirmish refused a Shrine');
+}
 
-  /* WINNING THE WAR is a walk completed in the Pattern's own region, and it goes out through the
-   * door every other ending goes out of. */
-  const run = REALM.run(realm);
-  eq('holding cities is not winning', run.tick(here), null);
-  amber.players[0].pattern = 99;
-  eq('...nor is nearly walking it', run.tick(amber), null);
-  amber.players[0].pattern = 100;
-  eq('a walk completed in AMBER wins the country', run.tick(amber), 'won');
-  here.players[0].pattern = 100;
-  eq('...and the same walk anywhere else does not', run.tick(here), null);
+/* ---- THE LORD BRAKE, IN THE SIM ----
+ * One city by right and one more per lord; past that a court will not swear. It used to be
+ * checked in the old realm's `leave` — the one seam the country learned anything through —
+ * and the Reach War has no seam, so it is enforced at the take itself, in `holdCities`.
+ * A lord is WON: a city that FELL from a contender brings his lord over, a minor holding
+ * brings ground and nothing else. */
+suite('the lord brake, enforced where the ground changes hands');
+{
+  const w = World.createWorld(31, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                              { country: true, heirs: [0, 1, 2] });
+  ok('the rig is alive: a country world with the rule on', !!w && w.rules.reach === 1);
+  eq('...that knows who contends', JSON.stringify(w.heirs), JSON.stringify([0, 1, 2]));
+  w.chaosNext = 1e9;
+  for (const c of w.cities) c.cd = 1e9;              // the guns stay out of the rig
+  for (const p of w.players) p.musterPaused = true;  // and so does every muster
+  const p0 = w.players[0];
+  eq('you begin with one lord', p0.lords, C.REALM.lords0);
+  eq('...and one city', World.citiesOf(w, 0).length, 1);
 
-  /* THE LORD BRAKE. One city by right, one more per lord, and a lord is WON — from an heir and
-   * never from a minor holding, so a war cannot be won by eating the weak. */
-  const r2 = REALM.create(20260931);
-  eq('you begin with one lord', r2.lords, C.REALM.lords0);
-  eq('...and one city', REALM.holds(r2, 0).length, 1);
-  const free = r2.country.cities.filter((x) => x.owner < 0 && !x.pattern).slice(0, 2);
-  ok('the rig is alive: there are free cities to take', free.length === 2, `${free.length}`);
-  const take = (city) => {
-    const w = REALM.enter(r2, city.region);
-    w.cities[0].owner = 0;
-    REALM.leave(r2, city.region, w);
+  /* the take rig: two men PLACED and PINNED in the court — the same idiom as the suite
+   * 'a company belongs to a city', because a man's standing order would march him home */
+  const men = [manAt(w, 0, 'soldier', 0, 0), manAt(w, 0, 'soldier', 0, 0)];
+  const press = (city, secs) => {
+    for (let i = 0; i < 30 * secs && city.owner < 0; i++) {
+      for (let k = 0; k < men.length; k++) {
+        men[k].x = city.x + 24 + k * 14; men[k].y = city.y; men[k].hp = men[k].maxHp;
+      }
+      World.update(w, C.SIM_DT);
+    }
   };
-  take(free[0]);
-  eq('a lord holds the second city', free[0].owner, 0);
-  eq('...and it is yours', REALM.holds(r2, 0).length, 2);
-  take(free[1]);
-  eq('the third will not swear to you', free[1].owner, -1);
-  eq('...and you still hold two', REALM.holds(r2, 0).length, 2);
-  eq('...and the map is told which one refused', r2.refused, free[1].id);
-  /* AND A RIVAL'S CITY BRINGS HIS LORD */
-  const rival = r2.country.cities.find((x) => x.owner >= 1);
-  ok('the rig is alive: a rival holds a city', !!rival, 'no rival city');
-  if (rival) {
-    r2.lords++;                          // room for it, so the brake is not what is being tested
-    const before = r2.lords;
-    take(rival);
-    eq('taking a rival\'s city takes it', rival.owner, 0);
-    eq('...and his lord comes with it', r2.lords, before + 1);
+
+  /* a minor lord's city: the first extra city sticks (lords0 = 1) */
+  const a = w.cities[3];
+  World.seatDown(w, a, 0);
+  eq('the rig is alive: a yielded court remembers whom it fell from', a.fell, 3);
+  press(a, C.CITY.take + 15);
+  eq('the first extra city swears', a.owner, 0);
+  eq('...and a minor holding brings no lord', p0.lords, C.REALM.lords0);
+
+  /* the next take is REFUSED: the court stays free and the map is told which one and why */
+  const b = w.cities[4];
+  World.seatDown(w, b, 0);
+  w.events.length = 0;
+  press(b, C.CITY.take + 15);
+  eq('the next court will not swear', b.owner, -1);
+  ok('...and the refusal is an event the map can carry',
+     w.events.some((e) => e.e === 'refused' && e.pi === 0 && e.id === b.id),
+     w.events.filter((e) => e.e === 'refused').map((e) => JSON.stringify(e)).join(' ') || 'no refusal spoke');
+  eq('...and you still hold two', World.citiesOf(w, 0).length, 2);
+
+  /* a CONTENDER's city brings his lord over — room is made first, so the brake is not what
+   * is being tested */
+  const h = w.cities[1];
+  ok('the rig is alive: seat 1 contends', w.heirs.indexOf(1) >= 0, w.heirs.join(','));
+  World.seatDown(w, h, 0);
+  eq('...and his fall is remembered', h.fell, 1);
+  p0.lords++;
+  const before = p0.lords;
+  press(h, C.CITY.take + 15);
+  eq('a contender\'s city is taken', h.owner, 0);
+  eq('...and his lord comes over with it', p0.lords, before + 1);
+}
+
+/* ---- A WAR FITS IN A POCKET ----
+ * The save serializes what was DONE and regenerates the rest from the seed. The proof is a
+ * FINGERPRINT: a war mutated every way a player can mutate one, saved, loaded into a fresh
+ * realm, and the two worlds must agree on everything the record claims to carry. Node has
+ * no localStorage, so the suite stands a plain object behind the same property the browser
+ * fills — the save must not care what answers the key. */
+suite('a war fits in a pocket');
+{
+  const store = {};
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+  };
+  try {
+    const realm = REALM.create(20260812);
+    const w = realm.world;
+    ok('the rig is alive: a war is one country world', !!w && w.rules.reach === 1 && w.cities.length > 4,
+       w ? `${w.cities.length} cities` : 'no world');
+
+    /* the run shape game.js holds — the same shape a chapter's run has */
+    const run = REALM.run(realm);
+    eq('a fresh war answers null', run.tick(w), null);
+    ok('...and says where the Pattern lies', /AMBER/.test(run.say()), run.say());
+    ok('...and how much is held', /1 of 2/.test(run.say()), run.say());
+    eq('...and has no tutorial', run.hint(), null);
+
+    /* --- mutate: build, march, treat, take, and two minutes of war --- */
+    const p0 = w.players[0];
+    p0.essence = 9999;
+    for (let pi = 1; pi < w.players.length; pi++) w.players[pi].musterPaused = true;
+    const c0 = w.cities[0];
+    let wallAt = null;
+    for (let r = C.CITY.seatR + 60; r < 400 && !wallAt; r += 30)
+      for (let a2 = 0; a2 < 8 && !wallAt; a2++) {
+        const x = c0.x + Math.cos(a2) * r, y = c0.y + Math.sin(a2) * r;
+        if (World.applyCommand(w, 0, { c: 'build', bt: 'wall', x, y, x2: x + 140, y2: y }).ok)
+          wallAt = { x, y };
+      }
+    ok('the rig is alive: a run of wall is going up', !!wallAt, 'no ground took a run');
+    World.applyCommand(w, 0, { c: 'pact', p: 2, on: 1 });
+    World.applyCommand(w, 0, { c: 'rally', co: p0.companies[0].id, x: c0.x + 300, y: c0.y + 200 });
+
+    /* a contender's city yields, and the court is held through the take — pinned, as the
+     * take rigs above pin, because a man's standing order marches him home */
+    const prize = w.cities[1];
+    World.seatDown(w, prize, 0);
+    const men = [manAt(w, 0, 'soldier', prize.x + 24, prize.y), manAt(w, 0, 'soldier', prize.x + 38, prize.y)];
+    for (let i = 0; i < 30 * 120; i++) {
+      if (prize.owner !== 0)
+        for (let k = 0; k < men.length; k++) {
+          men[k].x = prize.x + 24 + k * 14; men[k].y = prize.y; men[k].hp = men[k].maxHp;
+        }
+      World.update(w, C.SIM_DT);
+      w.events.length = 0;
+    }
+    eq('the rig is alive: the prize was taken inside the run', prize.owner, 0);
+    eq('...and, an heir\'s, it brought his lord over', p0.lords, C.REALM.lords0 + 1);
+    ok('...and the war moved: men stand and essence flowed',
+       w.units.filter((u) => u.hp > 0).length > 2 && w.t > 119, `${w.units.length} units at t=${w.t.toFixed(1)}`);
+
+    /* --- the pocket --- */
+    ok('the war is saved', REALM.save(realm) === true);
+    const bytes = (store.amber_realm || '').length;
+    ok('...and fits in a pocket', bytes > 0 && bytes < 300 * 1024, `${bytes} bytes`);
+    const back = REALM.load();
+    ok('...and loads', !!back && !!back.world, 'nothing came back');
+
+    /* THE FINGERPRINT: everything the record claims to carry, normalised the same way on
+     * both sides. Whole-string equality, with the first divergence named when it fails. */
+    const fp = (wx) => JSON.stringify({
+      cities: wx.cities.map((c) => [c.owner, Math.round(c.hp), c.level,
+                                    c.fell != null ? c.fell : -1]),
+      players: wx.players.map((p) => ({
+        e: Math.round(p.essence), lords: p.lords, pattern: p.pattern,
+        offers: Array.from(p.offers || [], (o) => (o ? 1 : 0)),
+        cos: p.companies.map((co) => [co.id, co.city != null ? co.city : -1,
+          co.rally ? Math.round(co.rally.x) : null, co.rally ? Math.round(co.rally.y) : null,
+          co.rally ? co.rally.site : -1, co.paused ? 1 : 0]),
+        b: p.buildings.map((b) => [b.bt, Math.round(b.x), Math.round(b.y)]),
+        seenSites: Object.keys(p.explored).sort()
+      })),
+      units: wx.units.filter((u) => u.hp > 0)
+        .map((u) => [u.owner, u.kind, Math.round(u.x), Math.round(u.y)]),
+      seen: wx.players.map((p) => {
+        let n = 0;
+        for (let i = 0; i < p.seen.g.length; i++) if (p.seen.g[i]) n++;
+        return n;
+      })
+    });
+    const was = fp(w), now = back ? fp(back.world) : '';
+    let split = 0;
+    while (split < was.length && was[split] === now[split]) split++;
+    ok('the loaded war IS the saved war', was === now,
+       was === now ? '' : `diverges at ${split}: ...${was.slice(Math.max(0, split - 40), split + 40)}... vs ...${now.slice(Math.max(0, split - 40), split + 40)}...`);
+    ok('...and the loaded walls are STANDING walls', !!back && back.world.anyWall === w.anyWall,
+       back ? `${back.world.walls.length} vs ${w.walls.length}` : '');
+
+    /* and it RUNS from there — a save that loads into a world the sim chokes on is a save
+     * of nothing */
+    if (back) {
+      const alive = back.world.units.filter((u) => u.hp > 0).length;
+      for (let i = 0; i < 30 * 5; i++) { World.update(back.world, C.SIM_DT); back.world.events.length = 0; }
+      ok('...and it runs on from there', back.world.units.filter((u) => u.hp > 0).length >= alive - 5,
+         `${alive} then ${back.world.units.filter((u) => u.hp > 0).length}`);
+    }
+
+    /* --- the old war is lost, and said to be --- */
+    eq('a saved v2 war reads as saved', REALM.saved(), true);
+    store.amber_realm = JSON.stringify({ v: 1, seed: 7, state: {}, marches: [] });
+    eq('a v1 record loads as nothing', REALM.load(), null);
+    ok('...and the loss is sayable', REALM.lost === true);
+    eq('...and does not read as a saved war', REALM.saved(), false);
+    REALM.forget();
+    ok('forgotten is forgotten', !('amber_realm' in store) && REALM.saved() === false);
+  } finally {
+    delete globalThis.localStorage;
+  }
+}
+
+/* ---------------- the lords hold a country ----------------
+ * R4b: the marcher grown a spine — hold the court, march the marcher's march, raise works,
+ * and reach for the throne when AMBER is his. What it must show: the war still MOVES under
+ * the fuller doctrine (cities change hands), a lord GROWS (a work beyond the two every seat
+ * is born with), and the whole country still runs on fenced fields. The tempo here is a
+ * measured thing: a lord whose second hall flew its own standard was pure garrison — no
+ * order of his doctrine ever reached its men — and ten such lords turtled the war into
+ * stasis until AMBER's born lord won by the walk alone (~570s, seed 13) with not one city
+ * taken. Mustered into the ONE company the doctrine speaks to, the first city falls at 164s. */
+if (!QUICK('the lords hold a country')) {
+  suite('the lords hold a country');
+  const w = World.createWorld(13, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  ok('the rig is alive: a country world with the rule on', !!w && w.rules.reach === 1);
+  if (w) {
+    NAV.debugFieldsReset();
+    const bots = w.players.map((_, i) => (i === 0 ? null : AI.make('lord', {})));
+    const owners0 = w.cities.map((c) => c.owner).join(',');
+    let flipAt = null, builtAt = null;
+    for (let sec = 0; sec < 900 && (flipAt == null || builtAt == null) && w.winner === null; sec++) {
+      for (let f = 0; f < 30; f++) {
+        for (let bi = 1; bi < bots.length; bi++)
+          bots[bi].step(w, bi, (cmd) => World.applyCommand(w, bi, cmd), C.SIM_DT);
+        World.update(w, C.SIM_DT);
+        w.events.length = 0;
+      }
+      if (flipAt == null && w.cities.map((c) => c.owner).join(',') !== owners0) flipAt = sec;
+      /* GROWTH is a third work standing under some lord's name — every seat opens with two */
+      if (builtAt == null && w.players.some((p, pi) => pi > 0 && p.buildings.length > 2)) builtAt = sec;
+    }
+    ok('cities change hands under the lords\' war', flipAt != null,
+       flipAt == null ? `no city fell in 15 simulated minutes (winner ${w.winner})` : '');
+    if (flipAt != null) ok('...the first inside ten minutes', flipAt < 600, `${flipAt}s`);
+    ok('a lord raised a work beyond his opening two', builtAt != null,
+       builtAt == null ? 'every seat still holds its birth pair' : `at ${builtAt}s`);
+    const keys = Array.from(w.nav.fields.keys());
+    ok('no field was ever built unfenced', keys.length > 0 && keys.every((k) => k >= 64e7),
+       keys.length ? 'unfenced: ' + keys.filter((k) => k < 64e7).slice(0, 5).join(',') : 'no fields at all');
+  }
+
+  /* --- AND AMBER HELD STARTS THE WAR'S CLOCK ---
+   * Hand the Pattern's city to a lord whose seat is elsewhere and he must reach for the
+   * throne: a Shrine, then the walk. Note where the Shrine stands — the writ (inClaim) runs
+   * from his SEAT and his Gates, never from a second city, so the court of AMBER itself
+   * refuses him ('claim') and the Shrine rises inside his own writ, which the reach rule (a
+   * work inside an OWNED city's reach) is equally content with. The doctrine still probes
+   * the court first, so the day the writ learns about second cities the Shrine moves there
+   * without this suite or the lord changing a line. */
+  {
+    const w2 = World.createWorld(29, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+    const gen = w2.map.gen;
+    ok('the rig is alive: the country carries a Pattern city', gen.pattern != null && !!w2.cities[gen.pattern]);
+    w2.cities[gen.pattern].owner = 1;
+    w2.cities[gen.pattern].fell = null;
+    w2.players[1].essence = 5000;
+    const bot = AI.make('lord', {});
+    for (let sec = 0; sec < 300 && !w2.players[1].walking && w2.winner === null; sec++)
+      for (let f = 0; f < 30; f++) {
+        bot.step(w2, 1, (cmd) => World.applyCommand(w2, 1, cmd), C.SIM_DT);
+        World.update(w2, C.SIM_DT);
+        w2.events.length = 0;
+      }
+    ok('a lord handed AMBER raises the Shrine',
+       w2.players[1].buildings.some((b) => b.bt === 'shrine'),
+       w2.players[1].buildings.map((b) => b.bt).join('+'));
+    ok('...and sets foot on the Pattern', w2.players[1].walking === true,
+       `walking ${w2.players[1].walking} at t=${Math.round(w2.t)}`);
   }
 }
 

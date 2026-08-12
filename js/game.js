@@ -7,7 +7,7 @@
 
   const C = global.CONST, World = global.World, AI = global.AI;
   const Render = global.Render, UI = global.UI, Net = global.Net, Rec = global.Rec;
-  const REALM = global.REALM, COUNTRY = global.COUNTRY;
+  const REALM = global.REALM;
   const $ = (id) => document.getElementById(id);
 
   /* The succession, in the order you face it. There used to be a private difficulty ramp here
@@ -85,43 +85,40 @@
    * (a Seat yields, terms may be made) and the fact that leaving compacts it back into the
    * country instead of throwing it away. That is the whole of the mode's machinery.
    * The rival is the region's holder, in seat 1, and he plays his own doctrine like any heir. */
-  function startRegion(world) {
-    const realm = game.realm;
-    /* the map is a screen over the menu, and going DOWN into a region has to peel it — left
-     * standing it stays over the menu when the region is left, and every control on the menu
-     * underneath is covered by a map nobody can see is there */
-    if (UI.realmClose) UI.realmClose();
-    const city = COUNTRY.cityIn(realm.country, realm.at);
-    const kind = (city && city.owner >= 1 && realm.heirs[city.owner]) ||
-                 C.REALM.holder;                    // a minor lord fights like the plainest heir
+  /* THE WAR IS ONE WORLD, entered whole. No map screen, no regions, no marches between
+   * boards: the country IS the board, and putting the war down is saving that one world
+   * (REALM.save) wherever the player walks away. The rival seats are the country's own
+   * lords, one bot apiece, exactly as the ?reach rig seats them. */
+  function startRealm(realm) {
+    game.realm = realm;
     game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false;
     game.chapter = null;
+    game.war = true;
     /* the war is polled where a chapter is polled — same shape, same door out */
     game.run = REALM.run(realm);
-    game.region = realm.at;
     if (Render.clearSeatFalls) Render.clearSeatFalls();
-    game.world = world;
-    game.bot = AI.make(kind, C.DIFFICULTY[UI.difficulty()] || {});
-    game.world.players[1].eco = (C.DIFFICULTY[UI.difficulty()] || {}).eco || 1;
-    game.names = ['Corwin', (AI.HEIRS[kind] && AI.HEIRS[kind].title) || (city && city.lord) || 'a lord'];
+    game.world = realm.world;
+    /* the lord if the merge has landed him, the marcher's plainer tongue if not */
+    const kind = AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher';
+    game.bot = AI.make(kind, {});
+    game.bots = game.world.players.map((_, i) => (i === 0 ? null : AI.make(kind, {})));
+    game.names = game.world.players.map((_, i) => i === 0 ? 'Corwin'
+      : game.world.map.sites[game.world.cities[i].site].name);
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
     game.hints = [];
     Render.resize();
     homeCamera();
     armBack();
     Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
-                mode: 'the long war · ' + realm.at,
+                mode: 'the reach war',
                 footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
-    UI.startMatch(game.names[1]);
+    UI.startMatch('the Reach War');
   }
-  /* AND COMING BACK UP. Everything the region did is compacted into the country and the country
-   * is written down — a war you can put down is a war that must survive the app being shut on
-   * the very next frame. */
-  function leaveRegion() {
-    if (!game.realm || !game.region || !game.world) return;
-    REALM.leave(game.realm, game.region, game.world);
+  /* putting the war down — every door out of a war runs through here, because a war that
+   * only saved on the polite exits would lose an evening to one swipe-up */
+  function saveWar() {
+    if (!game.war || !game.realm) return;
     REALM.save(game.realm);
-    game.region = null;
   }
 
   function startSP(kind, opts, chapter) {
@@ -197,7 +194,7 @@
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
    * both out with the start message, so a guest never has to guess its own index. */
-  function startMP(seed, seats, mySeat, realm) {
+  function startMP(seed, seats, mySeat) {
     const n = Math.max(2, Math.min(C.MAX_PLAYERS, seats || 2));
     game.seats = n;
     game.mode = Net.isHost ? 'host' : 'guest';
@@ -209,21 +206,14 @@
     /* a call for another match belongs to the match that ended, not to this one */
     game.called = false; game.noMore = false;
     game.names = C.SEAT_NAMES.slice(0, n);
+    game.bots = null; game.war = false;      // a LAN table holds no country and steps no bots
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     snapTurn = 0; evQ = Object.create(null); snapGap = 100;
-    /* ---- A LAN TABLE MAY BE FIGHTING OVER A COUNTRY ----
-     * `realm` is {seed, at}: the country's seed and the region the table is standing in. Both
-     * sides build the SAME board from it, because a region is a pure function of the country's
-     * seed and its key — which is the whole reason the country is generated rather than sent.
-     * Nothing else about the LAN path changes: a region is an ordinary board and the netcode
-     * goes on knowing nothing above one. */
-    const build = () => {
-      if (!realm) return World.createWorld(seed, n);
-      const r = REALM.create(realm.seed);
-      r.me = 0;
-      return REALM.enter(r, realm.at, n - 1) || World.createWorld(seed, n);
-    };
-    game.lanRealm = realm || null;
+    /* LAN OVER THE COUNTRY IS SEVERED FOR NOW — the region realm it dealt tables into is
+     * gone, and dealing a table into the ONE-WORLD war is its own stage (host holds the war,
+     * guests take heir seats, history rides the ordinary snapshots). Until that lands, a LAN
+     * table is what it always was: a duel or a free-for-all on a board. */
+    const build = () => World.createWorld(seed, n);
     game.world = Net.isHost ? build() : null;
     refWorld = Net.isHost ? null : build();   // guest: map geometry only
     Render.resize();
@@ -286,10 +276,10 @@
   }
 
   function toMenu() {
-    /* A REGION IS PUT BACK INTO THE COUNTRY, not thrown away — walking out of a region is how a
-     * war is put down for the evening, so it has to be the same door as any other way out. */
-    const wasRegion = !!game.region;
-    leaveRegion();
+    /* THE WAR IS PUT DOWN, NOT THROWN AWAY — walking out is how an evening ends, so the save
+     * rides the same door as every other way out. */
+    saveWar();
+    game.war = false;
     /* a match walked out of never reaches the end screen, and it is often the one worth
      * sending — close the chronicle here so the menu can still offer it */
     if (Rec.on && !game.over) {
@@ -300,11 +290,6 @@
     if (Render.lookAt) Render._homed = false;
     if (Net.active) Net.close();
     if (game.updateReady) { applyUpdate(); return; }   // a new version waited politely for match end
-    /* OUT OF A REGION IS BACK TO THE COUNTRY, not out to the main menu. A war is a place you are
-     * standing in — leaving the region you were fighting in is putting the battle down, not the
-     * war — and being dumped to the title screen after every engagement would make a country
-     * feel like a list of skirmishes. The menu is one more tap from here. */
-    if (wasRegion && game.realm) { UI.realm(game.realm); return; }
     UI.showMenu(campaignLabel(), campaignNote());
   }
 
@@ -472,12 +457,9 @@
       toMenu(); return;
     }
     const seed = (Math.random() * 0xffffffff) >>> 0, seats = game.seats;
-    /* a rematch at a table fighting over a country is another go at the SAME region — the war
-     * has not moved, and dealing a fresh board would quietly leave it */
-    const realm = game.lanRealm || null;
     for (const p of Net.peers)
-      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, realm }, p.idx);
-    startMP(seed, seats, 0, realm);
+      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
+    startMP(seed, seats, 0);
   }
   /* the guest half of the same button: a call up the wire, and then the wait it used to show
    * without ever having asked for anything */
@@ -557,7 +539,14 @@
     noraze: 'A Seat cannot be thrown down in this war',
     held: 'It still answers to an heir — break it first',
     gone: 'There is nothing left of it to throw down',
-    elsewhere: 'There is one Pattern, and it is not here — take the city that holds it'
+    elsewhere: 'There is one Pattern, and it is not here — take the city that holds it',
+    /* ---- THE REACH WAR'S REFUSALS ----
+     * The one rule the reach adds to an ORDER, and the one it adds to an oath. Both must
+     * SPEAK: a company that will not march reads as a bug, not a border, unless the border
+     * says its name — the prototype's own first finding. */
+    reach: 'Beyond that company’s reach — take a city nearer to it',
+    city: 'That hall stands outside the city’s reach — only overlapping reaches share halls',
+    refused: 'The court will not swear to you — win a lord by taking a city from an heir'
   };
   /* WHOEVER SITS IN THAT SEAT. `game.names` is filled per mode — two in a duel, the seat names
    * at a LAN table — and a banner about a third heir must not read "undefined breaks the truce". */
@@ -841,10 +830,15 @@
             /* A WAR ENDS THROUGH THE SAME DOOR A CHAPTER DOES, and there is no second door: the
              * realm's run has the shape a chapter's has, so one branch serves both. What the
              * war remembers is set HERE and not in `tick`, which answers and never writes. */
-            if (r && game.realm && game.region) { game.realm.done = r; REALM.save(game.realm); }
+            if (r && game.realm && game.war) { game.realm.done = r; REALM.save(game.realm); }
             if (r === 'won') World.declare(game.world, game.viewer, 'objective');
             else if (r === 'lost') World.declare(game.world, 1, 'objective');
           }
+          /* THE WAR AUTOSAVES ON A HEARTBEAT — every thirty simulated seconds, beside the
+           * saves on every door out — because the door the app actually dies through most
+           * often is the one nobody's code sees: the OS swipe. An 80KB stringify twice a
+           * minute is nothing. */
+          if (game.war && game.realm && game.world.tick % 900 === 0) REALM.save(game.realm);
         }
       }
       const view = hostView();
@@ -1323,17 +1317,14 @@
     $('lan-start').addEventListener('click', () => {
       const seed = (Math.random() * 0xffffffff) >>> 0;
       const seats = Net.seated();
-      /* AND IF THE HOST HAS A WAR OPEN, THE TABLE FIGHTS IN IT. The country is not sent — it is
-       * generated from its seed on every machine, exactly as a board is — so all that crosses
-       * the wire is which country and which region. */
-      const realm = game.realm ? { seed: game.realm.seed, at: game.realm.at } : null;
-      /* each guest is told the same seed and player count, and its OWN seat */
+      /* each guest is told the same seed and player count, and its OWN seat. Dealing a table
+       * into the one-world war is a later stage; the wire carries a board's worth for now. */
       for (const p of Net.peers)
-        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, realm }, p.idx);
+        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
       $('lan-start').classList.add('hidden');
-      startMP(seed, seats, 0, realm);
+      startMP(seed, seats, 0);
     });
-    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx, m.realm || null);
+    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx);
     Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
     /* a call for another match is only ever answered BETWEEN matches, by the host. Mid-match
      * it is stale — a message that crossed with the winning blow — and once the host has
@@ -1421,42 +1412,22 @@
        * the length of a chapter: the layer above answers questions and never writes to a world,
        * and going down into a region is an ordinary single-player match with the region's rules.
        * Nothing below this line knows the country exists. */
+      /* THE LONG WAR IS ONE TAP DEEP NOW. The card resumes the saved war or begins one — no
+       * map screen between the menu and the ground, because the ground IS the map. A saved
+       * war that would not load (an old version's, a torn record) begins anew and says so. */
       onRealm: () => {
-        game.realm = game.realm || REALM.load() || REALM.create((Math.random() * 0xffffffff) >>> 0);
-        UI.realm(game.realm);
+        let realm = REALM.load();
+        /* a DECIDED war is not resumed — the record kept `done` so this door can know */
+        if (realm && realm.done) { REALM.forget(); realm = null; }
+        if (!realm) {
+          realm = REALM.create((Math.random() * 0xffffffff) >>> 0);
+          if (REALM.lost) UI.banner('The old war is lost to a new age — a new one begins', 'warn');
+        }
+        startRealm(realm);
       },
       onRealmNew: () => {
         REALM.forget();
-        game.realm = REALM.create((Math.random() * 0xffffffff) >>> 0);
-        UI.realm(game.realm);
-      },
-      onRealmPick: (key) => { if (game.realm) UI.realmPick(game.realm, key); },
-      onRealmEnter: () => {
-        if (!game.realm) return;
-        const w = REALM.enter(game.realm, game.realm.at);
-        if (!w) return;
-        startRegion(w);
-      },
-      /* A MARCH IS A COMMITMENT, AND THE COUNTRY CHARGES FOR IT. The column leaves the region
-       * it is standing in and is on the road for `REALM.crossing` — which is why a border is a
-       * decision and not a menu. It takes the men who are actually THERE, so an army you left
-       * three regions back cannot be summoned. */
-      onRealmMarch: (to) => {
-        const realm = game.realm;
-        if (!realm || !to) return;
-        const w = REALM.enter(realm, realm.at);
-        const men = w ? w.units.filter((u) => u.owner === 0 && u.hp > 0)
-                         .map((u) => ({ kind: u.kind, tier: u.tier || 1, hp: u.hp })) : [];
-        if (!men.length) { UI.banner('You have no men in this country to send', 'warn'); return; }
-        /* they leave: the region they came from keeps everything else it had */
-        w.units = w.units.filter((u) => !(u.owner === 0 && u.hp > 0));
-        REALM.leave(realm, realm.at, w);
-        if (!REALM.march(realm, realm.at, to, men, 0)) { UI.banner('There is no road that way', 'warn'); return; }
-        REALM.tick(realm, C.REALM.crossing);        // the road is walked; the country moves on
-        realm.at = to;
-        REALM.save(realm);
-        UI.realmDraw(realm);
-        UI.banner('Your column crosses into ' + ((COUNTRY.cityIn(realm.country, to) || {}).name || 'the marches'), 'alert');
+        startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0));
       },
       /* TERMS. The chip sets MY offer and nothing else — a pact is the two of them standing, so
        * the order says what I want and the sim works out whether that seals or breaks anything.
@@ -1534,6 +1505,14 @@
           /* a chapter names its own next thing — the one after it, or itself again */
           if (game.endNextKey) { const k = game.endNextKey; toChapters(k); return; }
           if (game.chapter) { toChapters(null); return; }
+          /* a WAR decided is a war finished: another go is a new country, not a rematch on
+           * the corpse of the old one */
+          if (game.war) {
+            game.war = false;
+            REALM.forget();
+            startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0));
+            return;
+          }
           if (game.campaign) {
             if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
             startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
@@ -1555,6 +1534,9 @@
     cvs.addEventListener('pointercancel', onUp);
     cvs.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('popstate', onPopState);
+    /* the door the app actually dies through most often: the OS swipe. The war saves as the
+     * page goes dark, beside the heartbeat save and the ones on every polite exit. */
+    document.addEventListener('visibilitychange', () => { if (document.hidden) saveWar(); });
     /* kill the synthetic mouse click that follows a touch — it lands on whatever
      * sheet just opened under the finger and 'chooses' a card the player never tapped */
     cvs.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });

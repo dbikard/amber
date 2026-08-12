@@ -672,7 +672,28 @@ heir, so there is no knob left to turn: **making the top footing harder has to b
 work.** The findings are itemised under "The heirs play one army and one and a half orders"
 below.
 
-- [ ] **THE LONG WAR — a fourth mode, staged. See `REALM_PLAN.md`.** A country of regions and
+- [x] **THE REACH WAR — the fourth mode remade on one land (v0.9.70–75).** The region realm
+      below shipped whole and was then superseded: the reach prototype (`proto/reach`,
+      `bdec60c`) showed the rule that bounds an order is the rule that makes a continuous
+      country affordable, and the user chose it over the seams. Staged as R0–R5, every stage
+      green and pushed, seeded `sim.js --quick` BYTE-IDENTICAL to the pre-work baseline at
+      every single stage: R0 map size per-world (`world.mapW/H`; the far-corner-order suite
+      is the tripwire for a missed clamp; `mainland` one labelled flood; `foldOrder` rings;
+      `musterAll` key strides from dims); R1 the nav bound (a fenced field touches π·r²/cw²
+      cells and nothing more — asserted in CELLS, not milliseconds); R2 `buildCountry`
+      (connectivity as a PLACEMENT LAW: 23%-of-seeds-failing and 10.3 attempts a success
+      became 0/50 at attempt 0 and 27ms — the generator counts why attempts die); R3
+      `rules.reach` (the standingOrder hoist byte-identical first; refusals speak; the
+      banner is the Recall; a taken city spares its men and occupation quiets their halls);
+      R4a the marcher + `?reach=SEED` (the heirs are MUTE under reach — banner vocabulary);
+      R4b the lord (hold/march/build/walk; a second hall must muster into the ONE company
+      the doctrine speaks to, or ten lords turtle the war — measured, first city 164s vs a
+      walk-only stasis); R5 realm v2 (one persistent world, the pocket save regenerates the
+      country from its seed and writes only what was DONE — ~7KB measured, <300KB asserted;
+      v1 saves load as null and say so; the lord brake in `holdCities`, the one Pattern in
+      `placementError`, AMBER's holder walks and that is the clock). The 2× ground bake:
+      984ms vs a 382ms board on the same engine — shippable; tiling stays severed (R7 with
+      the true 4-5× country and LAN over the war).
       cities, truces that can be broken, conquest that yields ground rather than rubble, and one
       Pattern in one city. The load-bearing decision, taken from measurement rather than taste:
       **a region IS today's board** — a cold flow field is dead linear in area (6.3ms → 59ms at

@@ -111,10 +111,28 @@
                  reach: map.gen.reaches ? map.gen.reaches[i] : 0,
                  name: C.SEAT_NAMES[i] ? C.SEAT_NAMES[i] + '’s Seat' : 'a Seat of Power' };
       }),
+      /* THE PATTERN'S CITY, as an index into `cities`. A country carries exactly one from
+       * genesis — worldgen crowns the hub city and names its site AMBER — and a board carries
+       * null: with `onePattern` off it is its own Pattern, as a board always was. The old
+       * region realm stamped a boolean on the one region that had it; an index is the same
+       * fact with a WHERE in it, which is what the placement rule needs now that the one
+       * world holds every city at once. */
+      pattern: map.gen.pattern != null ? map.gen.pattern : null,
+      /* WHO CONTENDS FOR THE THRONE. The lord brake (holdCities) pays a lord for conquest of
+       * an HEIR only, and the sim cannot ask the realm — so the war stamps its contenders
+       * here. On a plain board every seat is playing to win, as it always was; in a country
+       * only the realm knows who contends, and until it says otherwise the human seat alone
+       * does. */
+      heirs: opts && opts.heirs ? opts.heirs.slice()
+        : opts && opts.country ? [0]
+        : seats.map((_, i) => i),
       players: seats.map(() => ({
         essence: C.START_ESSENCE,
         out: false,             // toppled: still on the board as a ruin, but out of the match
         eco: 1,                 // income handicap: 1 = full strength (always 1 in a duel)
+        /* how many cities beyond his first this heir may hold — the brake on the snowball.
+         * Read only where `rules.reach` is on; a lord is WON at the take (see holdCities). */
+        lords: C.REALM.lords0,
         /* COMPANIES. A standard is its own thing, not a property of a barracks: several halls
          * may muster into one company, which is what keeps the flag tray readable once you
          * hold a dozen of them. Company 0 is not a company — it means "follows the War
@@ -1671,11 +1689,18 @@
     if (def.unique && pl.buildings.some((b) => b.bt === bt)) return 'unique';
     /* THERE IS ONE PATTERN IN THE WHOLE WORLD. In a single match every board carries its own —
      * which is right, because the board IS the world. In a WAR the Pattern lies in one city of
-     * the country, everyone knows where, and holding that city is the only way to walk: that is
-     * what gives the map a centre nobody had to declare, and makes the endgame a convergence
-     * rather than a grind through fifteen sieges. `world.pattern` is stamped by the realm on the
-     * one region that has it; everywhere else the Shrine is simply not a work you may raise. */
-    if (world.rules.onePattern && bt === 'shrine' && !world.pattern) return 'elsewhere';
+     * the country (`world.pattern`, a city index stamped at genesis; its site is AMBER),
+     * everyone knows where, and a Shrine may rise only inside that city's own reach and only
+     * for the heir who HOLDS it: that is what gives the map a centre nobody had to declare,
+     * and makes the endgame a convergence rather than a grind through fifteen sieges. The
+     * reach disc and not the court, deliberately — the walk is the war's ending and its
+     * Shrine a thing worth marching on, so it may stand anywhere the city's own companies
+     * could be ordered to defend it. */
+    if (world.rules.onePattern && bt === 'shrine') {
+      const pc = world.pattern != null ? world.cities[world.pattern] : null;
+      if (!pc || pc.owner !== pi || !pc.reach ||
+          d2(x, y, pc.x, pc.y) >= pc.reach * pc.reach) return 'elsewhere';
+    }
     if (!groundBears(world, x, y)) return 'ground';
     /* A WORK STANDS INSIDE SOME OWNED CITY'S REACH. The writ is the inner rule as ever; the
      * reach is the OUTER bound — without it a chain of Gates walks the writ across the whole
@@ -4332,6 +4357,30 @@
       if (claimant < 0 || contested) { city.hold = null; continue; }
       if (!city.hold || city.hold.pi !== claimant) city.hold = { pi: claimant, since: world.t };
       if (world.t - city.hold.since < C.CITY.take) continue;
+      /* THE LORD BRAKE, ENFORCED WHERE THE GROUND CHANGES HANDS. One city by right and one
+       * more per lord; past that a court simply WILL NOT SWEAR to you — it stays free and the
+       * map is told which one and why, rather than a number being quietly ignored. It used to
+       * be checked one level up, in the old region realm's `leave`; the Reach War has no seam
+       * to check it at, so it lives at the take itself. `pl.lords` may be missing on a
+       * half-world dressed as one (a snapshot, a suite's bare board): missing means the
+       * war's opening allowance, never "no brake". */
+      if (world.rules.reach) {
+        const pl = world.players[claimant];
+        const lords = pl && pl.lords != null ? pl.lords : C.REALM.lords0;
+        if (citiesOf(world, claimant).length >= 1 + lords) {
+          city.hold = null;
+          emit(world, { e: 'refused', pi: claimant, id: city.id, x: city.x, y: city.y });
+          continue;
+        }
+        /* AND A LORD IS WON, NEVER BOUGHT: a city that FELL from a contending heir brings
+         * his lord over with it; one taken from a minor holding — or taken BACK from
+         * yourself — wins ground and nothing else. That is what stops a war being won by
+         * eating the weak. `city.fell` is stamped at the yield (seatDown), because by the
+         * take `owner` has long said nobody. */
+        if (city.fell != null && city.fell >= 0 && city.fell !== claimant &&
+            world.heirs && world.heirs.indexOf(city.fell) >= 0)
+          pl.lords = lords + 1;
+      }
       /* TAKEN — and it comes back HURT. Its works are gone with its old master, its throne is a
        * fraction of what it was and its writ is the court. It is a liability until it is paid
        * for, which is what stops a conquest paying for the next one. */
@@ -4397,7 +4446,11 @@
 
   global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf, declare,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
-                   newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds,
+                   /* noteWalls is out here for ONE caller: the realm's restore, which lays
+                    * saved runs back onto a fresh board and must rebuild the standing set —
+                    * the curtain chain, the faces, the nav layers — exactly as a rising run
+                    * would have. Everything inside the sim still calls it directly. */
+                   newSeenMask, markSeen, hurtBuilding, masons, rising, wallError, wallEnds, noteWalls,
                    wallCrews, wallReach, branchesOf, forkAt, branchOf, mustersOf, foldOrder, crush,
                    bearers,
                    /* WHO MAY STRIKE WHOM, and whether two heirs are at peace. The one spelling

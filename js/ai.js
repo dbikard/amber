@@ -624,6 +624,90 @@
         }
       }
     },
+    /* THE LORD — the marcher grown a spine. Still a Reach-War creature and nothing else: he
+     * speaks only under `rules.reach`, so no skirmish board or balance run can ever hear him,
+     * and still only orders that work under the reach law — rallies, works probed before they
+     * are asked for, and the walk. Four sentences, in the order a lord says them: trouble at
+     * his own court calls the company home; otherwise the marcher's march; a comfortable
+     * purse raises ground; and AMBER held is the throne reached for — the Shrine and the walk
+     * are what give the war a clock. */
+    lord: {
+      title: 'A Marcher Lord', interval: 2.0, noise: 0,
+      custom: (v, issue) => {
+        if (!v.world.rules.reach) return;   // a lord has nothing to say to an ordinary board
+        const w = v.world, W = global.World;
+        const seat = W.seatOf(w, v.me);
+        const seatIdx = w.cities.indexOf(seat);
+        if (seatIdx < 0) return;
+        const co = v.pl.companies[0];
+        if (co) {
+          const men = v.myUnits.filter((u) => u.co === co.id).length;
+          /* HOLD: hostiles at the court outrank any march. Striking the rally is the whole
+           * order — under the reach law a company with no rally holds at its own city — and
+           * it is struck once, not re-struck every think. */
+          if (v.visHostiles.some((u) => d2(u.x, u.y, seat.x, seat.y) < 500 * 500)) {
+            if (co.rally) issue({ c: 'rally', co: co.id });
+          } else {
+            /* MARCH: the marcher's sentence, verbatim — a full company on the nearest
+             * neighbouring court that is not ours, a spent one home. */
+            const nbrs = (w.map.gen.nbrs && w.map.gen.nbrs[seatIdx]) || [];
+            let tgt = null, bd = Infinity;
+            for (const i of nbrs) {
+              const o = w.cities[i];
+              if (!o || o.owner === v.me) continue;
+              const d = d2(o.x, o.y, seat.x, seat.y);
+              if (d < bd) { bd = d; tgt = o; }
+            }
+            if (tgt && men >= 8) {
+              if (!co.rally || Math.hypot(co.rally.x - tgt.x, co.rally.y - tgt.y) > 40)
+                issue({ c: 'rally', co: co.id, x: tgt.x, y: tgt.y });
+            } else if (men < 4 && co.rally) issue({ c: 'rally', co: co.id });
+          }
+        }
+        /* Does any city he holds carry the Pattern? Public knowledge — the country is
+         * generated on every machine and AMBER is named on the map. */
+        const pat = w.map.gen.pattern;
+        const amber = pat != null && w.cities[pat] && w.cities[pat].owner === v.me
+          ? w.cities[pat] : null;
+        /* WORKS: one order per think, dearest wish first, every spot probed before it is
+         * asked for (see spotAt's note — probe where the work will stand, or not at all). */
+        if (v.free > 0) {
+          if (amber && !v.have.shrine && v.essence > 800) {
+            /* THE SHRINE. The court itself first — that is where the one Pattern lies — but
+             * the writ runs from his SEAT and his Gates (inClaim), not from every city he
+             * holds, so a lord whose seat is not AMBER cannot yet build at that court. His
+             * own writ still satisfies the reach rule (a work inside an OWNED city's reach),
+             * so the clock starts either way. */
+            const spot = sweep(v, 'shrine', amber.x, amber.y,
+                               Math.atan2(seat.y - amber.y, seat.x - amber.x), 100, 40, 6)
+                      || spotFor(v, 'shrine');
+            if (spot) issue({ c: 'build', x: spot.x, y: spot.y, bt: 'shrine' });
+          } else if (v.essence > 400) {
+            /* A GATE on a free spring the rules will take — placementError answers reach,
+             * writ and presence in one word, so a spring his men happen to hold counts. */
+            let spot = null;
+            for (const s of w.map.sites)
+              if (s.kind === 'node' && W.nodeHolder(w, s) === -1 &&
+                  !W.placementError(w, v.me, s.x, s.y, 'gate')) { spot = s; break; }
+            if (spot) issue({ c: 'build', x: spot.x, y: spot.y, bt: 'gate' });
+            /* else a SECOND HALL, at arm's length toward the middle of the country — where
+             * the war is — swept a few angles round like every heir's works are. It musters
+             * into the MAIN company: the doctrine only ever speaks to companies[0], so a hall
+             * flying its own standard would raise men no order of his can reach. */
+            else if ((v.have.barracks || 0) < 2) {
+              const at = sweep(v, 'barracks', seat.x, seat.y,
+                               Math.atan2(w.mapH / 2 - seat.y, w.mapW / 2 - seat.x), 200, 30, 2);
+              if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks', co: co && co.id });
+            }
+          }
+        }
+        /* THE WALK — only ever from AMBER's lord, once the Shrine stands and the purse can
+         * carry the drain. This is the war's clock: a walk cannot be called off, so it is
+         * issued once and never re-issued at a walker. */
+        if (amber && v.have.shrine && !v.walking && v.essence > 600)
+          issue({ c: 'walk', on: true });
+      }
+    },
     random: {
       title: 'A Shadow-ghost', interval: 2.0, noise: 0,
       custom: (v, issue, rng) => {

@@ -15,8 +15,9 @@ no bundler. WebGL is a hard requirement, stated plainly at boot (`js/render_sele
 ## Key Documents
 
 - **GAME_VISION.md** — concept, board, buildings/units/powers, AI heirs, fog, art direction.
-- **REALM_PLAN.md** — the target for the fourth mode: a country of regions and cities, truces,
-  conquest that yields ground, the quiet tick. Staged, with a referee gate per stage.
+- **REALM_PLAN.md** — the RECORD of the fourth mode's two lives: the region-graph realm it
+  describes shipped and was then superseded by the Reach War (one continuous land, cities with
+  a reach), which kept its structure-independent parts. Read for the staging discipline.
 - **DESIGN_PRINCIPLES.md** — pillars + the sim-based balance methodology.
 - **TODO.md** — phases and current state.
 
@@ -42,8 +43,7 @@ js/qrcode.js    — QR encoder (verbatim from perils)
 js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
 js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
 js/campaign.js  — the chapters: boards, briefings, objectives, progress (headless-safe)
-js/country.js   — the country: a graph of regions, biomes, closed borders and crossings (headless-safe)
-js/realm.js     — the war above the boards: enter/compact a region, marches, lords, the save (headless-safe)
+js/realm.js     — the Reach War: create the one-world war, the run shape, the pocket save (headless-safe)
 js/ui.js        — DOM HUD, build sheet, menus, LAN lobby, banners, the Muster Roll
 js/game.js      — orchestration: modes, fixed-timestep loop, input routing, MP wiring (last)
 sim.js          — Node balance runner: mirror / gradient / round-robin / durations
@@ -382,26 +382,36 @@ sight-filtered in `routeEvents`, so it cannot show what the veil is hiding. Crim
 yours, gold when it is his: "I am attacked here" and "I am attacking there" are the two
 questions a glance at a minimap asks.
 
-## The Long War (the fourth mode) — see `REALM_PLAN.md`
+## The Reach War (the fourth mode)
 
-**A REGION IS TODAY'S BOARD.** The country is many of them, never a bigger grid: a flow field is
-a Dijkstra over every cell and dead linear in area, and the ground texture self-caps. `country.js`
-makes the graph from one seed (biomes off coarse noise; every border either a narrow crossing or
-no way through; connectivity repaired, and what is still unreachable put back to sea).
-`realm.js` holds the war and NO live world — `enter` materialises a region into an ordinary
-`humans + 1`-seat board with the war's rules on it, `compact` puts it back in ~730 bytes,
-`march` runs a column across a border. `REALM.run` mirrors `CAMPAIGN.run`: it answers and never
-writes, and endings go through `World.declare`.
+**THE COUNTRY IS ONE WORLD.** The region-graph realm (a country as a grid of little boards,
+entered one at a time — see git history and REALM_PLAN.md §9-10 for its record) is gone: what
+made a single big map unaffordable was the flow field, a Dijkstra dead linear in area, and the
+REACH is what tamed it. Every city owns a disc (`world.cities[].reach`); a company belongs to a
+city (`co.city`) and may be ordered only inside that city's reach (`rules.reach` — refusals
+speak: 'reach', 'city'); and every flow field is FENCED by the owning city's disc (nav.js
+`bound`), so a field costs what a field costs on today's board however large the land grows
+(measured: 5.5ms fenced vs 70ms open over a country). To strike a city two hops away you must
+first hold the one between — the affordability rule IS the strategic rule. ORDERS are bounded;
+violence is not: standing, pursuit and combat cross the rim freely.
 
-**The seam is the only thing the mode adds** — going down into a region is an ordinary match.
-`REALM.leave` is the ONE place the country learns what happened on a board, which is why the
-lord rule is enforced there and not in the sim: `world.js` is headless-first and must go on
-knowing nothing above a board. Likewise the netcode knows nothing above one — a LAN table sends
-which country and which region, and both machines generate the same ground.
+`WG.buildCountry` grows the land (CONST.REACHWAR: 4000×4800, 10 cities; connectivity is a
+PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an already-placed reach);
+AMBER, the Pattern's city, is the neighbour graph's centre and last in seat order. `realm.js` v2
+is only persistence + `REALM.run` (CAMPAIGN.run's shape; endings via `World.declare`): the save
+regenerates the country from its seed and writes down only what was DONE (~7-100KB under
+`amber_realm` v2; a v1 record loads as null and `REALM.lost` says so once). The lord brake lives
+IN the sim now (`holdCities` refuses the swear past `1 + pl.lords`; a lord is won only from a
+CONTENDER, `world.heirs`), as does the one Pattern (`placementError`: a Shrine only for AMBER's
+holder). A taken city spares its men — occupation quiets their halls instead (the pocket rule).
+Minor lords run the `lord` baseline (ai.js), which speaks ONLY rallies — the heirs' banner
+vocabulary is mute under the reach — and AMBER's holder builds the Shrine and walks, which is
+the war's clock. `?reach=SEED` dev-boots a country through the real renderer. LAN over the war
+is severed until dealt anew (a table is a plain board for now).
 
-**The rules of a war**, all of them off in every other mode: `occupy` (a Seat yields and the
-ground must be taken), `endOnSeat: 0` (losing a city is a loss, not a death), `truce` and
-`onePattern` (a Shrine may be raised only where `world.pattern` says).
+**The rules of a war**, all of them off in every other mode: `reach`, `occupy` (a Seat yields
+and the ground must be taken), `endOnSeat: 0` (dispossession, not death), `truce`, and
+`onePattern` (a Shrine may rise only in the Pattern's city, held).
 
 ## Common Tasks
 
