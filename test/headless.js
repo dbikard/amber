@@ -178,6 +178,100 @@ suite('the size is the world\'s, not the game\'s');
   }
 }
 
+/* ---------------- a field bounded by a reach ----------------
+ * The one piece of machinery the Reach War stands on: a flow field's Dijkstra may be BOUNDED
+ * by a disc, and a bounded field costs what a field costs on today's board however large the
+ * land grows. The capacity claim is asserted in CELLS, not milliseconds — the number of cells
+ * a bounded search may touch is π·r²/cw², whatever the machine is doing — and the wall-clock
+ * check beside it is deliberately loose for exactly that reason. */
+suite('a field bounded by a reach');
+{
+  const rig = () => ({
+    name: 'the reach rig', seed: 7, ground: 'PLAIN', height: 0.5,
+    seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+    springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }]
+  });
+  const w = World.createWorld(1, 2, rig());
+  const nav = w.nav;
+  w.navRation = 0;                       // the rig builds several fields in one "tick"
+  const cellOf = (x, y) => NAV.cellOf(nav, x, y);
+
+  /* the ceilings the cache key rests on, stated where the arithmetic lives */
+  ok('a duel\'s layers fit the key', 2 * (C.MAX_PLAYERS + 1) <= 64, String(2 * (C.MAX_PLAYERS + 1)));
+  ok('a 5x land\'s cells fit the key', (10000 / C.NAV.cell) * (12000 / C.NAV.cell) < 1e7);
+
+  /* an unbounded ask lands on today's key exactly — the byte-identity of the cache line */
+  const g1 = cellOf(1000, 1200);
+  NAV.steer(nav, w, 0, 1000, 1200, 520, 480);
+  ok('no bound is today\'s key to the digit', nav.fields.has(0 * 1e7 + g1),
+     'keys: ' + Array.from(nav.fields.keys()).join(','));
+
+  /* a bounded ask is its own cache line, and the disc is a wall of Infinity */
+  const bound = { id: 3, x: 520, y: 420, r2: 500 * 500 };
+  const g2 = cellOf(700, 600);
+  NAV.steer(nav, w, 0, 700, 600, 540, 460, false, bound);
+  const bkey = ((bound.id + 1) * 64 + 0) * 1e7 + g2;
+  const bf = nav.fields.get(bkey);
+  ok('a bound is its own cache line', !!bf, 'keys: ' + Array.from(nav.fields.keys()).join(','));
+  NAV.steer(nav, w, 0, 700, 600, 540, 460);
+  const uf = nav.fields.get(0 * 1e7 + g2);
+  ok('...beside the unbounded field for the same goal', !!uf && uf !== bf);
+  if (bf && uf) {
+    ok('outside the disc the field is Infinity', bf[cellOf(1420, 1980)] === Infinity);
+    ok('...and inside it is not', isFinite(bf[cellOf(600, 500)]));
+    /* the disc in cells is the whole capacity claim: π·r²/cw², give or take the rim */
+    let finite = 0;
+    for (let i = 0; i < bf.length; i++) if (isFinite(bf[i])) finite++;
+    const capacity = Math.PI * bound.r2 / (C.NAV.cell * C.NAV.cell);
+    ok('a bounded field touches the disc and nothing more', finite <= capacity * 1.05,
+       `${finite} finite cells against a disc of ${Math.round(capacity)}`);
+    /* where the shortest way never leaves the disc the two fields agree exactly; a fenced
+     * search can never find a SHORTER way than an unfenced one anywhere */
+    eq('beside the goal the bound changes nothing', bf[cellOf(720, 620)], uf[cellOf(720, 620)]);
+    let never = true;
+    for (let i = 0; i < bf.length && never; i++)
+      if (isFinite(bf[i]) && bf[i] < uf[i] - 1e-6) never = false;
+    ok('a fenced search never beats an open one', never);
+  }
+
+  /* the ration is the world's: nought means every ask is built, one defers the second */
+  {
+    const w2 = World.createWorld(1, 2, rig());
+    w2.navRation = 1;
+    const a = NAV.steer(w2.nav, w2, 0, 1000, 1200, 520, 480);
+    const b = NAV.steer(w2.nav, w2, 0, 700, 1500, 520, 480);
+    ok('a ration of one builds one', a !== null && b === null,
+       `first ${a ? 'built' : 'deferred'}, second ${b ? 'built' : 'deferred'}`);
+    w2.navRation = 0;
+    const c = NAV.steer(w2.nav, w2, 0, 700, 1500, 520, 480);
+    ok('...and nought is the way back', c !== null);
+  }
+
+  /* the affordability claim, loosely in time as well: on a 2x land, one bounded field beside
+   * one unbounded — the bounded build must be decisively cheaper. Loose on purpose: the CELL
+   * assertion above is the real claim, this one only catches the bound not being wired at all. */
+  {
+    let big = null;
+    for (let seed = 40; seed < 70 && !big; seed++)
+      big = World.createWorld(seed, 2, null, null, { dims: { W: 4000, H: 4800 } });
+    if (big) {
+      big.navRation = 0;
+      const c0 = World.seatOf(big, 0), c1 = World.seatOf(big, 1);
+      /* the rival's seat: standable and connected by construction, so the open search
+       * genuinely floods the land rather than dying in a lake */
+      const t1 = Date.now();
+      NAV.steer(big.nav, big, 0, c1.x, c1.y, c0.x, c0.y);
+      const un = Date.now() - t1;
+      const t2 = Date.now();
+      NAV.steer(big.nav, big, 0, c0.x + 400, c0.y + 300, c0.x, c0.y, false,
+                { id: 1, x: c0.x, y: c0.y, r2: 1200 * 1200 });
+      const bo = Date.now() - t2;
+      ok('on a 2x land the bounded build is the cheaper one', bo <= un,
+         `bounded ${bo}ms, unbounded ${un}ms`);
+    } else ok('a 2x land built for the timing check', false, 'no seed in 40..69');
+  }
+}
+
 /* ---------------- a board built by hand ----------------
  * The land is noise by default. A spec is the other road in: a declarative board that comes
  * out as EXACTLY what G.build produces, so nothing downstream can tell which made it. It is

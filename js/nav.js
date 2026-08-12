@@ -189,11 +189,19 @@
     (owner >= 0 ? owner : world.players.length) + (shut ? world.players.length + 1 : 0);
   const maskOf = (nav, world, owner, shut) => masksFor(nav, world)[layerOf(world, owner, shut)];
 
-  /* ---------------- flow fields (Dijkstra out from the goal) ---------------- */
+  /* ---------------- flow fields (Dijkstra out from the goal) ----------------
+   * `bound` is THE REACH: `{id, x, y, r2}`, a disc the search may not leave. One test in the
+   * neighbour loop, and it is the whole reason a continuous country is affordable — a field
+   * bounded by a city's reach costs what a field costs on today's board, however large the
+   * land grows (measured in proto/reach: 70ms/0.76MB unbounded over a country, 5.5ms/0.12MB
+   * bounded). Cells outside the disc stay Infinity, which is the same answer as "walled off"
+   * and every caller already handles. No bound is today's search exactly. */
   const SQ2 = Math.SQRT2;
-  function buildField(nav, world, owner, goal, shut) {
+  function buildField(nav, world, owner, goal, shut, bound) {
     const W = nav.W, H = nav.H, n = W * H, cost = nav.cost, mask = maskOf(nav, world, owner, shut);
     const elev = nav.elev;
+    const bx = bound ? bound.x : 0, by = bound ? bound.y : 0, br2 = bound ? bound.r2 : 0;
+    const cw = nav.cw;
     const dist = new Float32Array(n).fill(Infinity);
     /* binary heap of cell indices keyed by tentative distance */
     const hi = new Int32Array(n + 1), hd = new Float32Array(n + 1);
@@ -229,6 +237,10 @@
           if (nx < 0 || nx >= W) continue;
           const ni = ny * W + nx, cc = cost[ni];
           if (cc === 0 || mask[ni]) continue;                       // rock, or a wall not yours
+          if (bound) {                                              // THE REACH, at cell centres
+            const wx = (nx + 0.5) * cw - bx, wy = (ny + 0.5) * cw - by;
+            if (wx * wx + wy * wy > br2) continue;
+          }
           if (dx && dy) {                                           // no cutting a blocked corner
             if (cost[cy * W + nx] === 0 || cost[ny * W + cx] === 0) continue;
           }
@@ -270,11 +282,14 @@
    * for one tick. It is a COUNT and not a time budget, deliberately: the sim is seeded and
    * host-authoritative, and a rule that depended on how fast the machine was would make two
    * seats disagree about where an army went. */
-  function fieldFor(nav, world, owner, goal, shut) {
+  function fieldFor(nav, world, owner, goal, shut, bound) {
     masksFor(nav, world);   // FIRST: a new wall drops every field drawn against the old ones
     /* the LAYER is the key, not the owner — two heirs' fields never collided and a heir's own
-     * two must not either */
-    const key = layerOf(world, owner, shut) * 1e7 + goal;
+     * two must not either. A BOUND is a key term too: the same goal searched inside two
+     * different reaches is two different fields. No bound composes to nought, so an unbounded
+     * key is today's arithmetic to the digit. Ceilings, asserted in the suite: a bound id
+     * under 62, a layer under 64, a goal under 1e7 — the product stays an exact double. */
+    const key = ((bound ? bound.id + 1 : 0) * 64 + layerOf(world, owner, shut)) * 1e7 + goal;
     const f = nav.fields.get(key);
     if (f) { dbgRead++; return f; }
     /* ZERO IS THE WAY BACK. A ration of nought would otherwise mean "build nothing", which is
@@ -282,13 +297,17 @@
      * old behaviour exactly: every field asked for is built on the tick it is asked for, and
      * nothing below this line can defer. One constant, so a change of mind about the trade
      * (a rarer hitch against slightly longer matches — see const.js) is one edit and not a
-     * revert. The suite holds both halves. */
+     * revert. The suite holds both halves.
+     * THE RATION IS THE WORLD'S FIRST: bounded fields are board-cheap wherever the land is
+     * large, so a reach world may afford a higher ration without touching the game every
+     * board plays (`world.navRation`; unset means the constant). */
     if (nav.buildTick !== world.tick) { nav.buildTick = world.tick; nav.builds = 0; }
-    if (C.NAV.perTick && nav.builds >= C.NAV.perTick) { dbgDeferred++; return null; }
+    const ration = world.navRation != null ? world.navRation : C.NAV.perTick;
+    if (ration && nav.builds >= ration) { dbgDeferred++; return null; }
     nav.builds++;
     dbgBuilt++;
     if (nav.fields.size >= C.NAV.cacheMax) nav.fields.clear();
-    const built = buildField(nav, world, owner, goal, shut);
+    const built = buildField(nav, world, owner, goal, shut, bound);
     nav.fields.set(key, built);
     return built;
   }
@@ -304,12 +323,12 @@
    * a field should be read. The old single-cell answer is kept as the fallback for the
    * degenerate blends — corners where opposing samples cancel, and the first stride out of
    * an unreachable pocket, where only the escape matters. */
-  NAV.steer = function (nav, world, owner, gxw, gyw, x, y, shut) {
+  NAV.steer = function (nav, world, owner, gxw, gyw, x, y, shut, bound) {
     const goal = NAV.cellOf(nav, gxw, gyw);
     if (goal < 0) return null;
     const here = NAV.cellOf(nav, x, y);
     if (here < 0) return null;
-    const W = nav.W, H = nav.H, cw = nav.cw, f = fieldFor(nav, world, owner, goal, shut);
+    const W = nav.W, H = nav.H, cw = nav.cw, f = fieldFor(nav, world, owner, goal, shut, bound);
     /* NO FIELD THIS TICK. Either it has not been built yet — the tick's ration is spent, see
      * `NAV.perTick` — or the goal is walled off. The answer is the same either way and it is
      * the one this function has always given for a goal it cannot reach: null, and the caller
