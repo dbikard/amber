@@ -473,6 +473,9 @@
          * which company a rival's men belong to has never crossed the wire, and a flag is the
          * plainest possible statement of it */
         companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally,
+                                                     /* the city a company is born to — the reach
+                                                      * ring and every order it frames need it */
+                                                     ...(co.city != null ? { city: co.city } : {}),
                                                      ...(co.bearer ? { bearer: co.bearer } : {}),
                                                      ...(co.paused ? { paused: 1 } : {}),
                                                      ...(co.trump ? { trump: 1 } : {}) })) : [],
@@ -536,6 +539,10 @@
       cities: world.cities.map((c) => ({ id: c.id, site: c.site, x: Math.round(c.x), y: Math.round(c.y),
                                         owner: c.owner, hp: Math.round(c.hp), maxHp: c.maxHp,
                                         level: c.level, name: c.name,
+                                        /* the reach is public geometry — it is derivable from
+                                         * the seed, and a guest that could not see the border
+                                         * could not understand its own refusals */
+                                        ...(c.reach ? { reach: Math.round(c.reach) } : {}),
                                         /* a yielded court and how far along somebody is in taking
                                          * it are public: a city changing hands is the loudest
                                          * thing that can happen on a war map, and a seat that

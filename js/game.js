@@ -194,7 +194,14 @@
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
    * both out with the start message, so a guest never has to guess its own index. */
-  function startMP(seed, seats, mySeat) {
+  /* `war` is `{seed}` when the host is dealing the table INTO HIS WAR: the country is never
+   * sent — it regenerates from its seed on every machine exactly as a board does, and the
+   * war's HISTORY rides the ordinary snapshots, because the host is authoritative and a
+   * snapshot is absolute state. `savedRealm` is the host's own loaded war (guests get null).
+   * Humans take the CONTENDER seats in join order — worldgen dealt seats 1 and 2 the thrones
+   * furthest from AMBER, which is exactly where a rival heir belongs — and the host's lords
+   * play every seat nobody human took. */
+  function startMP(seed, seats, mySeat, war, savedRealm) {
     const n = Math.max(2, Math.min(C.MAX_PLAYERS, seats || 2));
     game.seats = n;
     game.mode = Net.isHost ? 'host' : 'guest';
@@ -205,26 +212,44 @@
     game.span = null; game.placing = null; Render.span = null;
     /* a call for another match belongs to the match that ended, not to this one */
     game.called = false; game.noMore = false;
-    game.names = C.SEAT_NAMES.slice(0, n);
-    game.bots = null; game.war = false;      // a LAN table holds no country and steps no bots
+    game.bots = null; game.war = false;
+    game.realm = null; game.run = null;
+    game.lanWar = war ? { seed: war.seed } : null;   // so a rematch can find the same war
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     snapTurn = 0; evQ = Object.create(null); snapGap = 100;
-    /* LAN OVER THE COUNTRY IS SEVERED FOR NOW — the region realm it dealt tables into is
-     * gone, and dealing a table into the ONE-WORLD war is its own stage (host holds the war,
-     * guests take heir seats, history rides the ordinary snapshots). Until that lands, a LAN
-     * table is what it always was: a duel or a free-for-all on a board. */
-    const build = () => World.createWorld(seed, n);
-    game.world = Net.isHost ? build() : null;
-    refWorld = Net.isHost ? null : build();   // guest: map geometry only
+    if (war) {
+      if (Net.isHost) {
+        /* the host plays HIS OWN saved war, guests and all — putting it down still saves it */
+        game.realm = savedRealm;
+        game.war = true;
+        game.run = REALM.run(savedRealm);
+        game.world = savedRealm.world;
+        const kind = AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher';
+        game.bots = game.world.players.map((_, i) => (i >= n ? AI.make(kind, {}) : null));
+      } else {
+        /* a guest builds the same country from the seed alone — geometry, never history */
+        game.world = null;
+        refWorld = REALM.create(war.seed).world;
+      }
+      const geo = Net.isHost ? game.world : refWorld;
+      game.names = geo.players.map((_, i) =>
+        i < n ? (C.SEAT_NAMES[i] || 'an heir') : geo.map.sites[geo.cities[i].site].name);
+    } else {
+      game.names = C.SEAT_NAMES.slice(0, n);
+      const build = () => World.createWorld(seed, n);
+      game.world = Net.isHost ? build() : null;
+      refWorld = Net.isHost ? null : build();   // guest: map geometry only
+    }
     Render.resize();
     homeCamera();
     armBack();
     /* a guest never holds the world, only its own fogged snapshots — say so in the header
      * rather than pretend the rival columns are the truth */
     Rec.begin({ version: global.GAME_VERSION, seed, viewer: game.viewer, names: game.names.slice(),
-                mode: 'LAN ' + n + '-way', partial: !Net.isHost });
+                mode: war ? 'the reach war · LAN ' + n + '-way' : 'LAN ' + n + '-way',
+                partial: !Net.isHost });
     /* with up to four seats there is no single "the rival" — name the table instead */
-    UI.startMatch(n > 2 ? n + ' HEIRS CONTEND' : (Net.isHost ? 'Eric' : 'Corwin'));
+    UI.startMatch(war ? 'the Reach War' : n > 2 ? n + ' HEIRS CONTEND' : (Net.isHost ? 'Eric' : 'Corwin'));
   }
   /* ---------------- the phone's back button ----------------
    * Installed as a PWA, Android's back gesture leaves the app. It should dismiss whatever is
@@ -457,9 +482,13 @@
       toMenu(); return;
     }
     const seed = (Math.random() * 0xffffffff) >>> 0, seats = game.seats;
+    /* a war table's rematch is the SAME war, reloaded — the country has moved since the
+     * deal and the save is the truth of it. A war decided since falls back to a board. */
+    const saved = game.lanWar ? REALM.load() : null;
+    const war = saved && !saved.done ? { seed: saved.seed } : null;
     for (const p of Net.peers)
-      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
-    startMP(seed, seats, 0);
+      if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx);
+    startMP(seed, seats, 0, war, war ? saved : null);
   }
   /* the guest half of the same button: a call up the wire, and then the wait it used to show
    * without ever having asked for anything */
@@ -805,12 +834,14 @@
       while (acc >= C.SIM_DT && steps++ < 6) {
         acc -= C.SIM_DT;
         if (!game.over) {
-          if (game.mode === 'sp') {
-            if (game.bots) {
-              for (let bi = 1; bi < game.bots.length; bi++)
-                if (game.bots[bi]) game.bots[bi].step(game.world, bi,
-                  (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT);
-            } else game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
+          /* the country's bots step wherever the country is — a solo war or a hosted table.
+           * `game.bots[i]` is null on every seat a human holds, so nothing double-drives. */
+          if (game.bots) {
+            for (let bi = 1; bi < game.bots.length; bi++)
+              if (game.bots[bi]) game.bots[bi].step(game.world, bi,
+                (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT);
+          } else if (game.mode === 'sp') {
+            game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
           }
           /* every guest's commands are applied AS THAT GUEST — with four seats the sender
            * is the only thing that says whose order it was */
@@ -1317,14 +1348,18 @@
     $('lan-start').addEventListener('click', () => {
       const seed = (Math.random() * 0xffffffff) >>> 0;
       const seats = Net.seated();
-      /* each guest is told the same seed and player count, and its OWN seat. Dealing a table
-       * into the one-world war is a later stage; the wire carries a board's worth for now. */
+      /* IF THE HOST HAS A WAR OPEN, THE TABLE FIGHTS IN IT. The country is never sent — a
+       * guest regenerates it from the seed exactly as a board — and the war's history rides
+       * the ordinary snapshots, because the host is authoritative and a snapshot is absolute.
+       * A decided war is not dealt: the table gets a plain board instead. */
+      const saved = REALM.load();
+      const war = saved && !saved.done ? { seed: saved.seed } : null;
       for (const p of Net.peers)
-        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx }, p.idx);
+        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx);
       $('lan-start').classList.add('hidden');
-      startMP(seed, seats, 0);
+      startMP(seed, seats, 0, war, war ? saved : null);
     });
-    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx);
+    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx, m.war || null);
     Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
     /* a call for another match is only ever answered BETWEEN matches, by the host. Mid-match
      * it is stale — a message that crossed with the winning blow — and once the host has

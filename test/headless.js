@@ -7667,6 +7667,39 @@ if (!QUICK('the lords hold a country')) {
   }
 }
 
+/* ---------------- a war is dealt to a table ----------------
+ * LAN over the one-world war: the wire carries `{war: {seed}}` and nothing else of the
+ * country — a guest regenerates the geometry from the seed exactly as a board, and the
+ * HISTORY rides the ordinary snapshots because a snapshot is absolute state. What must hold:
+ * the snapshot serves a ten-seat war (built seat-count-agnostic, asserted anyway), the reach
+ * rides it (a guest that cannot see the border cannot understand its own refusals), a
+ * company's city rides to its owner alone, and two machines given only the seed stand on
+ * identical ground. */
+suite('a war is dealt to a table');
+{
+  const store = {};
+  const hadLS = 'localStorage' in globalThis;
+  const oldLS = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null),
+                              setItem: (k, v) => { store[k] = String(v); },
+                              removeItem: (k) => { delete store[k]; } };
+  const realm = REALM.create(20260813);
+  const w = realm.world;
+  const snap = Net.snapFor(w, 1, []);
+  eq('a snapshot serves every seat of a war', snap.players.length, w.players.length);
+  eq('...and carries the war\'s rules', snap.rules.reach, 1);
+  ok('every city\'s reach rides, public', snap.cities.every((c) => c.reach > 0));
+  ok('a company\'s city rides to its owner', snap.players[1].companies.every((co) => co.city === 1),
+     JSON.stringify(snap.players[1].companies));
+  ok('...and nobody else\'s crosses the wire', snap.players.every((p, pi) =>
+     pi === 1 || p.companies.length === 0));
+  /* the one thing that must be true, or every position on the wire is a lie */
+  const geo = (world) => JSON.stringify(world.map.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y)]));
+  eq('two machines given only the seed stand on identical ground',
+     geo(w), geo(REALM.create(20260813).world));
+  if (hadLS) globalThis.localStorage = oldLS; else delete globalThis.localStorage;
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

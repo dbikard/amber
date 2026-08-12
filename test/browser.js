@@ -4535,6 +4535,48 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- a war table, the guest's half ----------------
+   * The wire carries `{war: {seed}}` and the guest regenerates the country from the seed —
+   * geometry, never history, which arrives as ordinary absolute snapshots. Driven the way
+   * the LAN-guest suite drives a board: pairing pretended, the host's war simulated in-page,
+   * one snapshot pushed. What must hold: the guest stands on the war's own ground (ten city
+   * names at the table), draws a ten-seat snapshot, and the page raises no errors. */
+  {
+    suite('a war table, the guest\'s half');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    const lan = await pg.evaluate(async () => {
+      const { Game, Net, World, REALM, CONST: C } = window;
+      Net.isHost = false; Net.localIdx = 1; Net.active = true;
+      const sent = [];
+      Net.send = (o) => sent.push(o);
+      /* the host said start, and the start carried a war */
+      Game.startMP(4242, 2, 1, { seed: 20260814 });
+      const names = Game.game.names.slice();
+      /* the host's war, simulated right here, a minute in */
+      const saved = REALM.create(20260814);
+      const hw = saved.world;
+      for (let i = 0; i < 30 * 5; i++) { World.update(hw, C.SIM_DT); hw.events.length = 0; }
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, []))));
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const snapSeats = Net.snapFor(hw, 1, []).players.length;
+      Net.active = false; Net.peers = [];
+      return { mode: Game.game.mode, seats: names.length, snapSeats,
+               amber: names.includes('AMBER'), war: !!Game.game.lanWar };
+    });
+    ok('the guest sits at a ten-throne table', lan.mode === 'guest' && lan.seats >= 8,
+       JSON.stringify(lan));
+    ok('...on the war\'s own ground, AMBER among the seats', lan.amber === true, lan.seats + ' names');
+    ok('...and a snapshot serves every one of them', lan.snapSeats === lan.seats,
+       `${lan.snapSeats} of ${lan.seats}`);
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   await browser.close();
   srv.close();
   process.exit(report('browser'));

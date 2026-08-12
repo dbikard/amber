@@ -406,8 +406,11 @@ CONTENDER, `world.heirs`), as does the one Pattern (`placementError`: a Shrine o
 holder). A taken city spares its men — occupation quiets their halls instead (the pocket rule).
 Minor lords run the `lord` baseline (ai.js), which speaks ONLY rallies — the heirs' banner
 vocabulary is mute under the reach — and AMBER's holder builds the Shrine and walks, which is
-the war's clock. `?reach=SEED` dev-boots a country through the real renderer. LAN over the war
-is severed until dealt anew (a table is a plain board for now).
+the war's clock. `?reach=SEED` dev-boots a country through the real renderer. A LAN table is
+dealt INTO the host's war when one is open: the wire carries `{war: {seed}}` and nothing else
+of the country (a guest regenerates the ground from the seed; history rides the ordinary
+absolute snapshots), humans take the contender seats in join order, and the host's lords play
+the rest.
 
 **The rules of a war**, all of them off in every other mode: `reach`, `occupy` (a Seat yields
 and the ground must be taken), `endOnSeat: 0` (dispossession, not death), `truce`, and

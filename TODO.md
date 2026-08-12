@@ -692,8 +692,11 @@ below.
       country from its seed and writes only what was DONE — ~7KB measured, <300KB asserted;
       v1 saves load as null and say so; the lord brake in `holdCities`, the one Pattern in
       `placementError`, AMBER's holder walks and that is the clock). The 2× ground bake:
-      984ms vs a 382ms board on the same engine — shippable; tiling stays severed (R7 with
-      the true 4-5× country and LAN over the war).
+      984ms vs a 382ms board on the same engine — shippable. R6 landed beside it: a LAN
+      table is dealt INTO the host's open war (`{war:{seed}}` on the wire, geometry from the
+      seed, history from the snapshots, humans in the contender seats, lords on the rest;
+      the snapshot carries every city's reach and your own companies' cities). Tiling stays
+      severed: R7 is the true 4-5× country, gated on a real phone.
       cities, truces that can be broken, conquest that yields ground rather than rubble, and one
       Pattern in one city. The load-bearing decision, taken from measurement rather than taste:
       **a region IS today's board** — a cold flow field is dead linear in area (6.3ms → 59ms at
