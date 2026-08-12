@@ -202,8 +202,16 @@
    *              profiler put at 94% of a busy tick. Not an approximation and not a second
    *              model: the same rules, with the empty work not done. SET THIS TO 0 TO GO
    *              BACK, and the suite holds both halves.
+   *   reach      A COMPANY BELONGS TO A CITY and may be ordered only inside that city's
+   *              reach (`world.cities[].reach`, grown by `WG.buildCountry`). The company's
+   *              standing order falls back to its own city, never the royal banner; the
+   *              banner becomes the Recall and nothing else; a work must stand inside some
+   *              owned city's reach; and every flow field is fenced by the owning city's
+   *              disc — which is what keeps a whole country at board cost (see nav.js).
+   *              ORDERS are bounded, violence is not: standing, pursuit and combat cross
+   *              the rim freely, or defenders on it would be unhittable.
    * Everything here is off or today's behaviour, so every existing mode is untouched. */
-  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1, onePattern: 0 };
+  CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1, onePattern: 0, reach: 0 };
   /* Seat colours. You are ALWAYS gold — a player should never have to remember which of four
    * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
   CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];
@@ -881,6 +889,11 @@
    * now capped: a fiend grows into a soldier's better — about two swords to put down — and
    * stays there. Late Chaos still presses, by being MANY, which is a fight you can win. */
   CONST.CHAOS = {
+    /* in a REACH world a fiend's flow field is fenced by its target city's disc, widened by
+     * this — wide enough to wander, narrow enough that the road never bills a country-wide
+     * Dijkstra. If tuning fights back, the fallback is chaos off in reach worlds, not a
+     * bigger disc. */
+    boundMul: 1.7,
     /* AND IT IS NOT THE MAIN ENEMY EITHER. Capping a fiend's strength left the RATE alone,
      * which climbed to about 32 fiends a minute — and tagging every player death across four
      * whole matches found Chaos had taken 73% of them (rival 199, Chaos 572, towers 13). One

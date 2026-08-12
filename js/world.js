@@ -177,7 +177,7 @@
       const b = { id: world.nextId++, bt: 'barracks', level: 1, x: spot.x, y: spot.y,
                   cd: def.period[0] * 0.5, raise: 0, raiseFor: def.raise,
                   hp: def.hp, maxHp: def.hp, lastHurt: -99, node: -1, co: 0 };
-      b.co = joinCo(world, pi, undefined);
+      b.co = joinCo(world, pi, undefined, b);
       world.players[pi].buildings.push(b);
     }
     for (let pi = 0; pi < world.players.length; pi++)
@@ -626,9 +626,8 @@
       /* the order he is UNDER, worked out here rather than read off u.goal — the goal is
        * assigned in the march loop, which runs after this, so reading it would post the whole
        * army one tick late and leave a man mustered this tick with no station at all */
-      const pl3 = world.players[u.owner];
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
-      const gs = foldOrder(world, co3 && co3.rally ? co3.rally : pl3.banner);
+      const gs = foldOrder(world, standingOrder(world, u.owner, co3));
       if (!gs) continue;
       let post = null, pd = reach;
       for (const w of world.walls) {
@@ -943,7 +942,7 @@
       if (u.toBerth || u.tow) continue;         // already given a place by the run he was sent to
       const pl3 = world.players[u.owner];
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
-      const gs = foldOrder(world, co3 && co3.rally ? co3.rally : pl3.banner);
+      const gs = foldOrder(world, standingOrder(world, u.owner, co3));
       if (!gs) continue;
       let post = null, pd = C.TOWER.man;
       for (const b of pl3.buildings) {
@@ -1678,6 +1677,11 @@
      * one region that has it; everywhere else the Shrine is simply not a work you may raise. */
     if (world.rules.onePattern && bt === 'shrine' && !world.pattern) return 'elsewhere';
     if (!groundBears(world, x, y)) return 'ground';
+    /* A WORK STANDS INSIDE SOME OWNED CITY'S REACH. The writ is the inner rule as ever; the
+     * reach is the OUTER bound — without it a chain of Gates walks the writ across the whole
+     * country and the company rule is a fence with a hole in it. */
+    if (world.rules.reach && !world.cities.some((c) => c.owner === pi && c.reach &&
+        d2(x, y, c.x, c.y) < c.reach * c.reach)) return 'reach';
     /* a wall's FIRST tap: all a single point can be judged on. The run itself is checked when
      * the second tap lands, by wallError. */
     if (def.span) {
@@ -2242,7 +2246,7 @@
         if (on) b.onWall = on.id;
       }
       if (!b.raise) b.hp = b.maxHp;
-      if (def.spawns) b.co = joinCo(world, pi, cmd.co);
+      if (def.spawns) b.co = joinCo(world, pi, cmd.co, b);
       pl.buildings.push(b);
       /* a finished wall bars the ground: the flow fields drawn against the old world are all
        * stale, and the version counter is what tells them so */
@@ -2435,6 +2439,14 @@
       if (!co) return { ok: false, err: 'co' };
       const p = aimAt(world, cmd);
       if (!p) { co.rally = null; emit(world, { e: 'rally', pi, co: co.id, site: -1 }); return { ok: true }; }
+      /* THE RULE, AND THE ONLY REFUSAL THE REACH ADDS TO AN ORDER: a company may be sent
+       * anywhere inside ITS CITY'S reach and nowhere else. Not silently clamped — refused,
+       * so the player is told the truth: take a city nearer to where you want to strike. */
+      if (world.rules.reach) {
+        const c = co.city != null ? world.cities[co.city] : null;
+        if (!c || !c.reach || d2(p.x, p.y, c.x, c.y) >= c.reach * c.reach)
+          return { ok: false, err: 'reach' };
+      }
       co.rally = p;
       emit(world, { e: 'rally', pi, co: co.id, site: p.site, x: p.x, y: p.y });
       return { ok: true };
@@ -2444,8 +2456,19 @@
        * move it OUT to: a hall without a standard would be a hall you cannot give orders to. */
       const b = bldOf(world, pi, cmd.id);
       if (!b || !C.BUILDINGS[b.bt].spawns) return { ok: false, err: 'id' };
+      /* across CITIES only where the reaches overlap: a hall may join another city's company
+       * if it stands inside that city's reach — overlapping reaches are corridors, and this
+       * is how a pocketed hall is re-homed after its own city falls */
+      if (world.rules.reach) {
+        const to = coOf(world, pi, +cmd.co || 0);
+        if (to && to.city != null) {
+          const c = world.cities[to.city];
+          if (!c || !c.reach || d2(b.x, b.y, c.x, c.y) >= c.reach * c.reach)
+            return { ok: false, err: 'city' };
+        }
+      }
       const was = b.co;
-      b.co = joinCo(world, pi, cmd.co);
+      b.co = joinCo(world, pi, cmd.co, b);
       if (was !== b.co) {
         /* the men already mustered stay with the hall that raised them */
         for (const u of world.units) if (u.owner === pi && u.from === b.id) u.co = b.co;
@@ -2455,6 +2478,15 @@
       return { ok: true };
     }
     if (cmd.c === 'banner') {
+      /* under `rules.reach` the gold banner is THE RECALL and nothing else. There is no one
+       * point a country-wide army can answer, so the banner keeps exactly its second half —
+       * every standard struck, every company home to its own city — and sets no aim. */
+      if (world.rules.reach) {
+        for (const co of pl.companies)
+          if (co.rally) { co.rally = null; emit(world, { e: 'rally', pi, co: co.id, site: -1 }); }
+        emit(world, { e: 'banner', pi, site: -1 });
+        return { ok: true };
+      }
       const p = aimAt(world, cmd);
       if (!p) return { ok: false, err: 'where' };
       pl.banner = p;
@@ -2494,6 +2526,8 @@
          * Recall last pointed and could not be ordered anywhere else. His company is marked,
          * so the tray can show it for what it is rather than as another numbered detachment. */
         const tco = { id: pl.nextCo++, rally: null, trump: true };
+        /* the champion answers the seat the Trump was played from */
+        if (world.rules.reach) tco.city = cityIdxFor(world, pi, seatOf(world, pi));
         pl.companies.push(tco);
         pl.championId = spawnUnit(world, pi, 'champion', undefined, undefined, undefined, tco.id);
         pl.powers.trump = def.cd;
@@ -2512,19 +2546,76 @@
    * own, which is what makes the first Barracks simply work: you get a flag, and it is that
    * hall's flag. A new company starts with no rally, meaning it holds where the army holds,
    * until you pick its flag up and point it somewhere. */
-  function joinCo(world, pi, want) {
+  function joinCo(world, pi, want, at) {
     const pl = world.players[pi];
     const n = +want || 0;
     if (want !== 'new' && n && coOf(world, pi, n)) return n;
     const co = { id: pl.nextCo++, rally: null };
+    /* under `rules.reach` a company is BORN TO A CITY — the one whose reach holds the hall
+     * that raised it — and that stamp is what every order is judged against */
+    if (world.rules.reach) co.city = cityIdxFor(world, pi, at);
     pl.companies.push(co);
     return co.id;
+  }
+  /* which city a company born at `at` belongs to: the nearest OWNED city whose reach holds
+   * the point — overlapping reaches go to the closer court — else simply the nearest owned,
+   * because a company is never cityless in a reach world */
+  function cityIdxFor(world, pi, at) {
+    let bestIn = -1, bdIn = Infinity, near = -1, nd = Infinity;
+    for (let i = 0; i < world.cities.length; i++) {
+      const c = world.cities[i];
+      if (c.owner !== pi) continue;
+      const d = at ? d2(at.x, at.y, c.x, c.y) : 0;
+      if (d < nd) { nd = d; near = i; }
+      if (at && c.reach && d < c.reach * c.reach && d < bdIn) { bdIn = d; bestIn = i; }
+    }
+    if (bestIn >= 0) return bestIn;
+    if (near >= 0) return near;
+    const seat = world.cities.indexOf(seatOf(world, pi));
+    return seat >= 0 ? seat : 0;
   }
   /* a company with no hall mustering into it and no men left under it is not a company */
   function pruneCos(world, pi) {
     const pl = world.players[pi];
     pl.companies = pl.companies.filter((co) =>
       pl.buildings.some((b) => b.co === co.id) || world.units.some((u) => u.owner === pi && u.co === co.id));
+  }
+  /* the disc a man's field is fenced by (see NAV's bound): his company's city's reach — or,
+   * for a fiend, its TARGET city's at `CHAOS.boundMul`, wider, in its own key band so the
+   * fiend's disc and the city's own never share a cache line. One object per disc, kept,
+   * because the nav cache keys on the bound's id and a fresh object costs nothing but a
+   * fresh id would be a new cache line every read. */
+  function boundFor(world, u) {
+    if (u.bnd == null || !world.rules.reach) return null;
+    const c = world.cities[u.bnd];
+    if (!c || !c.reach) return null;
+    const chaos = u.owner === C.CHAOS_ID;
+    const key = chaos ? 32 + u.bnd : u.bnd;
+    const bounds = world._bounds || (world._bounds = []);
+    if (bounds[key]) return bounds[key];
+    const r = c.reach * (chaos ? C.CHAOS.boundMul : 1);
+    return (bounds[key] = { id: key, x: c.x, y: c.y, r2: r * r });
+  }
+  /* THE ORDER A COMPANY IS UNDER — one spelling, five readers: the walls' muster, the
+   * towers', the march, a fresh man's first goal, and a fiend newly bound. A company with a
+   * rally of its own holds it; without one it follows the royal War Banner. Under
+   * `rules.reach` the fallback is ITS OWN CITY instead — in a country there is no one banner
+   * a whole army answers, and a company with no orders holds at home (see proto/reach's
+   * `orderOf`). */
+  function standingOrder(world, pi, co) {
+    if (co && co.rally) return co.rally;
+    if (world.rules.reach) return homeOf(world, pi, co);
+    return world.players[pi].banner;
+  }
+  /* the point a company with no orders gathers on: its city's court. ONE object per city,
+   * kept — `foldOrder` caches by the ORDER'S IDENTITY, so a fresh object every read would
+   * re-fold the same ground thirty times a second. */
+  function homeOf(world, pi, co) {
+    let ci = co && co.city != null ? co.city : -1;
+    if (ci < 0) ci = world.cities.indexOf(seatOf(world, pi));
+    const c = world.cities[ci >= 0 ? ci : 0];
+    const homes = world._homes || (world._homes = []);
+    return homes[c.id] || (homes[c.id] = { x: c.x, y: c.y, site: c.site });
   }
 
   /* A standard may be planted ANYWHERE — on a site, or on bare open ground. It is an order
@@ -2583,10 +2674,22 @@
       dmg: def.dmg * (owner === C.CHAOS_ID ? C.CHAOS.dmgScale(world.t) : 1) * vet,
       tier: lv,
       cd: 0,
-      goal: goal != null ? goal : (owner === C.CHAOS_ID ? aimAt(world, { site: world.map.cities[world.chaosParity++ % world.players.length] }) : world.players[owner].banner),
+      goal: goal != null ? goal : (owner === C.CHAOS_ID ? aimAt(world, { site: world.map.cities[world.chaosParity++ % world.players.length] }) : standingOrder(world, owner, co ? coOf(world, owner, co) : null)),
       co: co != null ? co : 0,   // the COMPANY it musters into; 0 = under the royal War Banner
       from: from != null ? from : -1   // the hall that raised it, so re-assigning one moves its men
     };
+    /* a fiend's field is fenced too, by its TARGET city's disc — widened by `CHAOS.boundMul`
+     * so the road's meandering still meanders — or an unbounded chaos search would cost a
+     * country-wide Dijkstra every time the black road changed its mind (players' men are
+     * stamped each tick in musterAll; a fiend never passes through there) */
+    if (world.rules.reach && owner === C.CHAOS_ID && u.goal) {
+      let bi = -1, bd = Infinity;
+      for (let i = 0; i < world.cities.length; i++) {
+        const d = d2(u.goal.x, u.goal.y, world.cities[i].x, world.cities[i].y);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      if (bi >= 0) u.bnd = bi;
+    }
     world.units.push(u);
     return u.id;
   }
@@ -2752,8 +2855,11 @@
         const pl = world.players[u.owner];
         const co = u.co ? coOf(world, u.owner, u.co) : null;   // its company, if it still exists
         /* folded, so an order given on water gathers the company on the bank — see foldOrder */
-        const want = foldOrder(world, co && co.rally ? co.rally : pl.banner);
+        const want = foldOrder(world, standingOrder(world, u.owner, co));
         if (u.goal !== want) u.goal = want;
+        /* the disc his fields are fenced by: his company's city. Restamped every tick, so an
+         * assign, a pruned company or a fiend newly bound all come right on their own. */
+        u.bnd = world.rules.reach && co && co.city != null ? co.city : undefined;
       }
       u.rear = 0; u._line = null;
       /* a berth on a parapet and a room in a tower are STATIONS, and a station is exact. Neither
@@ -3184,7 +3290,7 @@
       best.co = u.co;                  // it marches under the standard that took it
       best.from = -1;
       best.tier = 1;
-      best.goal = pl.banner;
+      best.goal = standingOrder(world, u.owner, u.co ? coOf(world, u.owner, u.co) : null);
       best._t = null;                  // it was hunting everyone; it is not any more
       best.bound = world.t + C.BIND_LIFE;
       best.hexed = 0;                  // it is his man now; you do not chain your own
@@ -3497,7 +3603,15 @@
         if (b.bt === 'gate') income += !working && b.node >= 0 ? def.nodeIncome[b.level - 1] : 0;
         else if (def.spawns) {
           const bco = b.co ? coOf(world, pi, b.co) : null;
-          if (pl.musterPaused || (bco && bco.paused)) { b.cd = Math.max(b.cd, 0.5); continue; }
+          /* A HALL MUSTERS NOBODY WHILE ITS COMPANY'S CITY IS OUT OF ITS OWNER'S HANDS —
+           * the pocket rule's brake. Taking a court quiets its garrisons' halls without
+           * evaporating the men (the prototype killed them; a game must not — it erases the
+           * relieving counterattack), so a cut-off army is finite and a relief is worth
+           * marching. A YIELDED court (owner -1, which `foe` reads as Chaos) is quiet too:
+           * a city with no throne pays no muster. */
+          const occupied = world.rules.reach && bco && bco.city != null &&
+            foe(world, pi, world.cities[bco.city].owner);
+          if (pl.musterPaused || (bco && bco.paused) || occupied) { b.cd = Math.max(b.cd, 0.5); continue; }
           /* A HALL BEING RAISED A LEVEL MUSTERS NOBODY. That is the price of the upgrade
            * beyond its essence, and the reason to think about WHEN rather than only whether:
            * the men you would have had while the masons were in the yard are the real cost. */
@@ -3829,7 +3943,7 @@
              * reaches the wall of it, and the wall is where `stand`'s writ starts. One step
              * past the rim he steps THROUGH instead of off. */
             if (dc <= C.BUILD.pass + 4) { u.in = tb.id; continue; }
-            const s5 = dc < C.NAV.arrive ? null : NAV.steer(world.nav, world, u.owner, tb.x, tb.y, u.x, u.y);
+            const s5 = dc < C.NAV.arrive ? null : NAV.steer(world.nav, world, u.owner, tb.x, tb.y, u.x, u.y, false, boundFor(world, u));
             const L3 = s5 ? 1 : dc;
             const vx3 = s5 ? s5.x : (tb.x - u.x) / L3, vy3 = s5 ? s5.y : (tb.y - u.y) / L3;
             const tx0 = u.x, ty0 = u.y;
@@ -3957,7 +4071,7 @@
              * a threshold, and the only useful thing to tell him is to step off it into his own
              * bailey. One stride along the sheltered face and he is clear. */
             const cs2 = post.gate ? curtainSide(world, u, post) : { inside: true, face: null };
-            let s4 = NAV.steer(world.nav, world, u.owner, door.x, door.y, u.x, u.y, cs2.inside);
+            let s4 = NAV.steer(world.nav, world, u.owner, door.x, door.y, u.x, u.y, cs2.inside, boundFor(world, u));
             if (!s4 && cs2.inside && cs2.face) s4 = { x: cs2.face.nx, y: cs2.face.ny };
             const L2 = s4 ? 1 : (Math.sqrt(d2(u.x, u.y, door.x, door.y)) || 1);
             const vx2 = s4 ? s4.x : (door.x - u.x) / L2, vy2 = s4 ? s4.y : (door.y - u.y) / L2;
@@ -4034,7 +4148,7 @@
           else u.set = 1;
         } else {
           inColumn = true;
-          const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y);
+          const s3 = NAV.steer(world.nav, world, u.owner, gs.x, gs.y, u.x, u.y, false, boundFor(world, u));
           if (s3) { vx = s3.x; vy = s3.y; }
           else {
             /* No route the grid will admit — the goal may be a crag, a lake, or simply
@@ -4179,6 +4293,9 @@
   function seatDown(world, city, by) {
     const pi = city.owner;
     if (!world.rules.occupy) return topple(world, pi, by);
+    /* WHO IT FELL FROM, kept: the lord brake pays out only for conquest of an heir, and the
+     * take moment (holdCities) is long after the yield — by then `owner` says nobody */
+    city.fell = pi;
     city.owner = -1;
     city.hp = 0;
     city.yield = world.t;

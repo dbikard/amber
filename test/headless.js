@@ -7165,6 +7165,142 @@ suite('a quiet world skips only what has nothing to do');
  * ground texture self-caps, so a board three times as wide is three times blurrier and 59ms a
  * field. Everything below is about the graph above the boards, and about a region surviving
  * being left and come back to. */
+/* ---------------- a company belongs to a city ----------------
+ * `rules.reach`, the Reach War's one new law in the sim. A company is born to a city and may
+ * be ordered only inside that city's reach; a work must stand inside some owned city's; the
+ * banner becomes the Recall; a fenced flow field carries the march. ORDERS are bounded and
+ * violence is not — standing, pursuit and combat cross the rim freely — and a taken city
+ * spares the men in it: occupation quiets their halls instead (the pocket rule). Surgical
+ * asserts on a hand-made board with hand-stamped reaches; the grown country at the end. */
+suite('a company belongs to a city');
+{
+  const spec = () => ({
+    name: 'the reach law rig', seed: 7, ground: 'PLAIN', height: 0.5,
+    seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+    springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }]
+  });
+  const w = World.createWorld(1, 2, spec(), { reach: 1, occupy: 1, endOnSeat: 0 });
+  w.chaosNext = 1e9;
+  w.cities[0].reach = 700; w.cities[1].reach = 700;
+  const pl = w.players[0];
+  pl.essence = 99999;
+
+  const co0 = pl.companies[0];
+  eq('the opening company is born to its city', co0.city, 0);
+
+  /* the only refusal the reach adds to an order — and it SPEAKS */
+  eq('an order beyond the reach is refused, by name',
+     World.applyCommand(w, 0, { c: 'rally', co: co0.id, x: 1420, y: 1980 }).err, 'reach');
+  eq('...and inside it is an order like any other',
+     World.applyCommand(w, 0, { c: 'rally', co: co0.id, x: 800, y: 700 }).ok, true);
+
+  /* the march is fenced: the field it builds is the city's disc and nothing more. A man is
+   * PLACED (the hall pays its recruits over a whole period — too slow for a rig) and told to
+   * answer the company whose rally stands. */
+  w.navRation = 0;
+  const marcher = manAt(w, 0, 'soldier', 560, 480);
+  marcher.co = co0.id;
+  for (let i = 0; i < 60; i++) World.update(w, C.SIM_DT);
+  const goal = NAV.cellOf(w.nav, 800, 700);
+  const fenced = w.nav.fields.get(((0 + 1) * 64 + 0) * 1e7 + goal);
+  ok('the field rides the city\'s cache line', !!fenced,
+     'keys: ' + Array.from(w.nav.fields.keys()).slice(0, 8).join(','));
+  if (fenced) {
+    ok('...and is a wall of Infinity past the rim',
+       fenced[NAV.cellOf(w.nav, 1420, 1980)] === Infinity);
+  }
+
+  /* the banner is the Recall and nothing else */
+  const bannerWas = pl.banner;
+  eq('the banner is accepted with no aim at all',
+     World.applyCommand(w, 0, { c: 'banner', x: 1900, y: 2200 }).ok, true);
+  eq('...it strikes the standing order', co0.rally, null);
+  ok('...and plants nothing', pl.banner === bannerWas);
+
+  /* a work must stand inside some owned city's reach */
+  eq('a work beyond every reach is refused, by name',
+     World.applyCommand(w, 0, { c: 'build', x: 1300, y: 1500, bt: 'barracks' }).err, 'reach');
+  const built = World.applyCommand(w, 0, { c: 'build', x: 620, y: 700, bt: 'barracks' });
+  eq('...and inside one it is a work like any other', built.ok, true);
+
+  /* across cities only where the reaches overlap */
+  const hall = pl.buildings.find((b) => b.bt === 'barracks');
+  pl.companies.push({ id: 99, rally: null, city: 1 });
+  w.cities[1].owner = 0;
+  eq('a hall will not swear to a city whose reach it stands outside',
+     World.applyCommand(w, 0, { c: 'assign', id: hall.id, co: 99 }).err, 'city');
+  w.cities[1].reach = 2500;                        // the reaches now overlap the hall
+  eq('...and joins one whose reach holds it', World.applyCommand(w, 0, { c: 'assign', id: hall.id, co: 99 }).ok, true);
+  w.cities[1].reach = 700; w.cities[1].owner = 1;
+  World.applyCommand(w, 0, { c: 'assign', id: hall.id, co: co0.id });
+
+  /* the pocket rule: occupation quiets a hall, and never kills a man */
+  {
+    const muster = (secs) => {
+      const before = w.units.filter((u) => u.owner === 0 && u.hp > 0).length;
+      /* timer ready AND the recruit already paid for — the continuous pay would otherwise
+       * outlast this rig's whole window. The guns are silenced too: a court handed to the
+       * foe starts shooting the very men whose muster is being counted. */
+      for (const b of pl.buildings) if (C.BUILDINGS[b.bt].spawns) { b.cd = 0; b.paid = 1e6; }
+      for (const c of w.cities) c.cd = 1e9;
+      for (let i = 0; i < 30 * secs; i++) World.update(w, C.SIM_DT);
+      return w.units.filter((u) => u.owner === 0 && u.hp > 0).length - before;
+    };
+    ok('the rig is alive: a free city musters', muster(4) > 0);
+    w.cities[0].owner = 1;                         // held by the foe
+    eq('a hall under occupation musters nobody', muster(4), 0);
+    w.cities[0].owner = -1;                        // yielded, nobody's
+    eq('...and a yielded court pays no muster either', muster(4), 0);
+    w.cities[0].owner = 0;
+    ok('...and a court relieved musters again', muster(4) > 0);
+  }
+
+  /* a city is broken, yielded and TAKEN — and the men of it live through all three */
+  {
+    const mine = () => w.units.filter((u) => u.owner === 0 && u.hp > 0).length;
+    const standing = mine();
+    w.cities[0].hp = 1;
+    for (let k = 0; k < 3; k++) manAt(w, 1, 'soldier', w.cities[0].x + 30 + k * 12, w.cities[0].y);
+    /* the defenders stand OFF the court, so the take is uncontested and the claim clean */
+    for (const u of w.units) if (u.owner === 0) { u.x = w.cities[0].x + 400; u.y = w.cities[0].y + 400; }
+    let fell = null, taken = null;
+    for (let i = 0; i < 30 * 40 && taken == null; i++) {
+      World.update(w, C.SIM_DT);
+      if (fell == null && w.cities[0].owner === -1) fell = w.cities[0].fell;
+      if (w.cities[0].owner === 1) taken = w.t;
+      for (const u of w.units) if (u.owner === 0) { u.x = w.cities[0].x + 400; u.y = w.cities[0].y + 400; u.hp = u.maxHp; }
+    }
+    eq('a yielded city remembers whom it fell from', fell, 0);
+    ok('...and is taken by standing in it', taken != null);
+    ok('...and the taking kills nobody', mine() >= standing,
+       `${mine()} of ${standing} men still standing`);
+  }
+
+  /* violence is not bounded: men fight across the rim as they always did */
+  {
+    const edge = { x: 520 + 690, y: 420 };         // the rim of city 0's disc
+    const a = manAt(w, 0, 'soldier', edge.x - 10, edge.y);
+    const b = manAt(w, 1, 'soldier', edge.x + 30, edge.y);
+    for (let i = 0; i < 60; i++) World.update(w, C.SIM_DT);
+    ok('a foe past the rim is fought, not watched',
+       (a.hp < a.maxHp || b.hp < b.maxHp || a._t || b._t) === true);
+  }
+
+  /* and the grown country plays by the same law through the same door */
+  const cw = World.createWorld(3, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  ok('a country world carries the rule', !!cw && cw.rules.reach === 1);
+  if (cw) {
+    ok('every opening company is born to its own seat',
+       cw.players.every((p, i) => p.companies.length && p.companies.every((c) => c.city === i)));
+    const p0 = cw.players[0], c0 = cw.cities[0];
+    const across = cw.cities[cw.map.gen.pattern];
+    const r = World.applyCommand(cw, 0, { c: 'rally', co: p0.companies[0].id, x: across.x, y: across.y });
+    const far2 = (across.x - c0.x) ** 2 + (across.y - c0.y) ** 2;
+    if (far2 >= c0.reach * c0.reach)
+      eq('AMBER is out of an opening company\'s reach', r.err, 'reach');
+  }
+}
+
 suite('a country is a graph of boards');
 {
   let least = 99, most = 0, cut = 0, noPattern = 0, mismatch = 0;
@@ -7259,8 +7395,11 @@ suite('a region is a world, left and come back to');
   const w = REALM.enter(realm, realm.at);
   ok('a region becomes a world', !!w && !!w.map && w.units != null, 'no world');
   eq('...at the size every board has always been', w.nav.W * w.nav.cw, C.MAP.W);
+  /* the war's OVERRIDES on today's defaults — spelt as a merge so the table may grow a rule
+   * (as it did: `reach`) without this suite claiming the war changed */
   eq('...playing by the rules of a war', JSON.stringify(w.rules),
-     JSON.stringify({ endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 }));
+     JSON.stringify(Object.assign({}, C.RULES,
+       { endOnSeat: 0, occupy: 1, truce: 1, hush: 1, onePattern: 1 })));
   eq('...and it is his own city he is standing in', w.cities[0].owner, 0);
   eq('...with no second throne on the board', w.cities[1].owner, -1);
   for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
