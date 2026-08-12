@@ -7301,6 +7301,43 @@ suite('a company belongs to a city');
   }
 }
 
+/* ---------------- the marchers take the country ----------------
+ * The Reach War's proof of life: a whole country, one marcher per seat, and nothing above
+ * the sim — the same rig `?reach=SEED` boots in the browser. What it must show: the war
+ * MOVES (cities change hands under the reach law alone), and it moves at board cost (no
+ * field was ever built unfenced — every key in the nav cache sits in the bounded band). */
+if (!QUICK('the marchers take the country')) {
+  suite('the marchers take the country');
+  const w = World.createWorld(11, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  ok('the rig is alive: a country world with the rule on', !!w && w.rules.reach === 1);
+  if (w) {
+    NAV.debugFieldsReset();
+    const bots = w.players.map((_, i) => (i === 0 ? null : AI.make('marcher', {})));
+    const owners0 = w.cities.map((c) => c.owner).join(',');
+    let flipAt = null, worst = 0, total = 0, ticks = 0;
+    for (let sec = 0; sec < 900 && flipAt == null && w.winner === null; sec++) {
+      for (let f = 0; f < 30; f++) {
+        const t0 = Date.now();
+        for (let bi = 1; bi < bots.length; bi++)
+          bots[bi].step(w, bi, (cmd) => World.applyCommand(w, bi, cmd), C.SIM_DT);
+        World.update(w, C.SIM_DT);
+        const ms = Date.now() - t0;
+        worst = Math.max(worst, ms); total += ms; ticks++;
+        w.events.length = 0;
+      }
+      if (w.cities.map((c) => c.owner).join(',') !== owners0) flipAt = sec;
+    }
+    ok('cities change hands under the reach law alone', flipAt != null,
+       flipAt == null ? 'no city fell in 15 simulated minutes' : '');
+    if (flipAt != null) ok(`...the first inside ten minutes`, flipAt < 600, `${flipAt}s`);
+    const keys = Array.from(w.nav.fields.keys());
+    ok('no field was ever built unfenced', keys.length > 0 && keys.every((k) => k >= 64e7),
+       keys.length ? 'unfenced: ' + keys.filter((k) => k < 64e7).slice(0, 5).join(',') : 'no fields at all');
+    ok('a ten-seat country ticks at board cost', total / ticks < 4,
+       `mean ${(total / ticks).toFixed(2)}ms, worst ${worst}ms over ${ticks} ticks`);
+  }
+}
+
 suite('a country is a graph of boards');
 {
   let least = 99, most = 0, cut = 0, noPattern = 0, mismatch = 0;

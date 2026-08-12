@@ -142,7 +142,8 @@
     /* `opts.rules` is how a MODE or a chapter changes the rules of the match — see CONST.RULES.
      * It rides in the same bag as the seed and the spec, because a chapter that opens at terms
      * is exactly as much "the board somebody chose" as a chapter that pins its ground. */
-    game.world = World.createWorld(seed, opts && opts.players, opts && opts.spec, opts && opts.rules);
+    game.world = World.createWorld(seed, opts && opts.players, opts && opts.spec, opts && opts.rules,
+                                   opts && opts.country ? { country: opts.country } : null);
     /* AND A CHAPTER MAY OPEN WITH THE TERMS ALREADY STANDING. `opts.pact` is a list of seats
      * you begin at peace with — set as two OFFERS and never as a pact, so there is one spelling
      * of the state and the heir's own doctrine may withdraw his half whenever it likes. That is
@@ -154,9 +155,23 @@
       game.world.players[p].offers[0] = 1;
     }
     game.bot = AI.make(kind, opts);
+    /* A COUNTRY SEATS MANY: one bot per AI seat, each already out of phase with the others —
+     * the seeded think-stagger is AI.make's own. `game.bot` stays what it always was for the
+     * duel, and `game.bots` exists only while a country world does. */
+    game.bots = null;
+    if (opts && opts.country && game.world.players.length > 2)
+      game.bots = game.world.players.map((_, i) => (i === 0 ? null : AI.make(kind, opts)));
     /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
     game.world.players[1].eco = (opts && opts.eco) || 1;
-    game.names = ['Corwin', AI.HEIRS[kind].title];
+    /* a kind may be an heir or a baseline (the reach rig runs marchers) — both carry a title */
+    const kindTitle = (AI.HEIRS[kind] && AI.HEIRS[kind].title) ||
+                      (AI.BASELINES && AI.BASELINES[kind] && AI.BASELINES[kind].title) || 'a lord';
+    /* at a country's table every seat is named by ITS CITY — ten seats sharing one heir's
+     * name would make every banner a riddle */
+    game.names = game.bots
+      ? game.world.players.map((_, i) => i === 0 ? 'Corwin'
+          : game.world.map.sites[game.world.cities[i].site].name)
+      : ['Corwin', kindTitle];
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
     /* A CHAPTER BRINGS ITS OWN TUTORIAL, and it is predicates rather than a clock — see
      * `CAMPAIGN.run().hint`. The timed onboarding below fires on `world.t` alone and says its
@@ -178,7 +193,7 @@
     Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
                 mode: game.chapter ? 'campaign · ' + game.chapter.key : isCampaign ? 'campaign' : 'skirmish',
                 footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
-    UI.startMatch(AI.HEIRS[kind].title);
+    UI.startMatch(game.bots ? 'the Reach War' : kindTitle);
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
    * both out with the start message, so a guest never has to guess its own index. */
@@ -801,7 +816,13 @@
       while (acc >= C.SIM_DT && steps++ < 6) {
         acc -= C.SIM_DT;
         if (!game.over) {
-          if (game.mode === 'sp') game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
+          if (game.mode === 'sp') {
+            if (game.bots) {
+              for (let bi = 1; bi < game.bots.length; bi++)
+                if (game.bots[bi]) game.bots[bi].step(game.world, bi,
+                  (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT);
+            } else game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
+          }
           /* every guest's commands are applied AS THAT GUEST — with four seats the sender
            * is the only thing that says whose order it was */
           if (game.mode === 'host')
@@ -1541,6 +1562,16 @@
     setupPWA();
     $('version').textContent = 'v' + (global.GAME_VERSION || '?');
     UI.showMenu(campaignLabel(), campaignNote());
+    /* ---- THE REACH DEV BOOT (?reach=SEED) ----
+     * Not a mode: a rig. One country, the viewer at seat 0, a marcher on every other seat,
+     * the war's rules on. It exists so the reach can be FELT before the realm ships, and so
+     * the browser suite can drive a country through the real renderer. It is reached only by
+     * typing the query, exactly as the old 2D renderer's `?r=2d` was. */
+    const dev = new URLSearchParams(location.search).get('reach');
+    if (dev != null) startSP('marcher', {
+      seed: (parseInt(dev, 10) || 1) >>> 0, country: true,
+      rules: { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }
+    });
     requestAnimationFrame((t2) => { lastFrame = t2; requestAnimationFrame(frame); });
   }
 

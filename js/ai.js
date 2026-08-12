@@ -590,6 +590,40 @@
 
   /* ---------------- baseline bots (skill-gradient proof) ---------------- */
   const BASELINES = {
+    /* THE MARCHER — the Reach War's proof of life, not a doctrine. The heirs are MUTE in a
+     * reach world: their whole order vocabulary is the banner (there, the Recall) plus one
+     * errand rally, so nothing they know how to say moves an army forward. A marcher speaks
+     * only rallies, and only the prototype's sentence: company full — march on the nearest
+     * neighbouring court that is not ours; company spent — home. Lords with a real doctrine
+     * are the next stage's business. */
+    marcher: {
+      title: 'A Marcher Captain', interval: 2.0, noise: 0,
+      custom: (v, issue) => {
+        const w = v.world, W = global.World;
+        const seat = w.cities.indexOf(W.seatOf(w, v.me));
+        if (seat < 0) return;
+        const c = w.cities[seat];
+        const co = v.pl.companies[0];
+        if (!co) return;
+        const nbrs = (w.map.gen.nbrs && w.map.gen.nbrs[seat]) || [];
+        const men = v.myUnits.filter((u) => u.co === co.id).length;
+        let tgt = null, bd = Infinity;
+        for (const i of nbrs) {
+          const o = w.cities[i];
+          if (!o || o.owner === v.me) continue;
+          const d = (o.x - c.x) ** 2 + (o.y - c.y) ** 2;
+          if (d < bd) { bd = d; tgt = o; }
+        }
+        const at = co.rally;
+        if (tgt && men >= 8) {
+          /* the same order twice is noise, not resolve */
+          if (!at || Math.hypot(at.x - tgt.x, at.y - tgt.y) > 40)
+            issue({ c: 'rally', co: co.id, x: tgt.x, y: tgt.y });
+        } else if (men < 4 && at) {
+          issue({ c: 'rally', co: co.id });   // struck: the company holds at its own city
+        }
+      }
+    },
     random: {
       title: 'A Shadow-ghost', interval: 2.0, noise: 0,
       custom: (v, issue, rng) => {

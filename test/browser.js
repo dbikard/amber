@@ -4543,6 +4543,62 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- the reach dev boot ----------------
+   * `?reach=SEED` is a rig, not a mode: one country through the real renderer, a marcher on
+   * every seat but the viewer's. What must be true: it boots, it is the world it claims to
+   * be (ten seats, the war's rules, every opening company born to its own city), the fenced
+   * march refuses what it should, and the page raises no errors while it runs. */
+  {
+    suite('the reach dev boot');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html?reach=3`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const boot = await pg.evaluate(() => {
+      const g = window.Game.game, w = g.world;
+      return { mode: g.mode, seats: w.players.length, want: window.CONST.REACHWAR.cities,
+               reach: w.rules.reach,
+               bots: g.bots ? g.bots.filter(Boolean).length : 0,
+               cities: w.cities.every((c) => c.reach > 0),
+               cos: w.players.every((p, i) => p.companies.every((c) => c.city === i)) };
+    });
+    ok('the rig boots into a country', boot.seats === boot.want,
+       `${boot.seats} seats, want ${boot.want}`);
+    ok('...with the war\'s rules and a marcher on every other seat',
+       boot.reach === 1 && boot.bots === boot.seats - 1, JSON.stringify(boot));
+    ok('...every city reaching and every company born to its own',
+       boot.cities && boot.cos, JSON.stringify(boot));
+    /* a half-minute of the war through the real loop, and the reach refuses what it should */
+    const ran = await pg.evaluate(async () => {
+      const g = window.Game.game, W = window.World, w = g.world;
+      const t0 = w.t;
+      /* BOUNDED, or a throttled tab hangs the whole suite: three sim-seconds or fifteen wall,
+       * whichever comes first — the assertion below reports which it was */
+      await new Promise((res) => {
+        const t1 = performance.now();
+        const spin = () => (w.t - t0 > 3 || performance.now() - t1 > 15000)
+          ? res() : requestAnimationFrame(spin);
+        spin();
+      });
+      const co = w.players[0].companies[0];
+      const amber = w.cities[w.map.gen.pattern];
+      const far = W.applyCommand(w, 0, { c: 'rally', co: co.id, x: amber.x, y: amber.y });
+      const c0 = w.cities[0];
+      const near = W.applyCommand(w, 0, { c: 'rally', co: co.id, x: c0.x + 120, y: c0.y });
+      const out = ((amber.x - c0.x) ** 2 + (amber.y - c0.y) ** 2) >= c0.reach * c0.reach;
+      return { far: far.err || 'ok', near: near.ok === true, out, t: w.t - t0 };
+    });
+    ok('the world runs under the real loop', ran.t > 2.5, `${ran.t.toFixed(1)}s passed`);
+    ok('an order inside the reach is taken', ran.near === true, JSON.stringify(ran));
+    if (ran.out) ok('...and AMBER is beyond an opening company\'s', ran.far === 'reach', ran.far);
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   await browser.close();
   srv.close();
   process.exit(report('browser'));
