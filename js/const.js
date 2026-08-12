@@ -263,6 +263,29 @@
             'the Keeper of the Pass', 'a Sworn Brother', 'an Old Duke']
   };
 
+  /* ---------------- THE REACH WAR ----------------
+   * The Long War's next shape: ONE continuous land instead of a graph of boards. Every city
+   * owns a REACH — the disc its companies may be ordered inside (nav.js carries the bound) —
+   * and to strike a city two hops away you must first hold the one between, not because a
+   * rule forbids it but because that is how far your men can be ordered. Measured in
+   * proto/reach: the same rule that bounds an order is what keeps a flow field at board cost
+   * on any size of land. `dims` is the first shipped country — 2x the board's axes; the
+   * renderer holds there and a later stage lifts it (tiled bake, windowed fog).
+   * `reachMul` runs a reach out a bit past the nearest neighbour, so reaches OVERLAP — the
+   * overlaps are where two companies can both be ordered, which is where the fighting lives.
+   * A city whose reach can path to nobody grows it by `growReach` up to `growPasses` times:
+   * a city on poor ground commands further, which reads as a real thing and not a repair. */
+  CONST.REACHWAR = {
+    dims: { W: 4000, H: 4800 },
+    cities: 10,
+    spacing: 900,
+    reachMul: 1.35,
+    perCity: 2,          // scattered springs per city, beside each city's own writ spring
+    growReach: 1.18, growPasses: 6,
+    names: ['KOLVIR', 'ARDEN', 'REBMA', 'BEGMA', 'KASHFA', 'LORRAINE', 'GHENESH',
+            'HELGRAM', 'AVERNUS', 'TIR-NA', 'JIDRASH', 'DOMARIS']
+  };
+
   CONST.SITE_NAMES = {
     node: ['the Singing Spring', 'the Mirror Pool', 'the Weeping Well', 'the Silver Tarn',
            'the Deep Font', 'the Still Water', 'the Glass Rill', 'the Cold Cistern',

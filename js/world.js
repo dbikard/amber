@@ -65,9 +65,13 @@
    * Generated fresh, every match, by js/worldgen.js. No template, no mirror, no corridors —
    * and therefore no way to know where the other Seat stands until somebody walks there. */
   function buildMap(seed, players, spec, opts) {
-    /* a board somebody CHOSE, or the land made new from noise — everything downstream reads
-     * the same structure either way, which is the whole point of routing both through here */
-    const gen = spec ? WG.fromSpec(spec, players) : WG.build(seed, RNG, players, opts);
+    /* a board somebody CHOSE, the land made new from noise, or a whole COUNTRY — everything
+     * downstream reads the same structure whichever made it, which is the whole point of
+     * routing all three through here. A country ignores `players`: its seat count is its
+     * city count, and the realm decides who is human, who contends and who merely holds. */
+    const gen = spec ? WG.fromSpec(spec, players)
+      : opts && opts.country ? WG.buildCountry(seed, RNG, opts.country === true ? null : opts.country)
+      : WG.build(seed, RNG, players, opts);
     if (!gen) return null;
     for (const s of gen.sites) { s.lastHurt = -99; }
     return { sites: gen.sites, cities: gen.cities, nodes: gen.nodes,
@@ -102,6 +106,9 @@
         const s = map.sites[siteId];
         return { id: i + 1, site: siteId, x: s.x, y: s.y, owner: i, born: i,
                  hp: C.CASTLE_HP, maxHp: C.CASTLE_HP, cd: 0, level: 1,
+                 /* the disc this city's companies may be ordered inside — a country's cities
+                  * carry one from genesis; a board's carry nought and the rule stays off */
+                 reach: map.gen.reaches ? map.gen.reaches[i] : 0,
                  name: C.SEAT_NAMES[i] ? C.SEAT_NAMES[i] + '’s Seat' : 'a Seat of Power' };
       }),
       players: seats.map(() => ({

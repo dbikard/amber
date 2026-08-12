@@ -153,6 +153,28 @@
     return { seen, count: bestCount, label, main: bestLabel };
   }
 
+  /* a Seat or a spring stands on level, open ground whatever the noise said — one
+   * implementation for the board and the country, or the two would drift */
+  function flatten(land, p, radius) {
+    const r = radius || (C.CITY.r + 40), rc = Math.ceil(r / land.cw);
+    const gx = Math.floor(p.x / land.cw), gy = Math.floor(p.y / land.cw);
+    let sum = 0, k = 0;
+    for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
+      const nx = gx + dx, ny = gy + dy;
+      if (nx < 0 || ny < 0 || nx >= land.W || ny >= land.H) continue;
+      if (dx * dx + dy * dy > rc * rc) continue;
+      sum += land.elev[ny * land.W + nx]; k++;
+    }
+    const lvl = k ? sum / k : 0.5;
+    for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
+      const nx = gx + dx, ny = gy + dy;
+      if (nx < 0 || ny < 0 || nx >= land.W || ny >= land.H) continue;
+      if (dx * dx + dy * dy > rc * rc) continue;
+      const i = ny * land.W + nx;
+      land.elev[i] = lvl; land.terra[i] = T.PLAIN;
+    }
+  }
+
   /* ---------------- placing things on the land ---------------- */
   const cellXY = (land, i) => {
     const gx = i % land.W;
@@ -387,31 +409,12 @@
       });
 
       /* the Seats stand on level, open ground whatever the noise said */
-      const flatten = (p, radius) => {
-        const r = radius || (C.CITY.r + 40), rc = Math.ceil(r / land.cw);
-        const gx = Math.floor(p.x / land.cw), gy = Math.floor(p.y / land.cw);
-        let sum = 0, k = 0;
-        for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
-          const nx = gx + dx, ny = gy + dy;
-          if (nx < 0 || ny < 0 || nx >= land.W || ny >= land.H) continue;
-          if (dx * dx + dy * dy > rc * rc) continue;
-          sum += land.elev[ny * land.W + nx]; k++;
-        }
-        const lvl = k ? sum / k : 0.5;
-        for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
-          const nx = gx + dx, ny = gy + dy;
-          if (nx < 0 || ny < 0 || nx >= land.W || ny >= land.H) continue;
-          if (dx * dx + dy * dy > rc * rc) continue;
-          const i = ny * land.W + nx;
-          land.elev[i] = lvl; land.terra[i] = T.PLAIN;
-        }
-      };
-      for (const p of seats.pts) flatten(p);
+      for (const p of seats.pts) flatten(land, p);
       /* A spring lies in a level hollow. Not decoration: the pool and its ring are drawn as
        * FLAT discs at one height, so on ground that rises 16 units across them the land pokes
        * through and takes a bite out of the water. Level the ground and they sit in it. */
       for (const p of nodes) {
-        flatten(p, C.WORLD.springLevel);
+        flatten(land, p, C.WORLD.springLevel);
         const i = Math.floor(p.y / land.cw) * land.W + Math.floor(p.x / land.cw);
         if (!G.BUILDABLE[land.terra[i]]) land.terra[i] = T.PLAIN;
       }
@@ -451,6 +454,346 @@
         /* the character of this ground, carried out with it so the renderer, the realm and the
          * chronicle can name a region rather than re-deriving what it was made from */
         biome: biome || null
+      };
+    }
+    return null;
+  };
+
+  /* ================= a country is grown =================
+   * ONE continuous land with many cities, each owning a REACH — the disc its companies may be
+   * ordered inside (see CONST.REACHWAR and nav.js's bounded fields). Generation must answer
+   * what a board never asked: which cities can actually GET AT each other. Distance is a lie
+   * on a land full of lakes, so neighbourhood is a real bounded search, never geometry. */
+
+  /* the prototype's linkUp question, asked of the raw cost grid (no walls exist at genesis):
+   * "can men ordered only inside this disc stand over there?" 8-connected, with buildField's
+   * own corner-cut rule, so genesis and the march never disagree about a route */
+  function reachFlood(land, fromX, fromY, cx, cy, r2) {
+    const { W, H, cw, terra } = land;
+    const pass = (i) => G.COST[terra[i]] > 0;
+    const inDisc = (gx, gy) => {
+      const wx = (gx + 0.5) * cw - cx, wy = (gy + 0.5) * cw - cy;
+      return wx * wx + wy * wy <= r2;
+    };
+    const sgx = Math.floor(fromX / cw), sgy = Math.floor(fromY / cw);
+    if (sgx < 0 || sgy < 0 || sgx >= W || sgy >= H) return null;
+    const start = sgy * W + sgx;
+    if (!pass(start) || !inDisc(sgx, sgy)) return null;
+    const seen = new Uint8Array(W * H), q = [start];
+    seen[start] = 1;
+    while (q.length) {
+      const cur = q.pop(), gx = cur % W, gy = (cur - gx) / W;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = gx + dx, ny = gy + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const ni = ny * W + nx;
+        if (seen[ni] || !pass(ni) || !inDisc(nx, ny)) continue;
+        if (dx && dy && (!pass(gy * W + nx) || !pass(ny * W + gx))) continue;
+        seen[ni] = 1; q.push(ni);
+      }
+    }
+    return seen;
+  }
+
+  /* G.buildCountry(seed, RNG, opts) -> a gen in exactly G.build's shape, plus `reaches[]`,
+   * `nbrs[][]` and `pattern` (a seat index). Seat order: the PLAYER first — his is the one
+   * start held to the board's own fairness bar (one usable writ spring, room, two roads out),
+   * far from the Pattern — then the rest far-from-the-Pattern first, the Pattern's own city
+   * last. The realm deals contenders from the front of that line and decides who holds AMBER. */
+  G.buildCountry = function (seed, RNG, opts) {
+    const RW = Object.assign({}, C.REACHWAR, opts || null);
+    /* WHY AN ATTEMPT DIED, counted — a generator that rerolls without saying what it was
+     * rerolling against cannot be tuned, only guessed at. The suite reads this. */
+    const why = G.buildCountry.why = { land: 0, cand: 0, apart: 0, spring: 0, mute: 0,
+                                       cut: 0, player: 0, gate: 0, severed: 0, ok: 0 };
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const s = (seed + attempt * 7919) >>> 0;
+      const rng = RNG.make(s);
+      const land = G.generate(s, RW.biome || null, RW.dims);
+      const main = mainland(land);
+      if (main.count < land.W * land.H * C.WORLD.minLand) { why.land++; continue; }
+      const { W, H, cw } = land;
+
+      /* ---- candidates by STRATIFIED SAMPLE, room by a summed-area table ----
+       * A board could afford to ask every cell (and did); a country cannot — the candidate
+       * pass was area-proportional twice over. Four reads answer "how much buildable ground
+       * is near here", and a few samples per block keep the list flat in area. */
+      const sat = new Int32Array((W + 1) * (H + 1));
+      for (let gy = 0; gy < H; gy++) {
+        let row = 0;
+        for (let gx = 0; gx < W; gx++) {
+          row += G.BUILDABLE[land.terra[gy * W + gx]] ? 1 : 0;
+          sat[(gy + 1) * (W + 1) + gx + 1] = sat[gy * (W + 1) + gx + 1] + row;
+        }
+      }
+      const boxRoom = (gx, gy, rc) => {
+        const x0 = Math.max(0, gx - rc), y0 = Math.max(0, gy - rc);
+        const x1 = Math.min(W - 1, gx + rc), y1 = Math.min(H - 1, gy + rc);
+        return sat[(y1 + 1) * (W + 1) + x1 + 1] - sat[y0 * (W + 1) + x1 + 1]
+             - sat[(y1 + 1) * (W + 1) + x0] + sat[y0 * (W + 1) + x0];
+      };
+      /* a disc holds pi/4 of its bounding box, so the box owes the disc's due scaled up */
+      const seatRc = Math.ceil((C.CITY.r + 60) / cw);
+      const needRoom = Math.floor(C.WORLD.seatRoom * 4 / Math.PI);
+      const inland = C.WORLD.inland;
+      const cand = [];
+      const BLOCK = 10;
+      for (let by = 0; by < H; by += BLOCK) for (let bx = 0; bx < W; bx += BLOCK) {
+        for (let k = 0; k < 3; k++) {
+          const gx = bx + Math.floor(rng.next() * Math.min(BLOCK, W - bx));
+          const gy = by + Math.floor(rng.next() * Math.min(BLOCK, H - by));
+          const i = gy * W + gx;
+          if (!main.seen[i] || !G.BUILDABLE[land.terra[i]]) continue;
+          const x = (gx + 0.5) * cw, y = (gy + 0.5) * cw;
+          if (x < inland || y < inland || x > W * cw - inland || y > H * cw - inland) continue;
+          if (boxRoom(gx, gy, seatRc) < needRoom) continue;
+          cand.push({ i, x, y });
+        }
+      }
+      if (cand.length < RW.cities * 4) { why.cand++; continue; }
+
+      /* ---- city sites: far apart is a PREFERENCE, connected is a LAW ----
+       * The first cut of this picked purely by max-min distance and measured 406 dead
+       * attempts across thirty seeds, every one of them at the same gate: the reach graph
+       * split into clusters that could not get at each other. So each next city must stand
+       * where some already-picked city's reach can PATH to it — one bounded flood per picked
+       * city, unioned into a zone — and only inside that zone is "farthest from everybody"
+       * asked. Base reach is the yardstick; linkUp still referees the finished set. */
+      const baseReach = RW.spacing * RW.reachMul;
+      const zone = new Uint8Array(W * H);
+      const admit = (p) => {
+        const seen = reachFlood(land, p.x, p.y, p.x, p.y, baseReach * baseReach);
+        if (seen) for (let i = 0; i < zone.length; i++) if (seen[i]) zone[i] = 1;
+      };
+      const picked = [];
+      const min2 = RW.spacing * RW.spacing;
+      picked.push(cand[Math.floor(rng.next() * cand.length)]);
+      admit(picked[0]);
+      while (picked.length < RW.cities) {
+        let best = null, bd = -1;
+        for (const q of cand) {
+          if (!zone[q.i]) continue;              // nobody's reach can path here: not a city
+          let near2 = Infinity;
+          for (const p of picked) near2 = Math.min(near2, (q.x - p.x) ** 2 + (q.y - p.y) ** 2);
+          if (near2 > bd) { bd = near2; best = q; }
+        }
+        /* crowding is tolerated before disconnection is: past the floor the land simply
+         * holds fewer cities worth the name, and the attempt is rerolled */
+        if (!best || bd < min2 * 0.3) break;
+        picked.push(best);
+        admit(best);
+      }
+      if (picked.length < RW.cities) { why.apart++; continue; }
+
+      /* ---- springs: one deliberately at each city's arm's length, then a scatter ----
+       * The writ spring is the OPENING — every lord's first Gate — placed on the ring
+       * `homeGateOn` searches, clear of every other city's writ. The scatter is the map
+       * economy the war is fought over. */
+      const nodes = [];
+      const nodeOk = (x, y) => {
+        const gx = Math.floor(x / cw), gy = Math.floor(y / cw);
+        if (gx < 0 || gy < 0 || gx >= W || gy >= H) return false;
+        const i = gy * W + gx;
+        if (!main.seen[i] || !G.BUILDABLE[land.terra[i]]) return false;
+        for (const q of nodes)
+          if ((x - q.x) ** 2 + (y - q.y) ** 2 < C.WORLD.nodeGap * C.WORLD.nodeGap) return false;
+        return true;
+      };
+      let unsprung = false;
+      for (const p of picked) {
+        let put = false;
+        for (let t = 0; t < 60 && !put; t++) {
+          const a = rng.next() * Math.PI * 2;
+          const r = C.WORLD.springNear + 40
+                  + rng.next() * (C.WORLD.springFar - C.WORLD.springNear - 80);
+          const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+          if (picked.some((q) => q !== p &&
+              (x - q.x) ** 2 + (y - q.y) ** 2 < C.CLAIM.seat * C.CLAIM.seat)) continue;
+          if (nodeOk(x, y)) { nodes.push({ x, y }); put = true; }
+        }
+        if (!put) { unsprung = true; break; }
+      }
+      if (unsprung) { why.spring++; continue; }
+      const wantScatter = RW.cities * RW.perCity;
+      for (let t = 0; t < wantScatter * 30 && nodes.length < picked.length + wantScatter; t++) {
+        const x = rng.next() * W * cw, y = rng.next() * H * cw;
+        if (picked.some((q) => (x - q.x) ** 2 + (y - q.y) ** 2 < C.CLAIM.seat * C.CLAIM.seat)) continue;
+        if (nodeOk(x, y)) nodes.push({ x, y });
+      }
+      const vants = placeVantages(land, main, nodes, rng);
+
+      /* ---- courts and springs stand on level ground, the board's own rule ---- */
+      for (const p of picked) flatten(land, p);
+      for (const p of nodes) {
+        flatten(land, p, C.WORLD.springLevel);
+        const i = Math.floor(p.y / cw) * W + Math.floor(p.x / cw);
+        if (!G.BUILDABLE[land.terra[i]]) land.terra[i] = T.PLAIN;
+      }
+
+      /* ---- reaches and the neighbour graph: a REAL search, after the flattening ----
+       * Base reach a shade past the spacing; a city whose reach can path to nobody grows it
+       * until it can. Run after flatten because levelling ground joins and cuts routes. */
+      const reaches = picked.map(() => RW.spacing * RW.reachMul);
+      const nbrs = picked.map(() => []);
+      const linkUp = () => {
+        for (let a = 0; a < picked.length; a++) {
+          nbrs[a] = [];
+          const seen = reachFlood(land, picked[a].x, picked[a].y,
+                                  picked[a].x, picked[a].y, reaches[a] * reaches[a]);
+          if (!seen) continue;
+          for (let b = 0; b < picked.length; b++) {
+            if (b === a) continue;
+            const gb = Math.floor(picked[b].y / cw) * W + Math.floor(picked[b].x / cw);
+            if ((picked[b].x - picked[a].x) ** 2 + (picked[b].y - picked[a].y) ** 2
+                  <= reaches[a] * reaches[a] && seen[gb]) nbrs[a].push(b);
+          }
+        }
+      };
+      /* which cities hang together, reading the nbr edges as roads either way */
+      const components = () => {
+        const comp = new Int32Array(picked.length).fill(-1);
+        let n = 0;
+        for (let s = 0; s < picked.length; s++) {
+          if (comp[s] >= 0) continue;
+          const cId = n++;
+          const q = [s];
+          comp[s] = cId;
+          while (q.length) {
+            const a = q.pop();
+            for (const b of nbrs[a]) if (comp[b] < 0) { comp[b] = cId; q.push(b); }
+            for (let b = 0; b < picked.length; b++)
+              if (comp[b] < 0 && nbrs[b].includes(a)) { comp[b] = cId; q.push(b); }
+          }
+        }
+        return { comp, n };
+      };
+      linkUp();
+      /* a city with nobody in reach — or a CLUSTER out of everyone else's — commands further
+       * until the country is one. The flattening can still cut what placement joined, which
+       * is why this backstop exists beside the placement law. */
+      for (let pass = 0; pass < RW.growPasses; pass++) {
+        const { comp, n } = components();
+        if (n === 1 && !nbrs.some((l) => !l.length)) break;
+        const size = new Array(n).fill(0);
+        for (let a = 0; a < picked.length; a++) size[comp[a]]++;
+        const biggest = size.indexOf(Math.max(...size));
+        for (let a = 0; a < picked.length; a++)
+          if (comp[a] !== biggest || !nbrs[a].length) reaches[a] *= RW.growReach;
+        linkUp();
+      }
+      if (nbrs.some((l) => !l.length)) { why.mute++; continue; }   // a mute city cannot play
+      if (components().n !== 1) { why.cut++; continue; }
+
+      /* ---- the Pattern's city is the graph's centre: the endgame converges on it ---- */
+      const hops = (from) => {
+        const d = new Int32Array(picked.length).fill(-1);
+        d[from] = 0;
+        const q = [from];
+        for (let h = 0; h < q.length; h++) {
+          const a = q[h];
+          for (const b of nbrs[a]) if (d[b] < 0) { d[b] = d[a] + 1; q.push(b); }
+        }
+        return d;
+      };
+      let pattern = 0, bestSum = Infinity;
+      for (let a = 0; a < picked.length; a++) {
+        const d = hops(a);
+        let sum = 0;
+        for (let b = 0; b < picked.length; b++) sum += d[b];
+        if (sum < bestSum) { bestSum = sum; pattern = a; }
+      }
+
+      /* ---- the player's start: the strict bar, far from the Pattern ----
+       * Fairness is the PLAYER'S start — lords may be uneven, that is what minors are. His
+       * city holds the board's own opening rule (exactly one usable writ spring, a Gate spot
+       * on it) and at least two roads out, or the war opens as a siege. */
+      const cellAt = (x, y) => {
+        const gx = (x / cw) | 0, gy = (y / cw) | 0;
+        if (gx < 0 || gy < 0 || gx >= W || gy >= H) return -1;
+        return gy * W + gx;
+      };
+      const buildableAt = (x, y) => {
+        const ci = cellAt(x, y);
+        return ci >= 0 && !!G.BUILDABLE[land.terra[ci]];
+      };
+      const patternHops = hops(pattern);
+      const order = picked.map((p, i) => i).filter((i) => i !== pattern)
+        .sort((a, b) => patternHops[b] - patternHops[a]);
+      let player = -1;
+      for (const i of order) {
+        const p = picked[i];
+        const writ = nodes.filter((q) => Math.hypot(p.x - q.x, p.y - q.y) < C.CLAIM.seat);
+        if (writ.length !== 1) continue;
+        if (nbrs[i].length < 2) continue;
+        if (!G.homeGateOn(p, nodes, buildableAt)) continue;
+        player = i;
+        break;
+      }
+      if (player < 0) { why.player++; continue; }
+
+      const seatOrder = [player].concat(order.filter((i) => i !== player), [pattern]);
+
+      /* ---- sites in the board's own order: cities, springs, high ground ---- */
+      const sites = [];
+      const add = (x, y, kind) => {
+        sites.push({ id: sites.length, x, y, kind, name: null, lastHurt: -99 });
+        return sites.length - 1;
+      };
+      const nodeSite = [];
+      for (const i of seatOrder) add(picked[i].x, picked[i].y, 'city');
+      for (const p of nodes) nodeSite.push(add(p.x, p.y, 'node'));
+      for (const p of vants) add(p.x, p.y, 'vantage');
+
+      /* every city opens with a Gate on a spring of its own — a lord with no Gate has no
+       * economy and no masons, which is a corpse wearing a crown */
+      const homeGates = seatOrder.map((i) => {
+        const g = G.homeGateOn(picked[i], nodes, buildableAt);
+        return g ? { x: g.x, y: g.y, site: nodeSite[g.node] } : null;
+      });
+      if (homeGates.some((g) => !g)) { why.gate++; continue; }
+
+      /* the post-flatten connectivity check, from the player's own seat */
+      const fin = floodFrom(land, cellAt(picked[player].x, picked[player].y));
+      let severed = false;
+      for (const i of seatOrder) if (!fin.seen[cellAt(picked[i].x, picked[i].y)]) severed = true;
+      if (severed) { why.severed++; continue; }
+      const kept = [];
+      for (const st of sites) {
+        if (st.kind !== 'city' && !fin.seen[cellAt(st.x, st.y)]) continue;
+        st.id = kept.length;
+        kept.push(st);
+      }
+
+      /* names: the Pattern's city is AMBER; the rest draw from the war's own bag */
+      const bags = {};
+      for (const k of Object.keys(C.SITE_NAMES)) bags[k] = C.SITE_NAMES[k].slice();
+      for (const st of kept) {
+        if (st.kind === 'city') continue;
+        const bag = bags[st.kind];
+        st.name = bag && bag.length
+          ? bag.splice(Math.floor(rng.next() * bag.length), 1)[0]
+          : (st.kind === 'node' ? 'a Spring of Shadow' : 'a High Place');
+      }
+      const cityIds = kept.filter((x) => x.kind === 'city').map((x) => x.id);
+      const cityBag = (RW.names || []).slice();
+      cityIds.forEach((id, k) => {
+        kept[id].name = seatOrder[k] === pattern ? 'AMBER'
+          : cityBag.length ? cityBag.splice(Math.floor(rng.next() * cityBag.length), 1)[0]
+          : 'a City of Shadow';
+      });
+
+      why.ok++;
+      return {
+        sites: kept, cities: cityIds,
+        W, H, cw, elev: land.elev, terra: land.terra,
+        nodes: kept.filter((x) => x.kind === 'node').map((x) => x.id),
+        homeGates,
+        reaches: seatOrder.map((i) => reaches[i]),
+        nbrs: seatOrder.map((i) => nbrs[i].map((b) => seatOrder.indexOf(b))),
+        pattern: seatOrder.indexOf(pattern),
+        seed: s, skew: 0, apart: RW.spacing, attempt,
+        biome: RW.biome || null, country: true
       };
     }
     return null;

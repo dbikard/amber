@@ -272,6 +272,82 @@ suite('a field bounded by a reach');
   }
 }
 
+/* ---------------- a country is one land ----------------
+ * The Reach War's ground: one continuous land, many cities, each with a REACH and a
+ * neighbour list that is a real bounded search, never distance. The load-bearing invariant
+ * is CONNECTIVITY AS A PLACEMENT LAW — the first cut placed cities by distance alone and
+ * died 406 times in thirty seeds, every death at the same gate: clusters that could not get
+ * at each other. Placement inside the pathable zone of the already-placed is what fixed it
+ * (0 of 50 failing, attempt 0 every time, ~30ms), and this suite is what holds that. */
+suite('a country is one land');
+{
+  const fp = (g) => JSON.stringify([
+    g.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y), s.name]),
+    g.reaches.map(Math.round), g.nbrs, g.pattern
+  ]);
+  const base = C.REACHWAR.spacing * C.REACHWAR.reachMul;
+  const roof = base * Math.pow(C.REACHWAR.growReach, C.REACHWAR.growPasses) + 1;
+  let failed = 0, worstMs = 0;
+  for (let seed = 1; seed <= 50; seed++) {
+    const t0 = Date.now();
+    const g = WG.buildCountry(seed, RNG);
+    worstMs = Math.max(worstMs, Date.now() - t0);
+    if (!g) { failed++; continue; }
+    if (seed > 3) continue;            // every seed builds; three are read in full
+    ok(`seed ${seed}: the full complement of cities`, g.cities.length === C.REACHWAR.cities,
+       String(g.cities.length));
+    ok(`seed ${seed}: no city is mute`, g.nbrs.every((l) => l.length >= 1));
+    ok(`seed ${seed}: every city opens with a Gate on a spring`, g.homeGates.every((x) => !!x));
+    ok(`seed ${seed}: the player has two roads out`, g.nbrs[0].length >= 2, String(g.nbrs[0].length));
+    ok(`seed ${seed}: every reach is within its writ`,
+       g.reaches.every((r) => r >= base - 1 && r <= roof),
+       g.reaches.map(Math.round).join(','));
+    ok(`seed ${seed}: the Pattern's city is AMBER, last in seat order`,
+       g.pattern === g.cities.length - 1 &&
+       g.sites[g.cities[g.pattern]].name === 'AMBER',
+       `pattern ${g.pattern}: ${g.sites[g.cities[g.pattern]].name}`);
+    /* one country: the roads, walked either way, join every city */
+    const seen = new Uint8Array(g.nbrs.length), q = [0];
+    seen[0] = 1;
+    while (q.length) {
+      const a = q.pop();
+      for (let b = 0; b < g.nbrs.length; b++)
+        if (!seen[b] && (g.nbrs[a].includes(b) || g.nbrs[b].includes(a))) { seen[b] = 1; q.push(b); }
+    }
+    ok(`seed ${seed}: the roads join every city`, Array.from(seen).every((v) => v === 1));
+    eq(`seed ${seed}: the same seed is the same country`, fp(g), fp(WG.buildCountry(seed, RNG)));
+  }
+  eq('every seed of fifty builds a country', failed, 0,
+     failed ? `why: ${JSON.stringify(WG.buildCountry.why)}` : '');
+  /* RELATIVE, against a board built on the same machine in the same minute — an absolute
+   * milliseconds bound is a bet on the scheduler, and it lost one within hours of being
+   * written (a 27ms-mean build stalled past 400ms under a concurrent suite's load) */
+  let boardMs = 1;
+  for (let k = 0; k < 3; k++) {
+    const t0 = Date.now();
+    WG.build(1 + k, RNG, 2);
+    boardMs = Math.max(boardMs, Date.now() - t0);
+  }
+  ok('...and the worst is no dearer than three boards', worstMs <= boardMs * 3 + 50,
+     `worst country ${worstMs}ms against a ${boardMs}ms board`);
+  ok('two seeds are two countries',
+     fp(WG.buildCountry(1, RNG)) !== fp(WG.buildCountry(2, RNG)));
+
+  /* a country is a WORLD through the same door as any board */
+  const w = World.createWorld(3, 2, null, null, { country: true });
+  ok('a country world builds', !!w, 'createWorld returned null');
+  if (w) {
+    eq('every city is a seat', w.players.length, C.REACHWAR.cities);
+    ok('its cities carry their reach', w.cities.every((c) => c.reach > 0));
+    eq('it knows its size', w.mapW + 'x' + w.mapH,
+       C.REACHWAR.dims.W + 'x' + C.REACHWAR.dims.H);
+    ok('nothing on it is stranded', NAV.audit(w.nav, w.map).length === 0,
+       NAV.audit(w.nav, w.map).join(','));
+    for (let i = 0; i < 300; i++) World.update(w, C.SIM_DT);
+    ok('and ten seats tick without a fight breaking out on frame one', w.winner === null);
+  }
+}
+
 /* ---------------- a board built by hand ----------------
  * The land is noise by default. A spec is the other road in: a declarative board that comes
  * out as EXACTLY what G.build produces, so nothing downstream can tell which made it. It is
