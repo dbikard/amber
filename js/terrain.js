@@ -302,10 +302,30 @@
         rshape.width = bw; rshape.height = bh;
         const rs = rshape.getContext('2d');
         into(rs);
-        rs.fillStyle = '#fff';
-        /* overdrawn by half a unit so two neighbouring road cells leave no seam of bare ground
-         * between them, and a road reads as one surface however it turns */
-        for (const [gx, gy] of roads) rs.fillRect(gx * cw - 0.5, gy * cw - 0.5, cw + 1, cw + 1);
+        /* ---- A ROAD IS A BAND, NOT A ROW OF SQUARES ----
+         * Filled cell by cell, a road that runs diagonally is a STAIRCASE OF BLOCKS, and no
+         * amount of blur fixes that — reported from play, and it is the cell grid showing
+         * through a thing that is supposed to be a line on the land. So the mask is STROKED:
+         * a round cap at each cell and a thick segment to each of its road neighbours, which
+         * cuts the diagonal properly and joins at the corners. Every link is decided from
+         * `nav.terra` — the WHOLE map, not the window — so a tile's band runs exactly as its
+         * neighbour's does across the seam, and only the forward half of the neighbourhood is
+         * walked because a link drawn twice is a link drawn once. */
+        rs.fillStyle = '#fff'; rs.strokeStyle = '#fff';
+        rs.lineWidth = cw * 0.94; rs.lineCap = 'round'; rs.lineJoin = 'round';
+        const isRoad = (gx, gy) => gx >= 0 && gy >= 0 && gx < nav.W && gy < nav.H &&
+                                   nav.terra[gy * nav.W + gx] === T.ROAD;
+        for (const [gx, gy] of roads) {
+          const cx2 = gx * cw + cw / 2, cy2 = gy * cw + cw / 2;
+          /* the cell itself, so a road one cell long is still a piece of road */
+          rs.beginPath(); rs.arc(cx2, cy2, cw * 0.47, 0, 7); rs.fill();
+          for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+            if (!isRoad(gx + dx, gy + dy)) continue;
+            rs.beginPath();
+            rs.moveTo(cx2, cy2); rs.lineTo(cx2 + dx * cw, cy2 + dy * cw);
+            rs.stroke();
+          }
+        }
         const rcv = document.createElement('canvas');
         rcv.width = bw; rcv.height = bh;
         const rg = rcv.getContext('2d');
@@ -328,15 +348,43 @@
           rg.arcTo(x + w2, y + h2, x, y + h2, r2); rg.arcTo(x, y + h2, x, y, r2);
           rg.arcTo(x, y, x + w2, y, r2); rg.closePath(); rg.fill();
         };
+        /* WHICH WAY THE ROAD RUNS THROUGH THIS CELL. The courses are laid ALONG it: with the
+         * setts on the world's axes a diagonal stretch showed rows of stones stepping across
+         * a band that runs at forty-five degrees, which is the cell grid showing through the
+         * paving after it had already been chased out of the band's own shape. Two road
+         * neighbours give the line through them; one gives its own direction; a junction (or
+         * an isolated cell) keeps the axes, which is what a junction looks like anyway. */
+        const NB = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+        const angleAt = (gx, gy) => {
+          const ns = [];
+          for (const [dx, dy] of NB) if (isRoad(gx + dx, gy + dy)) ns.push([dx, dy]);
+          if (ns.length === 1) return Math.atan2(ns[0][1], ns[0][0]);
+          if (ns.length === 2) {
+            const vx = ns[1][0] - ns[0][0], vy = ns[1][1] - ns[0][1];
+            if (vx || vy) return Math.atan2(vy, vx);
+          }
+          return 0;
+        };
         for (const [gx, gy] of roads) {
           const X = gx * cw, Y = gy * cw;
-          for (let j2 = 0; j2 < NST; j2++) for (let i2 = 0; i2 < NST; i2++) {
+          const ang = angleAt(gx, gy);
+          rg.save();
+          /* lay the courses in the road's own frame, about the cell's middle */
+          rg.translate(X + cw / 2, Y + cw / 2);
+          rg.rotate(ang);
+          rg.translate(-cw / 2, -cw / 2);
+          /* ONE COURSE OVER AT EACH END. A square grid turned about its own centre no longer
+           * reaches the corners of its cell, so on a diagonal the paving came out in clusters
+           * with the bed showing between them at every cell join. The courses overhang by a
+           * stone and neighbours overlap; the fills are opaque and the band clips them, so an
+           * overlap costs nothing and a gap costs the whole illusion. */
+          for (let j2 = 0; j2 < NST; j2++) for (let i2 = -1; i2 <= NST; i2++) {
             const h1 = cellHash(gx * NST + i2, gy * NST + j2, seed + 3301);
             const h2 = cellHash(gy * NST + j2, gx * NST + i2, seed + 3302);
             /* half-stone offset on alternate courses — the one thing that stops a paved road
              * reading as the square grid it is actually drawn on */
-            const cx2 = X + i2 * sst + (j2 % 2 ? sst * 0.5 : 0) + (h1 - 0.5) * sst * 0.14;
-            const cy2 = Y + j2 * sst + (h2 - 0.5) * sst * 0.14;
+            const cx2 = i2 * sst + (j2 % 2 ? sst * 0.5 : 0) + (h1 - 0.5) * sst * 0.14;
+            const cy2 = j2 * sst + (h2 - 0.5) * sst * 0.14;
             /* nearly the whole of their square: the gap IS the joint, and a joint is thin */
             const w3 = sst * (0.84 + h1 * 0.08), h3 = sst * (0.78 + h2 * 0.1);
             /* ONE FAMILY OF GREYS with a little spread — salt-and-pepper is not stonework, and
@@ -348,6 +396,7 @@
                                     Math.round(v * 0.93) + ')';
             rrect(cx2 + (sst - w3) / 2, cy2 + (sst - h3) / 2, w3, h3, sst * 0.22);
           }
+          rg.restore();
         }
         rg.setTransform(1, 0, 0, 1, 0, 0);
         rg.globalCompositeOperation = 'source-over';
