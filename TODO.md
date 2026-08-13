@@ -1311,7 +1311,12 @@ below.
 - [ ] Human playtest pass: essence pacing, march speeds, chaos curve on the big map
 - [ ] Corwin (skirmish AI) lacks a >60% counter — teach one or trim his contest play
 - [ ] Mechanic ablation runs (each building/power must move win rates)
-- [ ] Guest-side interpolation polish; reconnect/disconnect UX
+- [x] Disconnect UX — a goodbye on the wire (`{t:'bye'}`), a guest that reads SILENCE as well as
+      a close (`LINK.quiet` / `LINK.dead`), a deserted seat handed a bot (`adoptSeat`), and the
+      host's back press asking once before it ends the table. See CLAUDE.md "when the table
+      breaks up". Host migration is ruled OUT, not pending: a guest holds no world to continue.
+- [ ] Guest-side interpolation polish; RECONNECT (pairing again into a match already running —
+      the goodbye/quiet work above ends a table cleanly, it does not rejoin one)
 - [ ] Victory/defeat presentation (Pattern blaze / castle fall)
 
 ## Phase 2 — Content

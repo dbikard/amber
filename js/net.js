@@ -26,6 +26,12 @@
      * the refusal: the table cannot be dealt again, which only the host can know. */
     onAgain: null,  // host: a guest has called for another match
     onNoMore: null, // guest: the host cannot deal one
+    /* A CHANNEL CLOSING SAYS NOTHING ABOUT WHY. An heir walking out and a phone going into a
+     * tunnel arrive as the same `onclose` — and where there is no close at all (a killed app,
+     * a flat battery) they arrive as nothing whatever. So leaving says so on the way out:
+     * {t:'bye'} is the word, sent to every peer before the link is torn down, and it is the
+     * only difference between "the table is ended" and "the link is lost". */
+    onBye: null,    // the seat named in it has left the table deliberately
     /* THE RECORD IS THE HOST'S, BECAUSE ONLY THE HOST HAS ONE. A guest samples its own
      * fog-filtered snapshots, where a rival's essence never crosses the wire and a rival's
      * works and men are only the ones it can see — so its end screen drew a different match
@@ -414,6 +420,18 @@
         if (p.dc && p.dc.readyState === 'open' && (to == null || p.idx === to)) p.dc.send(txt);
     } else if (Net.dc && Net.dc.readyState === 'open') Net.dc.send(txt);
   };
+  /* THE WORD BEFORE THE DOOR. Sent to everyone still linked, then the link goes down — so a
+   * guest learns from a sentence rather than from a silence. Each send is guarded on its own:
+   * one dead channel throwing here would take the rest of the goodbyes down with it and leave
+   * the other seats to time out for no reason. */
+  Net.bye = function () {
+    if (!Net.active) return;
+    const txt = JSON.stringify({ t: 'bye' });
+    const chans = Net.isHost ? Net.peers.map((p) => p.dc) : [Net.dc];
+    for (const dc of chans) {
+      try { if (dc && dc.readyState === 'open') dc.send(txt); } catch (e) { /* it is already gone */ }
+    }
+  };
   Net.close = function () {
     try {
       if (Net.dc) Net.dc.close();
@@ -434,6 +452,9 @@
     else if (m.t === 'start') { if (Net.onStart) Net.onStart(m); }
     else if (m.t === 'again') { if (Net.onAgain) Net.onAgain(from); }
     else if (m.t === 'nomore') { if (Net.onNoMore) Net.onNoMore(); }
+    /* `from` is the seat it arrived on, which is the only unforgeable thing about it — a
+     * guest saying goodbye names itself and cannot name anybody else */
+    else if (m.t === 'bye') { if (Net.onBye) Net.onBye(from); }
     else if (m.t === 'chron') { if (Net.onChron) Net.onChron(m.rows); }
   }
 

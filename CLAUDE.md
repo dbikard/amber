@@ -214,6 +214,26 @@ progress. AI reads only what a human could see (see `AI.view()`).
   the fix was to make them one surface rather than to tune the gap.** Three browser tests hold
   it — the raycast, a tile's vertices, and a country's spring having its pool.
 
+- **THE CAMERA CANNOT BE AIMED AT A WORLD THE RENDERER HAS NOT BEEN GIVEN.** `clampCam` holds
+  the view inside `mapW`/`mapH`, and those are learned in `buildWorld` — which runs on the first
+  FRAME, after game.js has already called `homeCamera()`. So every opening aim was clamped into
+  the extents of the PREVIOUS world. Board to board that is invisible (same rectangle); walking
+  into a country it strands you, and it stranded the HOST too: measured, a court at (7670, 9030)
+  on 8000×9600 opened looking at (1950, 2446) — the middle of a 2000×2400 board, 7,330 units
+  from the host's court and 8,721 from a guest's. `R.lookAt` remembers the aim and `buildWorld`
+  replays it once the extents are real (re-applying the zoom first, since the zoom floor scales
+  with the land too), then clears it, so a later drag or a council row is never undone.
+
+- **A MEMORY OF THE LAND IS CUT TO THE LAND.** `World.newSeenMask()` with no dimensions is a
+  BOARD — right for a duel, and the guest's war mask asked for exactly that. On a country the
+  grid covered its top-left sixteenth, `markSeen` OR-ed a country-sized live mask into it index
+  for index across two different strides (silently dropping the overflow off the end of a typed
+  array), and the veil's own view window — clamped to that grid — could not reach the ground the
+  camera was over, so every cell in sight stayed SHROUD. That is the black world a LAN guest at
+  a war table was photographed looking at. The call site takes `refWorld.mapW/mapH` now, and
+  `markSeen` maps by CELL when the strides differ rather than corrupting silently. Same shape as
+  the two notes above: **a second code path for the big case, silently sized for the small one.**
+
 - **WATER IS ONE BODY, AND ITS DEPTH IS ITS WIDTH.** The bake painted a radial gradient PER
   WATER CELL onto the finished land, so the alphas compounded where discs overlapped and a
   one-cell river came out as a chain of beads with a bright core in every cell — and the pass
@@ -532,6 +552,55 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   `lan-start-war` appears only when there is an undecided war and deals the table into it. And
   every `Net.send` in the deal is guarded: one channel throwing used to take the whole handler
   down, which looks exactly like a BEGIN that is not wired up.
+- **A GUEST IS IN THE WAR TOO, and `game.war` is the CLIENT'S word for it.** It was set inside
+  the HOST arm of `startMP` only, so on a guest every reader answered "an ordinary match": no ⚑
+  chip, no council, and therefore — on 8000×9600, where a court cannot be found by dragging —
+  no way to reach anything he owned. The two things that really are the host's alone are
+  `game.realm` and `game.run`, and every writer of state guards on **those** (`saveWar`, the
+  `REALM.save` ticks, `onSteward`), never on `game.war`. The helm goes the same way: which court
+  the player is hand-playing is a choice about whose taps these are, so it rides the realm when
+  there is one to save it in and lives on `game.helm` when there is not. A guest may take
+  command of a sworn lord (`issue` already carries `as`) but is offered no STANDING ORDER — the
+  doctrines are stepped on the host, so an order set on a guest would sit in a helm nothing ever
+  reads, which is the dead-button failure the end screen already taught once.
+- **THE COUNCIL ASKS THE VIEW, NEVER THE WORLD.** It read `players[viewer].explored` — a field
+  of the world that never crosses the wire — so a guest's council knew of no court he had found
+  and offered terms to nobody, while a host's listed them all. `view.sites` is the same
+  memory-filtered list both views already carry (live if seen, `live:false` if remembered,
+  absent if neither), written once for the host's screen and the wire alike; crews come off
+  `World.masons(view, pi)` for the same reason. A fog rule must not be able to land on one of
+  these screens and miss the other.
+
+### WHEN THE TABLE BREAKS UP
+
+**A CHANNEL CLOSING SAYS NOTHING ABOUT WHY, AND A KILLED APP SAYS NOTHING AT ALL.** An heir
+walking out and a phone in a tunnel arrived as the same `onclose`; a killed app, a flat battery
+or a dropped Wi-Fi arrived as *nothing*, because `dc.onclose` never fires for those. There was
+no staleness check anywhere — `snapAt` was read only for the interpolation alpha — so a guest
+went on drawing the last snapshot forever, men sliding to the ends of their velocities, taps
+going into a channel nobody was listening on.
+
+- **Leaving says so**: `Net.bye` sends `{t:'bye'}` to every peer before `Net.close`, each send
+  guarded on its own so one dead channel cannot swallow the other goodbyes. It is the only
+  difference between "the table is ended" and "the link is lost", and they are told apart.
+- **Silence is read as what it is** (`LINK` in game.js): `quiet` 3s → one banner, still in the
+  match, because a host who backgrounds his phone may come back; `dead` 10s → the table ends.
+  A snapshot landing clears both, so a bad moment on the Wi-Fi costs nothing.
+- **HOST MIGRATION IS OFF THE TABLE, and that is an answer rather than a gap.** Only the host
+  holds a world; a guest holds fog-filtered snapshots of it, so there is nothing on his phone to
+  continue from, and handing the match on would mean shipping a whole world over a link that has
+  just proved unreliable. `endTable` ends it cleanly, keeps the chronicle, and — in a war — says
+  the country is the host's save, because dropping a guest at a menu offering a brand new war
+  reads as the whole evening being gone.
+- **A DESERTED SEAT IS PLAYED BY SOMEBODY** (`adoptSeat`). The host used to play on against a
+  statue: the departed heir's cities kept earning and his men held whatever ground they were
+  last ordered to, forever. `game.bots[i]` is null on every seat a HUMAN holds, so filling in
+  the departed index is the same statement a war already makes about the seats nobody claimed —
+  the lord's doctrine in a war, an heir on a board. One banner, not two: "the link is severed"
+  and "a shadow of him fights on" are one piece of news.
+- **The host's back press asks once**, and only his, and only with somebody seated. Back is free
+  and instant everywhere else and must stay so, which rules out a modal; the phone's own idiom
+  is the answer, where the first press says what the second will do.
 
 ### ⚑ THE WAR COUNCIL, AND WHAT THE MAP STOPPED SAYING
 

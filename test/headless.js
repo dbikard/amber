@@ -7981,6 +7981,72 @@ suite('the war has answers to a distant walk');
   eq('...and an unstated pace is a board\'s, exactly', walked(rig({ walkMul: 1 }), 20), full);
 }
 
+/* ---------------- A MEMORY OF THE LAND IS CUT TO THE LAND ----------------
+ * `markSeen`'s fast path OR-ed two grids index for index. Both are cut at C.FOG.cell, so cell
+ * (gx, gy) is the same ground in either — but the flat INDEX is not, and a country-sized live
+ * mask walked across a board-sized memory wrote every row at the wrong offset and dropped the
+ * overflow off the end of a typed array with nothing thrown. It read as a heir who remembers
+ * ground he has never been near and none of the ground he is standing on. */
+suite('a memory of the land is cut to the land');
+{
+  const cell = C.FOG.cell;
+  const big = World.newSeenMask(4000, 4000), small = World.newSeenMask(1000, 1000);
+  ok('the rig is alive: the two grids really are different strides',
+     big.gw !== small.gw, `${big.gw} against ${small.gw}`);
+  /* one cell lit, well inside BOTH grids, at a place a wrong stride cannot also hit */
+  const gx = 5, gy = 7;
+  big.g[gy * big.gw + gx] = 1;
+  World.markSeen(small, big);
+  ok('a mark lands on the same GROUND in a grid of another stride',
+     !!small.g[gy * small.gw + gx], 'the cell the mark was made in is not marked');
+  eq('...and exactly one cell is marked', small.v, 1);
+  /* and the ordinary same-stride case is untouched, to the byte */
+  const a = World.newSeenMask(2000, 2400), b2 = World.newSeenMask(2000, 2400);
+  b2.g[3 * b2.gw + 4] = 1; b2.g[9 * b2.gw + 11] = 1;
+  World.markSeen(a, b2);
+  eq('a matched pair still ORs straight through', a.v, 2);
+  ok('...in the same cells', !!a.g[3 * a.gw + 4] && !!a.g[9 * a.gw + 11]);
+  /* the country a war is actually played on must fit in one of these */
+  const country = World.newSeenMask(C.REACHWAR.dims.W, C.REACHWAR.dims.H);
+  ok('a country-sized mask spans the country',
+     country.gw * cell >= C.REACHWAR.dims.W && country.gh * cell >= C.REACHWAR.dims.H,
+     `${country.gw * cell}x${country.gh * cell} for ${C.REACHWAR.dims.W}x${C.REACHWAR.dims.H}`);
+  ok('...and a board-sized one plainly does not', World.newSeenMask().gw * cell < C.REACHWAR.dims.W);
+}
+
+/* ---------------- A SEAT THAT WALKS OUT IS STILL PLAYED ----------------
+ * The wire half of "the host has gone" lives in the browser suite, where there is a page to
+ * banner at. What lives here is the only part of it that is sim: a heir whose phone left the
+ * table used to simply STAND — his cities kept earning, his men held whatever ground they
+ * were last ordered to, and nobody moved them again for the rest of the match. This asserts
+ * the difference a driver makes, against the same world played the same length of time with
+ * nobody at that seat, which is what the old code did. */
+suite('a deserted seat is played by somebody');
+{
+  const play = (drive) => {
+    const w = World.createWorld(31337, 2);
+    w.chaosNext = 1e9;                       // Chaos would move the men for him and prove nothing
+    const bot = drive ? AI.make('benedict', {}) : null;
+    for (let i = 0; i < 30 * 120; i++) {
+      if (bot) bot.step(w, 1, (cmd) => World.applyCommand(w, 1, cmd), C.SIM_DT);
+      World.update(w, C.SIM_DT);
+      w.events.length = 0;
+    }
+    return { works: w.players[1].buildings.length, men: w.units.filter((u) => u.owner === 1).length,
+             rallies: w.players[1].companies.filter((co) => co.rally).length };
+  };
+  const idle = play(false), held = play(true);
+  /* the control: the abandoned seat really is inert, so the line below is about the driver
+   * and not about the sim doing it anyway */
+  eq('the rig is alive: nobody at the seat raises nothing', idle.works, 2);   // the opening Gate + hall
+  eq('...and gives no company an order', idle.rallies, 0);
+  ok('a driver put on the seat builds', held.works > idle.works,
+     `${held.works} works against ${idle.works}`);
+  ok('...and marches', held.rallies > 0, `${held.rallies} standards planted`);
+  ok('...and musters more men than an empty chair', held.men >= idle.men,
+     `${held.men} against ${idle.men}`);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

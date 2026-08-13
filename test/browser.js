@@ -3033,6 +3033,134 @@ async function match(browser, base, renderer) {
        `ess-n ${lan4.ess}, seat 2 has ${lan4.want}`);
     ok('four-player guest rendering raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 
+    /* ---------------- LAN: a guest DEALT INTO A WAR ----------------
+     * Reported from play with a photograph: a guest at a Reach War table saw an empty blue
+     * world. Three separate things, all of which had to be true before he could see anything
+     * at all, and each of which fails on its own:
+     *   (1) the CAMERA — homed against the previous world's extents, so he opened 8,721 units
+     *       from his own court (see 'a country opens looking at your own court');
+     *   (2) `game.war` was set inside the HOST arm of startMP only, so on a guest every reader
+     *       of it answered "an ordinary match": no ⚑ chip and no council;
+     *   (3) the council read `players[viewer].explored`, a field of the WORLD that never
+     *       crosses the wire, so a guest's council knew of no court he had found and offered
+     *       terms to nobody.
+     * On 8000x9600 a court cannot be found by dragging, so (1) and (2) together left him with
+     * no way to reach anything he owned. Driven through the same seam as every other guest
+     * test: the host's own start message and real snapshots off Net.snapFor. */
+    suite(`${r} · LAN guest · a war table`);
+    const lanWar = await pg.evaluate(async () => {
+      const { Game, Net, World, CONST: C, REALM, Render } = window;
+      const raf = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const seed = 90210;
+      const hostRealm = REALM.create(seed);          // the country the HOST holds
+      const hw = hostRealm.world;
+      Net.isHost = false; Net.localIdx = 1; Net.active = true;
+      Net.send = () => {};
+      /* the deal: seats, this guest's own seat, and the war's seed — the country itself never
+       * crosses the wire, the guest regrows it from the seed */
+      Game.startMP(seed, 2, 1, { seed }, null);
+      for (let i = 0; i < 30 * 20; i++) { World.update(hw, C.SIM_DT); hw.events.length = 0; }
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
+      await raf(); await raf();
+      const c = hw.map.sites[hw.cities[1].site];
+      const mid = Render.toWorld(window.innerWidth / 2, window.innerHeight / 2);
+      const chip = document.getElementById('war-chip');
+      /* the council, opened exactly as the chip opens it */
+      document.getElementById('war-chip').click();
+      await new Promise((res) => setTimeout(res, 250));
+      const council = document.getElementById('council');
+      const rows = council ? council.querySelectorAll('.cc-city').length : -1;
+      const text = council ? council.textContent : '';
+      /* WHAT HE REMEMBERS OF THE LAND. Asked for with no dimensions, `newSeenMask` is a
+       * BOARD — right for a duel, a black screen for a war: the grid covered the country's
+       * top-left sixteenth, the live mask was OR-ed into it across two different strides, and
+       * the veil's window (clamped to this grid) could not reach the ground the camera was
+       * over, so every cell in sight stayed shroud. */
+      const sm = Game.debugSeen && Game.debugSeen();
+      return { war: Game.game.war,
+               seen: sm ? { spanX: sm.gw * sm.cell, spanY: sm.gh * sm.cell, marks: sm.marks,
+                            atCourt: sm.at(c.x, c.y) } : null,
+               mapW: hw.mapW, mapH: hw.mapH,
+               miss: mid ? Math.round(Math.hypot(mid.x - c.x, mid.y - c.y)) : -1,
+               chipShown: !!chip && !chip.classList.contains('hidden'),
+               chipText: chip ? chip.textContent.trim() : '',
+               open: !!council && !council.classList.contains('hidden'),
+               rows, mine: /your own hand/.test(text),
+               cities: hw.cities.length };
+    });
+    ok('a guest dealt into a war knows he is in one', lanWar.war === true);
+    ok('...and opens looking at his own court, not the far corner',
+       lanWar.miss >= 0 && lanWar.miss < 200, `${lanWar.miss} units off`);
+    ok('...his memory of the land is cut to the COUNTRY, not to a board',
+       !!lanWar.seen && lanWar.seen.spanX >= lanWar.mapW && lanWar.seen.spanY >= lanWar.mapH,
+       lanWar.seen ? `${lanWar.seen.spanX}x${lanWar.seen.spanY} for a ${lanWar.mapW}x${lanWar.mapH} land`
+                   : 'no mask');
+    /* the symptom itself: the ground he is standing on has to be ground he remembers, or the
+     * veil draws it as country nobody has ever been near */
+    ok('...and the ground under his own court is remembered, not shroud',
+       !!lanWar.seen && lanWar.seen.atCourt && lanWar.seen.marks > 0,
+       lanWar.seen ? `${lanWar.seen.marks} cells marked, court ${lanWar.seen.atCourt}` : 'no mask');
+    ok('...and is given the war chip', lanWar.chipShown && /\d+\s*\/\s*\d+/.test(lanWar.chipText),
+       `chip "${lanWar.chipText}"`);
+    ok('...which opens a council with his court in it',
+       lanWar.open && lanWar.rows >= 1, `open=${lanWar.open} rows=${lanWar.rows}`);
+    ok('...named as the one his own hand is on', lanWar.mine);
+    ok('the war guest raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.evaluate(() => { window.UI.councilClose && window.UI.councilClose(); });
+
+    /* ---------------- LAN: the table breaks up ----------------
+     * A host walking out and a host whose phone died arrived as the same thing — or, for the
+     * dead phone, as NOTHING: `dc.onclose` never fires when an app is killed, and the guest
+     * had no staleness check anywhere (snapAt was read only for the interpolation alpha). So
+     * it went on drawing the last snapshot forever, men sliding to the ends of their
+     * velocities, with nothing on screen admitting the game was over. Both endings now speak,
+     * and they say different things, which is the whole point of the goodbye. */
+    suite(`${r} · the table breaks up`);
+    const gone = await pg.evaluate(async () => {
+      const { Game, Net, World, CONST: C } = window;
+      const raf = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const out = {};
+      const banners = () => Array.from(document.querySelectorAll('#banner-wrap > *'))
+        .map((e) => e.textContent).join(' | ');
+      /* --- a guest, and a host that simply STOPS SENDING --- */
+      Net.isHost = false; Net.localIdx = 1; Net.active = true; Net.send = () => {};
+      Game.startMP(777, 2, 1);
+      const hw = World.createWorld(777);
+      for (let i = 0; i < 30 * 10; i++) { World.update(hw, C.SIM_DT); hw.events.length = 0; }
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
+      /* the corner holds three lines for 3.4s each, so whatever the last suite said is still
+       * standing — and this control is about what THIS link makes the loop say, which is
+       * nothing. Clear it, then run frames on a snapshot that has only just landed. */
+      document.getElementById('banner-wrap').innerHTML = '';
+      await raf(); await raf();
+      out.liveSaysNothing = /quiet|severed|left the table/.test(banners());
+      /* wind back WHEN the last snapshot landed, exactly as a silent host would leave it, and
+       * run frames. The hook moves the clock, never the answer — the staleness rule under
+       * test is the shipping one, read by the shipping loop. */
+      out.hasHook = !!Game.debugQuiet;
+      Game.debugQuiet && Game.debugQuiet(4);
+      await raf(); await raf();
+      out.quiet = /gone quiet/.test(banners());
+      out.stillIn = Game.game.mode === 'guest';
+      /* ...and a snapshot takes it straight back */
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
+      await raf();
+      Game.debugQuiet && Game.debugQuiet(4);
+      await raf(); await raf();
+      out.quietAgain = /gone quiet/.test(banners());   // it must be sayable a second time
+      /* --- and a host who says goodbye ends it outright --- */
+      Net.onBye(0);
+      await raf();
+      out.byeSaid = /left the table/.test(banners());
+      return out;
+    });
+    ok('the rig is alive: a guest with a live link is told nothing', !gone.liveSaysNothing);
+    ok('a guest notices the link has gone quiet', gone.hasHook && gone.quiet, JSON.stringify(gone));
+    ok('...and is still in the match, because a host may come back', gone.stillIn);
+    ok('...and says so again if it goes quiet a second time', gone.quietAgain);
+    ok('a host saying goodbye ends the table by name', gone.byeSaid);
+    await pg.evaluate(() => window.Game.toMenu());
+
     /* A REMATCH KEEPS THE LINK, AND EITHER PHONE MAY CALL IT. Pairing by QR is the price of
      * getting into a LAN game; paying it again to play a second game against the person
      * sitting next to you is not. The dealing stays the host's — it is the only seat holding a
@@ -4752,6 +4880,31 @@ async function match(browser, base, renderer) {
     ok('the world runs under the real loop', ran.t > 1.0, `${ran.t.toFixed(1)}s passed`);
     ok('an order inside the reach is taken', ran.near === true, JSON.stringify(ran));
     if (ran.out) ok('...and AMBER is beyond an opening company\'s', ran.far === 'reach', ran.far);
+
+    /* ---- A MATCH OPENS ON YOUR OWN COURT ----
+     * `clampCam` holds the view inside `mapW`/`mapH`, and those are learned in `buildWorld` —
+     * which runs on the first FRAME, after game.js has already called `homeCamera()`. So the
+     * opening aim was clamped into the extents of the PREVIOUS world. Board to board that is
+     * invisible (same rectangle); walking into a country it strands you: measured, a court at
+     * (7670, 9030) on 8000x9600 opened looking at (1950, 2446) — the middle of a 2000x2400
+     * BOARD, 8,721 units away. On a host that is a war you have to go looking for your own
+     * capital in; on a LAN guest, who had no council to fall back on either, it is an empty
+     * blue world, which is how it was reported from play.
+     * Asked of the projection itself (R.toWorld), never re-derived. */
+    const opened = await pg.evaluate(() => {
+      const R = window.Render, g = window.Game.game, w = g.world;
+      const c = w.map.sites[w.cities[g.viewer].site];
+      const mid = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
+      if (!mid) return { err: 'the centre ray meets no ground' };
+      return { miss: Math.round(Math.hypot(mid.x - c.x, mid.y - c.y)),
+               at: [Math.round(mid.x), Math.round(mid.y)], city: [c.x | 0, c.y | 0],
+               span: Math.round(Math.hypot(w.mapW, w.mapH)) };
+    });
+    /* generous against the ground-height correction and a court on a steep slope, and still
+     * two orders of magnitude under the failure it is here to catch */
+    ok('a country opens looking at your own court',
+       !opened.err && opened.miss < 200,
+       opened.err || `${opened.miss} units off — centre ${opened.at}, court ${opened.city}`);
 
     /* ---- THE GROUND YOU STAND ON IS THE GROUND YOU SEE ----
      * Everything in the world is placed at `R.groundH` — every man, every work, every pool,

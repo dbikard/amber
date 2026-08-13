@@ -41,6 +41,18 @@
   const EV_CAP = 400;   // a guest that is being skipped must not grow an unbounded backlog
   let snapGap = 100;   // observed ms between the last two snapshots — see the interpolation
   let snapPrev = null, snapCur = null, snapAt = 0, refWorld = null, guestSeen = null, guestWallKey = '';
+  /* ---- IS THE LINK STILL THERE? ----
+   * A datachannel that CLOSES says so, and that case was always handled. A host whose tab is
+   * killed, whose battery dies or whose Wi-Fi drops says nothing whatever: the close never
+   * arrives, and the guest went on drawing the last snapshot — men sliding smoothly to the
+   * ends of their velocities, HUD frozen at whatever it last read, taps going into a channel
+   * nobody is listening on — indefinitely, with nothing on screen admitting it. Silence is
+   * therefore read as what it is. QUIET is long enough that a bad moment on the Wi-Fi does not
+   * cry wolf (snapshots come ten a second, so it is thirty missed); DEAD is long enough that a
+   * host who backgrounds his phone to answer a message can still come back. */
+  const LINK = { quiet: 3, dead: 10 };
+  let linkLost = null, quietSaid = false, leaving = 0;
+  let endArmed = 0;   // when the host was last warned that back ends the table — see onPopState
 
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
@@ -227,10 +239,17 @@
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     snapTurn = 0; evQ = Object.create(null); snapGap = 100;
     if (war) {
+      /* A GUEST IS IN THE WAR TOO. `game.war` was set inside the HOST arm only, so on a guest
+       * every reader of it answered "this is an ordinary match": no ⚑ chip, no council, and
+       * therefore — on 8000x9600, where a court cannot be found by dragging — no way to reach
+       * his own capital at all. It is the CLIENT's word for "the match I am in is a war",
+       * which is as true on a guest as on a host; the two things that are the host's alone
+       * are `game.realm` and `game.run`, and every writer of state guards on those (saveWar,
+       * hand, the REALM.save ticks), not on this. */
+      game.war = true;
       if (Net.isHost) {
         /* the host plays HIS OWN saved war, guests and all — putting it down still saves it */
         game.realm = savedRealm;
-        game.war = true;
         game.run = REALM.run(savedRealm);
         game.world = savedRealm.world;
         const kind = AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher';
@@ -299,6 +318,19 @@
        * 'warn' banner for a thing the player deliberately did also read as a refusal. */
       armBack(); return;
     }
+    /* LEAVING A LAN MATCH ENDS IT FOR TWO TO FOUR PEOPLE, and it cannot be undone — the host
+     * is the only machine holding a world. Everywhere else back is free and instant and must
+     * stay so, which rules out a modal: the phone's own idiom is the answer, where the first
+     * press SAYS what the second one will do. Only the host, only mid-match, and only with
+     * somebody actually seated — alone at the table there is nobody to end it for. */
+    if (game.mode === 'host' && !game.over && Net.active && Net.seated() > 1) {
+      const now = performance.now();
+      if (now - endArmed > 3000) {
+        endArmed = now;
+        UI.banner('Leaving ends the table for everyone — press back again to end it', 'warn');
+        armBack(); return;
+      }
+    }
     toMenu();                                     // in a match: back leaves to the menu
   }
 
@@ -310,10 +342,52 @@
     Render.lookAt(c.x, c.y);
   }
 
+  /* ---------------- the table is over, and there is nothing to carry on with ----------------
+   * HOST MIGRATION IS NOT ON THE TABLE, and that is a design answer rather than a missing
+   * feature: only the host holds a world, a guest holds fog-filtered snapshots of it, so there
+   * is genuinely nothing on this phone to continue from. Handing the match on would mean
+   * shipping a whole world across a link that has just proved unreliable. So a guest whose
+   * host has gone is told plainly and taken back to the menu with its chronicle intact. */
+  function endTable(why) {
+    if (game.mode !== 'guest' || leaving) return;
+    UI.banner(why, 'warn');
+    /* IN A WAR THE COUNTRY IS THE HOST'S SAVE. A guest rebuilds the ground from the seed and
+     * holds no realm of his own, so the evening's conquests live on the host's phone — and
+     * dropping him at a menu offering a brand new war, with no word about it, reads as the
+     * whole war being gone. */
+    if (game.war) UI.banner('The war is the host’s to keep — pair again and it stands where it stood', 'warn');
+    /* on the end screen nobody is mid-match: the link was only ever the offer of a rematch */
+    if (game.over) { endScreen(); return; }
+    leaving = setTimeout(() => { leaving = 0; toMenu(); }, 2500);
+  }
+
+  /* THE SEAT AN HEIR WALKED OUT OF, HANDED TO A BRAIN. Only the host may do this — it is the
+   * only machine holding a world to drive — and only mid-match. `game.bots[i]` is null on
+   * every seat a HUMAN holds, which is exactly what makes this a one-line change: filling in
+   * the departed index is the same statement the war already makes about the seats nobody
+   * claimed. Returns whether it adopted, so the caller does not banner twice about one event. */
+  function adoptSeat(seat) {
+    const w = game.world;
+    if (game.mode !== 'host' || game.over || !w) return false;
+    if (seat == null || seat < 1 || seat >= game.seats) return false;
+    if (game.bots && game.bots[seat]) return false;              // already driven
+    /* a war's unclaimed seats run the lord's doctrine, so a war's DESERTED one runs it too;
+     * on a board it is an heir, chosen by the seat so the same seat always gets the same one */
+    const heirs = Object.keys(AI.HEIRS);
+    const kind = game.war ? (AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher')
+                          : heirs[seat % heirs.length];
+    if (!game.bots) game.bots = w.players.map(() => null);
+    game.bots[seat] = AI.make(kind, {});
+    UI.banner(seatName(seat) + ' has left the table — a shadow of him fights on', 'warn');
+    return true;
+  }
+
   function toMenu() {
     /* THE WAR IS PUT DOWN, NOT THROWN AWAY — walking out is how an evening ends, so the save
      * rides the same door as every other way out. */
     saveWar();
+    if (leaving) { clearTimeout(leaving); leaving = 0; }
+    linkLost = null; quietSaid = false; endArmed = 0;
     game.war = false;
     /* a match walked out of never reaches the end screen, and it is often the one worth
      * sending — close the chronicle here so the menu can still offer it */
@@ -323,7 +397,9 @@
     }
     game.mode = null; game.world = null; game.over = false;
     if (Render.lookAt) Render._homed = false;
-    if (Net.active) Net.close();
+    /* walking out of a LAN match ends it for everyone else at the table — say so on the way
+     * out, so the other phones can tell a heir leaving from a link dying */
+    if (Net.active) { Net.bye(); Net.close(); }
     if (game.updateReady) { applyUpdate(); return; }   // a new version waited politely for match end
     UI.showMenu(campaignLabel(), campaignNote());
   }
@@ -529,9 +605,20 @@
    * build sheet, the flag tray, the essence chip and every order below belong to that one.
    * It is never anybody else's lord — a stale `helm.hand` left over from a court that has
    * since been taken back falls straight home rather than issuing orders into thin air. */
+  /* THE HELM IS THE CLIENT'S, AND A GUEST HAS ONE TOO. Which of his courts the player is
+   * hand-playing is a choice about whose taps these are — it changes nothing in the world,
+   * which is why it has never been a command. It rode on the realm because the realm is what
+   * gets SAVED; a guest holds no realm and may still hold sworn lords (a conquest swears them,
+   * and `issue` already carries the lord an order is FOR, which the host vets against the seat
+   * it arrived on). So the helm lives here when there is nothing to save it in. `hand: null`
+   * is "my own seat", which is what `hand()` has always made of a missing one. */
+  function helm() {
+    if (game.realm) return (game.realm.helm = game.realm.helm || { orders: {}, hand: 0 });
+    return (game.helm = game.helm || { orders: {}, hand: null });
+  }
   function hand() {
     const w = game.world || refWorld;
-    const h = game.realm && game.realm.helm ? game.realm.helm.hand : null;
+    const h = helm().hand;
     if (h == null || !w || !w.players || !w.players[h]) return game.viewer;
     return World.realmOf(w, h) === World.realmOf(w, game.viewer) ? h : game.viewer;
   }
@@ -661,13 +748,23 @@
     const hex = (n) => '#' + n.toString(16).padStart(6, '0');
     const tint = (pi) => hex(Render.tintOf ? Render.tintOf(pi, game.viewer) : C.SEAT_TINT[0]);
     const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || {};
-    const explored = (view.players[game.viewer] || {}).explored || {};
+    /* WHAT THIS HEIR HAS LAID EYES ON, ASKED THE SAME WAY ON BOTH SCREENS. This read
+     * `players[viewer].explored`, which is a field of the WORLD and never crosses the wire —
+     * so a guest's council silently listed none of the courts he had found and offered terms
+     * to nobody, while a host's listed them all. `view.sites` is the memory-filtered site
+     * list both views already carry (live if seen, `live:false` if remembered, absent if
+     * neither), built in ONE place for the host's screen and the wire alike, so a fog rule
+     * cannot land on one of these screens and miss the other. */
+    const found = (site) => !!view.sites[site];
     let income = 0, men = 0, crews = 0, free = 0, pattern = null;
     for (let pi = 0; pi < view.players.length; pi++) {
       if (!ours(pi)) continue;
       const p = view.players[pi];
       income += (p.incomeRate || 0) - (p.drainRate || 0);
-      if (game.world) { crews += World.masons(game.world, pi); free += Math.max(0, World.masons(game.world, pi) - World.rising(game.world, pi)); }
+      /* the crews off the VIEW as well: `World.masons` counts a heir's own Gates, which ride
+       * in full for everyone of your own banner, so a guest can answer this for himself */
+      crews += World.masons(view, pi);
+      free += Math.max(0, World.masons(view, pi) - World.rising(view, pi));
       if (p.pattern > 0) pattern = '✴ ' + Math.round(p.pattern) + '% of the Pattern is walked in your name';
     }
     for (const u of view.units) if (ours(u.owner)) men++;
@@ -675,7 +772,7 @@
     for (let ci = 0; ci < view.cities.length; ci++) {
       const c = view.cities[ci];
       /* fogged like everything else: a court nobody of yours has seen is not on the list */
-      if (!ours(c.owner) && !explored[c.site]) continue;
+      if (!ours(c.owner) && !found(c.site)) continue;
       const mineC = ours(c.owner);
       const lordIdx = c.owner;
       const nm = view.map.sites[c.site].name || 'a Seat of Power';
@@ -710,7 +807,15 @@
         lord: c.owner < 0 ? 'no lord' : (mineC ? (c.owner === hand() ? 'your own hand' : 'sworn to you') : ''),
         sub: sub.join(' · '),
         hp: c.razed ? null : Math.max(0, c.hp / (c.maxHp || C.CASTLE_HP)),
-        orders: ORDERS.map((o) => ({ ...o, on: orders[lordIdx] && orders[lordIdx].mode === o.mode })).concat(nbrs)
+        /* A STANDING ORDER IS THE HOST'S TO KEEP. It is a parameter to the lord's own doctrine
+         * and the doctrines are STEPPED on the host, so an order set on a guest would sit in a
+         * helm nothing ever reads — a row of buttons that promise a thing that cannot happen,
+         * which is exactly what the end screen's dead ANOTHER MATCH button was. A guest's rows
+         * still carry him to the court and still hand him the command of it; they simply do
+         * not offer what only a host can honour. */
+        orders: game.realm
+          ? ORDERS.map((o) => ({ ...o, on: orders[lordIdx] && orders[lordIdx].mode === o.mode })).concat(nbrs)
+          : []
       });
     }
     /* yours first, then the rest by name, so the list opens on what you are responsible for */
@@ -729,7 +834,7 @@
          * offer" — the same noise the tray was moved out of the HUD for, reprinted on a bigger
          * screen. You must have laid eyes on a court of his; an offer already standing either
          * way always shows, because a thing waiting on you must never be behind a filter. */
-        if (!his && !mine2 && !held2.some((c) => explored[c.site])) continue;
+        if (!his && !mine2 && !held2.some((c) => found(c.site))) continue;
         terms.push({
           idx: pi, name: seatName(pi), tint: tint(pi),
           holds: holds + (holds === 1 ? ' city' : ' cities'),
@@ -870,7 +975,16 @@
     /* the guest builds the same world from the same seed, so terrain needs no wire at all */
     /* the guest remembers the land itself. Nothing about it needs to cross the wire — it is
      * built from the same sight the guest already computes for its own fog. */
-    if (!guestSeen) guestSeen = World.newSeenMask();
+    /* CUT TO THE LAND HE IS ACTUALLY LOOKING AT. Asked for with no dimensions this is a
+     * BOARD-sized grid — which is right for a duel and catastrophic for a war: a country is
+     * 8000x9600, so the memory mask covered its top-left sixteenth, `markSeen` OR-ed a
+     * country-sized live mask into it index-for-index across two different strides, and the
+     * veil's own view window (`fogWin`, clamped to this grid) could not reach the ground the
+     * camera was over. Every cell in sight therefore stayed SHROUD. That is the black world a
+     * guest at a war table was photographed looking at, and it is the same shape as the other
+     * country bugs in this codebase: a second path for the big case, silently sized for the
+     * small one. The host has always cut it from the world's own extents (`createWorld`). */
+    if (!guestSeen) guestSeen = World.newSeenMask(refWorld.mapW, refWorld.mapH);
     World.markSeen(guestSeen, vism || src);
     return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
              /* the same two the host's own view carries, off the wire rather than off a world:
@@ -1135,7 +1249,24 @@
       UI.tick(hp.essence);
       UI.flags(view, hv, game.armedFlag);
     } else if (game.mode === 'guest' && snapCur) {
+      /* SILENCE IS A STATE, AND IT IS READ HERE. The men freeze on their own once the gap
+       * passes `snapGap` (the interpolation alpha saturates at 1), so what is missing is not
+       * the stillness but the WORD for it. Said once, and taken back the instant a snapshot
+       * lands — `onSnap` clears both flags, so a host who was merely in a tunnel comes back
+       * without the player ever leaving the match. */
+      const quiet = (performance.now() - snapAt) / 1000;
+      if (!game.over && linkLost !== 'bye') {
+        if (quiet > LINK.dead) endTable('The link to the host is gone — the match is ended');
+        else if (quiet > LINK.quiet && !quietSaid) {
+          quietSaid = true; linkLost = 'quiet';
+          UI.banner('The link has gone quiet — waiting for the host', 'warn');
+        }
+      }
       const view = guestView();
+      /* the chip is the war's whole readout and it belongs to the SCREEN, not to the sim —
+       * it was drawn from inside the `game.run` block, which only a host holds, so a guest
+       * at a war table had no count of cities and no door to the council */
+      if (game.war) UI.warChip(warChip());
       /* a guest may hold ANY seat but seat 0 — read its own, never seat 1's */
       const gv = game.viewer, gh = hand(), gp = snapCur.players[gh] || {};
       Render.hand = gh === gv ? null : gh;
@@ -1749,9 +1880,19 @@
       UI.banner('An heir has left the table — pair again from the menu', 'warn');
       endScreen();
     };
+    /* A HEIR SAYING GOODBYE. From the HOST it is the end of the table: there is no world
+     * anywhere else, so there is nothing to carry on with. From a guest it is one seat
+     * leaving, which the host survives — `onClose` follows it in a moment and does the rest. */
+    Net.onBye = (from) => {
+      if (game.mode !== 'guest' || from !== 0) return;
+      linkLost = 'bye';
+      endTable(seatName(0) + ' has left the table — the match is ended');
+    };
     Net.onSnap = (s) => {
       const now = performance.now();
       if (snapAt) snapGap = snapGap * 0.7 + Math.max(50, Math.min(400, now - snapAt)) * 0.3;
+      /* the link is alive again, whatever it was doing a moment ago */
+      linkLost = null; quietSaid = false;
       snapPrev = snapCur; snapCur = s; snapAt = now;
       if (!game.over) {
         Rec.sample(Rec.fromSnap(s, game.viewer));
@@ -1760,14 +1901,23 @@
       if (s.events && s.events.length && refWorld) routeEvents(s.events, guestView());
       if (s.winner !== null && s.winner !== undefined) endMatch(s.winner, s.winReason);
     };
-    Net.onClose = () => {
-      if (game.mode === 'host' || game.mode === 'guest') {
-        UI.banner('The Trump link is severed', 'warn');
-        if (game.mode === 'guest' && !game.over) setTimeout(toMenu, 2500);
+    Net.onClose = (seat) => {
+      if (game.mode === 'guest') {
+        /* a goodbye has already said it better — do not talk over it */
+        if (linkLost !== 'bye') endTable('The link to the host is severed — the match is ended');
+      } else if (game.mode === 'host') {
+        /* AN ABANDONED SEAT IS PLAYED BY SOMEBODY. The host plays on, and the seat that left
+         * used to simply STAND there: its cities kept earning, its men held whatever ground
+         * they were last ordered to, and nobody moved them again for the rest of the match. In
+         * a war that is a dead contender the survivors have to walk over. It is handed the
+         * same driver an unclaimed seat gets when the table is dealt, which is the plainest
+         * true answer to "who is playing that heir now" — and it says so in ONE line, because
+         * "the link is severed" and "a shadow fights on" are one piece of news, not two. */
+        if (!adoptSeat(seat)) UI.banner('The Trump link is severed', 'warn');
         /* on the end screen the link IS the offer of a rematch. Losing it there is not fatal
          * — nobody is mid-match — but the button must stop promising a game that can no
          * longer be dealt, so redraw the screen with what is actually left. */
-        else if (game.over) endScreen();
+        if (game.over) endScreen();
       } else {
         /* AT THE TABLE: A SEAT THAT HAS GONE COMES OFF IT. `paintTable` counts the open
          * channels, so it speaks last — at a table of four, one phone leaving is 'link lost'
@@ -1906,17 +2056,18 @@
        * command and no wire: what it changes is whose hand is on the next tap. The lord you
        * step away from goes straight back to running himself under his standing order, which
        * is why leaving a court costs nothing but your attention. */
+      /* asked of the VIEW, not the world: a guest holds no world and this is a client choice
+       * about his own screen, so it must answer on his screen too */
       onTakeSeat: (cityIdx) => {
-        const w = game.world;
-        if (!w || !game.war || !game.realm) return;
+        const w = warView();
+        if (!w || !game.war || !w.cities) return;
         const c = w.cities[cityIdx];
         if (!c || c.owner < 0 || World.realmOf(w, c.owner) !== World.realmOf(w, game.viewer)) {
           UI.banner(REFUSAL.held, 'warn'); return;
         }
-        const helm = game.realm.helm || (game.realm.helm = { orders: {}, hand: 0 });
-        helm.hand = c.owner;
+        helm().hand = c.owner;
         game.armedFlag = null; clearPlacing();
-        REALM.save(game.realm);
+        if (game.realm) REALM.save(game.realm);
         if (Render.lookAt) Render.lookAt(c.x, c.y);
         UI.banner('You command from ' + w.map.sites[c.site].name + ' — its purse is your purse',
                   'alert');
@@ -2023,5 +2174,17 @@
    * event and the viewer's own map, and there is no other way to ask it — driving a real
    * assault to make one line appear takes a minute of match and proves less. */
   global.__routeEvents = routeEvents;
-  global.Game = { game, startSP, startMP, startChapter, toChapters, toMenu, LADDER };
+  /* test handle: how long the link has been silent. It winds back WHEN the last snapshot
+   * landed — never what the rule makes of it — so a suite can drive the quiet and the dead
+   * link through the shipping loop instead of sleeping through ten real seconds. */
+  /* ...and what a guest REMEMBERS of the land. The mask is the guest's alone (a host's is in
+   * its world, where a suite can already read it), and the veil's window is clamped to it, so
+   * a mask cut to the wrong extents is a black screen with nothing else to measure. */
+  global.Game = { game, startSP, startMP, startChapter, toChapters, toMenu, LADDER,
+                  debugQuiet: (secs) => { snapAt = performance.now() - secs * 1000; },
+                  debugSeen: () => (guestSeen ? { gw: guestSeen.gw, gh: guestSeen.gh,
+                                                  cell: guestSeen.cell, marks: guestSeen.v,
+                                                  at: (x, y) => !!guestSeen.g[((y / guestSeen.cell) | 0)
+                                                                * guestSeen.gw + ((x / guestSeen.cell) | 0)] }
+                                             : null) };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1883,7 +1883,22 @@
   function markSeen(mask, src) {
     if (src && src.g) {
       const g = mask.g, m = src.g;
-      for (let i = 0; i < m.length; i++) if (m[i] && !g[i]) { g[i] = 1; mask.v++; }
+      if (src.gw === mask.gw && src.gh === mask.gh) {
+        for (let i = 0; i < m.length; i++) if (m[i] && !g[i]) { g[i] = 1; mask.v++; }
+        return mask;
+      }
+      /* TWO GRIDS OF THE SAME CELL AND A DIFFERENT STRIDE IS NOT AN OR. Both are cut at
+       * C.FOG.cell, so cell (gx, gy) is the same ground in either — but the flat index is
+       * not, and walking `m` by ITS length wrote a country's rows across a board's, landing
+       * every mark in the wrong place and dropping the overflow silently off the end of a
+       * typed array. Nothing throws, and the result reads as a heir who remembers ground he
+       * has never been near and none of the ground he is standing on. The call sites are
+       * matched now; this is here so a mismatch can never again be a silent corruption. */
+      const w2 = Math.min(src.gw, mask.gw), h2 = Math.min(src.gh, mask.gh);
+      for (let gy = 0; gy < h2; gy++) for (let gx = 0; gx < w2; gx++) {
+        const i = gy * mask.gw + gx;
+        if (m[gy * src.gw + gx] && !g[i]) { g[i] = 1; mask.v++; }
+      }
       return mask;
     }
     const cw = mask.cell;

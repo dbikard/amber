@@ -1070,9 +1070,20 @@
     rig.updateMatrixWorld(true);
     cam.updateMatrixWorld(true);
   }
+  /* THE CAMERA CANNOT BE AIMED AT A WORLD THE RENDERER HAS NOT BEEN GIVEN. `clampCam` holds
+   * the view inside `mapW`/`mapH`, and those are learned in `buildWorld` — which runs on the
+   * first FRAME, after game.js has already called `homeCamera()`. So every aim taken before
+   * that first frame was clamped into the extents of the PREVIOUS world. Board to board this
+   * is invisible (same rectangle); walking into a country it is the whole bug: measured, an
+   * heir whose court stands at (7670, 9030) on an 8000x9600 land opened looking at (1950,
+   * 2446) — the middle of a 2000x2400 BOARD, 8,721 units from anything of his. On the host
+   * that reads as a war you have to go looking for your own capital in; on a LAN guest, who
+   * has no council to fall back on, it reads as an empty blue world, which is how it was
+   * reported. So the aim is REMEMBERED and replayed once the extents are real. */
   R.lookAt = function (wx, wy) {
     /* the rig origin IS what the camera centres on, and the rig sits at camY + 0.62*viewH */
     R._homed = true;
+    R._aim = { x: wx, y: wy };
     R.camX = wx - viewW / 2;
     R.camY = wy - viewH * 0.62;
     R.clampCam();
@@ -1944,6 +1955,17 @@
     worldG.add(bannerG);
 
     lastKey = mapKey(view, viewer);
+    /* AND NOW THE EXTENTS ARE REAL, so an aim taken before them can finally be honoured. The
+     * zoom floor scales with the land too (applyZoom), so it is re-applied first — otherwise
+     * the replay lands correctly at a zoom meant for a board. Cleared after one replay: this
+     * answers the aim that was taken for THIS world, and a later drag or a council row is the
+     * player's own and must not be undone by the next rebuild. */
+    if (R._aim) {
+      const a = R._aim;
+      R.applyZoom();
+      R.lookAt(a.x, a.y);
+      R._aim = null;
+    }
   }
 
   function buildCity(view, viewer, pi) {
