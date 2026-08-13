@@ -303,8 +303,8 @@ the targets in `DESIGN_PRINCIPLES.md`. No stage begins before the previous is gr
 | 6 | The mode: a map screen, enter a region, march, save and resume | **shipped — playable** | — |
 | 5c | Seamless border rendering (the neighbour drawn across the seam) | open | |
 | 6b | Lords as a countable resource, and the walk as the war's ending | **shipped** | |
-| 7 | LAN over the realm | open, severable | |
-| 7 | LAN over the realm | severable | |
+| 7 | LAN over the realm | **shipped** | |
+| 8 | A conquest takes an OATH, not a deed: `pl.realm`, a per-city economy under a sworn lord, shared sight, colour by banner | **shipped — playable** | its own run |
 
 Stages 1, 3 and 4 each ship something playable on their own. That is the mitigation for the
 size of this: if the realm is never finished, truces, occupation and the quiet tick are still in
@@ -324,3 +324,35 @@ the game.
   is the case to measure early.
 - **Scope.** Seven stages, two new files, `world.js` and `game.js` substantially changed. This is
   a version-defining change, not a patch.
+
+## 13. What stage 8 changed, and why it belongs in this record
+
+The plan above got the country onto one map and the cities onto their own footings, and then
+conquest undid the second half of that. `world.players` has one entry per city from the day
+`buildCountry` shipped — a purse, Gates, halls, crews and companies apiece — and `holdCities`
+transferred `city.owner` to the taker, which dissolved the loser's economy into a flag: the
+beaten lord kept a treasury he could not spend, his works stood inert in somebody else's court
+forever refusing their masons the ground, and the winner got a name on the map with no economy
+under it. 'Once I claim a city, how do I assume control of it?' was answered twice in this
+repo's history and both answers were about giving the TAKER more (a skirt of writ, then a
+steward brain); the third answer is that the city already had a lord who knew how to run it.
+
+So conquest moves **allegiance**: `pl.realm`, a broken court back to its own lord under the
+breaker's banner, `World.foe` asking the realm, `realmCities` for the brake and for winning and
+losing, and one shared sight per banner. The parts of this plan that were about structure —
+`world.rules`, `foe` as the only spelling, cities first-class, yield/take/raze, the quiet tick —
+all survived it untouched, which is the second time that has been true and is the argument for
+the staging discipline this document is kept for.
+
+Two things were DELETED rather than extended, and both had become traps:
+
+- **`{c:'seat'}` and `pl.seat`.** A player who held several cities needed a capital, and the
+  field that named it also moved that lord's WRIT — harmless while a lord's cities were all his,
+  wrong the moment a court has its own lord. A lord holds exactly one city now, so the question
+  has no second answer. Which of his sworn lords the PLAYER is driving is a client choice
+  (`game.hand`, on `realm.helm`): it changes who issues an order, never who owns what, so it has
+  no business in a snapshot.
+- **`AI.steward`.** Seventy lines of a thinner brain, written because a conquered city had no
+  lord. It has one again, already running the full doctrine — so the player's instruction is a
+  parameter to THAT (`step(world, me, issue, dt, order)`), not a second driver fighting it for
+  the same company's standard. The five words are unchanged: hold, gates, walls, attack, support.

@@ -3741,11 +3741,15 @@
         else if (def.spawns) {
           const bco = b.co ? coOf(world, pi, b.co) : null;
           /* A HALL MUSTERS NOBODY WHILE ITS COMPANY'S CITY IS OUT OF ITS OWNER'S HANDS —
-           * the pocket rule's brake. Taking a court quiets its garrisons' halls without
-           * evaporating the men (the prototype killed them; a game must not — it erases the
-           * relieving counterattack), so a cut-off army is finite and a relief is worth
-           * marching. A YIELDED court (owner -1, which `foe` reads as Chaos) is quiet too:
-           * a city with no throne pays no muster. */
+           * the pocket rule's brake, and what it now covers is a court BROKEN and not yet
+           * sworn: `owner` is -1, which `foe` reads as Chaos, and a city with no throne pays
+           * no muster. So a garrison cut off by a siege is finite while the siege lasts and a
+           * relief is worth marching, and the men are never evaporated (the prototype killed
+           * them; a game must not — it erases the relieving counterattack). It stops the tick
+           * the court swears, because from then on the city has a lord again — his own, now
+           * flying somebody else's banner. It still covers the other case honestly: a hall
+           * re-homed by `{c:'assign'}` to a company of a city that is not of its owner's
+           * banner is a hall behind enemy lines, and it is quiet. */
           const occupied = world.rules.reach && bco && bco.city != null &&
             foe(world, pi, world.cities[bco.city].owner);
           if (pl.musterPaused || (bco && bco.paused) || occupied) { b.cd = Math.max(b.cd, 0.5); continue; }

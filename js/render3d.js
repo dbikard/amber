@@ -1657,6 +1657,12 @@
   /* test handle: the Seat as the renderer is actually drawing it. "Is the throne standing?"
    * is not answerable from outside without reaching into the scene graph, and the one bug
    * this has had was a tower drawn toppled while the sim said it was at full health. */
+  /* test handle: the colour a Seat is actually WEARING, so a suite can prove a court that
+   * changes hands re-dresses rather than trusting that it was asked to */
+  R.debugSeatTint = (pi) => {
+    const g = cityObjs && cityObjs[pi];
+    return g && g.tint != null ? '#' + g.tint.toString(16).padStart(6, '0') : null;
+  };
   R.debugSeatTower = (pi) => {
     const g = cityObjs && cityObjs[pi];
     if (!g || !g.tower) return null;

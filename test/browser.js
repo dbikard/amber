@@ -145,10 +145,29 @@ async function match(browser, base, renderer) {
 
 (async () => {
   const pw = loadPlaywright();
-  if (!pw) { console.log('\n  browser suite SKIPPED — Playwright not installed\n'); process.exit(0); }
+  if (!pw) { console.log('\n  browser suite SKIPPED — Playwright not installed\n'); return; }
   let browser;
-  try { browser = await pw.chromium.launch(); }
-  catch (e) { console.log('\n  browser suite SKIPPED — no Chromium (' + e.message.split('\n')[0] + ')\n'); process.exit(0); }
+  /* A SKIP IS A LIE UNTIL IT HAS TRIED EVERYTHING. This suite skipped itself cleanly on a box
+   * that had a perfectly good Chromium installed: Playwright resolves a headless launch to
+   * `chromium_headless_shell-<rev>` pinned to the LIBRARY's revision, so a library newer than
+   * the browsers on disk finds nothing and throws — and the skip line read like a machine
+   * without a browser rather than a version mismatch. The whole browser half of the suite then
+   * reported green by reporting nothing, which is exactly the failure the development note at
+   * the top of CLAUDE.md is about. So the fallbacks are tried in order and the skip line, when
+   * it comes, names every one that failed. */
+  const bin = process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers';
+  const tries = [
+    ['default', {}],
+    ['bundled chromium', { executablePath: path.join(bin, 'chromium') }],
+    ['channel:chromium', { channel: 'chromium' }]
+  ];
+  const why = [];
+  for (const [name, opts] of tries) {
+    if (opts.executablePath && !fs.existsSync(opts.executablePath)) { why.push(name + ': absent'); continue; }
+    try { browser = await pw.chromium.launch(opts); break; }
+    catch (e) { why.push(name + ': ' + e.message.split('\n')[0]); }
+  }
+  if (!browser) { console.log('\n  browser suite SKIPPED — no Chromium\n    ' + why.join('\n    ') + '\n'); return; }
   const srv = await serve();
   const base = `http://127.0.0.1:${srv.address().port}`;
 
@@ -4554,6 +4573,130 @@ async function match(browser, base, renderer) {
     ok('the world runs under the real loop', ran.t > 1.0, `${ran.t.toFixed(1)}s passed`);
     ok('an order inside the reach is taken', ran.near === true, JSON.stringify(ran));
     if (ran.out) ok('...and AMBER is beyond an opening company\'s', ran.far === 'reach', ran.far);
+
+    /* ---- THE GROUND YOU STAND ON IS THE GROUND YOU SEE ----
+     * Everything in the world is placed at `R.groundH` — every man, every work, every pool,
+     * every ring, and the painterly detail tiles a country is painted with. It answered for
+     * the raw elevation field while the ground MESH is a PlaneGeometry capped at 180 segments,
+     * so the two disagreed by up to 21 units on a country. Nothing showed it on a board,
+     * because nothing stands between the eye and the ground there; on a country the detail
+     * tiles are the same field sampled FINER, rose off the base by exactly that error, and
+     * were lifted 3.0 units clear to stop it poking through — which buried every spring's pool
+     * (water sits 1.5 up) and every site ring in the country.
+     * Asked of the geometry itself, by raycast, which is the only witness that cannot be
+     * wrong: three hundred points against the mesh the renderer actually built. On the old
+     * `groundH` this reports metres. */
+    const lie = await pg.evaluate(() => {
+      const R = window.Render, THREE = window.THREE, w = window.Game.game.world;
+      const sc = R.debugScene().scene;
+      let ground = null;
+      sc.traverse((o) => {
+        if (o.geometry && o.geometry.type === 'PlaneGeometry' &&
+            o.geometry.attributes.position.count > 20000 &&
+            (!ground || o.geometry.attributes.position.count > ground.geometry.attributes.position.count))
+          ground = o;
+      });
+      if (!ground) return { err: 'no ground mesh' };
+      const rc = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
+      /* a fixed lattice, not random: a failure has to name the same points twice */
+      let worst = 0, hits = 0, at = null;
+      for (let i = 1; i < 18; i++) for (let j = 1; j < 18; j++) {
+        const x = (i / 18) * w.mapW, z = (j / 18) * w.mapH;
+        rc.set(new THREE.Vector3(x, 5000, z), down);
+        const hit = rc.intersectObject(ground, false);
+        if (!hit.length) continue;
+        hits++;
+        const err = Math.abs(R.groundH(x, z) - hit[0].point.y);
+        if (err > worst) { worst = err; at = [Math.round(x), Math.round(z)]; }
+      }
+      return { hits, worst: +worst.toFixed(3), at };
+    });
+    ok('groundH answers for the ground that is actually drawn',
+       !lie.err && lie.hits > 200 && lie.worst < 0.05,
+       lie.err || `worst ${lie.worst} at ${lie.at} over ${lie.hits} raycasts`);
+    /* ...AND THE DETAIL TILES LIE ON IT, rather than over the top of everything standing on
+     * it. One tile's vertices against the same answer: a lift big enough to hide a pool is a
+     * lift this line reports. */
+    const tileLift = await pg.evaluate(() => {
+      const R = window.Render;
+      const sc = R.debugScene().scene;
+      const tiles = [];
+      sc.traverse((o) => {
+        if (o.geometry && o.geometry.type === 'PlaneGeometry' && o.material && o.material.map &&
+            o.geometry.attributes.position.count > 100 &&
+            o.geometry.attributes.position.count < 20000) tiles.push(o);
+      });
+      if (!tiles.length) return { err: 'no detail tile resident' };
+      const pos = tiles[0].geometry.attributes.position;
+      let worst = 0;
+      for (let i = 0; i < pos.count; i++)
+        worst = Math.max(worst, Math.abs(pos.getY(i) - R.groundH(pos.getX(i), pos.getZ(i))));
+      return { tiles: tiles.length, worst: +worst.toFixed(3), verts: pos.count };
+    });
+    ok('a painterly tile lies on the ground, not over it',
+       !tileLift.err && tileLift.worst < 0.5,
+       tileLift.err || `worst ${tileLift.worst} over ${tileLift.verts} vertices`);
+    /* AND THE SPRINGS ARE THEREFORE DRAWN. The symptom the two lines above are really about:
+     * a country's springs looked like holes in the earth because their pools were under the
+     * tiles. Asked of the scene — the lip and the water, at the site, above the ground. */
+    const pool = await pg.evaluate(() => {
+      const R = window.Render, w = window.Game.game.world;
+      const sc = R.debugScene().scene;
+      const s = w.map.sites.find((q) => q.kind === 'node');
+      if (!s) return { err: 'no spring' };
+      let lip = 0, water = 0;
+      sc.traverse((o) => {
+        if (!o.geometry || !o.geometry.attributes.position) return;
+        if (o.geometry.attributes.position.count !== 36) return;
+        o.updateWorldMatrix(true, false);
+        const e = o.matrixWorld.elements;
+        if (Math.hypot(e[12] - s.x, e[14] - s.y) > 70) return;
+        const above = e[13] - R.groundH(s.x, s.y);
+        if (o.material.type === 'MeshLambertMaterial' && above > 0) lip++;
+        if (o.material.type === 'MeshBasicMaterial' && above > 0) water++;
+      });
+      return { name: s.name, lip, water };
+    });
+    ok('a country\'s spring has its pool, standing clear of the ground',
+       !pool.err && pool.lip >= 1 && pool.water >= 1,
+       pool.err || `${pool.lip} lip / ${pool.water} water at ${pool.name}`);
+
+    /* ---- AND THE MAP SAYS WHOSE COURT IS WHOSE ----
+     * A country seats sixteen and the seat palette had four, so from the fifth lord on every
+     * banner came out one crimson — an ally at terms, a neutral and the army marching on you
+     * were the same colour. Colour is by REALM now. Swear a court and its Seat re-dresses. */
+    const banners = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, g = window.Game.game, w = g.world;
+      const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+      const mine = hex(R.tintOf(0, 0));
+      const before = hex(R.tintOf(5, 0));
+      const beforeTower = (R.debugSeatTint ? R.debugSeatTint(5) : null);
+      w.players[5].realm = 0;                       // city 5's lord swears
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      await paint(); await paint();
+      const after = hex(R.tintOf(5, 0));
+      const afterTower = (R.debugSeatTint ? R.debugSeatTint(5) : null);
+      w.players[5].realm = 5;
+      /* two lords sworn to nobody share the neutral — sixteen colours is not a language */
+      const otherNeutral = hex(R.tintOf(7, 0));
+      return { mine, before, after, beforeTower, afterTower, otherNeutral,
+               heirs: w.heirs.length,
+               distinct: new Set(w.heirs.map((h) => hex(R.tintOf(h, 0)))).size };
+    });
+    ok('an unaligned lord is not painted as a rival heir',
+       banners.before !== banners.mine, JSON.stringify(banners));
+    ok('...and a court that swears turns your colour on the map',
+       banners.after === banners.mine, JSON.stringify(banners));
+    ok('...and the Seat itself re-dresses with it',
+       banners.beforeTower !== banners.afterTower &&
+       banners.afterTower === banners.mine, JSON.stringify(banners));
+    /* one colour per CONTENDING banner, however many contend — the dev rig crowns only the
+     * viewer (`heirs: [0]`), a war crowns three, and the rule is the same either way */
+    ok('...while every contending banner keeps a colour of its own',
+       banners.distinct === banners.heirs, JSON.stringify(banners));
+    ok('...and every lord sworn to nobody shares the one neutral',
+       banners.otherNeutral === banners.before, JSON.stringify(banners));
+
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }
@@ -4602,5 +4745,8 @@ async function match(browser, base, renderer) {
 
   await browser.close();
   srv.close();
-  process.exit(report('browser'));
-})().catch((e) => { console.error(e); process.exit(1); });
+  /* NOT `process.exit` — see the note at the foot of test/headless.js: with stdout piped (the
+   * runner captures both suites so their tallies do not interleave) an exit drops whatever is
+   * still queued, and the tally is the largest thing this file writes. */
+  process.exitCode = report('browser');
+})().catch((e) => { console.error(e); process.exitCode = 1; });

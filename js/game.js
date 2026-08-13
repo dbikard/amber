@@ -535,7 +535,9 @@
     if (h == null || !w || !w.players || !w.players[h]) return game.viewer;
     return World.realmOf(w, h) === World.realmOf(w, game.viewer) ? h : game.viewer;
   }
-  game.hand = hand;
+  /* named for the reader as well as the caller: `game.handOf()` is the LORD, `helm.hand` is
+   * the city index it was chosen from. Exported so a suite can ask whose hand is on the game. */
+  game.handOf = hand;
   function issue(cmd) {
     if (game.mode === 'guest') {
       /* the lord this order is FOR rides with it: the host checks he is of the sender's realm
@@ -754,7 +756,13 @@
 
   /* ---------------- event routing (banners + canvas fx; fog respected) ---------------- */
   function routeEvents(evs, view) {
-    const seen = evs.filter((ev) => ev.pi === game.viewer || ev.x == null || !view.see || view.see(ev.x, ev.y));
+    /* WHOSE SIDE THIS HAPPENED ON. Every line below used to ask `ev.pi === game.viewer`, which
+     * in a war is the wrong question about half the events on the board: a court taken by a
+     * lord sworn to you is taken by YOU, and one of his yielding is one of yours. `ours0` is
+     * the seat itself, for the one line that has to tell your own hand from a vassal's. */
+    const ours0 = (pi) => pi === game.viewer;
+    const ours = (pi) => pi >= 0 && World.realmOf(view, pi) === World.realmOf(view, game.viewer);
+    const seen = evs.filter((ev) => ours(ev.pi) || ev.x == null || !view.see || view.see(ev.x, ev.y));
     Render.addEvents(seen, view, game.viewer);
     for (const ev of seen) {
       /* A RIVAL ON THE PATTERN GETS THE KNELL, not a banner. Your own walk stays a banner —
@@ -762,7 +770,9 @@
        * one thing that takes the throne without ever coming near you, and being told once in
        * the same corner as the weather is not being told. */
       if (ev.e === 'walk' || (ev.e === 'pattern' && ev.idx > 0)) {
-        const mine = ev.pi === game.viewer;
+        /* the walk is the BANNER'S: under `onePattern` the man on the lines is whichever lord
+         * holds AMBER, and in a war that is usually one sworn to you */
+        const mine = ours(ev.pi);
         const at = ev.e === 'walk' ? 0 : C.PATTERN_ALERTS[ev.idx].at;
         const msg = ev.e === 'walk' ? ' has set foot upon the Pattern!' : C.PATTERN_ALERTS[ev.idx].msg;
         if (mine) UI.banner('You' + msg.replace(' has ', ' have '), 'alert');
@@ -781,23 +791,28 @@
        * and the start of another (the court is open and anyone may walk into it), a city taken
        * is the map redrawn, and one thrown down is ground that will never be anybody's again.
        * All three are told from whose side of it the viewer is on. */
-      else if (ev.e === 'yield') UI.banner(ev.pi === game.viewer
-        ? 'YOUR Seat has yielded — its court is open to anyone who can hold it'
-        : seatName(ev.pi) + '’s Seat yields — take the court and it is yours', ev.pi === game.viewer ? 'warn' : 'alert');
-      else if (ev.e === 'taken') UI.banner(ev.pi === game.viewer
-        ? 'The city is YOURS — raise a hall in its court, and its whole reach answers to you'
-        : seatName(ev.pi) + ' takes the city', ev.pi === game.viewer ? 'alert' : 'warn');
-      else if (ev.e === 'razed') UI.banner(ev.pi === game.viewer
+      /* MINE IS THE BANNER'S, on all three. A court taken by a lord sworn to you is taken by
+       * YOU, and a court of his that yields is one of yours yielding — reading these off the
+       * seat index called your own vassal's conquest an enemy's and cried about the wrong
+       * throne. `ours` is the same question the city sheet and the minimap ask. */
+      else if (ev.e === 'yield') UI.banner(ours(ev.pi)
+        ? seatName(ev.pi) + '’s Seat has yielded — its court is open to anyone who can hold it'
+        : seatName(ev.pi) + '’s Seat yields — take the court and it is yours', ours(ev.pi) ? 'warn' : 'alert');
+      else if (ev.e === 'taken') UI.banner(ours(ev.pi)
+        ? (ev.lord != null && !ours0(ev.lord) ? seatName(ev.lord) + ' swears to you — his city, his purse and his men are yours'
+                                              : 'The city is YOURS')
+        : seatName(ev.pi) + ' takes the city', ours(ev.pi) ? 'alert' : 'warn');
+      else if (ev.e === 'razed') UI.banner(ours(ev.pi)
         ? 'You throw the city down — it will be nobody’s now'
-        : seatName(ev.pi) + ' throws the city down', ev.pi === game.viewer ? '' : 'warn');
+        : seatName(ev.pi) + ' throws the city down', ours(ev.pi) ? '' : 'warn');
       /* THE REFUSAL MUST SPEAK LOUDEST OF ALL: the player did everything right — broke the
        * city, held the court, waited out the claim — and the brake said no. Silent, it reads
        * as a bug ('I don't understand how to claim a city I conquered' — reported from play,
        * because this event was emitted and never routed). */
-      else if (ev.e === 'refused' && ev.pi === game.viewer)
+      else if (ev.e === 'refused' && ours(ev.pi))
         UI.banner('The court will not swear to you — you have no lord to hold it. Take a city from an HEIR and his lord comes with it', 'warn');
-      else if (ev.e === 'offer' && ev.pi !== game.viewer) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
-      else if (ev.e === 'pact' && ev.pi !== game.viewer) {
+      else if (ev.e === 'offer' && !ours(ev.pi)) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
+      else if (ev.e === 'pact' && !ours(ev.pi)) {
         /* a pact between two OTHER heirs is public and is the most important thing on the board
          * for the seat left out of it, so it is named rather than skipped */
         const third = ev.p !== game.viewer;
@@ -808,8 +823,8 @@
       }
       else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner('Chaos tears open a rift in the black road', 'chaos'); }
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
-      else if (ev.e === 'storm' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
-      else if (ev.e === 'trump' && ev.pi !== game.viewer) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
+      else if (ev.e === 'storm' && !ours(ev.pi)) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
+      else if (ev.e === 'trump' && !ours(ev.pi)) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
       /* NO BANNER FOR THE MUSTER VALVE EITHER. It is a STATE, and a state has a readout: the
        * essence rate carries ⏸ for as long as the realm is quiet, and a company's own chip
        * goes `quiet` for as long as that standard is. A banner says it once, for 3.4 seconds,
@@ -824,7 +839,7 @@
        * It was worse than redundant: the Recall clears EVERY company's rally, so a four-company
        * realm emitted four of these, and the corner stack holds three — the useful line was
        * shoved out by the echoes of its own order. */
-      else if (ev.e === 'raze') UI.banner(ev.pi === game.viewer ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ev.pi === game.viewer ? 'warn' : '');
+      else if (ev.e === 'raze') UI.banner(ours(ev.pi) ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ours(ev.pi) ? 'warn' : '');
       /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
        * read exactly like a rival's assault — and a player watching for the rival never saw
        * the black road taking three quarters of their army. */
@@ -836,8 +851,9 @@
        * used neither: now it names the WORK when the trouble is out in Shadow, and keeps the
        * old cry for the one case that deserves it — something standing on your own court. */
       else if (ev.e === 'hurtcity') {
-        if (ev.pi !== game.viewer) continue;
-        const c = view.map.sites[view.map.cities[game.viewer]];
+        if (!ours(ev.pi)) continue;
+        /* the court that is actually being scratched — his, which in a war may be a vassal's */
+        const c = view.map.sites[view.map.cities[ev.pi]];
         const home = c && ev.x != null && Math.hypot(ev.x - c.x, ev.y - c.y) < C.CITY.r;
         const what = (C.BUILDINGS[ev.bt] || {}).name || 'works';
         const who = ev.by === C.CHAOS_ID ? 'Chaos'
@@ -847,10 +863,10 @@
         else UI.banner(who ? who + ' is at your ' + what + '!' : 'Your ' + what + ' is under attack!', cls);
       }
       /* the Shrine falling is the single biggest thing an assault can do — say what it cost */
-      else if (ev.e === 'shrinefell') UI.banner(ev.pi === game.viewer
+      else if (ev.e === 'shrinefell') UI.banner(ours(ev.pi)
         ? '✴ Your Shrine is thrown down — the Pattern lets go of you (' + Math.round(ev.pattern) + '%)'
         : '✴ ' + game.names[ev.pi] + ' is torn off the Pattern — ' + Math.round(ev.pattern) + '% left',
-        ev.pi === game.viewer ? 'warn' : 'alert')
+        ours(ev.pi) ? 'warn' : 'alert')
       else if (ev.e === 'fall' && Render.seatFall) Render.seatFall(ev.pi);
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
     }

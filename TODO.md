@@ -672,6 +672,70 @@ heir, so there is no knob left to turn: **making the top footing harder has to b
 work.** The findings are itemised under "The heirs play one army and one and a half orders"
 below.
 
+- [x] **A CONQUEST TAKES AN OATH, NOT A DEED — the per-city economy under a sworn lord
+      (v0.10.x).** From play: *"I would actually split basically everything by city, shadow
+      gates, essence etc. This way when we delegate management of a city that lord has a real
+      economy to manage as a usual player/bot. What should be shared is the sight of the map,
+      and of course that troops don't attack each other."* The load-bearing observation is that
+      HALF of it already existed and conquest was destroying it: a country builds one player per
+      city, each with its own purse, Gates, halls, crews and companies, and `holdCities` moved
+      `city.owner` to the taker — so the loser's economy became a treasury he could not spend
+      and works standing inert in somebody else's court forever, refusing that court's own
+      masons the ground. So the change is not "split the economy"; it is **stop merging it.**
+      - **`pl.realm`** names the banner a lord answers to (his own index at genesis, so a board
+        is today's game to the byte). A broken court comes back to its OWN lord with his realm
+        set to the breaker's: he keeps his purse, his Gates, his halls, his crews, his surviving
+        men and his whole writ, and goes on running them with the same doctrine he ran them with
+        as an enemy. `CLAIM.sworn` is deleted with the absentee landlord it was rationing.
+      - **`World.foe` asks the realm**, before the pact is even considered — so a sworn lord's
+        men fight for you and cannot be struck by you. `realmOf`/`realmMembers`/`realmCities` are
+        the three answers and nothing spells them itself. The 46-owner-comparison hazard is a
+        THREE-way question now: my realm's (sight, terms, hostility), my city's (purse, crews,
+        writ, formations, wall gates, muster cap), and may-I-strike-this.
+      - **A realm shares its SIGHT and nothing else.** One mask cast per banner and the object
+        shared — sixteen boards of cells cast four times over for four identical answers was the
+        alternative. Memory stays each lord's own and converges, because it rides the wire and
+        the save per seat.
+      - **Terms are sworn between banners** (`pactOn` and `{c:'pact'}` both normalise to the
+        founder), a war can now be LOST (your banner holds no city) and WON by absorbing the
+        last rival banner (`holdCities`, only where `endOnSeat` is off so toppling still owns
+        that rule everywhere else).
+      - **`AI.steward` and `{c:'seat'}` are DELETED, not extended.** A sworn lord already runs
+        the full doctrine, so the player's instruction is a PARAMETER to it
+        (`step(world, me, issue, dt, order)` — hold/gates/walls/attack/support) rather than a
+        second, thinner brain fighting it for the same company's standard. And a lord holds one
+        city, so "which court do I rule from" has no second answer; `pl.seat` pointed a lord's
+        WRIT at a vassal's court. Which sworn lord the PLAYER drives is `game.hand` — client
+        state on `realm.helm`, never in the world — with `Render.hand` telling the renderer the
+        same thing: the writ, the reach ring, the halo, the minimap pennants and "did I tap my
+        own men" answer for the hand; the veil, the camera and the colours for the viewer.
+      - **THE MAP SAYS WHOSE.** Four seat colours for a sixteen-seat table meant every banner
+        from the fifth lord on came out one crimson: ally, neutral and attacker alike, and a
+        court that swore looked no different the tick after. Colour is by banner now
+        (`REALM_TINT` per contender, `NEUTRAL_TINT` for the unaligned), `Render.tintOf` is the
+        one answer and `UI.seatColor` asks IT. Four sites keyed on the seat an heir was BORN to
+        now key on the holder: the Seat's tower re-dresses, the ground bake repaints, the
+        minimap mark follows, and the castle bar — which hung over the born city while drawing
+        the hp of the seat its heir currently ruled FROM, two different cities — belongs to the
+        city. Also fixed: the city sheet read `players[1 - viewer]`, duel arithmetic that told
+        you seat 1's business about every court in a sixteen-seat war.
+      - **AND A COUNTRY'S SPRINGS WERE BURIED UNDER ITS OWN GROUND.** Reported from play with
+        two screenshots — a spring is a pool on a board and a dark hole in a war — and the cause
+        was the thing the report guessed at: a second code path for the big case. `R.groundH` is
+        where EVERYTHING is placed, and it answered for the raw elevation field while the ground
+        mesh is a `PlaneGeometry` capped at 180 segments. Measured by raycasting the real
+        geometry: up to 8.75 units of disagreement on a board and 21.5 on a country. A board hid
+        it because nothing stands between the eye and the ground there; a country has the
+        painterly detail tiles, which are the same field sampled FINER, rose off the base by
+        exactly that error, and were therefore lifted 3.0 units clear — swallowing every pool
+        (water sits 1.5 up), every site ring and the feet of the props. `groundH` interpolates
+        the drawn mesh's own lattice with its own triangulation now (the diagonal runs
+        `(ix, iz+1)`–`(ix+1, iz)`; verified by raycast, 0.0002 against 2.35 for the bilinear it
+        did before), so a tile lands exactly ON the base and needs no lift. Three browser tests
+        hold it. *The burial hypothesis was measured and DISPROVED first* — the mesh-vs-field
+        error at spring sites is 0.1 units, not enough to bury anything — which is what sent the
+        search to the tiles instead of to a plausible wrong fix.
+
 - [x] **THE REACH WAR — the fourth mode remade on one land (v0.9.70–75).** The region realm
       below shipped whole and was then superseded: the reach prototype (`proto/reach`,
       `bdec60c`) showed the rule that bounds an order is the rule that makes a continuous
@@ -731,10 +795,10 @@ below.
       barely covered a neighbour's court (each city's reach is now sized from its OWN
       nearest neighbour ×1.6 capped, so every city reaches its nearest rival's springs —
       economic raiding is the anti-turtle engine). Plus THE HELM: tap a held court to TAKE
-      COMMAND there (`{c:'seat'}`, host-authoritative; a steward is appointed over the seat
-      just left) or to give its steward an order — hold, raise Gates, wall up, attack a
-      named neighbour, support a named city (`AI.steward`, the lord's brain issuing
-      ordinary commands as the player; rides the save as `realm.helm`).
+      COMMAND there or to give its lord an order — hold, raise Gates, wall up, attack a
+      named neighbour, support a named city (rides the save as `realm.helm`). *Both halves of
+      the helm were rebuilt by the entry above; what is described here is the shape they had
+      when the first playtest asked for them.*
       cities, truces that can be broken, conquest that yields ground rather than rubble, and one
       Pattern in one city. The load-bearing decision, taken from measurement rather than taste:
       **a region IS today's board** — a cold flow field is dead linear in area (6.3ms → 59ms at

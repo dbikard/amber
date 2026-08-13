@@ -211,6 +211,15 @@ and is remembered as a ghost after — their Seat itself is hidden until somebod
 it. Units and storms are seen or absent; castle HP is public. Starting a Pattern walk
 **reveals the shrine and its progress** — power like that resonates through Shadow.
 
+**A REALM SEES WITH ONE PAIR OF EYES.** In the Reach War a conquest takes an oath rather than a
+deed: the beaten lord keeps his city, his purse, his halls and his men and flies your banner, and
+the one thing sworn lords genuinely SHARE is the map. A liege who could not see what his own
+marches can see would have to ride to every border himself to find out what is happening, which
+is the opposite of the point of swearing a lord. Everything else stays the city's — his treasury
+pays for his own halls, his crews raise his own stone, his companies answer his own reach — so a
+realm is a chain of command and not a merger. A truce shares nothing at all: two heirs at terms
+still see nothing of each other's country, because peace is not alliance.
+
 ## Art Direction
 
 **Painterly Amber fantasy**, rendered procedurally: the golden city glow against the void,

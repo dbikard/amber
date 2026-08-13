@@ -7941,4 +7941,10 @@ if (QUICK_RUN) {
   console.log(`\x1b[33mQUICK RUN — PARTIAL: skipped ${skipped.length} suite(s): ${skipped.join(' · ')}\x1b[0m`);
   console.log(`\x1b[33mthe full \`node test/headless.js\` (no flag) is the gate before any push\x1b[0m`);
 }
-process.exit(bad);
+/* NOT `process.exit`. When this suite's stdout is a PIPE rather than a terminal — which it is
+ * whenever `test/run.js` captures it to interleave two suites cleanly — a write is queued
+ * rather than flushed, and `process.exit` throws away whatever is still in the queue. That
+ * silently truncated the tally: five hundred rows printed, the "N/N passing" line and the
+ * provenance line gone, and the runner's exit code the only thing left saying anything. Set
+ * the code and let the process end on its own; the queue drains first. */
+process.exitCode = bad;

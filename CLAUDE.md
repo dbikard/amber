@@ -35,7 +35,8 @@ js/const.js     — content tables: BUILDINGS, UNITS, POWERS, CHAOS, HEIRS (head
 js/worldgen.js  — the land made new each match: noise → terrain → springs/Seats (headless-safe)
 js/nav.js       — movement: cost grid + per-(goal, owner) Dijkstra flow fields (headless-safe)
 js/world.js     — sim core: createWorld / applyCommand / update(world, dt) (headless-safe)
-js/ai.js        — bot policies: personalities + random/greedy baselines (headless-safe)
+js/ai.js        — bot policies: personalities + random/greedy/marcher/lord baselines. A lord's
+                  `step` takes his liege's standing ORDER as a parameter (headless-safe)
 js/terrain.js   — bakes the painted ground + shared writ-outline helpers (browser)
 js/render3d.js  — ALL drawing: Three.js, pitched camera; takes a "view" + viewer (ISOLATED)
 js/render_select.js — hands game.js the renderer, or null when the device has no WebGL
@@ -83,8 +84,10 @@ in order.
 2-4. `World.createWorld(seed, n)` and `WorldGen.build(seed, RNG, n)` take the count; two is a
 duel and behaves as it always did. Chaos is `CONST.CHAOS_ID = -1`, NOT a player index. In a
 free-for-all a toppled Seat eliminates that heir (`pl.out`) and the last standing wins; in a
-duel the first fall still ends it. You are always `SEAT_TINT[0]` (gold); rivals take the rest
-in seat order with the viewer removed from the line.
+duel the first fall still ends it. You are always gold; rivals take the rest in seat order with
+the viewer removed from the line (`SEAT_TINT`) — except in a war, where colour is by BANNER and
+not by seat (`REALM_TINT`; see "The map says whose"). `Render.tintOf` is the one answer to
+"whose colour is this" and the HUD asks it rather than keeping a palette of its own.
 
 **A MATCH CARRIES ITS RULES, AND `World.foe` IS THE ONLY SPELLING OF "MAY I STRIKE THIS".**
 `CONST.RULES` is the table of the few rules a MODE may change (`endOnSeat`, `occupy`, `truce`),
@@ -94,11 +97,13 @@ region be a world. Every default is today's game, and a suite asserts it.
 `World.foe(world, a, b)` answers hostility and `World.pactOn` answers peace; **a pact is two
 standing offers** (`pl.offers[j]`), sealed while both stand and broken the instant either is
 withdrawn — symmetric by construction, so two seats cannot disagree about it.
-The trap is that `js/world.js` carries 46 owner comparisons and they are **two different
+The trap is that `js/world.js` carries 46 owner comparisons and they are **three different
 questions wearing one spelling**: "is this MINE" (the muster cap, the wall roster, the crowd's
-cohesion, company assignment, vision, a heir's own ghosts) must NOT go through `foe` — a truce is
-not an alliance, so his men never join my formations, my Wardens never mend them, my walls never
-open to them and I see nothing he sees. Only "may I strike this" does. And it is guarded at the
+cohesion, company assignment, the purse, the crews, a heir's own ghosts) must NOT go through
+`foe` — a truce is not an alliance and neither is a chain of command, so neither a pact partner's
+men nor a sworn lord's join my formations, and my Wardens mend neither. "Is this my BANNER'S"
+(`World.realmOf` — hostility, terms, and the one thing sworn lords do share, SIGHT) is the
+second. Only "may I strike this" goes through `foe`. And it is guarded at the
 door damage comes through as well — `hurt` and `hurtBuilding` refuse a blow between heirs at
 peace outright, the same place the tower's shelter, the parapet's cover and the chains' amplifier
 are written, so a pass added later cannot forget to ask and a MISSED site is a no-op rather than
@@ -193,6 +198,35 @@ progress. AI reads only what a human could see (see `AI.view()`).
   `R.debugUnpatched()` walks `worldG` and names what escapes; "nothing in the world escapes
   the veil" asserts it is empty. The only things allowed out are meshes named `affordance` —
   the selection ring and the armed-company halo — which answer the PLAYER, not the land.
+- **THE GROUND YOU STAND ON IS THE GROUND YOU SEE.** `R.groundH` is where EVERYTHING is put —
+  every man, every work, every pool, every ring, and the painterly detail tiles a country is
+  painted with — so it must answer for the surface actually DRAWN. For years it sampled the raw
+  elevation field while the ground mesh is a `PlaneGeometry` capped at 180 segments; measured by
+  raycasting the real geometry, up to 8.75 units of disagreement on a board and 21.5 on a
+  country. A board hid it because nothing stands between the eye and the ground there. A country
+  has the detail tiles — the same field sampled FINER, so they rose off the base by exactly that
+  error and were lifted 3.0 units clear to stop it poking through, which then swallowed every
+  spring's pool (water sits 1.5 up), every site ring and the feet of the props. `groundH`
+  interpolates the drawn mesh's own lattice with its own triangulation now (Three splits each
+  quad on the diagonal from `(ix, iz+1)` to `(ix+1, iz)` — verified by raycast, 0.0002 error
+  against 2.35 for the bilinear it used to do), so a tile lands exactly ON the base. **The lesson
+  is the general one: a second code path for the big case is where the two grounds diverged, and
+  the fix was to make them one surface rather than to tune the gap.** Three browser tests hold
+  it — the raycast, a tile's vertices, and a country's spring having its pool.
+
+- **`node test/run.js` runs the two suites AT ONCE** — they contend for nothing (pure Node vs
+  Chromium on its own ephemeral port), so the wall clock was simply the sum of them. Each
+  child's output is buffered and printed whole as it finishes, because two `report()` tallies
+  interleaved is neither. `--serial` puts it back. Two traps were found doing this and both are
+  general: **a suite that skips itself is claiming something, and the claim has to be checked**
+  — `browser.js` skipped with "no Chromium" on a box with a perfectly good one, because
+  Playwright resolves a headless launch to `chromium_headless_shell-<rev>` pinned to the
+  library's revision, so the whole browser half reported green by reporting nothing; it tries
+  three ways now and the skip line names every one that failed. And **`process.exit` truncates a
+  piped stdout**: both suites ended with `process.exit(report(...))`, which was harmless while
+  they wrote to a terminal and silently ate the tally the moment the runner captured them.
+  `process.exitCode` and let the process end.
+
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page for input, camera, the writ, HUD layering, the back
@@ -410,10 +444,9 @@ regenerates the country from its seed and writes down only what was DONE (~7-100
 `amber_realm` v2; a v1 record loads as null and `REALM.lost` says so once). The lord brake lives
 IN the sim now (`holdCities` refuses the swear past `1 + pl.lords`; a lord is won only from a
 CONTENDER, `world.heirs`), as does the one Pattern (`placementError`: a Shrine only for AMBER's
-holder). A taken city spares its men — occupation quiets their halls instead (the pocket rule).
-Minor lords run the `lord` baseline (ai.js), which speaks ONLY rallies — the heirs' banner
-vocabulary is mute under the reach — and AMBER's holder builds the Shrine and walks, which is
-the war's clock. `?reach=SEED` dev-boots a country through the real renderer. A LAN table is
+holder). Every lord — sworn or not — runs the `lord` baseline (ai.js), whose whole vocabulary is
+rallies plus a few probed works, and AMBER's holder builds the Shrine and walks, which is the
+war's clock. `?reach=SEED` dev-boots a country through the real renderer. A LAN table is
 dealt INTO the host's war when one is open: the wire carries `{war: {seed}}` and nothing else
 of the country (a guest regenerates the ground from the seed; history rides the ordinary
 absolute snapshots), humans take the contender seats in join order, and the host's lords play
@@ -422,6 +455,67 @@ the rest.
 **The rules of a war**, all of them off in every other mode: `reach`, `occupy` (a Seat yields
 and the ground must be taken), `endOnSeat: 0` (dispossession, not death), `truce`, and
 `onePattern` (a Shrine may rise only in the Pattern's city, held).
+
+### A CONQUEST TAKES AN OATH, NOT A DEED
+
+**`players[i]` IS THE LORD OF `cities[i]`, PERMANENTLY, AND A CITY IS THE ECONOMIC UNIT.** That
+was always half-true — a country builds one player per city, each with its own purse, Gates,
+halls, crews and companies — and conquest DISSOLVED it: `city.owner` moved to the taker, the
+beaten lord kept a treasury he could no longer spend, and his works stood inert in the taker's
+new court forever, refusing the taker's own masons the ground. What a conquest won was a name
+on a map with no economy under it.
+
+What changes hands is **allegiance**. `pl.realm` names the banner a lord answers to (his own
+index at genesis, so a board is today's game to the byte); `holdCities` gives a taken court back
+to its own lord with `players[lord].realm` set to the breaker's; and he goes on running his own
+city with everything he had — purse, Gates, halls, crews, surviving men, his whole writ. There
+is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to ration.
+
+- **`World.foe` asks the REALM** — one banner, one side, before the pact is even considered. A
+  sworn lord's men fight for you and cannot be struck by you. `realmOf`, `realmMembers` and
+  `realmCities` are the three answers, and nothing spells them itself.
+- **The two scales must not be confused.** `citiesOf(w, pi)` is HIS city — one, or none while
+  his court lies yielded — and drives his writ, his gun, his companies. `realmCities(w, pi)` is
+  his BANNER'S, and drives the lord brake, the HUD's count, and winning and losing. The
+  46-owner-comparison hazard in the CLAUDE.md note above is now a THREE-way question: "my
+  realm's" (sight, hostility, terms), "my city's" (purse, crews, writ, formations, wall gates,
+  muster cap), and "may I strike this".
+- **A realm SHARES ITS SIGHT and nothing else.** `visionSources` unions the banner's sources and
+  `refreshVision` casts ONE mask per realm and shares the object (sixteen boards of cells cast
+  four times over for four identical answers was the alternative). Memory (`seen`, `explored`,
+  `ghosts`) stays each lord's own and converges, because it rides the wire and the save per seat.
+- **Terms are sworn between banners.** `pactOn` and the `{c:'pact'}` command both normalise to
+  the realm's founder, so a vassal cannot keep a private peace with the army besieging his liege.
+- **A war can be LOST** (`REALM.run.tick`: your banner holds no city) **and WON by absorption**
+  (`holdCities`: one banner left holding ground → `win(..., 'castle')`, only where `endOnSeat`
+  is off, so toppling still owns that rule everywhere else).
+- **There is no steward brain, and no `{c:'seat'}`.** The player's instruction to a sworn lord is
+  a PARAMETER to that lord's own doctrine — `AI.make().step(world, me, issue, dt, order)`, five
+  words: `hold`, `gates`, `walls`, `attack{target}`, `support{target}` — not a second, thinner
+  driver fighting it for the same company's standard. And a lord holds one city, so "which court
+  do I rule from" has no second answer; which of his sworn lords the PLAYER is hand-playing is
+  `game.hand` (client-side, on `realm.helm`, never in the world), because `pl.seat` pointed a
+  lord's WRIT at a vassal's court. `Render.hand` tells the renderer the same thing — the writ
+  outline, the reach ring, the armed halo, the minimap pennants and "did I tap my own men"
+  answer for the hand; the veil, the camera and the colours answer for the viewer.
+- **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
+  same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
+  for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.
+
+### THE MAP SAYS WHOSE
+
+Four seat colours answer a table of four. A war seats sixteen, so from the fifth lord on every
+banner came out the same crimson — an ally at terms, an unaligned neutral and the army marching
+on you were one colour, and a court that swore looked no different the tick after. Colour is by
+**banner**: `CONST.REALM_TINT` gives you gold and each contending heir (`world.heirs`) a colour
+of its own for the whole war, `CONST.NEUTRAL_TINT` is every lord sworn to nobody, Chaos is green.
+`Render.tintOf` is the one answer and `UI.seatColor` asks IT rather than spelling a second
+palette. Four sites keyed on the seat an heir was BORN to are keyed on the holder now: the Seat's
+tower re-dresses when a court changes hands (`redressCities`), the ground bake repaints
+(`Terrain.courtOwn`; the cheap base is redone and the painterly tiles near the court dropped),
+the minimap mark follows, and the castle bar — which used to hang over the born city while
+drawing the hp of the seat its heir currently ruled FROM, two different cities — belongs to the
+city and reads its own `hp`.
 
 ## Common Tasks
 

@@ -54,6 +54,14 @@ Color language is law: **gold = you**, **crimson = rival**, **sickly green = Cha
 **blue-white = the Pattern/Order**. Telegraphs before damage (storm gathers before it strikes,
 rifts tear before they spawn).
 
+**And in a war, colour answers WHOSE SIDE, not which seat.** A country seats sixteen and nobody
+holds sixteen colours in their head — so a lord's colour is his BANNER'S (`World.realmOf`): gold
+is yours however many lords have sworn to you, each contending heir keeps one of his own for the
+whole war, every lord sworn to nobody shares one dull neutral, and Chaos is still green. The rule
+this enforces is that **a court that changes hands must change colour on the same tick**, on the
+board and on the minimap alike: the growth of a realm is the only thing a glance at a war map is
+really asking about, and for one version it was the one thing that never moved.
+
 ### 6. AI plays fair
 Same fog, same prices, same cooldowns as a human — never map hacks, never a discount the
 player cannot have. An easier footing takes things AWAY from the heir; it never gives it
