@@ -4475,6 +4475,27 @@ async function match(browser, base, renderer) {
        `seed ${back.seed}, want ${mark.seed}`);
     ok('...with what was done still done', back.essence >= 4321 - 50 && back.essence < 6000,
        String(back.essence));
+    /* BEGINNING ANEW is its own smaller act: offered only while a war is saved, armed
+     * before it fires (one mistap must not erase many evenings), and it deals fresh ground */
+    await pg.evaluate(() => window.Game.toMenu());
+    await pg.waitForTimeout(150);
+    const offer = await pg.evaluate(() => {
+      const b = document.getElementById('realm-new');
+      return { shown: !b.classList.contains('hidden'), label: b.textContent };
+    });
+    ok('a saved war offers a fresh start beside the card', offer.shown, offer.label);
+    await pg.click('#realm-new');
+    const armed = await pg.evaluate(() =>
+      document.getElementById('realm-new').classList.contains('armed'));
+    ok('...armed on the first tap, not fired', armed === true);
+    const still = await pg.evaluate(() => window.Game.game.mode);
+    ok('...and the war still stands', still === null, String(still));
+    await pg.click('#realm-new');
+    await inMatchNow(pg);
+    const fresh = await pg.evaluate(() => ({ seed: window.Game.game.world.seed,
+                                             war: window.Game.game.war === true }));
+    ok('the second tap deals a NEW country', fresh.war && fresh.seed !== mark.seed,
+       `seed ${fresh.seed} vs old ${mark.seed}`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

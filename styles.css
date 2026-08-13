@@ -348,6 +348,8 @@ body {
   background: none; border: none; border-bottom: 1px solid #c9a44f44; padding: 2px 1px;
 }
 .mlink:active { color: #ffe9a8; }
+/* an armed abandonment reads as the warning it is */
+.mlink.armed { color: #ff9a9f; }
 /* an heir on the rivals screen: his name, how hard he is, and how he plays */
 .card.rival { grid-template-columns: 1fr auto; text-align: left; }
 .card.rival .c-name { font-size: 15px; }

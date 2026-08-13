@@ -39,6 +39,28 @@
     /* the Long War is one tap deep: the card resumes the saved war or begins one — the
      * ground IS the map now, so there is no screen between the menu and it */
     $('btn-realm').addEventListener('click', () => H.onRealm());
+    /* ...and beginning ANEW is its own smaller act, shown only while a war is saved, armed
+     * before it fires: a war played over many evenings must not die of one mistap */
+    let newArm = 0;
+    $('realm-new').addEventListener('click', () => {
+      const b = $('realm-new');
+      if (Date.now() - newArm < 3500) {
+        newArm = 0;
+        b.textContent = '⟲ Begin a new war';
+        b.classList.remove('armed');
+        H.onRealmNew();
+        return;
+      }
+      newArm = Date.now();
+      b.textContent = '⚠ The saved war will be LOST — tap again to begin anew';
+      b.classList.add('armed');
+      setTimeout(() => {
+        if (Date.now() - newArm >= 3400) {
+          b.textContent = '⟲ Begin a new war';
+          b.classList.remove('armed');
+        }
+      }, 3600);
+    });
     $('rivals-close').addEventListener('click', () => UI.screensClose());
     $('lan-close').addEventListener('click', () => UI.screensClose());
     $('btn-build').addEventListener('click', () => H.onBuildMenu());
@@ -123,6 +145,15 @@
      * across two wrapped lines — with the progress as a stray row of ticks underneath it. */
     $('campaign-chapter').textContent = campaignLabel || '';
     $('campaign-note').textContent = campaignNote || '';
+    /* the card RESUMES a saved war; abandoning one is a smaller act, offered only while
+     * there is a war to abandon, and it says which act the card will take */
+    const war = !!(global.REALM && global.REALM.saved && global.REALM.saved());
+    $('realm-new').classList.toggle('hidden', !war);
+    $('realm-new').textContent = '⟲ Begin a new war';
+    $('realm-new').classList.remove('armed');
+    $('realm-line').textContent = war
+      ? 'Your war waits where you put it down — one tap resumes it.'
+      : 'One land, sixteen thrones, one Pattern. Put it down and pick it up.';
     if (UI.paintFooting) UI.paintFooting();
     /* the match you WALKED OUT OF is often the one worth sending — a game that went badly
      * enough to abandon never reaches the end screen, so the chronicle is offered here too */
