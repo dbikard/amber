@@ -38,7 +38,11 @@
     5: ['#141d18', '#1d2a22'],   // forest floor
     6: ['#39352e', '#544d42'],   // hill
     7: ['#3a3340', '#5b5266'],   // crag
-    8: ['#4d4231', '#5f5340'],   // road: packed earth, warm against every ground it crosses
+    /* ROAD: laid stone. It was packed earth — a warm brown line — which is the right colour
+     * for a track and the wrong one for the highway between two Seats of Power. The cobbles
+     * themselves are painted on top (see the cobble pass); this is the mortar under them, kept
+     * warm enough to read against forest, meadow and crag alike. */
+    8: ['#4a4340', '#655c56'],
     9: ['#52402a', '#665237']    // bridge: timber over the water
   };
   const PAL_MAX = 9;
@@ -94,7 +98,7 @@
     const span = Math.max(1e-6, hi - lo);
     const gx0 = Math.max(0, Math.floor(RX0 / cw)), gx1 = Math.min(nav.W - 1, Math.floor((RX1 - 1) / cw));
     const gy0 = Math.max(0, Math.floor(RY0 / cw)), gy1 = Math.min(nav.H - 1, Math.floor((RY1 - 1) / cw));
-    const trees = [], rocks = [], waters = [];
+    const trees = [], rocks = [], waters = [], roads = [];
     for (let gy = gy0; gy <= gy1; gy++) {
       for (let gx = gx0; gx <= gx1; gx++) {
         const i = gy * nav.W + gx, t = nav.terra[i];
@@ -108,6 +112,7 @@
          * this replaces outright: a hash cannot fall out of step because it has no step */
         const h1 = cellHash(gx, gy, seed), h2 = cellHash(gy, gx, seed + 131), h3 = cellHash(gx + 7, gy + 3, seed + 977);
         if (t === T.WATER) waters.push([cx, cy, cw]);
+        else if (t === T.ROAD) roads.push([gx, gy]);
         else if (t === T.FOREST) {
           if (h1 < 0.72) trees.push([cx + (h2 - 0.5) * 14, cy + (h3 - 0.5) * 14, 7 + h1 * 8.3, h2]);
         } else if (t === T.CLIFF) {
@@ -176,57 +181,71 @@
      * the heart and pale at the shoal, and leaves a river light all the way across. That is the
      * right answer for both, from the geometry itself, with no rule about which is which. */
     if (waters.length && typeof g.filter === 'string') {
-      /* TWO canvases for the whole pass, not two per layer. This runs once per detail tile and
-       * a tile is ~1320² — minting four of those per bake is megabytes of churn a frame on the
-       * one device that cannot afford it. `shape` holds the raw mask and is painted ONCE;
-       * `wcv` is the scratch each layer blurs and colours it into. */
-      const shape = document.createElement('canvas');
-      shape.width = cv2.width; shape.height = cv2.height;
-      const sg = shape.getContext('2d');
-      sg.scale(px, px); sg.translate(-RX0, -RY0);
-      sg.fillStyle = '#fff';
-      /* the cells, whole and opaque — the mask is a SHAPE, and a shape has no alpha to add */
-      for (const [x, y, r] of waters) sg.fillRect(x - r / 2 - 0.6, y - r / 2 - 0.6, r + 1.2, r + 1.2);
-      const wcv = document.createElement('canvas');
-      wcv.width = cv2.width; wcv.height = cv2.height;
-      const wg = wcv.getContext('2d');
-      const layer = (blurPx, colour, alpha) => {
-        wg.setTransform(1, 0, 0, 1, 0, 0);
-        wg.clearRect(0, 0, wcv.width, wcv.height);
-        /* blur the shape into the scratch: the bank, and the reason a channel is a channel */
-        wg.filter = 'blur(' + blurPx + 'px)';
-        wg.drawImage(shape, 0, 0);
-        wg.filter = 'none';
-        /* colour the shape through itself, so the alpha is the mask's and nothing else */
-        wg.globalCompositeOperation = 'source-in';
-        wg.fillStyle = colour;
-        wg.fillRect(0, 0, wcv.width, wcv.height);
-        wg.globalCompositeOperation = 'source-over';
-        g.save();
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.globalAlpha = alpha;
-        g.drawImage(wcv, 0, 0);
-        g.restore();
-      };
-      /* AND NO BLUR MAY REACH PAST THE PAD. A tile is painted with `pad` of ground beyond its
-       * edge and cropped back, which is what makes two neighbours meet on identical pixels —
-       * a blur wider than the pad samples ground the neighbour tile painted differently, and
-       * the seam comes back. A Gaussian reaches about 1.5× its stated radius, so that is what
-       * is budgeted against. The full-land bake has no rect and no ceiling. */
-      const roof = rect ? (pad * px) / 1.5 : Infinity;
-      const soft = Math.min(roof / 3.4, Math.max(2.0, cw * px * 0.42));
-      /* THE BANK FIRST, so the water sits IN the ground rather than on it: a wide, weak wash of
-       * wet earth reaching further than the water does. Without it the body has a soft edge but
-       * the LAND has a hard one, and the eye reads a decal either way. */
-      layer(soft * 3.4, 'rgb(46,40,30)', 0.34);
-      layer(soft, 'rgb(26,58,84)', 0.90);          // the body, banks and all
-      layer(soft * 2.6, 'rgb(9,20,36)', 0.85);     // the deep, which only broad water reaches
+      /* ---- AND ONLY OVER ITS OWN EXTENT ----
+       * Every pass here used to allocate two canvases the size of the whole TILE and clear one
+       * of them three times over — 1320 square, five million pixel writes, paid in full for a
+       * channel crossing one corner. Measured on this box's software canvas: the tile bake went
+       * from 81ms to 199ms for the water alone, and the tile bake IS the hitch budget, one per
+       * frame while the camera moves. It was never the blur; it was the paperwork.
+       * So the scratch is the size of the WATER, not the size of the tile, and the transform
+       * carries world coordinates into it. */
+      const soft = Math.min(rect ? (pad * px) / (1.5 * 3.4) : Infinity,
+                            Math.max(2.0, cw * px * 0.42));
+      const M = soft * 3.4 * 1.6;      // the widest blur's reach, which bounds every layer
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [wx, wy, r] of waters) {
+        const ax = (wx - RX0) * px, ay = (wy - RY0) * px, hw = (r / 2 + 1) * px;
+        if (ax - hw < x0) x0 = ax - hw;
+        if (ay - hw < y0) y0 = ay - hw;
+        if (ax + hw > x1) x1 = ax + hw;
+        if (ay + hw > y1) y1 = ay + hw;
+      }
+      const bx = Math.max(0, Math.floor(x0 - M)), by = Math.max(0, Math.floor(y0 - M));
+      const bw = Math.min(cv2.width, Math.ceil(x1 + M)) - bx;
+      const bh = Math.min(cv2.height, Math.ceil(y1 + M)) - by;
+      if (bw > 0 && bh > 0) {
+        const shape = document.createElement('canvas');
+        shape.width = bw; shape.height = bh;
+        const sg = shape.getContext('2d');
+        /* world coordinates straight into the sub-canvas */
+        sg.setTransform(px, 0, 0, px, -RX0 * px - bx, -RY0 * px - by);
+        sg.fillStyle = '#fff';
+        /* the cells, whole and opaque — the mask is a SHAPE, and a shape has no alpha to add */
+        for (const [wx, wy, r] of waters) sg.fillRect(wx - r / 2 - 0.6, wy - r / 2 - 0.6, r + 1.2, r + 1.2);
+        const wcv = document.createElement('canvas');
+        wcv.width = bw; wcv.height = bh;
+        const wg = wcv.getContext('2d');
+        const layer = (blurPx, colour, alpha) => {
+          wg.setTransform(1, 0, 0, 1, 0, 0);
+          wg.clearRect(0, 0, bw, bh);
+          /* blur the shape into the scratch: the bank, and the reason a channel is a channel */
+          wg.filter = 'blur(' + blurPx + 'px)';
+          wg.drawImage(shape, 0, 0);
+          wg.filter = 'none';
+          /* colour the shape through itself, so the alpha is the mask's and nothing else */
+          wg.globalCompositeOperation = 'source-in';
+          wg.fillStyle = colour;
+          wg.fillRect(0, 0, bw, bh);
+          wg.globalCompositeOperation = 'source-over';
+          g.save();
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.globalAlpha = alpha;
+          g.drawImage(wcv, bx, by);
+          g.restore();
+        };
+        /* THE BANK FIRST, so the water sits IN the ground rather than on it: a wide, weak wash
+         * of wet earth reaching further than the water does. Without it the body has a soft
+         * edge but the LAND has a hard one, and the eye reads a decal either way. */
+        layer(soft * 3.4, 'rgb(46,40,30)', 0.34);
+        layer(soft, 'rgb(26,58,84)', 0.90);          // the body, banks and all
+        layer(soft * 2.6, 'rgb(9,20,36)', 0.85);     // the deep, which only broad water reaches
+      }
       /* ---- and the light on it ----
        * A few long, faint crests, in the INTERIOR only: the old ones were struck on any water
        * cell including the bank, at an alpha that read as a scratch on a hard blue decal. On a
        * body with a soft edge they are the one thing that says the surface moves. */
-      for (const [x, y, r] of waters) {
-        const gx2 = (x / cw) | 0, gy2 = (y / cw) | 0;
+      for (const [wx, wy, r] of waters) {
+        const gx2 = (wx / cw) | 0, gy2 = (wy / cw) | 0;
         let deep = true;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const i2 = (gy2 + dy) * nav.W + (gx2 + dx);
@@ -239,8 +258,106 @@
         const s2 = cellHash(gy2, gx2, seed + 5151);
         g.strokeStyle = 'rgba(160,205,240,0.10)'; g.lineWidth = 1.1;
         g.beginPath();
-        g.ellipse(x + (s1 - 0.07) * 40, y + (s2 - 0.5) * 8, r * 0.62, r * 0.13, 0, 0, 7);
+        g.ellipse(wx + (s1 - 0.07) * 40, wy + (s2 - 0.5) * 8, r * 0.62, r * 0.13, 0, 0, 7);
         g.stroke();
+      }
+    }
+
+    /* ---- A ROAD IS LAID, NOT WORN ----
+     * The highway between two Seats is a built thing and should look built: cobbles, in
+     * courses, with a dark bed showing between them as joints. Painted AFTER the blur, like
+     * the bridge's planks and for the same reason — a paved surface has edges, and the blur is
+     * what softens everything that does not.
+     * IT IS ONE SURFACE, and the road learned that lesson from the water on the way. Drawn
+     * first as discs per cell it came out as polka dots on earth; drawn as a paved SQUARE per
+     * cell it came out as a staircase of blocks down every diagonal, which is the bead chain
+     * again in another costume. So the cells go into a mask, the mask is blurred just enough
+     * to take the corners off the staircase, the bed is composited through it ONCE, and the
+     * stones are laid `source-atop` — clipped to that same soft shape, so a road frays at its
+     * verge instead of ending on a corner.
+     * DETERMINISTIC PER STONE, from the absolute (cell, stone) index rather than from a walk
+     * of a shared rng: two tiles that share a road paint the same stones, which is the rule
+     * every seam-crossing feature here keeps. */
+    if (roads.length && typeof g.filter === 'string') {
+      /* a road is DEFINED — it is not a river bank — so this is a fraction of the water's
+       * blur: enough to round the staircase, not enough to lose the verge. Clamped to the pad
+       * like everything else that blurs here, and the scratch is sized to the ROAD rather than
+       * to the tile (see the water pass: that paperwork was the whole cost). */
+      const rblur = Math.min(rect ? (pad * px) / 1.5 : Infinity, Math.max(1.5, cw * px * 0.3));
+      const M = rblur * 1.6;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [gx, gy] of roads) {
+        const ax = (gx * cw - RX0) * px, ay = (gy * cw - RY0) * px, aw = (cw + 1) * px;
+        if (ax < x0) x0 = ax;
+        if (ay < y0) y0 = ay;
+        if (ax + aw > x1) x1 = ax + aw;
+        if (ay + aw > y1) y1 = ay + aw;
+      }
+      const bx = Math.max(0, Math.floor(x0 - M)), by = Math.max(0, Math.floor(y0 - M));
+      const bw = Math.min(cv2.width, Math.ceil(x1 + M)) - bx;
+      const bh = Math.min(cv2.height, Math.ceil(y1 + M)) - by;
+      if (bw > 0 && bh > 0) {
+        const into = (ctx2) => ctx2.setTransform(px, 0, 0, px, -RX0 * px - bx, -RY0 * px - by);
+        const rshape = document.createElement('canvas');
+        rshape.width = bw; rshape.height = bh;
+        const rs = rshape.getContext('2d');
+        into(rs);
+        rs.fillStyle = '#fff';
+        /* overdrawn by half a unit so two neighbouring road cells leave no seam of bare ground
+         * between them, and a road reads as one surface however it turns */
+        for (const [gx, gy] of roads) rs.fillRect(gx * cw - 0.5, gy * cw - 0.5, cw + 1, cw + 1);
+        const rcv = document.createElement('canvas');
+        rcv.width = bw; rcv.height = bh;
+        const rg = rcv.getContext('2d');
+        rg.filter = 'blur(' + rblur + 'px)';
+        rg.drawImage(rshape, 0, 0);
+        rg.filter = 'none';
+        /* the bed: what shows between the stones, and what the stones are laid on */
+        rg.globalCompositeOperation = 'source-in';
+        rg.fillStyle = 'rgb(14,12,18)';
+        rg.fillRect(0, 0, bw, bh);
+        /* ...and the stones, clipped to the road's own soft shape by `source-atop`, which is
+         * what lets a road fray at its verge instead of ending on a corner */
+        rg.globalCompositeOperation = 'source-atop';
+        into(rg);
+        const NST = 3, sst = cw / NST;
+        const rrect = (x, y, w2, h2, r2) => {
+          if (rg.roundRect) { rg.beginPath(); rg.roundRect(x, y, w2, h2, r2); rg.fill(); return; }
+          rg.beginPath();
+          rg.moveTo(x + r2, y); rg.arcTo(x + w2, y, x + w2, y + h2, r2);
+          rg.arcTo(x + w2, y + h2, x, y + h2, r2); rg.arcTo(x, y + h2, x, y, r2);
+          rg.arcTo(x, y, x + w2, y, r2); rg.closePath(); rg.fill();
+        };
+        for (const [gx, gy] of roads) {
+          const X = gx * cw, Y = gy * cw;
+          for (let j2 = 0; j2 < NST; j2++) for (let i2 = 0; i2 < NST; i2++) {
+            const h1 = cellHash(gx * NST + i2, gy * NST + j2, seed + 3301);
+            const h2 = cellHash(gy * NST + j2, gx * NST + i2, seed + 3302);
+            /* half-stone offset on alternate courses — the one thing that stops a paved road
+             * reading as the square grid it is actually drawn on */
+            const cx2 = X + i2 * sst + (j2 % 2 ? sst * 0.5 : 0) + (h1 - 0.5) * sst * 0.14;
+            const cy2 = Y + j2 * sst + (h2 - 0.5) * sst * 0.14;
+            /* nearly the whole of their square: the gap IS the joint, and a joint is thin */
+            const w3 = sst * (0.84 + h1 * 0.08), h3 = sst * (0.78 + h2 * 0.1);
+            /* ONE FAMILY OF GREYS with a little spread — salt-and-pepper is not stonework, and
+             * neither is a sweet shop: the three channels ran off two different hashes at
+             * first, so a stone whose red came up high and blue low went yellow and its
+             * neighbour went lilac. ONE hash, varying the VALUE only, with the warmth fixed. */
+            const v = 92 + h2 * 40;
+            rg.fillStyle = 'rgb(' + Math.round(v) + ',' + Math.round(v * 0.975) + ',' +
+                                    Math.round(v * 0.93) + ')';
+            rrect(cx2 + (sst - w3) / 2, cy2 + (sst - h3) / 2, w3, h3, sst * 0.22);
+          }
+        }
+        rg.setTransform(1, 0, 0, 1, 0, 0);
+        rg.globalCompositeOperation = 'source-over';
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        /* short of opaque, so the ground's own light and the relief still reach through the
+         * paving — a road climbs a hill with the hill */
+        g.globalAlpha = 0.86;
+        g.drawImage(rcv, bx, by);
+        g.restore();
       }
     }
 
