@@ -5040,6 +5040,107 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- ⚑ the war council, and the HUD it emptied ----------------
+   * A duel's HUD held nine things and a war added more: the war line was left-anchored to
+   * min(58vw, 300px) and the terms tray right-anchored and as wide as its text, so on a phone
+   * they collided by about sixty pixels — reported from play with a screenshot — and a fourth
+   * banner would have run the chips into the minimap. The state moved to a screen. What must
+   * hold: NOTHING IN THE TOP RAIL OVERLAPS ANYTHING ELSE (asserted as geometry, which is the
+   * only way to assert a layout), the chip carries the count, the council opens with the
+   * courts in it, a row takes you to its city, and a banner you have never met is not listed.
+   */
+  {
+    suite('the war council');
+    const pg = await browser.newPage({ viewport: { width: 412, height: 915 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    /* a real war, through the real door on the menu */
+    await pg.evaluate(() => { document.getElementById('btn-realm').click(); });
+    await until(pg, () => !!(window.Game && window.Game.game.world && window.Game.game.war), 30000);
+    await until(pg, () => window.Render.ready);
+    /* ...with somebody on the Pattern, so the right rail has both of its things in it */
+    await pg.evaluate(() => {
+      const w = window.Game.game.world;
+      w.players[3].revealed = true; w.players[3].walking = true; w.players[3].pattern = 12;
+    });
+    await pg.waitForTimeout(600);
+    const hud = await pg.evaluate(() => {
+      const box = (id) => { const e = document.getElementById(id); if (!e) return null;
+        const b3 = e.getBoundingClientRect();
+        return { id, shown: !e.classList.contains('hidden') && b3.width > 0 && b3.height > 0,
+                 x: b3.x, y: b3.y, r: b3.right, b: b3.bottom }; };
+      const ids = ['hud-top', 'walkers', 'terms', 'war-chip', 'objective', 'purse'];
+      const rows = ids.map(box).filter((q) => q && q.shown);
+      const over = (a2, b2) => Math.max(0, Math.min(a2.r, b2.r) - Math.max(a2.x, b2.x)) *
+                               Math.max(0, Math.min(a2.b, b2.b) - Math.max(a2.y, b2.y));
+      const bad = [];
+      for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
+        if (rows[i].id === 'hud-top' || rows[j].id === 'hud-top') continue;   // the top bar is the rail
+        const o = over(rows[i], rows[j]);
+        if (o > 0) bad.push(rows[i].id + '×' + rows[j].id + '=' + Math.round(o));
+      }
+      return { shown: rows.map((q) => q.id), bad,
+               chip: (document.getElementById('wc-held') || {}).textContent,
+               walkers: document.querySelectorAll('.walker').length };
+    });
+    ok('the rig is alive: the rail has the chip and a walker in it',
+       hud.shown.indexOf('war-chip') >= 0 && hud.walkers === 1, JSON.stringify(hud));
+    ok('nothing in the war HUD overlaps anything else', hud.bad.length === 0, hud.bad.join(' '));
+    ok('...because the war line and the terms tray are not in it at all',
+       hud.shown.indexOf('objective') < 0 && hud.shown.indexOf('terms') < 0, JSON.stringify(hud.shown));
+    ok('...and the chip carries the count the line used to', /⚑ \d+\/\d+/.test(hud.chip || ''), hud.chip);
+
+    const cc = await pg.evaluate(async () => {
+      document.getElementById('war-chip').click();
+      await new Promise((r2) => requestAnimationFrame(r2));
+      const rows = [...document.querySelectorAll('.cc-city')];
+      return { open: !document.getElementById('council').classList.contains('hidden'),
+               hudHidden: document.getElementById('hud').classList.contains('hidden'),
+               courts: rows.length, mine: document.querySelectorAll('.cc-city.mine').length,
+               terms: document.querySelectorAll('.cc-term').length,
+               stats: document.querySelectorAll('.cc-stat').length,
+               first: rows.length ? rows[0].textContent : '' };
+    });
+    ok('the chip opens the council', cc.open && cc.hudHidden, JSON.stringify(cc));
+    /* asserted on the SHAPE, never on the name: a country's cities are named from its seed,
+       and pinning one is a test about worldgen wearing a council's clothes */
+    ok('...with your banner\'s totals and your own court in it',
+       cc.stats === 4 && cc.mine >= 1 && /your own hand/.test(cc.first), JSON.stringify(cc));
+    /* A BANNER YOU HAVE NOT MET IS NOT ONE YOU CAN TREAT WITH. Fifteen rows reading "at war"
+     * is the noise the tray was moved out of the HUD for, reprinted on a bigger screen. */
+    ok('...and no terms are offered to banners you have never met', cc.terms === 0, String(cc.terms));
+
+    /* A ROW IS THE WAY TO A CITY — on 8000x9600 you cannot find a court by dragging the map,
+     * which is why taking command of one was effectively unreachable. */
+    const jump = await pg.evaluate(async () => {
+      const R = window.Render, w = window.Game.game.world;
+      /* explore a far court so it joins the list, then tap its row */
+      const far = w.cities.map((c, i) => ({ c, i }))
+        .filter((q) => q.c.owner !== 0)
+        .sort((a2, b2) => Math.hypot(b2.c.x - w.cities[0].x, b2.c.y - w.cities[0].y) -
+                          Math.hypot(a2.c.x - w.cities[0].x, a2.c.y - w.cities[0].y))[0];
+      w.players[0].explored[far.c.site] = { kind: 'city', name: 'a far court' };
+      document.getElementById('council-close').click();
+      document.getElementById('war-chip').click();
+      await new Promise((r2) => requestAnimationFrame(r2));
+      const rows = [...document.querySelectorAll('.cc-city')];
+      const before = { x: R.camX, y: R.camY };
+      const row = rows[rows.length - 1];
+      row.click();
+      await new Promise((r2) => requestAnimationFrame(r2));
+      return { rows: rows.length, moved: Math.hypot(R.camX - before.x, R.camY - before.y),
+               closed: document.getElementById('council').classList.contains('hidden') };
+    });
+    ok('a court you have seen joins the roster', jump.rows >= 2, JSON.stringify(jump));
+    ok('...and tapping its row takes you there and closes the council',
+       jump.moved > 200 && jump.closed, JSON.stringify(jump));
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   /* ---------------- a war table, the guest's half ----------------
    * The wire carries `{war: {seed}}` and the guest regenerates the country from the seed —
    * geometry, never history, which arrives as ordinary absolute snapshots. Driven the way
