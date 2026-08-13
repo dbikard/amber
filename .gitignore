@@ -10,3 +10,4 @@
 .*.txt
 .*.time
 .*.done
+node_modules/

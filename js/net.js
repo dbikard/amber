@@ -426,7 +426,10 @@
 
   /* `from` is the seat the message came from — the host must know WHOSE command it is */
   function handle(m, from) {
-    if (m.t === 'cmd') { if (Net.onCmd) Net.onCmd(m.c, from); }
+    /* `as` is the LORD the guest wants this order carried out by — himself, or one sworn to
+     * him. The SEAT it arrived on is still the only thing that identifies the sender, and the
+     * host vets the pair; `as` is a request, never an identity. */
+    if (m.t === 'cmd') { if (Net.onCmd) Net.onCmd(m.c, from, m.as); }
     else if (m.t === 'snap') { if (Net.onSnap) Net.onSnap(m.s); }
     else if (m.t === 'start') { if (Net.onStart) Net.onStart(m); }
     else if (m.t === 'again') { if (Net.onAgain) Net.onAgain(from); }
@@ -443,8 +446,17 @@
     const World = global.World, C = global.CONST;
     const see = (x, y) => World.canSee(world, viewer, x, y);
     const players = world.players.map((pl, pi) => {
-      const mine = pi === viewer;
+      /* "MINE" IS THE BANNER'S, NOT THE SEAT'S. A guest plays a realm: the lords sworn to him
+       * are his to command, so their purses, their branches, their companies and their halls
+       * are his to read exactly as his own are. It is the chain of command, not a truce — a
+       * pact partner's books stay shut, which is what `pactOn` above is for. On a board every
+       * realm is one seat and this is `pi === viewer` to the byte. */
+      const mine = World.realmOf(world, pi) === World.realmOf(world, viewer);
       return {
+        /* WHOSE BANNER. Public, and it must be: a guest that could not tell an ally's column
+         * from an enemy's would draw the wrong war, and `World.foe` is computed on both ends
+         * off exactly these fields. */
+        realm: pl.realm != null ? pl.realm : pi,
         /* HIS SEAT'S HIT POINTS. A city is a thing with an owner now (`world.cities`), so this
          * is derived rather than stored — the seat he rules from. Castle HP has always been
          * public; the whole list rides on the root as `cities` beside it. */
@@ -457,7 +469,6 @@
         revealed: pl.revealed,
         powers: mine ? { storm: pl.powers.storm, trump: pl.powers.trump } : null,
         banner: mine ? pl.banner : null,   // the banner is a strategic secret
-        seat: mine && pl.seat != null ? pl.seat : null,   // where he commands from: his own business
         musterPaused: mine ? pl.musterPaused : false,
         /* TERMS: A SEALED PACT IS PUBLIC, AN OFFER IS NOT. You cannot play against a diplomacy
          * you cannot see — who is at peace with whom decides where every army on the board is
@@ -534,6 +545,9 @@
       /* the rules of this match, so a guest's `World.foe` answers what the host's answers.
        * Without them a guest reads every heir as a foe and draws a war nobody is fighting. */
       rules: world.rules,
+      /* WHICH BANNERS CONTEND. The renderer gives each one a colour of its own and everyone
+       * else the neutral; without the list a guest would paint a country in one crimson. */
+      heirs: world.heirs,
       /* the cities of the world, and every one of them public: a Seat's hit points always
        * were, and in a country the question "whose is that" is the map. Where the court
        * STANDS is a different question, and `seatSeen` still answers it. */
@@ -552,7 +566,11 @@
                                         ...(c.razed ? { razed: 1 } : {}),
                                         ...(c.hold ? { hold: { pi: c.hold.pi, since: c.hold.since } } : {}) })),
       players, sites,
-      units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y))
+      /* your own men always, and your sworn lords' men with them — a liege who could not see
+       * a vassal's column except through his own scouts could not command one */
+      units: world.units.filter((u) => (u.owner >= 0 &&
+                                        World.realmOf(world, u.owner) === World.realmOf(world, viewer)) ||
+                                       see(u.x, u.y))
         .map((u) => ({ id: u.id, owner: u.owner, kind: u.kind, x: Math.round(u.x), y: Math.round(u.y), hp: Math.round(u.hp), maxHp: Math.round(u.maxHp),
                        /* which wall he is standing on, and which tower he is up in, so a guest
                         * draws him on the stone too — both change where he IS, not only what

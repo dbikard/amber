@@ -140,10 +140,18 @@
         companies: [],          // [{ id, rally }] — rally null = this company follows the Banner
         nextCo: 1,
         pattern: 0, walking: false, revealed: false, alertIdx: 0,
+        /* ---- WHOSE REALM THIS LORD ANSWERS TO ----
+         * A player is the lord of ONE city, permanently — `players[i]` and `cities[i]` are the
+         * same thing again, as they were before cities changed hands, and everything that
+         * belongs to a city (the purse, the Gates, the halls, the crews, the companies) is
+         * simply what it always was: a player's. What conquest moves is not property, it is
+         * ALLEGIANCE. A realm is the set of lords under one banner, named by its founder's
+         * index, and a realm of one is exactly today's game — which is why every board still
+         * plays to the byte with this on. See `foe`, `realmCities` and `holdCities`. */
+        realm: 0,   // stamped below: every lord begins his own man
         buildings: [],          // free placement: every work knows where it stands
         powers: { storm: 0, trump: 0 },
         championId: 0,
-        seat: null,             // the city he COMMANDS from ({c:'seat'}); null = first held
         banner: -1,             // site id the army marches on; -1 = defend home
         musterPaused: false,    // the Seat can halt the muster to hoard essence
         /* A PACT IS TWO STANDING OFFERS, and that is the whole state machine. `offers[j]` is
@@ -166,6 +174,7 @@
       visSrc: null,             // ...and the raw source lists the masks were cast from
       sight: null               // what the land does to a sight line, baked per fog cell
     };
+    for (let pi = 0; pi < world.players.length; pi++) world.players[pi].realm = pi;
     world.nav = NAV.build(world.map.gen);
     bakeSight(world);
     /* EVERY HEIR OPENS WITH A GATE ON HIS OWN SPRING — finished, drawing, and standing where
@@ -228,12 +237,47 @@
   function pactOn(world, a, b) {
     if (a === b || a < 0 || b < 0) return false;      // Chaos agrees to nothing
     if (!world.rules || !world.rules.truce) return false;
-    const pa = world.players[a], pb = world.players[b];
-    return !!(pa && pb && pa.offers && pb.offers && pa.offers[b] && pb.offers[a]);
+    /* TERMS ARE SWORN BETWEEN BANNERS, not between lords: a vassal who could keep his own
+     * private peace with the army besieging his liege would be a hole straight through the
+     * chain of command. A realm of one is a player, so a duel's terms are unchanged. */
+    const ra = realmOf(world, a), rb = realmOf(world, b);
+    if (ra < 0 || rb < 0) return false;
+    const pa = world.players[ra], pb = world.players[rb];
+    return !!(pa && pb && pa.offers && pb.offers && pa.offers[rb] && pb.offers[ra]);
+  }
+  /* ---------------- THE REALM ----------------
+   * Which banner a lord answers to. Defensive for the same reason `pactOn` is — this is asked
+   * of snapshots and of the bare boards a suite builds — and the default is HIS OWN, so a
+   * world that has never heard of realms plays exactly as it always did.
+   * Chaos answers to nobody and must never share a realm with anyone: `CHAOS_ID` is -1 and a
+   * realm is a player index, so the guard is the whole of it. */
+  function realmOf(world, pi) {
+    if (pi == null || pi < 0) return -1;
+    const p = world.players && world.players[pi];
+    return p && p.realm != null ? p.realm : pi;
+  }
+  /* every lord under one banner, in seat order. The founder's own index NAMES the realm, so a
+   * realm's founder is `realmOf(pi)` itself and needs no second field. */
+  function realmMembers(world, pi) {
+    const r = realmOf(world, pi), out = [];
+    if (r < 0) return out;
+    for (let o = 0; o < world.players.length; o++) if (realmOf(world, o) === r) out.push(o);
+    return out;
+  }
+  /* the cities a REALM holds — the brake counts these, the HUD reads these, and a realm with
+   * none of them has lost the war. A lord holds his own city and no other, so this is the one
+   * place the two scales are told apart: `citiesOf` is his, `realmCities` is his banner's. */
+  function realmCities(world, pi) {
+    const r = realmOf(world, pi);
+    return (world.cities || []).filter((c) => c.owner >= 0 && realmOf(world, c.owner) === r);
   }
   function foe(world, a, b) {
     if (a === b) return false;
     if (a === C.CHAOS_ID || b === C.CHAOS_ID) return true;
+    /* ONE BANNER, ONE SIDE. A sworn lord is not a rival with whom one happens not to be
+     * fighting — he is on your side, and this is the only place that has to know it. Asked
+     * before the pact, because a pact between two lords of one realm is not a thing. */
+    if (realmOf(world, a) === realmOf(world, b)) return false;
     return !pactOn(world, a, b);
   }
 
@@ -271,11 +315,19 @@
    * `world.cities` is that list, and it is in SEAT ORDER at the start: `cities[i]` is the seat
    * heir `i` was born to, which is what keeps worldgen, the camera, the minimap and every
    * mirror-fairness test reading exactly as they did.
-   * The three answers everything asks, and nothing spells them itself:
-   *   seatOf(w, pi)    the city this heir rules FROM — his first held, else the one he was
-   *                    born to, so a dispossessed heir still has a place on the map and a
-   *                    toppled one still has a ruin to draw.
-   *   citiesOf(w, pi)  every city he holds, in the order they appear on the board.
+   * AND A LORD HOLDS EXACTLY ONE. That was true of a duel forever, stopped being true when
+   * conquest transferred `owner`, and is true again now that conquest moves ALLEGIANCE
+   * instead (see `realmOf` and `holdCities`): `players[i]` is the lord of `cities[i]` for the
+   * whole of a war, and what a realm holds is asked of `realmCities`. Everything that reads
+   * "his" — his purse, his crews, his writ, his companies, his Seat's gun — reads the one
+   * city, and the four sites that read "his banner's" say so.
+   * The four answers everything asks, and nothing spells them itself:
+   *   seatOf(w, pi)    the city this lord rules FROM — his own while he holds it, else the
+   *                    one he was born to, so a dispossessed lord still has a place on the
+   *                    map and a toppled one still has a ruin to draw.
+   *   citiesOf(w, pi)  the city he holds: one, or none while his court lies yielded.
+   *   realmCities(w,pi) every city under his BANNER — what the lord brake counts and what the
+   *                    war is won and lost by.
    *   cityAt(w, x, y)  whose court is this ground, if anyone's.
    * `cityOf` is kept and keeps its meaning — the SITE his seat stands on — because a hundred
    * call sites want a place and not a record. */
@@ -285,10 +337,14 @@
    * contract is unchanged by that: it has always answered with a SITE off `map.cities`. */
   const seatOf = (world, pi) => {
     if (!world.cities) return null;
-    /* the seat of command a player CHOSE ({c:'seat'}), while he still holds it */
-    const pl2 = world.players && world.players[pi];
-    if (pl2 && pl2.seat != null && world.cities[pl2.seat] &&
-        world.cities[pl2.seat].owner === pi) return world.cities[pl2.seat];
+    /* HIS OWN, AND THERE IS NO CHOICE TO MAKE. A player used to be able to move his seat of
+     * command to a conquered court ({c:'seat'}), because he held several and one of them had
+     * to be the capital his writ and his camera hung off. A lord holds exactly one city now —
+     * conquest moves allegiance, not deeds — so the question has no second answer, and the
+     * one it had was a trap: pointing `seat` at a vassal's court moved this lord's WRIT there.
+     * Which of his sworn lords the player is hand-playing is a choice, but it is his client's
+     * (see `game.hand`), not the world's: it changes who issues an order, never who owns
+     * what, so it has no business crossing the wire or ending up in a snapshot. */
     return world.cities.find((c) => c.owner === pi) || world.cities[pi] || null;
   };
   const citiesOf = (world, pi) => (world.cities || []).filter((c) => c.owner === pi);
@@ -324,18 +380,16 @@
   function inClaim(world, pi, x, y) {
     const c = cityOf(world, pi);
     if (d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat) return true;
-    /* EVERY HELD CITY GRANTS WRIT, or a conquest is a flag and nothing else — 'once I claim
-     * a city, how do I assume control of it?', from play, and the honest answer was that
-     * you could not: no writ meant no hall, no hall meant no company born to it, and its
-     * reach was a picture. Your born seat carries the full writ; a court merely SWORN to
-     * you grants its skirt (`CLAIM.sworn`) — enough to raise a hall and a Gate inside, thin
-     * enough that a conquest is still a liability until it is invested in. On a board every
-     * player holds exactly his own seat and this loop repeats the test above, so nothing a
-     * duel does changes by a byte. */
-    for (const cc of citiesOf(world, pi)) {
-      const r = cc.born === pi ? C.CLAIM.seat : (C.CLAIM.sworn || C.CLAIM.seat);
-      if (d2(x, y, cc.x, cc.y) < r * r) return true;
-    }
+    /* A LORD'S WRIT IS HIS OWN CITY'S, AND IT IS THE FULL ONE. A conquest used to hand the
+     * taker a second court and a thin skirt of writ around it — enough to raise a hall in,
+     * thin enough to stay a liability — because the taker was a player who now held two
+     * cities and had to be stopped from treating the far one as a capital. A sworn court has
+     * its own lord again, and he was always entitled to the whole of his own country: he runs
+     * it, spends his own purse on it and answers for it. So there is one radius here, and the
+     * skirt is gone with the thing it was rationing.
+     * The loop is over `citiesOf`, which answers exactly one city, so a board is unchanged. */
+    for (const cc of citiesOf(world, pi))
+      if (d2(x, y, cc.x, cc.y) < C.CLAIM.seat * C.CLAIM.seat) return true;
     for (const b of world.players[pi].buildings)
       if (!b.raise && C.BUILDINGS[b.bt].claim && d2(x, y, b.x, b.y) < C.CLAIM.gate * C.CLAIM.gate) return true;
     return false;
@@ -1765,18 +1819,31 @@
    * else reaches one screen and is a bug waiting for the other screens to find. */
   function visionSources(world, pi) {
     const src = [];
-    const city = cityOf(world, pi);
-    src.push([city.x, city.y, C.VISION.city]);
-    for (const b of world.players[pi].buildings) {
-      if (b.raise) continue;
-      const r = C.BUILDINGS[b.bt].vision || C.VISION.build;
-      src.push([b.x, b.y, r]);
-      /* a wall watches from its whole length — a run three hundred long that saw only from
-       * its middle left its own far end in fog */
-      if (isWall(b)) { const e = wallEnds(b); src.push([e[0], e[1], r], [e[2], e[3], r]); }
+    /* ---- A REALM SEES WITH ONE PAIR OF EYES ----
+     * The one thing sworn lords genuinely SHARE. A liege who cannot see what his own marches
+     * can see is a liege who must ride to every border himself to find out what is happening,
+     * and the whole point of swearing a lord is that you do not have to. Everything else a
+     * city owns stays the city's — the purse, the crews, the halls, the men — because a truce
+     * is not an alliance and neither is a chain of command: his men do not join my formations
+     * and my Wardens do not mend his walls. Only the map is common.
+     * A realm of one is a player, so a board's sources are what they always were, source for
+     * source and in the same order. */
+    const mine = realmMembers(world, pi);
+    const r0 = realmOf(world, pi);
+    for (const o of mine) {
+      const city = cityOf(world, o);
+      if (city) src.push([city.x, city.y, C.VISION.city]);
+      for (const b of world.players[o].buildings) {
+        if (b.raise) continue;
+        const r = C.BUILDINGS[b.bt].vision || C.VISION.build;
+        src.push([b.x, b.y, r]);
+        /* a wall watches from its whole length — a run three hundred long that saw only from
+         * its middle left its own far end in fog */
+        if (isWall(b)) { const e = wallEnds(b); src.push([e[0], e[1], r], [e[2], e[3], r]); }
+      }
     }
     for (const u of world.units)
-      if (u.owner === pi) src.push([u.x, u.y, C.VISION.unit]);
+      if (u.owner >= 0 && realmOf(world, u.owner) === r0) src.push([u.x, u.y, C.VISION.unit]);
     /* A WALK LIGHTS ITS SHRINE FOR EVERY VIEWER — the Pattern is not walked in the dark, and
      * a rival reaching for the throne must be findable. The 4th element marks the source as
      * the BEACON: the mask fills its whole disc unconditionally, through ridge and curtain
@@ -2066,7 +2133,20 @@
    * of a walk of every source. The raw lists survive as world.visSrc because the renderer's
    * veil is still drawn from them. */
   function refreshVision(world) {
-    world.visSrc = world.players.map((q, pi) => visionSources(world, pi));
+    /* ONE CAST PER REALM, NOT PER LORD. The sources are the realm's, so the mask is too, and
+     * casting the same field once for every lord under the banner would be the most expensive
+     * thing in a country — sixteen boards of cells, four times over, for four identical
+     * answers. The mask OBJECT is shared, which every consumer downstream (canSee, the
+     * snapshot filter, exploreAround, the veil) follows with no rule of its own. Memory
+     * (`seen`, `explored`, `ghosts`) stays each lord's own and converges on the same content
+     * because it is fed from the same mask — it rides the wire and the save per seat, and
+     * making it shared state would mean teaching both. */
+    const bySrc = new Map();
+    world.visSrc = world.players.map((q, pi) => {
+      const r = realmOf(world, pi);
+      if (!bySrc.has(r)) bySrc.set(r, visionSources(world, pi));
+      return bySrc.get(r);
+    });
     /* A FALLEN HEIR WATCHES THE WHOLE BOARD. His Seat is rubble and his men are gone — there
      * is no information left to protect from him and a free-for-all can run long after his
      * fall, so the fog lifts and he spectates. POSITIONAL fog only: the wire's private
@@ -2074,6 +2154,7 @@
      * consult this mask, so spectating is not auditing. The all-ones mask is built once and
      * shared — every downstream consumer (canSee, the snapshot filter, exploreAround, the
      * veil) follows it with no rule of its own. */
+    const byMask = new Map();
     world.vis = world.players.map((q, pi) => {
       if (q.out) {
         if (!world._allSeen) {
@@ -2082,7 +2163,9 @@
         }
         return world._allSeen;
       }
-      return visMask(world, pi, world.visSrc[pi]);
+      const r = realmOf(world, pi);
+      if (!byMask.has(r)) byMask.set(r, visMask(world, pi, world.visSrc[pi]));
+      return byMask.get(r);
     });
     for (let pi = 0; pi < world.players.length; pi++) exploreAround(world, pi);
   }
@@ -2396,24 +2479,30 @@
      * clearing them would make an elimination a diplomatic event. */
     if (cmd.c === 'pact') {
       if (!world.rules.truce) return { ok: false, err: 'nopact' };
-      const p = +cmd.p;
-      if (!isFinite(p) || p === pi || !world.players[p]) return { ok: false, err: 'seat' };
+      /* TERMS ARE SWORN BETWEEN BANNERS, and normalised HERE so no caller has to know it: a
+       * sworn lord asking for peace is his LIEGE asking, and peace with a sworn lord is peace
+       * with the banner he answers to. Without this a vassal could keep a private truce with
+       * the army besieging his liege — and a liege could be at war with a lord who was not
+       * allowed to fight him. `pactOn` reads the same two indices. */
+      const me = realmOf(world, pi), p = realmOf(world, +cmd.p);
+      if (!isFinite(p) || p < 0 || p === me || !world.players[p]) return { ok: false, err: 'seat' };
+      const banner = world.players[me];
       const on = !!cmd.on;
-      const was = pactOn(world, pi, p);
-      if (!!pl.offers[p] === on) return { ok: true };     // already said; not a refusal
-      pl.offers[p] = on ? 1 : 0;
-      const now = pactOn(world, pi, p);
+      const was = pactOn(world, me, p);
+      if (!!banner.offers[p] === on) return { ok: true };   // already said; not a refusal
+      banner.offers[p] = on ? 1 : 0;
+      const now = pactOn(world, me, p);
       if (now !== was) {
         /* THE MEN DISENGAGE ON THIS TICK. `acquire` keeps the man it is fighting for a dozen
          * ticks at a time (see RETARGET), so without this a sealed truce would leave two
          * companies swinging at each other until the stagger came round — the one moment a
          * player is certainly watching to see whether the order took. */
         for (const u of world.units) if (u._t && !foe(world, u.owner, u._t.owner)) u._t = null;
-        emit(world, { e: 'pact', pi, p, on: now });
+        emit(world, { e: 'pact', pi: me, p, on: now });
       } else if (on) {
         /* an offer that seals nothing yet is still worth telling the seat it was made TO —
          * it is the only way an offer can be answered */
-        emit(world, { e: 'offer', pi, p });
+        emit(world, { e: 'offer', pi: me, p });
       }
       return { ok: true };
     }
@@ -2423,19 +2512,6 @@
      * and it is a decision your enemy made about you. Only a court you are standing in and that
      * nobody holds — you cannot raze a city out from under its owner, you have to break it
      * first, which is the whole of the difference between a raid and a conquest. */
-    if (cmd.c === 'seat') {
-      /* THE SEAT OF COMMAND MOVES WITH THE WAR. `seatOf` used to answer 'the first city he
-       * holds', which no player chose: conquer forward and your banner, your camera and
-       * your default muster all stayed home. Now a held city may be TAKEN COMMAND OF —
-       * host-authoritative like every order, so at a LAN table each seat moves its own. */
-      if (!world.rules.reach) return { ok: false, err: 'cmd' };
-      const city = world.cities.find((c2) => c2.id === cmd.id);
-      if (!city) return { ok: false, err: 'id' };
-      if (city.owner !== pi) return { ok: false, err: 'held' };
-      pl.seat = world.cities.indexOf(city);
-      emit(world, { e: 'seat', pi, id: city.id, x: city.x, y: city.y });
-      return { ok: true };
-    }
     if (cmd.c === 'raze') {
       if (!world.rules.occupy) return { ok: false, err: 'noraze' };
       const city = world.cities.find((c2) => c2.id === cmd.id);
@@ -3596,7 +3672,11 @@
           while (pl.alertIdx < C.PATTERN_ALERTS.length && pl.pattern >= C.PATTERN_ALERTS[pl.alertIdx].at) {
             emit(world, { e: 'pattern', pi, idx: pl.alertIdx }); pl.alertIdx++;
           }
-          if (pl.pattern >= 100) { win(world, pi, 'pattern'); return; }
+          /* THE BANNER WALKS IT, NOT THE LORD. Under `onePattern` the Shrine may only rise in
+           * the Pattern's own city, so in a war the man on the lines is whichever lord holds
+           * AMBER — usually a sworn one. The victory is his LIEGE'S, and naming the vassal
+           * would hand the end screen, the chronicle and the seat's collapse the wrong heir. */
+          if (pl.pattern >= 100) { win(world, realmOf(world, pi), 'pattern'); return; }
         }
       }
       /* THE LINES FADE WHEN NOBODY WALKS THEM. A walk is a thing you hold, not a balance you
@@ -4397,9 +4477,11 @@
        * half-world dressed as one (a snapshot, a suite's bare board): missing means the
        * war's opening allowance, never "no brake". */
       if (world.rules.reach) {
-        const pl = world.players[claimant];
+        /* the allowance is the BANNER'S, kept by its founder — a vassal does not carry an
+         * allowance of his own, or a realm could grow by having each new lord swear the next */
+        const pl = world.players[realmOf(world, claimant)];
         const lords = pl && pl.lords != null ? pl.lords : C.REALM.lords0;
-        if (citiesOf(world, claimant).length >= 1 + lords) {
+        if (realmCities(world, claimant).length >= 1 + lords) {
           city.hold = null;
           emit(world, { e: 'refused', pi: claimant, id: city.id, x: city.x, y: city.y });
           continue;
@@ -4409,20 +4491,57 @@
          * yourself — wins ground and nothing else. That is what stops a war being won by
          * eating the weak. `city.fell` is stamped at the yield (seatDown), because by the
          * take `owner` has long said nobody. */
-        if (city.fell != null && city.fell >= 0 && city.fell !== claimant &&
+        if (city.fell != null && city.fell >= 0 && realmOf(world, city.fell) !== realmOf(world, claimant) &&
             world.heirs && world.heirs.indexOf(city.fell) >= 0)
           pl.lords = lords + 1;
       }
-      /* TAKEN — and it comes back HURT. Its works are gone with its old master, its throne is a
-       * fraction of what it was and its writ is the court. It is a liability until it is paid
-       * for, which is what stops a conquest paying for the next one. */
-      city.owner = claimant;
+      /* ---- THE COURT SWEARS ----
+       * What changes hands is ALLEGIANCE, not property. Its lord kneels: he keeps his purse,
+       * his Gates, his halls, his crews and whatever men he has left, and from this tick he
+       * answers to the banner that broke him — which is what makes conquest worth the army it
+       * costs, and what makes a war something you can DELEGATE rather than a second capital to
+       * micromanage. It also ends the two states the old take left behind: a conquered court
+       * full of the beaten lord's works, standing quiet forever, refusing your masons the
+       * ground; and a "victory" that handed the winner a name on a map and no economy.
+       * The throne itself still comes back hurt (`CITY.back`) and at level one: breaking a
+       * seat is meant to cost the seat something, and a realm that could storm one court and
+       * immediately storm the next off its spoils is the snowball the lord brake exists to
+       * stop. The brake above is the real limit; this is the tax.
+       * His terms are struck with him: a lord's peace is his banner's, and he has a new one. */
+      const lord = city.born != null ? city.born : claimant;
+      const to = realmOf(world, claimant);
+      if (world.players[lord]) {
+        world.players[lord].realm = to;
+        world.players[lord].offers = [];
+        world.players[lord].out = false;
+      }
+      city.owner = lord;
       city.hp = Math.max(1, city.maxHp * C.CITY.back);
       city.level = 1;
       city.cd = 0;
       city.yield = null;
       city.hold = null;
-      emit(world, { e: 'taken', pi: claimant, id: city.id, x: city.x, y: city.y });
+      /* the ground it bars and the fields drawn over it are both stale: a court that was
+       * nobody's is now somebody's, and everyone's sight of it changed on the same tick */
+      world.navVersion++;
+      emit(world, { e: 'taken', pi: claimant, id: city.id, x: city.x, y: city.y, lord });
+      /* ---- AND A COUNTRY WITH ONE BANNER LEFT ON IT IS A COUNTRY WON ----
+       * `win` still has one meaning and one spelling; this is the LAST SEAT STANDING rule,
+       * asked at the one place ground changes hands. It has to be asked here because under
+       * `occupy` nobody is ever toppled — a broken lord swears instead of dying — so the
+       * count that `topple` keeps would never be reached, and absorbing the last rival left a
+       * war with nothing in it and no end screen. Only where a Seat's fall does NOT end a
+       * match (`endOnSeat` off, which is the war and nothing else); with it on, toppling still
+       * owns this rule and asking twice would be two spellings of it. */
+      if (!world.rules.endOnSeat) {
+        let banner = -1, several = false;
+        for (const c2 of world.cities) {
+          if (c2.owner < 0 || c2.razed || c2.hp <= 0) continue;
+          const r2 = realmOf(world, c2.owner);
+          if (banner < 0) banner = r2; else if (r2 !== banner) { several = true; break; }
+        }
+        if (!several && banner >= 0) { win(world, banner, 'castle'); return; }
+      }
     }
   }
 
@@ -4449,10 +4568,18 @@
     for (const u of world.units) if (u.owner === pi) { u.hp = 0; u.dead = 1; }
     for (const q of world.players) for (const id of Object.keys(q.ghosts)) if (q.ghosts[id].owner === pi) delete q.ghosts[id];
     emit(world, { e: 'fall', pi, by: by === C.CHAOS_ID ? -1 : by });
-    const left = world.players.map((q, k) => (q.out ? -1 : k)).filter((k) => k >= 0);
+    /* THE LAST BANNER STANDING, not the last lord: two sworn lords left alive are one side
+     * and the war is over. A realm of one is a player, so a duel and a free-for-all count
+     * exactly the heads they always counted. */
+    const left = [];
+    for (let k = 0; k < world.players.length; k++) {
+      if (world.players[k].out) continue;
+      const r = realmOf(world, k);
+      if (!left.some((q) => realmOf(world, q) === r)) left.push(k);
+    }
     if (left.length <= 1) {
       /* the last heir standing takes it — and if Chaos took the last two, nobody does */
-      win(world, left.length ? left[0] : (by === C.CHAOS_ID ? -1 : by), 'castle');
+      win(world, left.length ? realmOf(world, left[0]) : (by === C.CHAOS_ID ? -1 : by), 'castle');
       return true;
     }
     return false;
@@ -4490,6 +4617,12 @@
                     * it here rather than each writing `owner !== owner` and each having to be
                     * found again the next time the answer gains a case. */
                    foe, pactOn,
+                   /* ...AND WHOSE BANNER A LORD IS UNDER, which is the other half of it: `foe`
+                    * answers "may I strike this", `realmOf` answers "whose side is he on", and
+                    * the two are not the same question — a rival at TERMS is not a foe and is
+                    * not mine either. The renderer colours by realm, the HUD counts by realm,
+                    * and the war ends by realm; none of them may spell it themselves. */
+                   realmOf, realmMembers, realmCities,
                    /* a city is a THING with an owner now, not a property of a player — these
                     * three are the only ways anything asks about one */
                    seatOf, citiesOf, cityAt, seatDown,

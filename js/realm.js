@@ -56,19 +56,33 @@
        * through `World.declare` */
       tick(world) {
         if (!world) return null;
-        const me = world.players[0];
-        return me && me.pattern >= 100 ? 'won' : null;
+        const W = World();
+        /* THE WALK IS THE BANNER'S. Under `onePattern` the Shrine rises only in the Pattern's
+         * own city, and in a war that city is usually held by a SWORN lord — so the hundred is
+         * reached by him and won by his liege. Asked of the realm, never of seat 0 alone. */
+        if (W.realmMembers(world, 0).some((pi) => world.players[pi].pattern >= 100)) return 'won';
+        /* ...AND A WAR CAN BE LOST. There was no losing condition at all: your own court could
+         * be stormed and sworn away and the war simply went on with nothing left to play. A
+         * realm that holds no city has no lord, no purse and no muster — it is over, and the
+         * end screen already knows how to say so. */
+        if (!W.realmCities(world, 0).length) return 'lost';
+        return null;
       },
       /* what the HUD says about the war, asked every frame so it can count */
       say() {
         const w = realm.world, me = w.players[0];
-        if (me.pattern >= 100) return 'The Pattern holds, and it answers to your name.';
-        const mine = World().citiesOf(w, 0).length;
+        const W = World();
+        if (W.realmMembers(w, 0).some((pi) => w.players[pi].pattern >= 100))
+          return 'The Pattern holds, and it answers to your name.';
+        const mine = W.realmCities(w, 0).length;
         const room = 1 + (me.lords != null ? me.lords : C.REALM.lords0);
         const pc = w.pattern != null ? w.cities[w.pattern] : null;
         const at = pc ? (w.map.sites[pc.site].name || 'AMBER') : 'the centre';
         const held = `${mine} of ${room} ${room === 1 ? 'city' : 'cities'} held`;
-        if (pc && pc.owner === 0) return `${held} — ${at} is yours: raise a Shrine and walk`;
+        /* AMBER is "yours" when its lord flies your banner — you do not hold it yourself, you
+         * hold his oath, which is the whole shape of the war */
+        if (pc && pc.owner >= 0 && W.realmOf(w, pc.owner) === W.realmOf(w, 0))
+          return `${held} — ${at} is yours: raise a Shrine and walk`;
         return `${held} — the Pattern lies in ${at}`;
       },
       /* a war has no tutorial; present so game.js holds a war exactly where it holds a
@@ -122,7 +136,9 @@
                                    c.fell != null ? c.fell : -1]),
       players: w.players.map((p) => ({
         e: Math.round(p.essence), out: p.out ? 1 : 0, lords: p.lords, pattern: p.pattern,
-        seat: p.seat != null ? p.seat : -1,
+        /* WHOSE BANNER — the one fact a war is actually made of, and the one thing the seed
+         * cannot rebuild. Without it a saved war reloads with every oath forgotten. */
+        realm: p.realm != null ? p.realm : -1,
         walking: p.walking ? 1 : 0, revealed: p.revealed ? 1 : 0, nextCo: p.nextCo,
         musterPaused: p.musterPaused ? 1 : 0,
         offers: Array.from(p.offers || [], (o) => (o ? 1 : 0)),
@@ -166,8 +182,8 @@
     for (let pi = 0; pi < world.players.length && pi < rec.players.length; pi++) {
       const p = world.players[pi], r = rec.players[pi];
       p.essence = r.e; p.out = !!r.out; p.pattern = r.pattern || 0;
+      if (r.realm != null && r.realm >= 0) p.realm = r.realm;
       if (r.lords != null) p.lords = r.lords;
-      if (r.seat != null && r.seat >= 0) p.seat = r.seat;
       p.walking = !!r.walking; p.revealed = !!r.revealed;
       p.nextCo = r.nextCo || 1; p.musterPaused = !!r.musterPaused;
       p.offers = (r.offers || []).map((o) => (o ? 1 : 0));

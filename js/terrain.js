@@ -279,7 +279,11 @@
       const cs = map.sites[map.cities[pi]];
       if (!cs || !inWin(cs.x, cs.y, 400)) continue;
       const crng = global.RNG.make((seed ^ (map.cities[pi] * 2654435761)) >>> 0);
-      const X = cs.x, Y = cs.y, own = pi === viewer, R0 = C.CITY.r;
+      /* THE GROUND UNDER A COURT IS ITS HOLDER'S, not its founder's. This was `pi === viewer`,
+       * decided by the seat an heir was born to, so the country around a city you had taken
+       * went on glowing in the enemy's colours until the end of the war. `courtOwn` is the one
+       * answer, asked of the city list the sim actually keeps. */
+      const X = cs.x, Y = cs.y, own = courtOwn(view, viewer, pi), R0 = C.CITY.r;
       /* the far glow — the realm's colour bleeding into the country around the Seat */
       const gr = g.createRadialGradient(X, Y, 20, X, Y, 330);
       gr.addColorStop(0, own ? 'rgba(120,96,44,0.34)' : 'rgba(110,44,54,0.26)');
@@ -338,6 +342,21 @@
       return { canvas: out, trees, rocks };
     }
     return { canvas: cv2, trees, rocks };
+  }
+
+  /* WHOSE COURT. Warm for the ground your banner holds, cold for a rival's — and the ground
+   * bake has no palette beyond those two, deliberately: it is a wash under everything else,
+   * and sixteen tinted courts would fight the terrain it is painted into. The MARKS on the
+   * map (the Seat itself, its bar, its dot on the minimap) carry the banner's own colour.
+   * A yielded court reads as a rival's: it is not yours, and that is the whole of what this
+   * wash has to say. Tolerant of a view with no city list — a board, a chronicle's
+   * half-world — where a seat is its heir's forever. */
+  function courtOwn(view, viewer, pi) {
+    const c = view.cities && view.cities[pi];
+    if (!c) return pi === viewer;
+    if (c.owner < 0) return false;
+    const W = global.World;
+    return W && W.realmOf ? W.realmOf(view, c.owner) === W.realmOf(view, viewer) : c.owner === viewer;
   }
 
   /* ---------------- the whole land, cheaply ----------------
@@ -420,7 +439,7 @@
     for (let pi = 0; pi < map.cities.length; pi++) {
       const cs = map.sites[map.cities[pi]];
       if (!cs) continue;
-      const own = pi === viewer;
+      const own = courtOwn(view, viewer, pi);
       const gr = g.createRadialGradient(cs.x, cs.y, 20, cs.x, cs.y, 330);
       gr.addColorStop(0, own ? 'rgba(120,96,44,0.4)' : 'rgba(110,44,54,0.32)');
       gr.addColorStop(1, 'rgba(0,0,0,0)');

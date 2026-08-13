@@ -26,7 +26,13 @@
      * Two lists, though, and not one: with every rival at peace `foes` is EMPTY, and a heir
      * with no `enIdx` at all falls back to `players[me]` and starts orienting on his own Seat.
      * So orientation keeps the full list and only aggression reads `foes`. */
-    const living = world.players.map((q, pi) => pi).filter((pi) => pi !== me && !world.players[pi].out);
+    /* A LORD OF MY OWN BANNER IS NOT SOMEBODY TO ORIENT ON. `foes` already drops him — he is
+     * not a foe — but `others` falls back to the full living list when every rival is at
+     * peace, and with sworn lords on the board that fallback aimed a heir's towers, his banner
+     * and his assaults at his own vassal's court. Dropped here, where "who else is out there"
+     * is answered, so no doctrine downstream has to know about realms at all. */
+    const living = world.players.map((q, pi) => pi).filter((pi) =>
+      pi !== me && !world.players[pi].out && World.realmOf(world, pi) !== World.realmOf(world, me));
     const foes = living.filter((pi) => World.foe(world, me, pi));
     const others = foes.length ? foes : living;
     const byNear = others.slice().sort((a, b) =>
@@ -610,7 +616,9 @@
         let tgt = null, bd = Infinity;
         for (const i of nbrs) {
           const o = w.cities[i];
-          if (!o || o.owner === v.me) continue;
+          /* not of our BANNER — a marcher who read "not literally mine" walked on the court
+           * of the lord standing beside him in the same war */
+          if (!o || o.owner < 0 || W.realmOf(w, o.owner) === W.realmOf(w, v.me)) continue;
           const d = (o.x - c.x) ** 2 + (o.y - c.y) ** 2;
           if (d < bd) { bd = d; tgt = o; }
         }
@@ -633,41 +641,70 @@
      * are what give the war a clock. */
     lord: {
       title: 'A Marcher Lord', interval: 2.0, noise: 0,
-      custom: (v, issue) => {
+      /* `order` is his LIEGE'S standing instruction, and it exists because the player's own
+       * sworn lords run on exactly this doctrine — see AI.make's `step`. Five words, and each
+       * of them only redirects the march; nothing here reaches past what the lord can see, and
+       * with no order (a lord sworn to nobody, or one left to his own judgement) every branch
+       * falls through to the doctrine he has always had. Trouble at his own court outranks all
+       * five: a lord who marched out while his own city burned would not be worth swearing. */
+      custom: (v, issue, rng, order) => {
         if (!v.world.rules.reach) return;   // a lord has nothing to say to an ordinary board
         const w = v.world, W = global.World;
         const seat = W.seatOf(w, v.me);
         const seatIdx = w.cities.indexOf(seat);
         if (seatIdx < 0) return;
+        const mode = (order && order.mode) || null;
+        const otherRealm = (c2) => c2 && c2.owner >= 0 &&
+          W.realmOf(w, c2.owner) !== W.realmOf(w, v.me);
         const co = v.pl.companies[0];
         if (co) {
           const men = v.myUnits.filter((u) => u.co === co.id).length;
+          const rallyAt = (p) => {
+            if (!co.rally || Math.hypot(co.rally.x - p.x, co.rally.y - p.y) > 40)
+              issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
+          };
+          const home = () => { if (co.rally) issue({ c: 'rally', co: co.id }); };
           /* HOLD: hostiles at the court outrank any march. Striking the rally is the whole
            * order — under the reach law a company with no rally holds at its own city — and
            * it is struck once, not re-struck every think. */
           if (v.visHostiles.some((u) => d2(u.x, u.y, seat.x, seat.y) < 500 * 500)) {
-            if (co.rally) issue({ c: 'rally', co: co.id });
+            home();
+          } else if (mode === 'hold' || mode === 'gates' || mode === 'walls') {
+            home();   // three orders about the ground: the company keeps the court
+          } else if (mode === 'attack' && w.cities[order.target]) {
+            /* MARCHED ON A NAMED COURT, and re-pointed as the company refills — a liege who
+             * has to re-issue the order every time a company is spent is a liege doing the
+             * lord's job for him. */
+            if (men >= 6) rallyAt(w.cities[order.target]); else if (men < 3) home();
+          } else if (mode === 'support' && w.cities[order.target]) {
+            /* HOME UNTIL HIS NEIGHBOUR IS PRESSED. The one order that is about somebody
+             * else's city, and the reason a realm is worth more than the sum of its courts. */
+            const t2 = w.cities[order.target];
+            const pressed = w.units.some((u) => u.hp > 0 && W.foe(w, v.me, u.owner) &&
+                                                d2(u.x, u.y, t2.x, t2.y) < 650 * 650);
+            if (pressed && men >= 5) rallyAt(t2); else if (!pressed) home();
           } else {
             /* MARCH: the marcher's sentence — a full company on the nearest neighbouring
-             * court that is not ours, a spent one home. EXCEPT WHEN SOMEBODY IS ON THE
+             * court that is not of our BANNER, a spent one home. A lord who kept marching on
+             * his liege's cities because they were not literally his own was the first thing
+             * swearing broke. EXCEPT WHEN SOMEBODY IS ON THE
              * PATTERN: a walker's city within reach outranks every other target, because a
              * country that did not rise against the usurper would hand him the throne — a
              * walk begun far away must be answerable by the LAND between, not only by the
              * player. The walk is public (World.walkers), so a lord reads exactly what a
              * human at the table reads. */
             const nbrs = (w.map.gen.nbrs && w.map.gen.nbrs[seatIdx]) || [];
-            const walking = new Set(W.walkers(w).filter((q) => q.pi !== v.me).map((q) => q.pi));
+            const walking = new Set(W.walkers(w)
+              .filter((q) => W.realmOf(w, q.pi) !== W.realmOf(w, v.me)).map((q) => q.pi));
             let tgt = null, bd = Infinity;
             for (const i of nbrs) {
               const o = w.cities[i];
-              if (!o || o.owner === v.me) continue;
+              if (!otherRealm(o)) continue;
               const d = d2(o.x, o.y, seat.x, seat.y) - (walking.has(o.owner) ? 1e12 : 0);
               if (d < bd) { bd = d; tgt = o; }
             }
-            if (tgt && men >= 8) {
-              if (!co.rally || Math.hypot(co.rally.x - tgt.x, co.rally.y - tgt.y) > 40)
-                issue({ c: 'rally', co: co.id, x: tgt.x, y: tgt.y });
-            } else if (men < 4 && co.rally) issue({ c: 'rally', co: co.id });
+            if (tgt && men >= 8) rallyAt(tgt);
+            else if (men < 4 && co.rally) home();
           }
         }
         /* Does any city he holds carry the Pattern? Public knowledge — the country is
@@ -678,6 +715,26 @@
         /* WORKS: one order per think, dearest wish first, every spot probed before it is
          * asked for (see spotAt's note — probe where the work will stand, or not at all). */
         if (v.free > 0) {
+          /* WALL UP: the one order that changes what he BUILDS rather than where he marches —
+           * towers on the court's rim, faced at the nearest court of another banner. A true
+           * curtain is `spanFor`'s business and spanFor anchors on the seat; this is the
+           * honest version of the order, said here rather than promised and not delivered. */
+          if (mode === 'walls' && v.essence > 500) {
+            const towers = v.pl.buildings.filter((b2) => b2.bt === 'tower' &&
+              d2(b2.x, b2.y, seat.x, seat.y) < 420 * 420).length;
+            if (towers < 3) {
+              let fc = null, fd = Infinity;
+              for (const c2 of w.cities) {
+                if (!otherRealm(c2)) continue;
+                const d = d2(c2.x, c2.y, seat.x, seat.y);
+                if (d < fd) { fd = d; fc = c2; }
+              }
+              const a2 = fc ? Math.atan2(fc.y - seat.y, fc.x - seat.x)
+                            : Math.atan2(w.mapH / 2 - seat.y, w.mapW / 2 - seat.x);
+              const at = sweep(v, 'tower', seat.x, seat.y, a2 + (towers - 1) * 0.5, 205, 25, 2);
+              if (at) { issue({ c: 'build', x: at.x, y: at.y, bt: 'tower' }); return; }
+            }
+          }
           if (amber && !v.have.shrine && v.essence > 800) {
             /* THE SHRINE. The court itself first — that is where the one Pattern lies — but
              * the writ runs from his SEAT and his Gates (inClaim), not from every city he
@@ -764,9 +821,9 @@
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
     let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
 
-    function decide(world, me, issue) {
+    function decide(world, me, issue, order) {
       const v = view(world, me);
-      if (P.custom) { P.custom(v, issue, rng); return; }
+      if (P.custom) { P.custom(v, issue, rng, order); return; }
       if (noise > 0 && rng.chance(noise)) return;
 
       /* ---------------- terms ----------------
@@ -1311,7 +1368,12 @@
     return {
       kind, title: P.title,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; },
-      step(world, me, issue, dt) {
+      /* `order` is the standing instruction of whoever this lord answers to — the player, for
+       * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord
+       * goes on running his own city, his own purse and his own muster exactly as he did
+       * before he knelt, and the order only says which way to face. That is the whole of what
+       * "delegating a city" means here, and it is why there is no steward code any more. */
+      step(world, me, issue, dt, order) {
         if (!rng) {
           rng = global.RNG.make((world.seed ^ (me * 0x9E37)) >>> 0);
           /* Independent phase per seat. Two identical heirs used to tick in lockstep, so
@@ -1321,93 +1383,19 @@
           timer = interval * rng.next();
         }
         timer -= dt;
-        if (timer <= 0) { timer += interval; decide(world, me, issue); }
+        if (timer <= 0) { timer += interval; decide(world, me, issue, order); }
       }
     };
   }
 
-  /* ---------------- the STEWARD: the player's own lord ----------------
-   * 'Take control' of a conquered city moves the seat of command there, and somebody must
-   * keep everything else — a steward is this brain, run by game.js over a city the PLAYER
-   * holds, issuing ordinary commands AS the player. Nothing about it exists in the sim, so
-   * a steward can never do anything a hand on the screen could not; put the war down and
-   * pick it up and the helm rides the save (realm.helm).
-   * `order` is the player's instruction:
-   *   hold             keep the company home, raise what the city lacks (the default)
-   *   gates            hunt free springs inside THIS city's reach and Gate them
-   *   walls            garrison thinking: towers on the court's rim toward the nearest foe
-   *                    (a true curtain is spanFor's business and spanFor anchors on the
-   *                    SEAT — an honest v1, said here rather than hidden)
-   *   attack {target}  march the city's company on a city, re-pointed as it refills
-   *   support {target} hold home until the target is pressed, then march to its court */
-  function steward(v, issue, cityIdx, order) {
-    const w = v.world, W = global.World;
-    if (!w.rules.reach || !w.cities[cityIdx] || w.cities[cityIdx].owner !== v.me) return;
-    const home = w.cities[cityIdx];
-    const mode = (order && order.mode) || 'hold';
-    const tgt = order && order.target != null && w.cities[order.target]
-      ? w.cities[order.target] : null;
-    const co = v.pl.companies.find((q) => q.city === cityIdx) || null;
-    const men = co ? v.myUnits.filter((u) => u.co === co.id).length : 0;
-    const rallyAt = (p) => {
-      if (!co.rally || Math.hypot(co.rally.x - p.x, co.rally.y - p.y) > 40)
-        issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
-    };
-    const rallyHome = () => { if (co.rally) issue({ c: 'rally', co: co.id }); };
-    if (co) {
-      /* hostiles at the court outrank every order — a steward that marched out while its
-       * own city burned would not be worth appointing */
-      const threatened = v.visHostiles.some((u) => d2(u.x, u.y, home.x, home.y) < 520 * 520);
-      if (threatened) rallyHome();
-      else if (mode === 'attack' && tgt) {
-        if (men >= 6) rallyAt(tgt);
-        else if (men < 3) rallyHome();
-      } else if (mode === 'support' && tgt) {
-        const pressed = w.units.some((u) => u.hp > 0 && W.foe(w, v.me, u.owner) &&
-                                            d2(u.x, u.y, tgt.x, tgt.y) < 650 * 650);
-        if (pressed && men >= 5) rallyAt(tgt);
-        else if (!pressed) rallyHome();
-      } else rallyHome();   // hold, gates, walls: the company keeps the court
-    }
-    /* works: one wish per think, and a hall of its own before anything — without one the
-     * city has no company and its reach is nobody's to order */
-    if (v.free > 0 && v.essence > 350) {
-      if (!co) {
-        const at = sweep(v, 'barracks', home.x, home.y,
-                         Math.atan2(w.mapH / 2 - home.y, w.mapW / 2 - home.x), 190, 30, 3);
-        if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks', co: 'new' });
-        return;
-      }
-      if (mode === 'gates' || mode === 'hold') {
-        for (const s of w.map.sites) {
-          if (s.kind !== 'node') continue;
-          if (d2(s.x, s.y, home.x, home.y) > home.reach * home.reach) continue;
-          if (W.nodeHolder(w, s) !== -1) continue;
-          if (!W.placementError(w, v.me, s.x, s.y, 'gate')) {
-            issue({ c: 'build', x: s.x, y: s.y, bt: 'gate' });
-            return;
-          }
-        }
-      }
-      if (mode === 'walls' && v.essence > 500) {
-        const towers = v.pl.buildings.filter((b) => b.bt === 'tower' &&
-          d2(b.x, b.y, home.x, home.y) < 420 * 420).length;
-        if (towers < 3) {
-          let foeCity = null, fd = Infinity;
-          for (const c2 of w.cities) {
-            if (c2.owner === v.me || c2.owner < 0) continue;
-            const d = d2(c2.x, c2.y, home.x, home.y);
-            if (d < fd) { fd = d; foeCity = c2; }
-          }
-          const a = foeCity ? Math.atan2(foeCity.y - home.y, foeCity.x - home.x)
-                            : Math.atan2(w.mapH / 2 - home.y, w.mapW / 2 - home.x);
-          const at = sweep(v, 'tower', home.x, home.y, a + (towers - 1) * 0.5, 205, 25, 2);
-          if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'tower' });
-        }
-      }
-    }
-  }
-
-  global.AI = { make, view, steward, HEIRS, BASELINES };
+  /* THERE IS NO STEWARD ANY MORE. There used to be a second, thinner brain here — seventy
+   * lines that spoke rallies and two build wishes — because a conquered city had no lord of
+   * its own and the player had to be given something to run it with. A conquered city has a
+   * lord again: he kept his purse, his halls and his crews when he knelt, and he is already
+   * running them with the same doctrine he ran them with as an enemy. So the player's
+   * instruction is a PARAMETER to that doctrine (`step(world, me, issue, dt, order)`), not a
+   * second driver fighting it for the same company's standard — which is what two of them
+   * issuing rallies at each other would have been. One brain, one economy, one lord. */
+  global.AI = { make, view, HEIRS, BASELINES };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.AI;
 })(typeof window !== 'undefined' ? window : globalThis);

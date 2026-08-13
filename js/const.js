@@ -24,10 +24,11 @@
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is
    * the Seat's own country plus the country around every Shadow Gate you hold — so expanding
    * what you can build IS taking the map, which is the anti-stall model in one rule. */
-  /* `sworn` is the writ a conquered court grants its new master — room for a hall and a
-   * Gate in the court's skirt, a fraction of a born seat's 430, because a conquest is a
-   * liability until it is invested in (see inClaim) */
-  CONST.CLAIM = { seat: 430, gate: 300, sworn: 260 };
+  /* There is no `sworn` radius any more. A conquered court used to be a second capital for
+   * its taker, held on a thin skirt of writ so it stayed a liability; it has its own LORD
+   * again — sworn, not annexed — and a lord is entitled to the whole of his own country. One
+   * radius, and it is the one every seat has always had. */
+  CONST.CLAIM = { seat: 430, gate: 300 };
   /* There is no ceiling on how many works an heir may hold — hold as much country as you can
    * defend. What is rationed is the MASONS: one work rises at a time, and it takes time to
    * rise. An unfinished work is a shell — it earns nothing, musters nobody, shoots at nothing
@@ -226,6 +227,21 @@
    * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
   CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];
   CONST.CHAOS_TINT = 0x7dff9e;
+  /* ---------------- A COUNTRY'S COLOURS ----------------
+   * Four seat colours answer a table of four. A war seats SIXTEEN, and the fifth lord onward
+   * fell off the end of that list into the same crimson as the first — so every banner on the
+   * board looked like the same enemy, an ally at terms looked like the army about to storm
+   * you, and a conquest changed nothing you could see.
+   * What a glance at a war map actually asks is not "which of sixteen lords is that" — nobody
+   * can hold sixteen colours — it is WHOSE SIDE, and there are only ever a handful of sides:
+   * you, each rival CONTENDER (`world.heirs`), the minor lords sworn to nobody, and Chaos.
+   * So the palette is by BANNER: gold is always yours, each contending heir keeps a colour of
+   * his own for the whole war, and every unaligned lord shares the neutral. A city that swears
+   * to a contender turns his colour on the map that tick, which is the only way the growth of
+   * a realm can be READ. `NEUTRAL` is deliberately dull: an unaligned court is scenery until
+   * somebody takes it, and the eye should go to the banners. */
+  CONST.REALM_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8, 0xffb066, 0x9ad86a];
+  CONST.NEUTRAL_TINT = 0x9a93a8;
 
   /* ---------------- THE BIOMES OF A COUNTRY ----------------
    * A country is many boards, and a country whose every board is drawn from one distribution is

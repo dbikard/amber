@@ -91,7 +91,13 @@
    * lords, one bot apiece, exactly as the ?reach rig seats them. */
   function startRealm(realm) {
     game.realm = realm;
-    realm.helm = realm.helm || { stewards: {} };   // the player's government of the war
+    /* THE HELM: the player's government of the war. `orders[lord]` is the standing
+     * instruction each sworn lord runs under, and `hand` is which of his courts the player is
+     * driving himself. Neither is sim state — an order only makes a lord issue the ordinary
+     * commands a hand on the screen could have issued — so it lives here and rides the save. */
+    realm.helm = realm.helm || { orders: {}, hand: 0 };
+    realm.helm.orders = realm.helm.orders || {};
+    if (realm.helm.hand == null) realm.helm.hand = 0;
     game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false;
     game.chapter = null;
     game.war = true;
@@ -516,13 +522,29 @@
     if (Render.span !== undefined) Render.span = null;
     if (UI.armBuild) UI.armBuild(false);
   }
+  /* ---------------- WHOSE HAND IS ON THE ORDER ----------------
+   * `game.viewer` is the seat this client plays — its fog, its camera, its banner. `hand()` is
+   * the LORD whose city the taps are currently driving, which in a war may be one of his sworn
+   * lords instead: you govern a realm and you hand-play exactly one of its courts, and the
+   * build sheet, the flag tray, the essence chip and every order below belong to that one.
+   * It is never anybody else's lord — a stale `helm.hand` left over from a court that has
+   * since been taken back falls straight home rather than issuing orders into thin air. */
+  function hand() {
+    const w = game.world || refWorld;
+    const h = game.realm && game.realm.helm ? game.realm.helm.hand : null;
+    if (h == null || !w || !w.players || !w.players[h]) return game.viewer;
+    return World.realmOf(w, h) === World.realmOf(w, game.viewer) ? h : game.viewer;
+  }
+  game.hand = hand;
   function issue(cmd) {
     if (game.mode === 'guest') {
-      Net.send({ t: 'cmd', c: cmd });
+      /* the lord this order is FOR rides with it: the host checks he is of the sender's realm
+       * before applying it, exactly as it checks everything else a guest asks for */
+      Net.send({ t: 'cmd', c: cmd, as: hand() });
       Rec.command(cmd, refWorld && snapCur ? { t: snapCur.t, map: refWorld.map } : null);
       return { ok: true };
     }
-    const r = World.applyCommand(game.world, game.viewer, cmd);
+    const r = World.applyCommand(game.world, hand(), cmd);
     if (r.ok) Rec.command(cmd, game.world);   // orders GIVEN, not orders refused
     if (!r.ok) sayErr(r.err);
     return r;
@@ -601,6 +623,9 @@
       /* the rules of this match, so the HUD asks the world rather than the mode — the same
        * field the wire carries, so a host and a guest draw the same controls */
       rules: world.rules,
+      /* which banners contend — the renderer colours by realm and needs the list, and the
+       * wire carries the same field so a host and a guest paint the same country */
+      heirs: world.heirs,
       /* a rival's Seat is a rumour until you have seen it — one flag per seat now, since
        * with four heirs you may have found one court and not another */
       seatSeen: world.map.cities.map((id) => !!world.players[viewer].explored[id]),
@@ -613,7 +638,10 @@
        * longer a property of a player, so the view spells out the one number the HUD, the
        * minimap and the chronicle all want — the hit points of the Seat this heir rules from.
        * The wire says exactly the same thing under exactly the same name. */
-      players: world.players.map((pl, pi) => pi === viewer
+      /* "MINE" IS THE BANNER'S — a lord sworn to you is yours to command, so his works are on
+       * your screen unfogged exactly as your own are. `Net.snapFor` says the same thing in the
+       * same words; a board has one seat per realm and this is `pi === viewer` to the byte. */
+      players: world.players.map((pl, pi) => World.realmOf(world, pi) === World.realmOf(world, viewer)
         ? { ...pl, castleHp: (World.seatOf(world, pi) || {}).hp || 0, ghosts: [] }
         : { ...pl, castleHp: (World.seatOf(world, pi) || {}).hp || 0,
             /* the SAME gate and the SAME ghost projection the wire uses — both written once
@@ -625,7 +653,9 @@
         if (see(s.x, s.y)) return { id: s.id, live: true, holder: World.nodeHolder(world, s) };
         return mem[s.id] ? { id: s.id, live: false, holder: -1 } : null;
       }),
-      units: world.units.filter((u) => u.owner === viewer || see(u.x, u.y)),
+      units: world.units.filter((u) => (u.owner >= 0 &&
+                                        World.realmOf(world, u.owner) === World.realmOf(world, viewer)) ||
+                                       see(u.x, u.y)),
       storms: world.storms.filter((s) => see(s.x, s.y)),
       visSources: World.visionSources(world, viewer),
       seen: world.players[viewer].seen,   // ground you have ever had eyes on
@@ -845,19 +875,34 @@
       while (acc >= C.SIM_DT && steps++ < 6) {
         acc -= C.SIM_DT;
         if (!game.over) {
-          /* the country's bots step wherever the country is — a solo war or a hosted table.
-           * `game.bots[i]` is null on every seat a human holds, so nothing double-drives. */
+          /* ---- EVERY LORD RUNS HIS OWN CITY, INCLUDING THE ONES SWORN TO YOU ----
+           * The country's bots step wherever the country is — a solo war or a hosted table.
+           * `game.bots[i]` is null on every seat a HUMAN holds, so nothing double-drives, and
+           * a lord who swears keeps his brain: he goes on paying for his own halls out of his
+           * own purse and answering his own borders. What the player's oath buys is the right
+           * to tell him which way to face (`helm.orders`), which is a parameter to that same
+           * brain — and the lord the player is hand-playing right now is skipped, because the
+           * taps ARE his orders. This is the whole of "a delegated city has a real economy":
+           * there is no second, thinner steward brain to be worse than a rival's. */
           if (game.bots) {
+            const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || null;
+            const driving = game.war ? hand() : -1;
             for (let bi = 1; bi < game.bots.length; bi++)
-              if (game.bots[bi]) game.bots[bi].step(game.world, bi,
-                (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT);
+              if (game.bots[bi] && bi !== driving) game.bots[bi].step(game.world, bi,
+                (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT,
+                orders ? orders[bi] : null);
           } else if (game.mode === 'sp') {
             game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
           }
           /* every guest's commands are applied AS THAT GUEST — with four seats the sender
            * is the only thing that says whose order it was */
           if (game.mode === 'host')
-            for (const q of guestCmdQueue.splice(0)) World.applyCommand(game.world, q.pi, q.c);
+            for (const q of guestCmdQueue.splice(0)) {
+              const w2 = game.world;
+              const as = q.as != null && w2.players[q.as] &&
+                         World.realmOf(w2, q.as) === World.realmOf(w2, q.pi) ? q.as : q.pi;
+              World.applyCommand(w2, as, q.c);
+            }
           World.update(game.world, C.SIM_DT);
           /* ---- THE CHAPTER'S OWN CONDITION ----
            * Polled here, over the world this loop already holds, and NOT grown into `update`:
@@ -881,22 +926,6 @@
            * often is the one nobody's code sees: the OS swipe. An 80KB stringify twice a
            * minute is nothing. */
           if (game.war && game.realm && game.world.tick % 900 === 0) REALM.save(game.realm);
-          /* THE HELM: the player's stewards run their cities between his taps — the same
-           * brain as a lord's, issuing ordinary commands AS the player, never his own seat */
-          if (game.war && game.realm && game.realm.helm && game.realm.helm.stewards &&
-              game.world.tick % 60 === 0) {
-            const w2 = game.world, me2 = w2.players[0];
-            const seatIdx = me2.seat != null && w2.cities[me2.seat] && w2.cities[me2.seat].owner === 0
-              ? me2.seat : w2.cities.findIndex((c2) => c2.owner === 0);
-            let v2 = null;
-            for (const k of Object.keys(game.realm.helm.stewards)) {
-              const ci = +k;
-              if (ci === seatIdx) continue;
-              if (!w2.cities[ci] || w2.cities[ci].owner !== 0) continue;
-              if (!v2) v2 = AI.view(w2, 0);
-              AI.steward(v2, (cmd) => World.applyCommand(w2, 0, cmd), ci, game.realm.helm.stewards[k]);
-            }
-          }
         }
       }
       const view = hostView();
@@ -949,20 +978,27 @@
           }
         }
       }
+      /* THE SCREEN BELONGS TO THE SEAT, THE READOUTS BELONG TO THE HAND. The veil, the
+       * colours and the camera are the viewer's; the purse, the crews, the flag tray and the
+       * income are the court he is driving — which in a war may be one of his sworn lords.
+       * `Render.hand` is how the renderer is told the same thing (writ, reach ring, halo). */
+      const hv = hand(), hp = game.world.players[hv];
+      Render.hand = hv === game.viewer ? null : hv;
       Render.frame(view, game.viewer, dtReal);
       UI.paused(game.world.paused, game.viewer, game.names);
-      UI.hud(view, game.viewer, (game.world.players[game.viewer].incomeRate || 0) - (game.world.players[game.viewer].drainRate || 0), game.targeting);
-      UI.tick(game.world.players[game.viewer].essence);
-      UI.flags(view, game.viewer, game.armedFlag);
+      UI.hud(view, game.viewer, (hp.incomeRate || 0) - (hp.drainRate || 0), game.targeting, hv);
+      UI.tick(hp.essence);
+      UI.flags(view, hv, game.armedFlag);
     } else if (game.mode === 'guest' && snapCur) {
       const view = guestView();
       /* a guest may hold ANY seat but seat 0 — read its own, never seat 1's */
-      const gv = game.viewer, gp = snapCur.players[gv] || {};
+      const gv = game.viewer, gh = hand(), gp = snapCur.players[gh] || {};
+      Render.hand = gh === gv ? null : gh;
       Render.frame(view, gv, dtReal);
       UI.paused(snapCur.paused, gv, game.names);
-      UI.hud(view, gv, (gp.incomeRate || 0) - (gp.drainRate || 0), game.targeting);
+      UI.hud(view, gv, (gp.incomeRate || 0) - (gp.drainRate || 0), game.targeting, gh);
       UI.tick(gp.essence || 0);
-      UI.flags(view, gv, game.armedFlag);
+      UI.flags(view, gh, game.armedFlag);
     }
   }
 
@@ -1129,29 +1165,40 @@
       const site = view.map.sites[siteId];
       const ci = view.cities ? view.cities.findIndex((c2) => c2.site === siteId) : -1;
       const cRec = ci >= 0 ? view.cities[ci] : null;
-      const foeCity = cRec ? cRec.owner !== game.viewer
-                           : view.map.cities[1 - game.viewer] === siteId;
-      /* THE WAR'S OWN CONTEXT for a city sheet: whether this court can be COMMANDED FROM,
-       * who its neighbours are (an attack order wants names, not coordinates), and what
-       * steward — if any — already keeps it. Nothing here for a board. */
+      /* MINE IS THE BANNER'S. A court held by a lord sworn to you is yours, and the sheet has
+       * to say so — this asked `owner !== viewer`, which in a war called every one of your own
+       * vassals' courts a rival's and offered you the assault order on them. */
+      const ours = (c2) => c2 && c2.owner >= 0 &&
+        World.realmOf(view, c2.owner) === World.realmOf(view, game.viewer);
+      const foeCity = cRec ? !ours(cRec) : view.map.cities[1 - game.viewer] === siteId;
+      /* THE WAR'S OWN CONTEXT for a city sheet: whether this court can be COMMANDED FROM, who
+       * its neighbours are (an attack order wants names, not coordinates), and what standing
+       * order its lord — if any — is already under. Nothing here for a board. */
       let war = null;
       if (view.rules && view.rules.reach && cRec && game.war) {
-        const me2 = view.players[game.viewer];
-        const firstHeld = view.cities.findIndex((c2) => c2.owner === game.viewer);
-        const seatIdx = me2.seat != null && view.cities[me2.seat] &&
-                        view.cities[me2.seat].owner === game.viewer ? me2.seat : firstHeld;
+        const lord = cRec.owner;
         war = {
-          idx: ci, id: cRec.id, mine: cRec.owner === game.viewer, isSeat: ci === seatIdx,
-          steward: (game.realm && game.realm.helm && game.realm.helm.stewards &&
-                    game.realm.helm.stewards[ci]) || null,
+          idx: ci, id: cRec.id, mine: ours(cRec), lord,
+          /* THIS court's own throne, so the sheet quotes the city it is about */
+          hp: cRec.hp, maxHp: cRec.maxHp, owner: cRec.owner,
+          /* the court you are hand-playing offers neither button: you ARE its steward */
+          isSeat: lord >= 0 && lord === hand(),
+          steward: (game.realm && game.realm.helm && game.realm.helm.orders &&
+                    game.realm.helm.orders[lord]) || null,
           nbrs: ((view.map.gen.nbrs && view.map.gen.nbrs[ci]) || []).map((i) => ({
             idx: i, name: view.map.sites[view.cities[i].site].name, owner: view.cities[i].owner })),
           own: view.cities.map((c2, i) => ({ idx: i, name: view.map.sites[c2.site].name, owner: c2.owner }))
-            .filter((e) => e.owner === game.viewer && e.idx !== ci)
+            .filter((e) => ours(view.cities[e.idx]) && e.idx !== ci)
         };
       }
-      UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[game.viewer].essence, foeCity,
-                   view.players[game.viewer], view.players[1 - game.viewer], war);
+      /* the sheet is read for the court's OWN lord — his throne, his purse, his muster — and
+       * the rival info is the city's holder rather than `players[1 - viewer]`, which was duel
+       * arithmetic and told you seat 1's business about every court in a sixteen-seat war */
+      const mineIdx = hand();
+      UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[mineIdx].essence, foeCity,
+                   view.players[mineIdx],
+                   cRec && cRec.owner >= 0 ? view.players[cRec.owner] : view.players[1 - game.viewer],
+                   war);
       return;
     }
     /* bare ground does nothing now: raising a work begins at the BUILD button, so the map is
@@ -1409,7 +1456,10 @@
       startMP(seed, seats, 0, war, war ? saved : null);
     });
     Net.onStart = (m) => startMP(m.seed, m.seats, m.idx, m.war || null);
-    Net.onCmd = (c, from) => guestCmdQueue.push({ c, pi: from });
+    /* A GUEST MAY ORDER HIS OWN LORDS AND NOBODY ELSE'S, and the host is where that is
+     * decided — the seat the message arrived on is the only thing that cannot be forged, so
+     * the lord it names is checked against it and falls back to the sender himself. */
+    Net.onCmd = (c, from, as) => guestCmdQueue.push({ c, pi: from, as });
     /* a call for another match is only ever answered BETWEEN matches, by the host. Mid-match
      * it is stale — a message that crossed with the winning blow — and once the host has
      * dealt, `game.over` is false again, which is what stops two callers dealing two boards. */
@@ -1521,7 +1571,9 @@
       onTerms: (p) => {
         if (game.over) return;
         const view = game.mode === 'guest' ? snapCur : game.world;
-        const me = view && view.players[game.viewer];
+        /* the offer lives on the BANNER's founder — the sim normalises the order either way,
+         * but the state this tap inverts has to be read off the same place */
+        const me = view && view.players[World.realmOf(view, game.viewer)];
         issue({ c: 'pact', p, on: !(me && me.offers && me.offers[p]) });
       },
       /* the run's sheltered face, turned over. It asks for a STATE rather than a toggle for the
@@ -1563,31 +1615,34 @@
        * the flag and its roster. The order it sent, if it is ever wanted again anywhere, is
        * `{ c: 'rally', co, site: -1 }` — a rally with nowhere to go clears the standard. */
       onAssign: (id, co) => issue({ c: 'assign', id, co }),
-      /* TAKE COMMAND of a held city: the seat moves there (a real order, host-authoritative)
-       * and a steward is appointed over the seat just left, so conquest rolls FORWARD — the
-       * old capital keeps mustering and holding without another tap. */
-      onTakeSeat: (cityId) => {
+      /* TAKE COMMAND of a court of your realm: your taps drive THAT lord from now on — his
+       * purse pays for what you build, his crews raise it, his companies answer your flags.
+       * It is a client choice and not an order (nothing in the world changes), so it needs no
+       * command and no wire: what it changes is whose hand is on the next tap. The lord you
+       * step away from goes straight back to running himself under his standing order, which
+       * is why leaving a court costs nothing but your attention. */
+      onTakeSeat: (cityIdx) => {
         const w = game.world;
         if (!w || !game.war || !game.realm) return;
-        const me = w.players[0];
-        const before = me.seat != null && w.cities[me.seat] && w.cities[me.seat].owner === 0
-          ? me.seat : w.cities.findIndex((c2) => c2.owner === 0);
-        const r = World.applyCommand(w, 0, { c: 'seat', id: cityId });
-        if (!r.ok) { UI.banner(REFUSAL[r.err] || 'The court refuses', 'warn'); return; }
-        const helm = game.realm.helm || (game.realm.helm = { stewards: {} });
-        if (before >= 0 && before !== me.seat && !helm.stewards[before])
-          helm.stewards[before] = { mode: 'hold' };
+        const c = w.cities[cityIdx];
+        if (!c || c.owner < 0 || World.realmOf(w, c.owner) !== World.realmOf(w, game.viewer)) {
+          UI.banner(REFUSAL.held, 'warn'); return;
+        }
+        const helm = game.realm.helm || (game.realm.helm = { orders: {}, hand: 0 });
+        helm.hand = c.owner;
+        game.armedFlag = null; clearPlacing();
         REALM.save(game.realm);
-        UI.banner('You command from ' + w.map.sites[w.cities[me.seat].site].name +
-                  ' now — a steward keeps your former seat', 'alert');
+        if (Render.lookAt) Render.lookAt(c.x, c.y);
+        UI.banner('You command from ' + w.map.sites[c.site].name + ' — its purse is your purse',
+                  'alert');
       },
-      /* a steward's order, or its dismissal (mode null). Not a sim command — a steward only
-       * ISSUES ordinary orders — so it lives on the helm and rides the save. */
-      onSteward: (ci, mode, target) => {
+      /* a lord's standing order, or its dismissal (mode null). Not a sim command — an order
+       * only biases the brain that lord was already running — so it lives on the helm. */
+      onSteward: (lord, mode, target) => {
         if (!game.realm) return;
-        const helm = game.realm.helm || (game.realm.helm = { stewards: {} });
-        if (!mode) delete helm.stewards[ci];
-        else helm.stewards[ci] = Object.assign({ mode }, target != null ? { target } : null);
+        const helm = game.realm.helm || (game.realm.helm = { orders: {}, hand: 0 });
+        if (!mode) delete helm.orders[lord];
+        else helm.orders[lord] = Object.assign({ mode }, target != null ? { target } : null);
         REALM.save(game.realm);
       },
       onRecall: () => {

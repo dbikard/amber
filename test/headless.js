@@ -7005,8 +7005,8 @@ suite('a city is a thing with an owner');
  * from beyond anyone's reach and only a surviving army does the second. */
 suite('a Seat yields, and is taken by standing in it');
 {
-  const bare = (seed, rules) => {
-    const w = World.createWorld(seed, 2, null, rules);
+  const bare = (seed, rules, n) => {
+    const w = World.createWorld(seed, n || 2, null, rules);
     w.chaosNext = 1e9;
     /* no halls: the rig is about a court, and a hall in it musters a garrison into the middle
      * of the measurement */
@@ -7041,7 +7041,10 @@ suite('a Seat yields, and is taken by standing in it');
   }
 
   const stand = (secs, mine, theirs) => {
-    const w = bare(20260916, { occupy: 1, endOnSeat: 0 });
+    /* THREE SEATS, because a court that swears is a banner absorbed: on a two-seat board the
+     * take leaves ONE banner holding everything, which is a war won (see holdCities) and a
+     * world that stops updating — so the rig would have been measuring a finished match. */
+    const w = bare(20260916, { occupy: 1, endOnSeat: 0 }, 3);
     const c1 = World.seatOf(w, 1);
     World.seatDown(w, c1, 0);
     for (const p of w.players) p.banner = { x: c1.x, y: c1.y };
@@ -7067,13 +7070,19 @@ suite('a Seat yields, and is taken by standing in it');
   if (won.took) {
     near('...and it takes exactly as long as the rule says', won.took.t, C.CITY.take, 0.6,
          `${won.took.t.toFixed(1)}s against ${C.CITY.take}`);
-    eq('...by the heir who stood in it', won.c1.owner, 0);
+    /* IT SWEARS TO THE BANNER THAT STOOD IN IT, and comes back to its own lord doing so —
+     * the deed does not move, the allegiance does */
+    eq('...to the banner that stood in it', World.realmOf(won.w, won.c1.owner), 0);
+    eq('...and its own lord has it back', won.c1.owner, 1);
     near('...and it comes back hurt', won.c1.hp, won.c1.maxHp * C.CITY.back, 2,
          `${Math.round(won.c1.hp)} of ${won.c1.maxHp}`);
     eq('...and back to its first level', won.c1.level, 1);
     /* THE GUN COMES WITH IT — which is the plainest possible proof that the city really changed
      * hands rather than merely changing a number */
-    const en = manAt(won.w, 1, 'soldier', won.c1.x + C.SEAT_GUN.range * 0.6, won.c1.y);
+    /* the mark is the BLACK ROAD. Seat 1 is the sworn lord now and seat 0 is his liege, so on
+     * a two-seat board there is nobody left at war with this throne — which is the rule
+     * working, not a hole in the rig. Chaos treats with nobody. */
+    const en = manAt(won.w, C.CHAOS_ID, 'fiend', won.c1.x + C.SEAT_GUN.range * 0.6, won.c1.y);
     en.hp = en.maxHp = 1e6;
     const was = en.hp;
     for (let i = 0; i < 5 * 30; i++) World.update(won.w, C.SIM_DT);
@@ -7319,6 +7328,20 @@ suite('a company belongs to a city');
     ok('...and a court relieved musters again', muster(4) > 0);
   }
 
+  /* violence is not bounded: men fight across the rim as they always did. ABOVE the take
+   * below, deliberately — on a two-seat board a court that swears leaves one banner holding
+   * everything, which is a war won, and a won world does not update. */
+  {
+    const edge = { x: 520 + 690, y: 420 };         // the rim of city 0's disc
+    const a = manAt(w, 0, 'soldier', edge.x - 10, edge.y);
+    const b = manAt(w, 1, 'soldier', edge.x + 30, edge.y);
+    for (let i = 0; i < 60; i++) World.update(w, C.SIM_DT);
+    ok('a foe past the rim is fought, not watched',
+       (a.hp < a.maxHp || b.hp < b.maxHp || a._t || b._t) === true);
+    for (const u of [a, b]) { u.hp = 0; u.dead = 1; }
+    World.update(w, C.SIM_DT);
+  }
+
   /* a city is broken, yielded and TAKEN — and the men of it live through all three */
   {
     const mine = () => w.units.filter((u) => u.owner === 0 && u.hp > 0).length;
@@ -7327,48 +7350,49 @@ suite('a company belongs to a city');
     for (let k = 0; k < 3; k++) manAt(w, 1, 'soldier', w.cities[0].x + 30 + k * 12, w.cities[0].y);
     /* the defenders stand OFF the court, so the take is uncontested and the claim clean */
     for (const u of w.units) if (u.owner === 0) { u.x = w.cities[0].x + 400; u.y = w.cities[0].y + 400; }
+    const purse = w.players[0].essence, works = w.players[0].buildings.length;
     let fell = null, taken = null;
     for (let i = 0; i < 30 * 40 && taken == null; i++) {
       World.update(w, C.SIM_DT);
       if (fell == null && w.cities[0].owner === -1) fell = w.cities[0].fell;
-      if (w.cities[0].owner === 1) taken = w.t;
+      if (w.cities[0].owner >= 0 && World.realmOf(w, w.cities[0].owner) === 1) taken = w.t;
       for (const u of w.units) if (u.owner === 0) { u.x = w.cities[0].x + 400; u.y = w.cities[0].y + 400; u.hp = u.maxHp; }
     }
     eq('a yielded city remembers whom it fell from', fell, 0);
     ok('...and is taken by standing in it', taken != null);
     ok('...and the taking kills nobody', mine() >= standing,
        `${mine()} of ${standing} men still standing`);
-    /* AND A CONQUEST IS CONTROL, NOT A FLAG. The sworn court grants writ (CLAIM.sworn), so
-     * the taker can raise a hall in its skirt — and the hall's company is born to the TAKEN
-     * city, which is what makes its reach the taker's to order. Without this the honest
-     * answer to 'how do I assume control of the city I claimed?' was that you could not. */
+    /* ---- AND WHAT CHANGES HANDS IS ALLEGIANCE, NOT PROPERTY ----
+     * A conquest used to move the deed: `owner` became the taker's, the beaten lord kept a
+     * treasury he could no longer spend, and his works stood quiet in the taker's new court
+     * forever, refusing the taker's own masons the ground. The court has its LORD back — the
+     * same lord, with the same purse and the same halls — and he flies the taker's banner. So
+     * the answer to 'how do I assume control of the city I claimed?' is that its lord answers
+     * to you: he is not a foe, he keeps his own writ whole, and his men are on your side. */
     if (taken != null) {
       const c0 = w.cities[0];
-      w.players[1].essence = 99999;
-      const err0 = World.placementError(w, 1, c0.x + 190, c0.y, 'barracks');
-      ok('the sworn court grants writ, whatever else it refuses',
-         err0 !== 'claim' && err0 !== 'reach', String(err0));
-      let raised = null;
-      for (const [ox, oy] of [[190, 0], [-190, 0], [0, 190], [0, -190], [150, 130]]) {
-        const r2 = World.applyCommand(w, 1, { c: 'build', x: c0.x + ox, y: c0.y + oy, bt: 'barracks' });
-        if (r2.ok) { raised = w.players[1].buildings[w.players[1].buildings.length - 1]; break; }
+      eq('the court comes back to its own lord', c0.owner, 0);
+      eq('...flying the taker\'s banner', World.realmOf(w, 0), 1);
+      eq('...so the taker\'s banner holds two courts', World.realmCities(w, 1).length, 2);
+      ok('...and he is a foe no longer', !World.foe(w, 0, 1));
+      ok('...he keeps his purse', w.players[0].essence > 0, String(Math.round(w.players[0].essence)));
+      eq('...and his works, which are not rubble in somebody else\'s court',
+         w.players[0].buildings.length, works);
+      ok('...and his writ is his own court\'s, whole — he runs the place',
+         World.inClaim(w, 0, c0.x + C.CLAIM.seat - 20, c0.y));
+      ok('...while the taker\'s writ has not moved onto it',
+         !World.inClaim(w, 1, c0.x, c0.y), 'the taker built a writ he was never given');
+      ok('...and the throne comes back hurt', c0.hp <= c0.maxHp * C.CITY.back + 1,
+         `${Math.round(c0.hp)} of ${c0.maxHp}`);
+      /* his halls wake up again: the pocket rule quiets a court that is nobody's, and this
+       * one has a lord */
+      const hall = w.players[0].buildings.find((b2) => C.BUILDINGS[b2.bt].spawns);
+      if (hall) {
+        const co2 = w.players[0].companies.find((q) => q.id === hall.co);
+        eq('...and his company still belongs to his own city', co2 && co2.city, 0);
       }
-      ok('a hall rises in the conquered court', !!raised);
-      if (raised) {
-        const co2 = w.players[1].companies.find((q) => q.id === raised.co);
-        eq('...and its company is born to the TAKEN city', co2 && co2.city, 0);
-      }
+      void purse;
     }
-  }
-
-  /* violence is not bounded: men fight across the rim as they always did */
-  {
-    const edge = { x: 520 + 690, y: 420 };         // the rim of city 0's disc
-    const a = manAt(w, 0, 'soldier', edge.x - 10, edge.y);
-    const b = manAt(w, 1, 'soldier', edge.x + 30, edge.y);
-    for (let i = 0; i < 60; i++) World.update(w, C.SIM_DT);
-    ok('a foe past the rim is fought, not watched',
-       (a.hp < a.maxHp || b.hp < b.maxHp || a._t || b._t) === true);
   }
 
   /* and the grown country plays by the same law through the same door */
@@ -7519,7 +7543,7 @@ suite('the lord brake, enforced where the ground changes hands');
   for (const p of w.players) p.musterPaused = true;  // and so does every muster
   const p0 = w.players[0];
   eq('you begin with one lord', p0.lords, C.REALM.lords0);
-  eq('...and one city', World.citiesOf(w, 0).length, 1);
+  eq('...and one city', World.realmCities(w, 0).length, 1);
 
   /* the take rig: two men PLACED and PINNED in the court — the same idiom as the suite
    * 'a company belongs to a city', because a man's standing order would march him home */
@@ -7538,7 +7562,8 @@ suite('the lord brake, enforced where the ground changes hands');
   World.seatDown(w, a, 0);
   eq('the rig is alive: a yielded court remembers whom it fell from', a.fell, 3);
   press(a, C.CITY.take + 15);
-  eq('the first extra city swears', a.owner, 0);
+  eq('the first extra city swears', World.realmOf(w, a.owner), 0);
+  eq('...to its own lord, who keeps it', a.owner, 3);
   eq('...and a minor holding brings no lord', p0.lords, C.REALM.lords0);
 
   /* the next take is REFUSED: the court stays free and the map is told which one and why */
@@ -7550,7 +7575,7 @@ suite('the lord brake, enforced where the ground changes hands');
   ok('...and the refusal is an event the map can carry',
      w.events.some((e) => e.e === 'refused' && e.pi === 0 && e.id === b.id),
      w.events.filter((e) => e.e === 'refused').map((e) => JSON.stringify(e)).join(' ') || 'no refusal spoke');
-  eq('...and you still hold two', World.citiesOf(w, 0).length, 2);
+  eq('...and you still hold two', World.realmCities(w, 0).length, 2);
 
   /* a CONTENDER's city brings his lord over — room is made first, so the brake is not what
    * is being tested */
@@ -7561,8 +7586,9 @@ suite('the lord brake, enforced where the ground changes hands');
   p0.lords++;
   const before = p0.lords;
   press(h, C.CITY.take + 15);
-  eq('a contender\'s city is taken', h.owner, 0);
+  eq('a contender\'s city is taken', World.realmOf(w, h.owner), 0);
   eq('...and his lord comes over with it', p0.lords, before + 1);
+  ok('...and the contender himself is sworn, not dead', !w.players[1].out && !World.foe(w, 0, 1));
 }
 
 /* ---- A WAR FITS IN A POCKET ----
@@ -7614,14 +7640,14 @@ suite('a war fits in a pocket');
     World.seatDown(w, prize, 0);
     const men = [manAt(w, 0, 'soldier', prize.x + 24, prize.y), manAt(w, 0, 'soldier', prize.x + 38, prize.y)];
     for (let i = 0; i < 30 * 120; i++) {
-      if (prize.owner !== 0)
+      if (prize.owner < 0)
         for (let k = 0; k < men.length; k++) {
           men[k].x = prize.x + 24 + k * 14; men[k].y = prize.y; men[k].hp = men[k].maxHp;
         }
       World.update(w, C.SIM_DT);
       w.events.length = 0;
     }
-    eq('the rig is alive: the prize was taken inside the run', prize.owner, 0);
+    eq('the rig is alive: the prize swore inside the run', World.realmOf(w, prize.owner), 0);
     eq('...and, an heir\'s, it brought his lord over', p0.lords, C.REALM.lords0 + 1);
     ok('...and the war moved: men stand and essence flowed',
        w.units.filter((u) => u.hp > 0).length > 2 && w.t > 119, `${w.units.length} units at t=${w.t.toFixed(1)}`);
@@ -7639,7 +7665,7 @@ suite('a war fits in a pocket');
       cities: wx.cities.map((c) => [c.owner, Math.round(c.hp), c.level,
                                     c.fell != null ? c.fell : -1]),
       players: wx.players.map((p) => ({
-        e: Math.round(p.essence), lords: p.lords, pattern: p.pattern,
+        e: Math.round(p.essence), lords: p.lords, pattern: p.pattern, realm: p.realm,
         offers: Array.from(p.offers || [], (o) => (o ? 1 : 0)),
         cos: p.companies.map((co) => [co.id, co.city != null ? co.city : -1,
           co.rally ? Math.round(co.rally.x) : null, co.rally ? Math.round(co.rally.y) : null,
@@ -7787,48 +7813,71 @@ suite('a war is dealt to a table');
   if (hadLS) globalThis.localStorage = oldLS; else delete globalThis.localStorage;
 }
 
-/* ---------------- the helm: take command, appoint stewards ----------------
- * 'Once I claim a city, how do I assume control of it?' — the second half of the answer.
- * The seat of command MOVES ({c:'seat'}, host-authoritative like every order), and the
- * cities it leaves behind are kept by STEWARDS: the lord's brain pointed at one of the
- * player's own cities, issuing ordinary commands as the player, under an order he chose.
- * The helm is not sim state — a steward can do nothing a hand on the screen could not —
- * but a war put down must come back with its government intact, so it rides the save. */
-suite('the helm: take command, appoint stewards');
+/* ---------------- the helm: a sworn lord, and an order for him ----------------
+ * 'Once I claim a city, how do I assume control of it?' — the second half of the answer, and
+ * it changed shape when conquest stopped transferring deeds. A broken court is not annexed:
+ * its LORD swears, keeping his purse, his halls, his crews and his surviving men, and he goes
+ * on running them with the same doctrine he ran them with as an enemy. What the oath buys is
+ * the right to tell him which way to face — a standing order, which is a PARAMETER to that one
+ * brain (`AI.make().step(world, me, issue, dt, order)`) rather than a second, thinner steward
+ * fighting it for the same company's standard. Nothing about an order is sim state: it makes a
+ * lord issue only the ordinary commands a hand on the screen could have issued, so it lives on
+ * the helm and rides the save.
+ * There is no {c:'seat'} any more either. A lord holds exactly one city, so "which court do I
+ * rule from" has no second answer; which of his sworn lords the PLAYER is driving is his
+ * client's business (game.hand) and never the world's. */
+suite('the helm: a sworn lord, and an order for him');
 {
   const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
   ok('the rig is alive', !!w && w.cities.length > 2);
   if (w) {
     w.chaosNext = 1e9;
-    /* a second city, handed over so the command can move */
-    w.cities[3].owner = 0;
-    eq('a board does not move its seat', World.applyCommand(
-      World.createWorld(3), 0, { c: 'seat', id: 1 }).err, 'cmd');
-    eq('a court not yours will not be commanded from',
-       World.applyCommand(w, 0, { c: 'seat', id: w.cities[5].id }).err, 'held');
-    eq('a held court will', World.applyCommand(w, 0, { c: 'seat', id: w.cities[3].id }).ok, true);
-    eq('...and the seat of command answers from it', World.seatOf(w, 0), w.cities[3]);
+    eq('the seat command is gone', World.applyCommand(w, 0, { c: 'seat', id: w.cities[3].id }).err, 'cmd');
+    eq('...and a lord rules from his own court, always', World.seatOf(w, 0), w.cities[0]);
+    /* city 3's lord swears — the state a take leaves behind */
+    w.players[3].realm = 0;
+    eq('a sworn lord keeps his city', w.cities[3].owner, 3);
+    eq('...and flies your banner', World.realmOf(w, 3), 0);
+    eq('...so your banner holds two courts', World.realmCities(w, 0).length, 2);
+    eq('...while he himself still holds exactly one', World.citiesOf(w, 3).length, 1);
+    ok('...and he is not a foe', !World.foe(w, 0, 3));
+    ok('...and his writ is his own court\'s, whole',
+       World.inClaim(w, 3, w.cities[3].x + C.CLAIM.seat - 20, w.cities[3].y));
 
-    /* the steward: ordered to attack, the old capital's company marches; ordered to hold,
-     * it comes home. The company is the OLD seat's — exactly the city a steward keeps. */
-    const co = w.players[0].companies.find((q) => q.city === 0);
-    ok('the old capital still flies its standard', !!co);
-    if (co) {
-      const AIv = () => AI.view(w, 0);
-      const issue = (cmd) => World.applyCommand(w, 0, cmd);
-      const nbr = (w.map.gen.nbrs[0] || [])[0];
-      ok('...and has a neighbour to be sent at', nbr != null);
-      for (let k = 0; k < 7; k++) { const m = manAt(w, 0, 'soldier', w.cities[0].x + 30 + k * 8, w.cities[0].y); m.co = co.id; }
-      AI.steward(AIv(), issue, 0, { mode: 'attack', target: nbr });
+    /* THE ORDER. Ordered to attack, the sworn lord's own company marches on the named court;
+     * ordered to hold, it comes home. Same brain, same company — only the parameter differs. */
+    const co = w.players[3].companies.find((q) => q.city === 3);
+    ok('the sworn court still flies its own standard', !!co);
+    const nbr = ((w.map.gen.nbrs[3] || []).filter((i2) => World.realmOf(w, w.cities[i2].owner) !== 0))[0];
+    ok('...and has a neighbour of another banner to be sent at', nbr != null);
+    if (co && nbr != null) {
+      const bot = AI.make('lord', {});
+      const issue = (cmd) => World.applyCommand(w, 3, cmd);
+      for (let k = 0; k < 9; k++) {
+        const m = manAt(w, 3, 'soldier', w.cities[3].x + 30 + k * 8, w.cities[3].y);
+        m.co = co.id;
+      }
+      const drive = (order) => { for (let k = 0; k < 4; k++) bot.step(w, 3, issue, 1.0, order); };
+      drive({ mode: 'attack', target: nbr });
       ok('a mustered company is marched at the target', !!co.rally &&
          Math.hypot(co.rally.x - w.cities[nbr].x, co.rally.y - w.cities[nbr].y) < 60,
          co.rally ? Math.round(co.rally.x) + ',' + Math.round(co.rally.y) : 'no rally');
-      AI.steward(AIv(), issue, 0, { mode: 'hold' });
+      drive({ mode: 'hold' });
       eq('ordered to hold, the standard is struck and the company keeps the court', co.rally, null);
+      /* AND HE NEVER MARCHES ON HIS OWN BANNER. With no order at all his doctrine picks the
+       * nearest neighbouring court — which used to mean the court of the lord standing beside
+       * him in the same war, because "not mine" read as "not literally this seat's". */
+      const mineIdx = w.cities.map((c2, i2) => i2)
+        .filter((i2) => World.realmOf(w, w.cities[i2].owner) === 0 && i2 !== 3);
+      drive(null);
+      ok('...and left to himself he never marches on a court of his own banner',
+         !co.rally || !mineIdx.some((i2) =>
+           Math.hypot(co.rally.x - w.cities[i2].x, co.rally.y - w.cities[i2].y) < 60),
+         co.rally ? Math.round(co.rally.x) + ',' + Math.round(co.rally.y) : 'no rally');
     }
   }
 
-  /* the seat and the helm ride the save — a war's government comes back with it */
+  /* the oaths and the helm ride the save — a war's government comes back with it */
   {
     const store = {};
     const hadLS = 'localStorage' in globalThis;
@@ -7837,12 +7886,12 @@ suite('the helm: take command, appoint stewards');
                                 setItem: (k, v2) => { store[k] = String(v2); },
                                 removeItem: (k) => { delete store[k]; } };
     const realm = REALM.create(23);
-    realm.world.cities[2].owner = 0;
-    World.applyCommand(realm.world, 0, { c: 'seat', id: realm.world.cities[2].id });
-    realm.helm = { stewards: { 0: { mode: 'attack', target: 3 } } };
+    realm.world.players[2].realm = 0;
+    realm.helm = { orders: { 2: { mode: 'attack', target: 3 } }, hand: 2 };
     REALM.save(realm);
     const back = REALM.load();
-    eq('the seat of command rides the save', back && back.world.players[0].seat, 2);
+    eq('an oath rides the save', back && back.world.players[2].realm, 0);
+    eq('...so the banner comes back holding two', back && World.realmCities(back.world, 0).length, 2);
     eq('...and the helm with it', JSON.stringify(back && back.helm), JSON.stringify(realm.helm));
     if (hadLS) globalThis.localStorage = oldLS; else delete globalThis.localStorage;
   }

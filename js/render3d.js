@@ -24,26 +24,55 @@
   let overlay = null, octx = null;
   let W = 0, H = 0, scale = 1, viewW = 0, viewH = 0;
   let curViewer = 0, curView = null, lastKey = '', T = 0;
+  /* ---- THE VIEWER AND THE HAND ARE TWO DIFFERENT PEOPLE NOW ----
+   * `viewer` is the seat this screen belongs to: its fog, its colours, its camera. `R.hand`
+   * is the LORD whose city the player is driving, which in a war may be one sworn to him — so
+   * the writ outline, the reach ring, the armed-company halo and "did I just tap my own men"
+   * all answer for the hand, while everything about what can be SEEN answers for the viewer.
+   * A realm shares its sight, so the two never disagree about the veil. Null on a board and
+   * everywhere else, which reads as "the viewer", so nothing outside a war changes. */
+  R.hand = null;
+  const handOf = (viewer) => (R.hand != null ? R.hand : viewer);
   let ground = null;
-  let groundGrid = null, gridW = 0, gridH = 0;
+  let groundGrid = null, gridW = 0, gridH = 0, gridDX = 1, gridDZ = 1;
   /* THE LAND'S SIZE IS THE VIEW'S, NOT THE GAME'S — set from the world this renderer was
    * handed (buildWorld), so a country and a board draw at their own extents. `CONST.MAP` is
    * only the value before the first world arrives. */
   let mapW = C.MAP.W, mapH = C.MAP.H;
   let underM = null;
   /* the detail tiles over a country's cheap base — see buildWorld's two-grounds note */
-  let tiled = false, tileMap = null;
+  let tiled = false, tileMap = null, groundDirty = false;
   const tileQueue = [];
   const TILE = 1200;
-  const GRES = 10;
+  /* ---------------- THE GROUND YOU STAND ON IS THE GROUND YOU SEE ----------------
+   * `groundH` is where EVERYTHING is put: every unit, every work, every pool, every ring, and
+   * the detail tiles a country is painted with. So it has to answer for the surface that is
+   * actually DRAWN, and for years it answered for a different one — it sampled the raw
+   * elevation field on a 10-unit grid, while the ground mesh is a PlaneGeometry capped at 180
+   * segments whose triangles are a coarser, flatter thing. Measured against the real geometry
+   * by raycast: up to 8.75 units of disagreement on a board and 21.5 on a country, all of it
+   * on the steep ground where it shows.
+   * It never read as "things float", because the ONE thing that hid it is that a board has
+   * nothing between the eye and the ground. A country has: the painterly detail tiles, which
+   * are the same field sampled FINER, so they rise off the base mesh by exactly that error —
+   * which is why they were lifted 3.0 units clear to stop the base poking through, and why
+   * that lift then swallowed every spring in the country whole (a pool's water sits 1.5 up).
+   * The fix is not a bigger lift. It is to make the two grounds the SAME surface: the lattice
+   * here IS the drawn mesh's vertices, and the interpolation IS its triangulation — Three
+   * splits each quad on the diagonal from (ix, iz+1) to (ix+1, iz), verified by raycasting the
+   * mesh the renderer had actually built (0.0002 against 2.35 for the bilinear it used to do).
+   * A tile built on this lands exactly on the base and needs no lift at all. */
   function groundH(x, z) {
     if (!groundGrid) return 0;
-    const fx = Math.max(0, Math.min(gridW - 1.001, x / GRES)), fz = Math.max(0, Math.min(gridH - 1.001, z / GRES));
+    const fx = Math.max(0, Math.min(gridW - 1.001, x / gridDX));
+    const fz = Math.max(0, Math.min(gridH - 1.001, z / gridDZ));
     const x0 = fx | 0, z0 = fz | 0, tx = fx - x0, tz = fz - z0;
     const i = z0 * gridW + x0;
-    const a = groundGrid[i] * (1 - tx) + groundGrid[i + 1] * tx;
-    const b = groundGrid[i + gridW] * (1 - tx) + groundGrid[i + gridW + 1] * tx;
-    return a * (1 - tz) + b * tz;
+    const h00 = groundGrid[i], h10 = groundGrid[i + 1];
+    const h01 = groundGrid[i + gridW], h11 = groundGrid[i + gridW + 1];
+    /* the near triangle, then the far one — the diagonal is tx + tz = 1 */
+    return (tx + tz <= 1) ? h00 + (h10 - h00) * tx + (h01 - h00) * tz
+                          : h11 + (h01 - h11) * (1 - tx) + (h10 - h11) * (1 - tz);
   }
   R.groundH = (x, z) => groundH(x, z);
   /* test handle: the army's instanced meshes, so a suite can prove they are still drawn */
@@ -274,9 +303,20 @@
   }
 
   /* models */
-  function towerModel(gold) {
-    const wall = gold ? 0xb99a4e : 0x9a4a56, light = gold ? 0xe6d391 : 0xd18a94,
-      dark = gold ? 0x6e5322 : 0x521c26, roof = gold ? 0x8a6a2a : 0x6e2833;
+  /* A SEAT WEARS ITS BANNER'S COLOUR, and there are more than two banners. The four shades
+   * were a pair of hand-picked palettes behind a `gold` boolean, which is exactly as many as a
+   * duel has sides; a war has six and a court changes hands. Derived from the one tint the
+   * rest of the game already colours that banner with, so a Seat, its men, its hp bar and its
+   * mark on the minimap cannot disagree about whose it is. The multipliers are read off the
+   * old gold palette, so the player's own castle is the same castle to within a shade. */
+  const shade = (tint, k) => {
+    const r = Math.round(((tint >> 16) & 255) * k), g = Math.round(((tint >> 8) & 255) * k);
+    const b = Math.round((tint & 255) * k);
+    return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
+  };
+  function towerModel(tint) {
+    const wall = shade(tint, 0.72), light = shade(tint, 0.9),
+      dark = shade(tint, 0.42), roof = shade(tint, 0.54);
     const p = [];
     p.push(part(cyl(30, 38, 26, 9), dark, 0, 13, 0));            // plinth
     p.push(part(cyl(22, 27, 96, 9), wall, 0, 74, 0));            // the great shaft
@@ -287,40 +327,14 @@
     }
     p.push(part(cyl(12, 16, 26, 8), wall, 0, 148, 0));           // watch turret
     p.push(part(cone(15, 24, 8), roof, 0, 172, 0));
+    const lit = shade(tint, 1.0);                                 // the lights are the tint itself
     for (const a of [0.4, 2.1, 3.8, 5.5])                         // arrow lights
-      p.push(part(box(3, 8, 1.6), gold ? 0xffe9a8 : 0xff9aa8, Math.cos(a) * 25.5, 90, Math.sin(a) * 25.5, a));
+      p.push(part(box(3, 8, 1.6), lit, Math.cos(a) * 25.5, 90, Math.sin(a) * 25.5, a));
     p.push(part(box(16, 22, 5), dark, 0, 11, 34));               // the tower gate
     p.push(part(cyl(0.9, 0.9, 26, 5), light, 0, 196, 0));
-    p.push(part(box(15, 9, 0.8), gold ? 0xffe9a8 : 0xff9aa8, 8.5, 204, 0));
+    p.push(part(box(15, 9, 0.8), lit, 8.5, 204, 0));
     return meshOf(p);
   }
-  function castleModel(gold) {
-    const wall = gold ? 0xb99a4e : 0x9a4a56, light = gold ? 0xe6d391 : 0xd18a94,
-      dark = gold ? 0x6e5322 : 0x521c26, roof = gold ? 0x8a6a2a : 0x6e2833;
-    const p = [];
-    p.push(part(box(120, 44, 74), wall, 0, 22, 0));
-    p.push(part(box(126, 8, 80), light, 0, 48, 0));
-    p.push(part(box(56, 66, 46), wall, 0, 33, 0));
-    p.push(part(box(60, 8, 50), light, 0, 68, 0));
-    for (const sx of [-56, 56]) for (const sz of [-32, 32]) {
-      p.push(part(cyl(11, 13, 62, 7), wall, sx, 31, sz));
-      p.push(part(cone(14, 20, 7), roof, sx, 71, sz));
-    }
-    p.push(part(cone(16, 24, 7), roof, 0, 84, 0));
-    p.push(part(box(20, 26, 6), dark, 0, 13, 38));               // the gate
-    p.push(part(cyl(0.9, 0.9, 30, 5), light, 0, 100, 0));        // standard pole
-    p.push(part(box(14, 8, 0.8), gold ? 0xffe9a8 : 0xff9aa8, 8, 110, 0));
-    return meshOf(p);
-  }
-  /* key is 'bt', a forked Watchtower 'tower:bolt', and always a LEVEL after it: 'barracks@2'.
-   * A level you paid for and cannot see is a level you will forget you bought — so every
-   * work grows with its rank, in the silhouette rather than the paint. */
-  /* ...and this is the only place a key is WRITTEN, so that what the frame asks for and what
-   * the parser below understands cannot come apart. Everything a work's shape depends on goes
-   * in here; anything that changes only its materials (scaffolding, a ghost, a breach) is the
-   * caller's to add to its cache key afterwards. `R.modelKey` is exported for the suite, which
-   * asserts the fact this exists to guarantee: two halls of the same type on the same level
-   * that took different branches are different models. */
   function modelKey(b, gar, hurt) {
     return (b.br ? b.bt + ':' + b.br : b.bt)
       + '@' + (b.level || 1)
@@ -1203,8 +1217,11 @@
      * building there. Point at a man and you get his standard; point beside him and you get
      * the ground. */
     let best = 0, bd = 24 * 24;
+    const h = handOf(viewer);
     for (const u of curView.units) {
-      if (u.owner !== viewer || !u.co) continue;
+      /* the HAND'S men: tapping a company arms it, and a company you cannot order is not one
+       * you can arm — a vassal's men answer only while you are driving that vassal */
+      if (u.owner !== h || !u.co) continue;
       const dd = (w2.x - u.x) * (w2.x - u.x) + (w2.y - u.y) * (w2.y - u.y);
       if (dd < bd) { bd = dd; best = u.co; }
     }
@@ -1777,12 +1794,13 @@
     const pp = geo.attributes.position;
     for (let i = 0; i < pp.count; i++) pp.setY(i, hFn(pp.getX(i), pp.getZ(i)));
     geo.computeVertexNormals();
-    /* sample into a grid for cheap per-frame lookups */
-    gridW = Math.ceil(mapW / GRES) + 1; gridH = Math.ceil(mapH / GRES) + 1;
+    /* THE LATTICE IS THE MESH'S OWN VERTICES, not a resampling of the field — see groundH.
+     * PlaneGeometry lays them out row-major from the near corner, which after the rotate and
+     * the translate above is world (0,0), so the vertex buffer IS the grid. */
+    gridW = seg[0] + 1; gridH = seg[1] + 1;
+    gridDX = mapW / seg[0]; gridDZ = mapH / seg[1];
     groundGrid = new Float32Array(gridW * gridH);
-    for (let gz = 0; gz < gridH; gz++)
-      for (let gx = 0; gx < gridW; gx++)
-        groundGrid[gz * gridW + gx] = hFn(gx * GRES, gz * GRES);
+    for (let i = 0; i < groundGrid.length; i++) groundGrid[i] = pp.getY(i);
     const tex2 = new THREE.CanvasTexture(bake.canvas);
     tex2.colorSpace = THREE.SRGBColorSpace;
     ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 }), 'slope'));
@@ -1917,7 +1935,7 @@
   function buildCity(view, viewer, pi) {
     const own = pi === viewer;
     const city = view.map.sites[view.map.cities[pi]];
-    const g = { cx: city.x, cy: city.y, own, group: new THREE.Group() };
+    const g = { cx: city.x, cy: city.y, own, ci: pi, tint: null, group: new THREE.Group() };
     /* THE COURT IS PAINTED, NOT STAMPED. There was a flat CircleGeometry here — one solid
      * colour at 0.85 opacity, laid at the Seat's own height. Reported from play as an ugly
      * brown disc, and it was three wrongs at once: a paint-bucket colour on a board that is
@@ -1928,7 +1946,8 @@
      * it IS the land, and costs no mesh, no transparency and no z-fighting. The disc was a
      * second court stamped on top of a better one. Deleted; the bake does the work. */
     const ch = groundH(city.x, city.y);
-    g.tower = towerModel(own);
+    g.tint = cityTint(view.cities && view.cities[pi], viewer);
+    g.tower = towerModel(g.tint);
     g.tower.position.set(city.x, ch, city.y);
     g.group.add(g.tower);
     /* works are placed things now: their groups are made and destroyed as they rise and fall */
@@ -1937,15 +1956,93 @@
     return g;
   }
 
+  /* ---- AND IT RE-DRESSES WHEN THE COURT CHANGES HANDS ----
+   * The city groups are built once, indexed by the seat their heir was BORN to, and `own` was
+   * decided there and then. That was right for as long as a Seat could only ever fall — a city
+   * that changes hands made the assumption a lie, and the tower you had just stormed and taken
+   * went on flying the enemy's crimson for the rest of the war. It is the loudest thing on a
+   * war map and it was the one thing that never changed. The tower is vertex-coloured and
+   * merged, so a new banner means a new mesh; it is a rare event and the group already knows
+   * how to hold one. Never mid-collapse: a falling Seat owns its own tower handle. */
+  function redressCities(view, viewer) {
+    if (!view.cities || !cityObjs) return;
+    for (let pi = 0; pi < cityObjs.length && pi < view.cities.length; pi++) {
+      const g = cityObjs[pi];
+      if (!g || !g.tower) continue;
+      const want = cityTint(view.cities[pi], viewer);
+      if (want === g.tint) continue;
+      if (seatFalls.some((f) => f.pi === pi)) continue;
+      g.tower.removeFromParent();
+      g.tower.geometry.dispose();
+      const at = g.tower.position;
+      g.tint = want;
+      g.tower = towerModel(want);
+      g.tower.position.copy(at);
+      g.group.add(g.tower);
+      /* ...AND SO DOES THE GROUND. `terrain.js` paints a warm or a cold wash into the bake
+       * around every court — it IS the land, which is why it follows every slope for free —
+       * and a bake is a picture taken once. A court that swears keeps the old picture until
+       * somebody repaints it, so the two grounds are told: the cheap base is one ImageData
+       * pass and is simply redone, and the painterly tiles within the wash's reach are
+       * dropped for `updateTiles` to bake again one per frame. */
+      groundDirty = true;
+      if (tileMap) for (const [k, t] of [...tileMap]) {
+        const ix = +k.split(':')[0], iy = +k.split(':')[1];
+        const cx = (ix + 0.5) * TILE, cy = (iy + 0.5) * TILE;
+        if (Math.hypot(cx - g.cx, cy - g.cy) > TILE + 400) continue;
+        t.mesh.removeFromParent(); t.mesh.geometry.dispose();
+        t.mesh.material.map.dispose(); t.mesh.material.dispose();
+        tileMap.delete(k);
+      }
+    }
+    if (groundDirty && ground) {
+      groundDirty = false;
+      const bk = tiled ? global.Terrain.bakeBase(view, viewer)
+                       : global.Terrain.bake(view, viewer, { props: false, labels: false });
+      const tex = new THREE.CanvasTexture(bk.canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      if (ground.material.map) ground.material.map.dispose();
+      ground.material.map = tex;
+      ground.material.needsUpdate = true;
+    }
+  }
+
   /* ---------------- events → fx ---------------- */
-  /* You are ALWAYS gold — nobody should have to remember which of four colours is theirs —
-   * and every rival keeps a colour of its own, handed out in seat order with the viewer taken
-   * out of the line. Chaos is always green. */
+  /* ---- WHOSE, IN ONE COLOUR ----
+   * You are ALWAYS gold — nobody should have to remember which of four colours is theirs — and
+   * every rival keeps a colour of its own for the whole match. On a board that is seat order
+   * with the viewer taken out of the line, exactly as it always was.
+   * IN A WAR IT IS THE BANNER THAT IS COLOURED, not the lord. A country seats sixteen and the
+   * palette has four, so from the fifth seat on every lord came out the same crimson: an ally,
+   * a neutral and the army marching on you were one colour, and a court that swore to a rival
+   * looked no different the tick after. `World.realmOf` collapses sixteen lords onto the few
+   * sides that exist, `world.heirs` is the list of banners worth a colour of their own, and
+   * everyone sworn to nobody shares the neutral. `curView`/`curViewer` are what the frame is
+   * drawing; a view with no realms on it (a board, a chronicle's half-world) falls straight
+   * through to the seat rule. */
   const tintOf = (owner, viewer) => {
     if (owner === C.CHAOS_ID) return C.CHAOS_TINT;
     if (owner === viewer) return C.SEAT_TINT[0];
+    const v = curView;
+    if (v && v.players && v.players[owner] && v.players[owner].realm != null && global.World) {
+      const W = global.World, r = W.realmOf(v, owner);
+      if (r === W.realmOf(v, viewer)) return C.REALM_TINT[0];
+      const heirs = v.heirs || [];
+      /* the contending banners, in their own order with yours removed — so the rival who is
+       * crimson in the first minute is crimson in the last */
+      const line = heirs.filter((h) => W.realmOf(v, h) !== W.realmOf(v, viewer));
+      const at = line.indexOf(r);
+      return at >= 0 ? (C.REALM_TINT[1 + at] || C.REALM_TINT[1]) : C.NEUTRAL_TINT;
+    }
     return C.SEAT_TINT[1 + (owner < viewer ? owner : owner - 1)] || C.SEAT_TINT[1];
   };
+  /* the same question for a CITY, which may be nobody's: a yielded court belongs to the war,
+   * not to a heir, and drawing it in the last owner's colour is a lie about who holds it */
+  const cityTint = (c, viewer) => (!c || c.owner < 0 ? C.NEUTRAL_TINT : tintOf(c.owner, viewer));
+  /* THE ONE ANSWER TO "WHOSE COLOUR IS THIS", exported because the HUD asks it too — the
+   * walkers' board, the terms chips and the claim bar are all statements about whose, and a
+   * second palette in ui.js is a second chance to disagree with the board. */
+  R.tintOf = (owner, viewer) => tintOf(owner, viewer);
   function ringFx(x, z, color, ttl, big, ping) {
     const m = new THREE.Mesh(new THREE.RingGeometry(6, 9, 20).rotateX(-Math.PI / 2),
       fogPatch(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 })));
@@ -2250,6 +2347,7 @@
 
     updateUnits(view, viewer, dt);
     updateSites(view, viewer);
+    redressCities(view, viewer);   // ...before the works: a court may have changed banners
     updateCities(view, viewer);
     updateGates(view, dt);        // ...after the works: a gate is hung on a run that exists
     updateWrit(view, viewer);
@@ -2459,7 +2557,7 @@
         /* the armed company's own men, lit toward their standard's colour. Every seat is a
          * different tint and the pennants are a different set again, so this cannot be read
          * as a change of owner. */
-        if (armed && u.owner === viewer && u.co === armed) {
+        if (armed && u.owner === handOf(viewer) && u.co === armed) {
           colTmp.lerp(penTmp.setHex(PENNANT[(armed - 1) % PENNANT.length]), 0.6);
           marked.push(u);
         }
@@ -2522,9 +2620,16 @@
       geo.rotateX(-Math.PI / 2);
       geo.translate(rect.x0 + w / 2, 0, rect.y0 + h / 2);
       const pp = geo.attributes.position;
-      /* a hair above the base: the two reliefs are the same field sampled at two densities,
-       * so they cross — the offset plus the polygon offset keeps the painterly one on top */
-      for (let i = 0; i < pp.count; i++) pp.setY(i, groundH(pp.getX(i), pp.getZ(i)) + 3.0);
+      /* ON the base, not over it. This used to lift the tile 3.0 units clear, because the two
+       * reliefs were the same field sampled at two densities and the finer one rose off the
+       * coarser one by up to 21 units — so they crossed, and the lift was a compromise that
+       * both failed to clear the worst of it AND buried everything standing on the ground
+       * under it: a spring's pool sits 1.5 up and vanished, which is what a country's springs
+       * looking like holes in the earth actually was. `groundH` answers for the base mesh's
+       * own triangles now, so a tile's vertices lie exactly ON them and its triangles are
+       * sub-triangles of theirs. Coplanar is what polygonOffset is for, and the tiny lift is
+       * belt to its braces over a country-sized depth range. */
+      for (let i = 0; i < pp.count; i++) pp.setY(i, groundH(pp.getX(i), pp.getZ(i)) + 0.15);
       geo.computeVertexNormals();
       const tex = new THREE.CanvasTexture(bk.canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -2556,8 +2661,9 @@
   let reachLine = null, reachKey = '';
   function updateReachRing(view, viewer, armed) {
     let key = '', c = null;
-    if (armed != null && view.rules && view.rules.reach && view.players[viewer]) {
-      const co = (view.players[viewer].companies || []).find((q) => q.id === armed);
+    const hv = handOf(viewer);
+    if (armed != null && view.rules && view.rules.reach && view.players[hv]) {
+      const co = (view.players[hv].companies || []).find((q) => q.id === armed);
       c = co && co.city != null && view.cities ? view.cities[co.city] : null;
       if (c && c.reach) key = co.city + ':' + Math.round(c.reach); else c = null;
     }
@@ -2752,7 +2858,8 @@
    * ground it actually follows. Rebuilt only when a claiming work rises or falls. */
   let writG = null, writKey = '';
   function updateWrit(view, viewer) {
-    const anchors = global.Terrain.claimAnchors(view, viewer);
+    /* the writ you may BUILD in is the hand's, not the seat's */
+    const anchors = global.Terrain.claimAnchors(view, handOf(viewer));
     const key = global.Terrain.claimKey(anchors);
     if (key === writKey) return;
     writKey = key;
@@ -2791,10 +2898,10 @@
      * next man has it on the same tick.
      * Drawn BIG on purpose: this is read at a glance, across a fight, on a phone. The pole
      * stands well clear of a man's head and the flag is more than twice the rally post's. */
-    const me = view.players[viewer];
+    const me = view.players[handOf(viewer)];
     const active = new Set();
     const byId = new Map();
-    for (const u of view.units) if (u.owner === viewer) byId.set(u.id, u);
+    for (const u of view.units) if (u.owner === handOf(viewer)) byId.set(u.id, u);
     for (const co of (me.companies || [])) {
       const u = co.bearer != null && byId.get(co.bearer);
       /* a bearer inside a tower is not drawn and neither is his flag — the sim already passes
@@ -3392,16 +3499,25 @@
       g.fillStyle = 'rgba(222,204,164,0.85)';
       g.fillText(s.name, p.x, p.y + 30);
     }
-    /* castle bars */
-    for (let pi = 0; pi < view.players.length; pi++) {
-      if (!seatFound(view, pi)) continue;   // no bar over a Seat you have not found
-      const pl = view.players[pi];
-      const cs = view.map.sites[view.map.cities[pi]];
-      const p = proj(cs.x, groundH(cs.x, cs.y) + 186, cs.y);
+    /* ---- CASTLE BARS: A BAR BELONGS TO A CITY ----
+     * It used to hang over the seat an heir was BORN to and draw the hit points of the seat he
+     * currently rules FROM — two different cities the moment either could change, so taking
+     * command of a conquered court put your new capital's health on the bar above your old
+     * one. `view.cities` is the list of the things that actually have hit points; each carries
+     * its own, and its colour is its holder's banner. */
+    const cityRows = view.cities ||
+      view.map.cities.map((id, pi) => ({ x: view.map.sites[id].x, y: view.map.sites[id].y,
+                                         owner: pi, hp: view.players[pi].castleHp,
+                                         maxHp: C.CASTLE_HP }));
+    for (let ci = 0; ci < cityRows.length; ci++) {
+      const c = cityRows[ci];
+      if (!seatFound(view, ci)) continue;   // no bar over a Seat you have not found
+      if (c.razed) continue;                // a ruin has no throne left to measure
+      const p = proj(c.x, groundH(c.x, c.y) + 186, c.y);
       if (!p.ok) continue;
       g.fillStyle = '#000b'; g.fillRect(p.x - 46, p.y - 4, 92, 8);
-      g.fillStyle = pi === viewer ? '#ffd98a' : '#ff8a96';
-      g.fillRect(p.x - 45, p.y - 3, 90 * Math.max(0, pl.castleHp / C.CASTLE_HP), 6);
+      g.fillStyle = '#' + cityTint(c, viewer).toString(16).padStart(6, '0');
+      g.fillRect(p.x - 45, p.y - 3, 90 * Math.max(0, c.hp / (c.maxHp || C.CASTLE_HP)), 6);
     }
     /* ---- A YIELDED CITY SAYS WHAT IT WANTS ----
      * Break a city and... then what? The rule (stand in the court, uncontested, twenty
@@ -3450,8 +3566,16 @@
       if (s.kind === 'city') {
         const pi2 = view.map.cities.indexOf(s.id);
         if (!seatFound(view, pi2)) continue;
-        g.fillStyle = pi2 === viewer ? '#ffd98a' : '#ff8a96';
+        /* WHOSE COURT IS THAT — the one question a glance at a war map asks, and the mark used
+         * to answer a different one: it was coloured by the seat an heir was BORN to, so a
+         * conquered city stayed the enemy's crimson and one taken from you stayed your gold,
+         * for the whole war. It is the holder's banner now, and a yielded court is neutral. */
+        const c2 = view.cities && view.cities[pi2];
+        g.fillStyle = '#' + (c2 ? cityTint(c2, viewer) : tintOf(pi2, viewer)).toString(16).padStart(6, '0');
         g.fillRect(X - 3, Y - 3, 6, 6);
+        /* a razed court is a ruin and says so: a hollow mark, so "gone" cannot be mistaken for
+         * "nobody's yet" on the one screen where the difference decides where you march */
+        if (c2 && c2.razed) { g.fillStyle = 'rgba(10,8,18,0.9)'; g.fillRect(X - 1.5, Y - 1.5, 3, 3); }
       } else {
         g.fillStyle = !st ? '#3a3444' : (st.holder == null || st.holder === -1 ? '#8a8098' : (st.holder === viewer ? '#ffd98a' : '#ff8a96'));
         g.beginPath(); g.arc(X, Y, st && st.holder >= 0 ? 2.6 : 1.6, 0, 7); g.fill();
@@ -3480,11 +3604,12 @@
      * until now it showed springs, Seats and curtains but nothing about where your own men
      * were. One mark per company, at its BEARER (where the men ARE), in that company's own
      * colour, drawn as a pennant on a staff so it reads as a flag at four pixels rather than
-     * as another dot. Own companies only: whose men are where is the owner's alone. */
-    const meCo = view.players[viewer];
+     * as another dot. Own companies only: whose men are where is the owner's alone — and in a
+     * war "own" is the court you are hand-playing, whose standards are the ones in the tray. */
+    const meCo = view.players[handOf(viewer)];
     if (meCo && meCo.companies && meCo.companies.length) {
       const own = new Map();
-      for (const u of view.units) if (u.owner === viewer) own.set(u.id, u);
+      for (const u of view.units) if (u.owner === handOf(viewer)) own.set(u.id, u);
       for (const co of meCo.companies) {
         const u = co.bearer != null && own.get(co.bearer);
         if (!u) continue;

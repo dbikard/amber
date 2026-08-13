@@ -337,10 +337,16 @@
   /* a company's colour follows its ID, which never repeats — so a standard keeps its colour
    * for the whole match instead of shuffling every time some other hall is razed */
   UI.coColor = (id) => PENNANT_CSS[(id - 1) % PENNANT_CSS.length];
-  /* the same seat colours the renderer uses: you are gold, rivals take the rest in seat order */
+  /* THE SAME COLOURS THE BOARD USES, and asked of the board rather than spelled again: you
+   * are gold, each contending banner keeps its own, everyone sworn to nobody is neutral.
+   * `Render.tintOf` reads the frame's own view, so the chip beside a name and the men under
+   * it cannot come out different colours. Falls back to the old seat rule with no renderer,
+   * which is what the headless suites and a menu with no match running have. */
   UI.seatColor = (pi, viewer) => {
-    const hex = pi === viewer ? C.SEAT_TINT[0]
-      : (C.SEAT_TINT[1 + (pi < viewer ? pi : pi - 1)] || C.SEAT_TINT[1]);
+    const R = global.Render;
+    const hex = R && R.tintOf ? R.tintOf(pi, viewer)
+      : (pi === viewer ? C.SEAT_TINT[0]
+        : (C.SEAT_TINT[1 + (pi < viewer ? pi : pi - 1)] || C.SEAT_TINT[1]));
     return '#' + hex.toString(16).padStart(6, '0');
   };
   /* a standard that has stopped mustering wears it: the tray is where you look to see what the
@@ -483,9 +489,13 @@
     $('btn-build').classList.toggle('nocrew', free === 0);
   }
 
-  UI.hud = function (view, viewer, incomeRate, targeting) {
-    const me = view.players[viewer];
-    paintMasons(view, viewer);
+  /* `hand` is the LORD whose court the player is driving — his purse, his crews, his muster.
+   * The seat still owns the fog, the walkers' board and the terms tray. Absent on a board and
+   * everywhere outside a war, where they are the same person. */
+  UI.hud = function (view, viewer, incomeRate, targeting, hand) {
+    const hv = hand == null ? viewer : hand;
+    const me = view.players[hv];
+    paintMasons(view, hv);
     /* with four heirs there is no single "the rival": the top line reports whoever is
      * furthest along the Pattern among those who have revealed themselves */
     const rivals = view.players.filter((q, pi) => pi !== viewer && !q.out);
@@ -508,8 +518,14 @@
      * heir whether he is walking or not (`net.js`), which is precisely why the board could
      * afford to be wrong about it in silence. */
     const race = $('walkers');
+    /* A WALK IS THE BANNER'S. In a war the man on the lines is whichever lord holds AMBER,
+     * usually a sworn one — so "mine" is the realm, or your own vassal's walk would be listed
+     * as a rival reaching for the throne you are about to win. */
+    const W = global.World;
+    const ours = (pi) => W && W.realmOf ? W.realmOf(view, pi) === W.realmOf(view, viewer)
+                                        : pi === viewer;
     const on = view.players.map((q, pi) => ({ q, pi }))
-      .filter(({ q, pi }) => !q.out && (q.walking || q.pattern > 0) && (pi === viewer || q.revealed))
+      .filter(({ q, pi }) => !q.out && (q.walking || q.pattern > 0) && (ours(pi) || q.revealed))
       .sort((a, b) => b.q.pattern - a.q.pattern);
     const key = on.map(({ q, pi }) => pi + ':' + q.pattern.toFixed(0) + (q.walking ? 'w' : 's')).join(',');
     if (key !== race._key) {
@@ -517,7 +533,8 @@
       race.innerHTML = '';
       for (const { q, pi } of on) {
         const d = document.createElement('div');
-        d.className = 'walker' + (pi === viewer ? ' mine' : '') + (q.walking ? '' : ' stalled');
+        const mine = ours(pi);
+        d.className = 'walker' + (mine ? ' mine' : '') + (q.walking ? '' : ' stalled');
         d.style.color = UI.seatColor(pi, viewer);
         d.textContent = (q.walking ? '✴ ' : '✧ ') +
                         (pi === viewer ? 'YOU'
@@ -541,31 +558,46 @@
       tray.style.top = (race.children.length ? Math.ceil(rb.bottom) + 6 : Math.ceil(rb.top)) + 'px';
     }
     if (truce) {
-      const mineOffers = (view.players[viewer] || {}).offers || [];
+      /* ---- TERMS ARE SWORN BETWEEN BANNERS ----
+       * One chip per RIVAL REALM, not per lord: a country seats sixteen and a chip apiece was
+       * a wall over half the map, but worse, it was a lie — a vassal cannot keep his own peace
+       * (`World.pactOn` asks the realm), so fifteen chips offered fifteen deals that were
+       * really three. The offer is made and read on the founder, whose index names the realm.
+       * A duel has one seat per realm and this is chip-for-chip what it always was. */
+      const realmOf = (pi) => (W && W.realmOf ? W.realmOf(view, pi) : pi);
+      const myRealm = realmOf(viewer);
+      const mineOffers = (view.players[myRealm] || {}).offers || [];
+      const seen = new Set();
       let rows = view.players.map((q, pi) => ({ q, pi }))
-        .filter(({ q, pi }) => pi !== viewer && !q.out);
-      /* A COUNTRY'S TABLE SEATS SIXTEEN, and fifteen chips is a wall over half the map.
-       * In a reach war the tray shows the rivals the war is actually AGAINST — anyone
-       * across a border from a city of yours — plus every rival an offer or a pact stands
-       * with, which must never be hidden behind a filter. A duel's tray is unchanged. */
+        .filter(({ q, pi }) => {
+          const r = realmOf(pi);
+          if (r === myRealm || r !== pi) return false;   // the founder speaks for the banner
+          if (view.players[r].out) return false;
+          if (seen.has(r)) return false;
+          seen.add(r);
+          return true;
+        });
+      /* ...and in a war it shows the banners the war is actually AGAINST — anyone across a
+       * border from a court of yours — plus every rival an offer or a pact stands with, which
+       * must never be hidden behind a filter. */
       if (view.rules.reach && view.cities && view.map && view.map.gen && view.map.gen.nbrs) {
         const fronts = new Set();
         view.cities.forEach((c, ci) => {
-          if (c.owner !== viewer) return;
+          if (c.owner < 0 || realmOf(c.owner) !== myRealm) return;
           for (const b of view.map.gen.nbrs[ci] || []) {
             const o = view.cities[b] ? view.cities[b].owner : null;
-            if (o != null && o >= 0 && o !== viewer) fronts.add(o);
+            if (o != null && o >= 0 && realmOf(o) !== myRealm) fronts.add(realmOf(o));
           }
         });
-        rows = rows.filter(({ q, pi }) => fronts.has(pi) || mineOffers[pi] || (q.offers || [])[viewer]);
+        rows = rows.filter(({ q, pi }) => fronts.has(pi) || mineOffers[pi] || (q.offers || [])[myRealm]);
       }
       const tkey = rows.map(({ q, pi }) => pi + (mineOffers[pi] ? 'm' : '') +
-                                           ((q.offers || [])[viewer] ? 'h' : '')).join(',');
+                                           ((q.offers || [])[myRealm] ? 'h' : '')).join(',');
       if (tkey !== tray._key) {
         tray._key = tkey;
         tray.innerHTML = '';
         for (const { q, pi } of rows) {
-          const mine2 = !!mineOffers[pi], his = !!(q.offers || [])[viewer];
+          const mine2 = !!mineOffers[pi], his = !!(q.offers || [])[myRealm];
           const d = document.createElement('div');
           d.className = 'term' + (mine2 && his ? ' sealed' : his ? ' asked' : mine2 ? ' offered' : '');
           d.dataset.seat = String(pi);
@@ -1005,7 +1037,15 @@
       if (p2) {
         const stat = document.createElement('div');
         stat.className = 'sheet-blurb';
-        stat.innerHTML = `🗼 Seat ${Math.round(p2.castleHp)}/${C.CASTLE_HP}`;
+        /* THIS court's hit points. `castleHp` is the hp of the seat its owner RULES FROM,
+         * which is the same city right up until an heir holds more than one — and in a war
+         * that made every court quote some other court's health. The war context carries the
+         * city's own; the duel path keeps the derived number it always had. */
+        const hp = war && war.hp != null ? war.hp : p2.castleHp;
+        const maxHp = (war && war.maxHp) || C.CASTLE_HP;
+        stat.innerHTML = war && war.owner < 0
+          ? `🗼 YIELDED — hold the court to claim it`
+          : `🗼 Seat ${Math.round(hp)}/${maxHp}`;
         el.appendChild(stat);
         /* A SEAT SHOOTS, AND NOBODY WOULD GUESS IT FROM A HIT-POINT BAR. It is the hardest gun
          * on the board and the only one no curtain shades — an heir planning an assault is
@@ -1051,18 +1091,19 @@
         const tk = document.createElement('button');
         tk.className = 'card walkbtn';
         tk.innerHTML = '<span class="c-name">👑 Take Command Here</span>' +
-                       '<span class="c-blurb">Rule the war from this court — a steward keeps your former seat</span>';
-        tk.addEventListener('click', () => { H.onTakeSeat(war.id); UI.closeSheet(); });
+                       '<span class="c-blurb">Drive this court yourself — its purse, its crews and its ' +
+                       'standards answer your taps. The one you leave goes back to its own lord</span>';
+        tk.addEventListener('click', () => { H.onTakeSeat(war.idx); UI.closeSheet(); });
         el.appendChild(tk);
 
         const lbl = document.createElement('div');
         lbl.className = 'sheet-blurb';
-        const sayOrder = (o) => !o ? 'no steward — the court waits on your own orders'
-          : o.mode === 'attack' ? 'steward: march on ' + ((war.nbrs.find((n) => n.idx === o.target) || {}).name || 'a neighbour')
-          : o.mode === 'support' ? 'steward: support ' + ((war.own.find((n) => n.idx === o.target) || {}).name || 'a city')
-          : o.mode === 'gates' ? 'steward: raise Shadow Gates'
-          : o.mode === 'walls' ? 'steward: fortify the court'
-          : 'steward: hold the city';
+        const sayOrder = (o) => !o ? 'its lord keeps his own counsel — give him an order'
+          : o.mode === 'attack' ? 'ordered: march on ' + ((war.nbrs.find((n) => n.idx === o.target) || {}).name || 'a neighbour')
+          : o.mode === 'support' ? 'ordered: support ' + ((war.own.find((n) => n.idx === o.target) || {}).name || 'a city')
+          : o.mode === 'gates' ? 'ordered: raise Shadow Gates'
+          : o.mode === 'walls' ? 'ordered: fortify the court'
+          : 'ordered: hold the city';
         lbl.textContent = '⚑ ' + sayOrder(war.steward);
         el.appendChild(lbl);
 
@@ -1075,14 +1116,19 @@
           b.addEventListener('click', fn);
           row.appendChild(b);
         };
-        const set = (mode, target) => () => { H.onSteward(war.idx, mode, target); UI.closeSheet(); };
+        /* the order is given to the LORD, not to the ground: he is the one who carries it out,
+         * and a court that changes hands must not inherit the last man's instructions */
+        const set = (mode, target) => () => { H.onSteward(war.lord, mode, target); UI.closeSheet(); };
         btn('HOLD', set('hold'));
         btn('GATES', set('gates'));
         btn('WALL UP', set('walls'));
         el.appendChild(row);
         /* the orders that need a NAME get one row each — a picker inside a picker on a phone
          * is a maze, and there are only ever a handful of neighbours */
-        const foes2 = war.nbrs.filter((n) => n.owner !== viewer);
+        /* a neighbour worth marching on is one of another BANNER — offering the player an
+         * assault on his own vassal's court is the sort of thing that reads as a bug */
+        const mineSet = new Set(war.own.map((e) => e.idx).concat([war.idx]));
+        const foes2 = war.nbrs.filter((n) => !mineSet.has(n.idx));
         if (foes2.length) {
           const row2 = document.createElement('div');
           row2.className = 'lan-row';
@@ -1110,7 +1156,8 @@
       } else if (war && war.mine && war.isSeat) {
         const here = document.createElement('div');
         here.className = 'sheet-blurb';
-        here.textContent = '👑 You command the war from this court.';
+        here.textContent = '👑 Your own hand is on this court — its purse and its crews are the ' +
+                           'ones the BUILD button spends.';
         el.appendChild(here);
       }
     }
