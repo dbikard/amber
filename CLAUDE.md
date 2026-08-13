@@ -533,6 +533,36 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   every `Net.send` in the deal is guarded: one channel throwing used to take the whole handler
   down, which looks exactly like a BEGIN that is not wired up.
 
+### ⚑ THE WAR COUNCIL, AND WHAT THE MAP STOPPED SAYING
+
+**A WAR'S STATE IS A PLACE YOU GO, NOT A CORNER OF THE MAP.** A duel's HUD held nine things and
+a war added more: the two-line war line was left-anchored to `min(58vw, 300px)` and the terms
+tray was right-anchored and as wide as its text, so on a 420-wide phone they collided by ~60px
+— and a fourth banner would have run the chips into the minimap (measured: chips ended 6px above
+it). Reported from play with a screenshot.
+
+- **`#war-chip`** stands alone on the right rail: `⚑ held/all` — the whole of what the war line
+  said, in four characters — and a DOT that appears only when something is waiting on you (a
+  rival asking terms, a court of yours hurt, a yielded court nobody holds, a sworn lord with no
+  order). Three chips permanently reading "at war — tap to offer" was an ECHO, which the banner
+  rule forbids; the dot is the same information said only when it is news.
+- **`#council`** is the Muster Roll's shape (a panel over everything, packed from the top, one
+  way out at the end of the scroll) but it returns to the MATCH and the war keeps running. It
+  carries the banner's totals, a row per court — colour, lord, its OWN income and men, its
+  standing order, its throne — and a row per rival banner for terms. **A row is the way to a
+  city**: on 8000×9600 you cannot find a court by dragging, which is why take-command was
+  effectively unreachable.
+- **Everything in it is FOGGED like everything else** — `councilData` reads the VIEW, so a court
+  nobody of yours has seen is not listed, and a banner you have never met is not offered terms.
+  That last one is the same rule as the chip's dot: fifteen identical rows reading "at war" is
+  the noise the tray was moved out of the HUD for, reprinted on a bigger screen.
+- **The masons moved to the purse.** They are the same question — what can I spend — and the top
+  of the screen had no room left.
+- **The right rail is a STACK and the chip is its top item.** `#walkers` is anchored at the same
+  place, so `UI.warChip` measures the chip and pushes the board below it; without that the two
+  sit on each other the moment anybody steps onto the Pattern, which is this same bug one
+  element along.
+
 ### THE MAP SAYS WHOSE
 
 Four seat colours answer a table of four. A war seats sixteen, so from the fifth lord on every

@@ -8,11 +8,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.10.3';</script>
-<link rel="manifest" href="manifest.json?v=0.10.3">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.10.3">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.10.3">
-<link rel="stylesheet" href="styles.css?v=0.10.3">
+<script>window.GAME_VERSION = '0.10.4';</script>
+<link rel="manifest" href="manifest.json?v=0.10.4">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.10.4">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.10.4">
+<link rel="stylesheet" href="styles.css?v=0.10.4">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -31,9 +31,11 @@
     <button id="btn-pause" title="Call a halt">⏸</button>
   </div>
   <!-- THE YARD. What is rationed in this game is the masons, not the works, and until now
-       the only way to learn you had none free was to be refused. Top-left, opposite the
-       walkers, because it is a standing fact rather than an event. -->
-  <div id="masons" title="mason crews — idle of total"><span class="m-ico">🔨</span><b id="m-free">1</b><span id="m-of">/1</span></div>
+       the only way to learn you had none free was to be refused. It used to sit top-left,
+       opposite the walkers; it lives with the ESSENCE now, because the two answer one
+       question — what can I spend — and the top of the screen had nine things fighting for
+       it on a phone. See the note on #war-chip. -->
+
   <!-- every heir currently on the Pattern, and how far along: a race everyone can see -->
   <div id="walkers"></div>
   <!-- TERMS. One chip per living rival, and the chip IS the readout — which is what lets
@@ -41,6 +43,15 @@
        Tapping sets your own offer; a truce is the two of them standing. Only ever shown in a
        war whose rules allow terms, so a skirmish sees nothing. -->
   <div id="terms"></div>
+  <!-- ⚑ THE WAR, IN FOUR CHARACTERS. A country seats sixteen and its state does not fit in
+       the corner of a map: the war line ran under the terms chips (measured: sixty pixels of
+       overlap on a 420-wide phone) and a fourth banner would have run the chips into the
+       minimap. So the state is a PLACE YOU GO, and this is the door: the count of the country
+       you hold is the label, and the dot appears only when something is actually waiting on
+       you — a rival asking terms, a court of yours under attack, a yielded court nobody holds,
+       a sworn lord with no orders. Three chips permanently announcing "at war" was an ECHO,
+       which is the one thing the banner rule forbids. -->
+  <button id="war-chip" class="hidden"><span id="wc-held">⚑</span><i id="wc-dot" class="hidden"></i></button>
   <!-- WHAT THE CHAPTER IS ASKING, for as long as it is true. A briefing is read once; an
        objective has to be answerable at a glance three minutes later. Centred under the clock,
        clear of both thumbs and of the flag tray. -->
@@ -48,7 +59,10 @@
   <div id="hud-bottom">
     <div id="hud-left">
       <div id="flag-tray"></div>
-      <div id="essence"><span class="ess-ico">◆</span> <b id="ess-n">0</b> <span id="ess-rate"></span></div>
+      <div id="purse">
+        <div id="essence"><span class="ess-ico">◆</span> <b id="ess-n">0</b> <span id="ess-rate"></span></div>
+        <div id="masons" title="mason crews — idle of total"><span class="m-ico">🔨</span><b id="m-free">1</b><span id="m-of">/1</span></div>
+      </div>
     </div>
     <span id="my-pattern" class="hidden"></span>
     <button id="btn-build" title="Raise a work">🔨<span id="build-lbl">BUILD</span></button>
@@ -182,6 +196,18 @@
   <button id="chapters-close" class="mbtn">BACK TO THE MENU</button>
 </div>
 
+<!-- ⚑ THE WAR COUNCIL. Everything about a war that is TRUE FOR MINUTES rather than happening
+     right now: what your banner holds, how every court of it is faring, what its lord is under
+     orders to do, and who you are at terms with. It is the same shape as the Muster Roll — a
+     panel over everything, packed from the top, one CLOSE at the end of the scroll — but it
+     returns to the MATCH rather than to the menu, and the war keeps running while it is open:
+     it is a place to look and to give a standing order, not a pause. -->
+<div id="council" class="hidden">
+  <h2>THE WAR COUNCIL</h2>
+  <div id="council-body"></div>
+  <button id="council-close" class="mbtn">BACK TO THE WAR</button>
+</div>
+
 <!-- THE MUSTER ROLL: every hall that forks, every branch it may take, and every man in Amber
      with his numbers. Built from CONST at open time, so it cannot drift from the game. -->
 <div id="roll" class="hidden">
@@ -216,22 +242,22 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.10.3"></script>
-<script src="js/rng.js?v=0.10.3"></script>
-<script src="js/const.js?v=0.10.3"></script>
-<script src="js/worldgen.js?v=0.10.3"></script>
-<script src="js/nav.js?v=0.10.3"></script>
-<script src="js/world.js?v=0.10.3"></script>
-<script src="js/ai.js?v=0.10.3"></script>
-<script src="js/terrain.js?v=0.10.3"></script>
-<script src="js/render3d.js?v=0.10.3"></script>
-<script src="js/render_select.js?v=0.10.3"></script>
-<script src="js/qrcode.js?v=0.10.3"></script>
-<script src="js/net.js?v=0.10.3"></script>
-<script src="js/record.js?v=0.10.3"></script>
-<script src="js/campaign.js?v=0.10.3"></script>
-<script src="js/realm.js?v=0.10.3"></script>
-<script src="js/ui.js?v=0.10.3"></script>
-<script src="js/game.js?v=0.10.3"></script>
+<script src="js/vendor/three.min.js?v=0.10.4"></script>
+<script src="js/rng.js?v=0.10.4"></script>
+<script src="js/const.js?v=0.10.4"></script>
+<script src="js/worldgen.js?v=0.10.4"></script>
+<script src="js/nav.js?v=0.10.4"></script>
+<script src="js/world.js?v=0.10.4"></script>
+<script src="js/ai.js?v=0.10.4"></script>
+<script src="js/terrain.js?v=0.10.4"></script>
+<script src="js/render3d.js?v=0.10.4"></script>
+<script src="js/render_select.js?v=0.10.4"></script>
+<script src="js/qrcode.js?v=0.10.4"></script>
+<script src="js/net.js?v=0.10.4"></script>
+<script src="js/record.js?v=0.10.4"></script>
+<script src="js/campaign.js?v=0.10.4"></script>
+<script src="js/realm.js?v=0.10.4"></script>
+<script src="js/ui.js?v=0.10.4"></script>
+<script src="js/game.js?v=0.10.4"></script>
 </body>
 </html>

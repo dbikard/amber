@@ -63,6 +63,9 @@
     });
     $('rivals-close').addEventListener('click', () => UI.screensClose());
     $('lan-close').addEventListener('click', () => UI.screensClose());
+    /* ⚑ the war chip is the door to the council, and the council is where a war's own state
+     * lives now — see the note at #war-chip in index.html */
+    $('war-chip').addEventListener('click', () => H.onCouncil && H.onCouncil());
     $('btn-build').addEventListener('click', () => H.onBuildMenu());
     $('btn-pause').addEventListener('click', () => H.onPause());
     $('halt').addEventListener('click', () => H.onPause());
@@ -82,6 +85,7 @@
     $('menu-record').addEventListener('click', () => UI.copyRecord($('menu-record')));
     $('btn-roll').addEventListener('click', () => UI.roll());
     $('roll-close').addEventListener('click', () => UI.rollClose());
+    $('council-close').addEventListener('click', () => UI.councilClose());
     $('record-close').addEventListener('click', () => $('record-box').classList.add('hidden'));
 
     /* THE FOOTING GOVERNS BOTH. It used to live inside the skirmish fold-out, which said —
@@ -301,6 +305,131 @@
     el.textContent = text || '';
     el.classList.toggle('hidden', !text);
   };
+  /* ---- ⚑ THE WAR, IN A CHIP ----
+   * The war's status line and the door to the council, in the space one chip takes. `held` of
+   * `all` is the whole of what the old two-line box said; the DOT is what the old terms tray
+   * was trying to say and could not, because it said it about everything all the time.
+   * Handed null when there is no war, which is every other mode. */
+  let wcHash = '';
+  UI.warChip = function (state) {
+    const el = $('war-chip');
+    if (!el) return;
+    if (!state) {
+      el.classList.add('hidden');
+      if (wcHash) { $('walkers').style.top = ''; wcHash = ''; }   // a board's rail starts at the top
+      return;
+    }
+    el.classList.remove('hidden');
+    const h = state.held + '/' + state.all + '|' + (state.wants ? 1 : 0);
+    if (h === wcHash) return;
+    wcHash = h;
+    $('wc-held').textContent = '⚑ ' + state.held + '/' + state.all;
+    $('wc-dot').classList.toggle('hidden', !state.wants);
+    /* THE RIGHT RAIL IS A STACK, and its top item is the chip. The walkers' board is anchored
+     * at the same place, so without this the two would sit on top of each other the moment
+     * anybody stepped onto the Pattern — which is exactly the fault this whole change is
+     * about, reintroduced one element along. Measured rather than written down, because the
+     * chip's height is its font's business. */
+    const r = el.getBoundingClientRect();
+    $('walkers').style.top = Math.ceil(r.bottom) + 6 + 'px';
+    /* the dot is a claim about the war and a screen reader is owed it in words */
+    el.title = state.wants ? 'The war council — something is waiting on you'
+                           : 'The war council';
+  };
+
+  /* ---- THE COUNCIL ----
+   * Built fresh each time it opens, from a plain description game.js assembles out of the view
+   * it already holds — the panel knows nothing about worlds, realms or fog, which is what keeps
+   * it testable and what stops a second spelling of "whose" appearing in here. */
+  UI.councilOpen = () => !$('council').classList.contains('hidden');
+  UI.councilClose = function () {
+    $('council').classList.add('hidden');
+    $('hud').classList.remove('hidden');
+  };
+  UI.council = function (d, H2) {
+    const body = $('council-body');
+    body.innerHTML = '';
+    const el = (tag, cls, txt) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (txt != null) e.textContent = txt;
+      return e;
+    };
+    /* ---- YOUR BANNER, in one band: what it holds and what it earns ---- */
+    const top = el('div', 'cc-banner');
+    const line = (k, v) => {
+      const r = el('div', 'cc-stat');
+      r.appendChild(el('b', null, v));
+      r.appendChild(el('span', null, k));
+      return r;
+    };
+    top.appendChild(line('cities held', d.held + ' of ' + d.all));
+    top.appendChild(line('essence a second', (d.income >= 0 ? '+' : '') + d.income.toFixed(1)));
+    top.appendChild(line('crews idle', d.free + ' of ' + d.crews));
+    top.appendChild(line('men afield', String(d.men)));
+    body.appendChild(top);
+    if (d.pattern) body.appendChild(el('div', 'cc-note', d.pattern));
+
+    /* ---- THE COURTS ---- */
+    body.appendChild(el('h3', 'cc-head', 'THE COURTS'));
+    for (const c of d.cities) {
+      const row = el('div', 'cc-city' + (c.mine ? ' mine' : '') + (c.hand ? ' hand' : ''));
+      const sw = el('i', 'cc-swatch');
+      sw.style.background = c.tint;
+      row.appendChild(sw);
+      const mid = el('div', 'cc-mid');
+      const nm = el('div', 'cc-name');
+      nm.appendChild(el('b', null, c.name));
+      nm.appendChild(el('span', 'cc-lord', c.lord));
+      mid.appendChild(nm);
+      mid.appendChild(el('div', 'cc-sub', c.sub));
+      /* the throne's own hit points — the one bar worth drawing here */
+      if (c.hp != null) {
+        const bar = el('div', 'cc-bar');
+        const fill = el('i');
+        fill.style.width = Math.max(0, Math.min(100, c.hp * 100)) + '%';
+        fill.style.background = c.tint;
+        bar.appendChild(fill);
+        mid.appendChild(bar);
+      }
+      row.appendChild(mid);
+      row.addEventListener('click', () => { H2.onLook(c.idx); UI.councilClose(); });
+      body.appendChild(row);
+      /* the actions a court of your own offers, under it rather than behind another tap */
+      if (c.mine && !c.hand) {
+        const acts = el('div', 'cc-acts');
+        const btn = (t, fn) => { const b = el('button', 'mbtn small', t); b.addEventListener('click', fn); acts.appendChild(b); };
+        btn('👑 COMMAND', () => { H2.onTake(c.idx); UI.councilClose(); });
+        for (const o of c.orders)
+          btn(o.on ? '● ' + o.label : o.label, () => { H2.onOrder(c.lordIdx, o.mode, o.target); UI.council(H2.data(), H2); });
+        body.appendChild(acts);
+      }
+    }
+
+    /* ---- TERMS, one row per rival BANNER ---- */
+    if (d.terms.length) {
+      body.appendChild(el('h3', 'cc-head', 'TERMS'));
+      for (const t of d.terms) {
+        const row = el('div', 'cc-term ' + t.state);
+        const sw = el('i', 'cc-swatch');
+        sw.style.background = t.tint;
+        row.appendChild(sw);
+        const mid = el('div', 'cc-mid');
+        const nm = el('div', 'cc-name');
+        nm.appendChild(el('b', null, t.name));
+        nm.appendChild(el('span', 'cc-lord', t.holds));
+        mid.appendChild(nm);
+        mid.appendChild(el('div', 'cc-sub', t.say));
+        row.appendChild(mid);
+        row.addEventListener('click', () => { H2.onTerms(t.idx); UI.council(H2.data(), H2); });
+        body.appendChild(row);
+      }
+    }
+    $('hud').classList.add('hidden');
+    $('council').classList.remove('hidden');
+    body.scrollTop = 0;
+  };
+
   UI.startMatch = function (rivalName) {
     haltShown = null; masonHash = '';
     $('knell').classList.add('hidden');   // no warning carries over from the last match
@@ -549,7 +678,13 @@
      * AND of them, so there is nothing here that can disagree with `World.pactOn`.
      * Rebuilt only when the picture changes, like the board above it — this runs every frame. */
     const tray = $('terms');
-    const truce = !!(view.rules && view.rules.truce);
+    /* ...AND IN A WAR THE TRAY IS A CHIP. A country seats sixteen: even filtered to the
+     * banners you border, the stack ran under the war line and would have run into the
+     * minimap at four. Terms move into the council, where a rival can be named, counted and
+     * weighed before an offer is made rather than tapped at from a chip that says "at war".
+     * A board with terms on — which nothing ships today — keeps the tray it always had. */
+    const inWar = !!(view.rules && view.rules.reach);
+    const truce = !!(view.rules && view.rules.truce) && !inWar;
     tray.classList.toggle('hidden', !truce);
     /* it hangs off the bottom of the walkers' board, which grows and shrinks as heirs step on
      * and off the lines — so the offset is measured rather than written down */

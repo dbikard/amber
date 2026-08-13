@@ -615,6 +615,136 @@
     UI.banner(REFUSAL[err] || ('The order was refused: ' + err), 'warn');
   }
 
+  /* ---------------- ⚑ THE WAR COUNCIL ----------------
+   * Everything about a war that is true for MINUTES rather than happening now: what your banner
+   * holds, how each of its courts is faring, what its lord is under orders to do, and who you
+   * are at terms with. It was being shouted from the corner of the map — a two-line status box
+   * and a stack of chips, on a screen that already had nine things on it — and the two ran into
+   * each other. This is the same state, given a screen.
+   * `councilData` reads the VIEW, so it is fogged exactly as everything else is: a court you
+   * have never laid eyes on is not in the list. */
+  function warView() { return game.mode === 'guest' ? (snapCur && guestView()) : (game.world && hostView()); }
+  /* the one question the chip's dot answers: is anything actually waiting on me. Four things
+   * are, and none of them is "you are at war", which is the default state and therefore not
+   * news — see the banner rule in CLAUDE.md. */
+  function warWants(view) {
+    if (!view || !view.cities) return false;
+    const me = World.realmOf(view, game.viewer);
+    const mine = view.cities.filter((c) => c.owner >= 0 && World.realmOf(view, c.owner) === me);
+    /* a rival has asked terms and I have not answered */
+    const myOffers = (view.players[me] || {}).offers || [];
+    for (let pi = 0; pi < view.players.length; pi++) {
+      if (World.realmOf(view, pi) !== pi || pi === me) continue;
+      if (((view.players[pi].offers || [])[me]) && !myOffers[pi]) return true;
+    }
+    /* a court of mine is hurt, or one lies yielded for anyone to walk into */
+    if (mine.some((c) => c.hp < c.maxHp * 0.98)) return true;
+    if (view.cities.some((c) => c.owner < 0 && !c.razed)) return true;
+    /* a lord of mine has no standing order — he is running on his own judgement */
+    const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || {};
+    return mine.some((c) => c.owner !== hand() && !orders[c.owner]);
+  }
+  function warChip() {
+    const view = warView();
+    if (!view || !view.cities) return null;
+    const me = World.realmOf(view, game.viewer);
+    const held = view.cities.filter((c) => c.owner >= 0 && World.realmOf(view, c.owner) === me).length;
+    return { held, all: view.cities.filter((c) => !c.razed).length, wants: warWants(view) };
+  }
+  const ORDERS = [{ mode: 'hold', label: 'HOLD' }, { mode: 'gates', label: 'GATES' },
+                  { mode: 'walls', label: 'WALL UP' }];
+  function councilData() {
+    const view = warView();
+    if (!view || !view.cities) return null;
+    const me = World.realmOf(view, game.viewer);
+    const ours = (pi) => pi >= 0 && World.realmOf(view, pi) === me;
+    const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+    const tint = (pi) => hex(Render.tintOf ? Render.tintOf(pi, game.viewer) : C.SEAT_TINT[0]);
+    const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || {};
+    const explored = (view.players[game.viewer] || {}).explored || {};
+    let income = 0, men = 0, crews = 0, free = 0, pattern = null;
+    for (let pi = 0; pi < view.players.length; pi++) {
+      if (!ours(pi)) continue;
+      const p = view.players[pi];
+      income += (p.incomeRate || 0) - (p.drainRate || 0);
+      if (game.world) { crews += World.masons(game.world, pi); free += Math.max(0, World.masons(game.world, pi) - World.rising(game.world, pi)); }
+      if (p.pattern > 0) pattern = '✴ ' + Math.round(p.pattern) + '% of the Pattern is walked in your name';
+    }
+    for (const u of view.units) if (ours(u.owner)) men++;
+    const cities = [];
+    for (let ci = 0; ci < view.cities.length; ci++) {
+      const c = view.cities[ci];
+      /* fogged like everything else: a court nobody of yours has seen is not on the list */
+      if (!ours(c.owner) && !explored[c.site]) continue;
+      const mineC = ours(c.owner);
+      const lordIdx = c.owner;
+      const nm = view.map.sites[c.site].name || 'a Seat of Power';
+      const sub = [];
+      if (c.razed) sub.push('thrown down — nothing left of it');
+      else if (c.owner < 0) sub.push('YIELDED — hold the court and it swears');
+      else {
+        const p = view.players[c.owner];
+        if (mineC) {
+          const rate = (p.incomeRate || 0) - (p.drainRate || 0);
+          sub.push((rate >= 0 ? '+' : '') + rate.toFixed(1) + '/s');
+          sub.push(view.units.filter((u) => u.owner === c.owner).length + ' men');
+          const o = orders[c.owner];
+          /* the court your own hand is on needs no order: your taps ARE the order, and telling
+           * a player his own capital has "no standing order" is telling him off for playing */
+          if (c.owner !== hand()) {
+            sub.push(!o ? 'no standing order'
+              : o.mode === 'attack' ? 'ordered against ' + ((view.cities[o.target] && view.map.sites[view.cities[o.target].site].name) || 'a court')
+              : o.mode === 'support' ? 'ordered to support ' + ((view.cities[o.target] && view.map.sites[view.cities[o.target].site].name) || 'a court')
+              : 'ordered to ' + o.mode);
+          }
+        } else sub.push(seatName(c.owner) + '’s');
+      }
+      const nbrs = ((view.map.gen.nbrs && view.map.gen.nbrs[ci]) || [])
+        .filter((i) => view.cities[i] && !ours(view.cities[i].owner) && !view.cities[i].razed)
+        .slice(0, 2)
+        .map((i) => ({ mode: 'attack', target: i, label: '⚔ ' + (view.map.sites[view.cities[i].site].name || 'a court'),
+                       on: orders[lordIdx] && orders[lordIdx].mode === 'attack' && orders[lordIdx].target === i }));
+      cities.push({
+        idx: ci, lordIdx, name: nm, mine: mineC, hand: c.owner === hand(),
+        tint: c.owner < 0 ? hex(C.NEUTRAL_TINT) : tint(c.owner),
+        lord: c.owner < 0 ? 'no lord' : (mineC ? (c.owner === hand() ? 'your own hand' : 'sworn to you') : ''),
+        sub: sub.join(' · '),
+        hp: c.razed ? null : Math.max(0, c.hp / (c.maxHp || C.CASTLE_HP)),
+        orders: ORDERS.map((o) => ({ ...o, on: orders[lordIdx] && orders[lordIdx].mode === o.mode })).concat(nbrs)
+      });
+    }
+    /* yours first, then the rest by name, so the list opens on what you are responsible for */
+    cities.sort((a2, b2) => (b2.mine - a2.mine) || (b2.hand - a2.hand) || a2.name.localeCompare(b2.name));
+    const terms = [];
+    if (view.rules && view.rules.truce) {
+      const myOffers = (view.players[me] || {}).offers || [];
+      for (let pi = 0; pi < view.players.length; pi++) {
+        if (World.realmOf(view, pi) !== pi || pi === me || view.players[pi].out) continue;
+        const held2 = view.cities.filter((c) => c.owner >= 0 && World.realmOf(view, c.owner) === pi);
+        const holds = held2.length;
+        if (!holds) continue;
+        const his = !!((view.players[pi].offers || [])[me]), mine2 = !!myOffers[pi];
+        /* A BANNER YOU HAVE NOT MET IS NOT ONE YOU CAN TREAT WITH. A country seats sixteen, so
+         * listing every one of them gave fifteen identical rows reading "at war — tap to
+         * offer" — the same noise the tray was moved out of the HUD for, reprinted on a bigger
+         * screen. You must have laid eyes on a court of his; an offer already standing either
+         * way always shows, because a thing waiting on you must never be behind a filter. */
+        if (!his && !mine2 && !held2.some((c) => explored[c.site])) continue;
+        terms.push({
+          idx: pi, name: seatName(pi), tint: tint(pi),
+          holds: holds + (holds === 1 ? ' city' : ' cities'),
+          state: mine2 && his ? 'sealed' : his ? 'asked' : mine2 ? 'offered' : 'war',
+          say: mine2 && his ? '⚑ at terms — tap to break'
+             : his ? 'asks for terms — tap to accept'
+             : mine2 ? 'your offer stands — tap to withdraw' : 'at war — tap to offer'
+        });
+      }
+    }
+    return { held: cities.filter((c) => c.mine).length,
+             all: view.cities.filter((c) => !c.razed).length,
+             income, crews, free, men, pattern, cities, terms };
+  }
+
   /* ---------------- view assembly (render-ready, fog applied) ---------------- */
   function hostView() {
     const world = game.world, viewer = game.viewer;
@@ -963,7 +1093,12 @@
       if (game.run && !game.over) {
         const h2 = game.run.hint(game.world);
         if (h2) UI.banner(h2, 'alert');
-        UI.objective(game.run.say(game.world));
+        /* A WAR'S STATE IS A PLACE YOU GO, not a line in the corner. A chapter's objective is
+         * still a line — it is one sentence and there is nothing else up there competing with
+         * it — but a war's was two wrapped lines that ran sixty pixels under the terms chips
+         * on a 420-wide phone, and a fourth banner would have pushed the chips into the
+         * minimap. The count is the chip; everything behind it is the council. */
+        if (game.war) UI.warChip(warChip()); else UI.objective(game.run.say(game.world));
       }
       if (game.mode === 'host') {
         /* ONE GUEST PER SLOT, NOT ALL OF THEM AT ONCE. Each snapshot is fog-filtered for its
@@ -1224,6 +1359,31 @@
      * only ever asked about things that are ON it. */
     Render.selected = -1;
   }
+
+  /* THE COUNCIL'S FOUR VERBS. `data` is handed back so a row that changes the war can redraw
+   * the panel from the same door it was built through — an order given and a panel that still
+   * says "no standing order" is the sort of thing that reads as a dead button. */
+  const councilHandlers = {
+    data: councilData,
+    /* LOOK: the reason the roster exists. On an 8000x9600 country you cannot find a court by
+     * dragging the map, so the row IS the way there. */
+    onLook: (ci) => {
+      const w = game.world || refWorld;
+      const c = w && w.cities && w.cities[ci];
+      if (c && Render.lookAt) Render.lookAt(c.x, c.y);
+    },
+    onTake: (ci) => H.onTakeSeat(ci),
+    onOrder: (lord, mode, target) => {
+      const helm = game.realm && (game.realm.helm || (game.realm.helm = { orders: {}, hand: 0 }));
+      if (!helm) return;
+      const was = helm.orders[lord];
+      /* the same order twice is the order LIFTED — a lord left to his own doctrine, which is
+       * a thing the player should be able to say without a second control for it */
+      const same = was && was.mode === mode && (target == null || was.target === target);
+      H.onSteward(lord, same ? null : mode, target);
+    },
+    onTerms: (pi) => H.onTerms(pi)
+  };
 
   /* ---------------- LAN pairing (QR flow ported from Perils) ---------------- */
   function setupLan() {
@@ -1545,7 +1705,7 @@
     game.over = false;
     game.mode = null; game.chapter = null; game.run = null;
     if (game.world) game.world = null;
-    UI.objective(null);
+    UI.objective(null); UI.warChip(null);
     UI.toMenuScreens();
     UI.chapters(global.CAMPAIGN, focus);
     armBack(true);
@@ -1689,6 +1849,12 @@
         if (!mode) delete helm.orders[lord];
         else helm.orders[lord] = Object.assign({ mode }, target != null ? { target } : null);
         REALM.save(game.realm);
+      },
+      /* ⚑ the door to the council, and the four things it can do from a row */
+      onCouncil: () => {
+        const d = councilData();
+        if (!d) return;
+        UI.council(d, councilHandlers);
       },
       onRecall: () => {
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();

@@ -48,8 +48,11 @@ body {
 .halt-hint { font-size: 12px; color: #8d8478; letter-spacing: 1px; margin-top: 10px; }
 /* the yard, opposite the walkers: idle crews of total. Dimmed when they are all at work,
    because that is the state that explains a refusal you have not hit yet. */
+/* THE YARD SITS WITH THE PURSE. It was top-left, opposite the walkers, back when the top of
+   the screen had room; a war put nine things up there and the war line ended up running under
+   the terms chips. The crews and the essence are the same question — what can I spend — so
+   they are read together, at the bottom, where the thumb already is. */
 #masons {
-  position: absolute; left: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
   display: flex; align-items: center; gap: 3px;
   font-size: 13px; letter-spacing: 1px; color: #d8cba8; text-shadow: 0 1px 3px #000;
   pointer-events: none;
@@ -89,6 +92,29 @@ body {
   pointer-events: auto;
 }
 #terms.hidden { display: none; }
+/* ---- ⚑ THE WAR, IN A CHIP ----
+ * The door to the council, and the war's own status line in four characters. It stands where
+ * the terms tray used to, on the right rail under the clock, because it answers the same
+ * question the tray was answering badly: what is the rest of the country doing. The DOT is the
+ * whole discipline — a permanent chip that says "at war" is an echo, and an echo shoves the
+ * one thing that must interrupt you (somebody on the Pattern) off the screen. */
+#war-chip {
+  position: absolute; right: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
+  pointer-events: auto; -webkit-tap-highlight-color: transparent;
+  display: flex; align-items: center; gap: 6px;
+  font-family: inherit; font-size: 13px; font-weight: bold; letter-spacing: 1px;
+  color: #ffe9a8; background: rgba(10, 8, 18, 0.62);
+  border: 1px solid #c9a44f66; border-radius: 4px; padding: 5px 10px;
+  min-height: 30px; text-shadow: 0 1px 3px #000;
+}
+#war-chip.hidden { display: none; }
+#wc-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #ffe9a8;
+  box-shadow: 0 0 8px #ffe9a8; animation: wcdot 1.6s ease-in-out infinite;
+}
+#wc-dot.hidden { display: none; }
+@keyframes wcdot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { #wc-dot { animation: none; } }
 .term {
   font-size: 12px; letter-spacing: 0.5px; font-weight: bold;
   text-shadow: 0 1px 3px #000, 0 0 10px #0009;
@@ -154,6 +180,8 @@ body {
   display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;
   padding: 6px 10px; pointer-events: none;
 }
+/* the purse and the yard on one line: what you have, and how many hands are free to spend it */
+#purse { display: flex; align-items: baseline; gap: 12px; }
 #essence { font-size: 17px; text-shadow: 0 1px 3px #000; }
 .ess-ico { color: #ffe9a8; }
 #ess-rate { font-size: 12px; color: #b8a878; }
@@ -427,10 +455,67 @@ body {
 }
 @media (min-width: 620px) { .stat-grid { grid-template-columns: repeat(3, 1fr); } }
 
+/* ---------------- ⚑ THE WAR COUNCIL ----------------
+ * A long read, like the Muster Roll: packed from the top, scrolling, with the way out at the
+ * end of the scroll where a thumb arrives having finished reading. What it is FOR is everything
+ * about a war that is true for minutes rather than happening now — which is exactly the state
+ * that was being shouted from the corner of the map and colliding with itself. */
+#council { justify-content: flex-start; padding-top: 22px; }
+#council h2 { font-size: 22px; letter-spacing: 4px; color: #ffe9a8; margin-bottom: 12px; }
+#council-body { width: min(96vw, 560px); text-align: left; }
+#council .mbtn { margin: 16px 0 24px; }
+.cc-banner {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px;
+  background: rgba(20, 16, 30, 0.5); border: 1px solid #c9a44f33;
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 6px;
+}
+@media (min-width: 520px) { .cc-banner { grid-template-columns: repeat(4, 1fr); } }
+.cc-stat { display: flex; flex-direction: column; }
+.cc-stat b { font-size: 17px; color: #ffe9a8; }
+.cc-stat span { font-size: 10px; letter-spacing: 1px; color: #8d8478; text-transform: uppercase; }
+.cc-note { font-size: 12px; font-style: italic; color: #9cc8ff; margin: 4px 2px 0; }
+.cc-head {
+  font-size: 11px; letter-spacing: 3px; color: #c9a44f; font-weight: normal;
+  margin: 18px 0 6px; border-bottom: 1px solid #c9a44f33; padding-bottom: 4px;
+}
+/* A COURT IS A ROW, AND THE ROW IS THE BUTTON. On a country you cannot find a city to tap on
+   the map — that was the whole reason the take-command flow was unreachable — so the row jumps
+   the camera to it. Yours are lit; the one your own hand is on says so. */
+.cc-city, .cc-term {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(20, 16, 30, 0.42); border: 1px solid #ffffff14;
+  border-radius: 6px; padding: 8px 10px; margin-bottom: 5px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cc-city.mine { border-color: #c9a44f55; background: rgba(30, 24, 16, 0.5); }
+.cc-city.hand { border-color: #ffe9a8aa; }
+.cc-swatch { width: 10px; height: 34px; border-radius: 3px; flex: 0 0 auto; }
+.cc-mid { flex: 1 1 auto; min-width: 0; }
+.cc-name { display: flex; align-items: baseline; gap: 8px; }
+.cc-name b { font-size: 14px; color: #e8e2d4; }
+.cc-lord { font-size: 11px; color: #8d8478; }
+.cc-sub { font-size: 11px; color: #b8a878; margin-top: 2px; }
+.cc-bar { height: 4px; background: rgba(0,0,0,0.55); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+.cc-bar i { display: block; height: 100%; }
+/* the orders under a court of your own — the same five words the lord's doctrine takes */
+.cc-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 8px 20px; }
+.cc-acts .mbtn.small { margin: 0; font-size: 11px; padding: 5px 9px; min-width: 0; }
+.cc-term.sealed { border-color: #9fe6b0aa; background: rgba(16, 34, 22, 0.55); }
+.cc-term.asked { border-color: #ffe9a8cc; }
+.cc-term.offered { border-style: dashed; }
+
 /* ---------------- the Muster Roll ----------------
  * A long read rather than a screen of buttons, so it packs from the top and scrolls, and the
  * CLOSE button sits at the end of the scroll where a thumb arrives having finished reading. */
 #roll, #rivals, #lan-screen { justify-content: flex-start; padding-top: 22px; }
+#council { position: fixed; inset: 0; z-index: 40;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 10px; padding: 20px; text-align: center; overflow-y: auto;
+  background: radial-gradient(ellipse at 50% 110%, rgba(255, 205, 110, 0.13), transparent 55%),
+              radial-gradient(ellipse at 50% -10%, rgba(190, 70, 90, 0.12), transparent 55%),
+              #0d0b18;
+}
+#council.hidden { display: none; }
 #rivals h2, #lan-screen h2 { font-size: 22px; letter-spacing: 4px; color: #ffe9a8; margin-bottom: 12px; }
 #rivals-body { width: min(96vw, 520px); display: flex; flex-direction: column; gap: 8px; }
 #rivals .mbtn, #lan-screen .mbtn { margin-top: 14px; }

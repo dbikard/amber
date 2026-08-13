@@ -719,6 +719,24 @@ below.
         the hp of the seat its heir currently ruled FROM, two different cities — belongs to the
         city. Also fixed: the city sheet read `players[1 - viewer]`, duel arithmetic that told
         you seat 1's business about every court in a sixteen-seat war.
+      - **⚑ THE WAR COUNCIL — a war's state got a screen.** From play, with a screenshot of the
+        two colliding: the war line ran under the terms chips. Measured on a 420-wide phone,
+        the line's right edge is 276 and the chips' left edge is 216 — sixty pixels of overlap
+        — and the chip stack ended six pixels above the minimap, so a fourth banner would have
+        run into that too. Nine elements were competing for the top third of a phone.
+        The principle applied: **the map shows what is happening now; the war's state is a
+        place you go.** `#war-chip` (`⚑ held/all` plus a dot when something is actually waiting
+        on you) replaces both the war line and the whole terms tray; `#council` is the Muster
+        Roll's shape — a panel over everything, one way out at the end of the scroll — but it
+        returns to the match and the war runs on. It carries the banner's totals, a row per
+        court (colour, lord, its own income and men, its standing order, its throne) with the
+        row as the way TO that city, and a row per rival banner for terms. The masons moved to
+        the purse; they answer the same question and the top had no room. Everything in it is
+        fogged like everything else — a court nobody has seen is not listed, and a banner you
+        have never met is not offered terms, which is the same rule as the dot: fifteen rows
+        reading "at war" is the noise the tray was moved out of the HUD for, reprinted bigger.
+        One trap closed on the way: the walkers' board shares the chip's anchor, so the chip
+        measures itself and pushes the board below it — the same collision, one element along.
       - **AND THEN THE BRAKE CAME OFF.** From play: *"I don't like this lord and courts not
         swearing to you mechanism. You should be able to take control of all cities you take."*
         The lord brake is gone whole — `pl.lords`, `REALM.lords0`, the `refused` event, its
