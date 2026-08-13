@@ -118,9 +118,9 @@
        * fact with a WHERE in it, which is what the placement rule needs now that the one
        * world holds every city at once. */
       pattern: map.gen.pattern != null ? map.gen.pattern : null,
-      /* WHO CONTENDS FOR THE THRONE. The lord brake (holdCities) pays a lord for conquest of
-       * an HEIR only, and the sim cannot ask the realm — so the war stamps its contenders
-       * here. On a plain board every seat is playing to win, as it always was; in a country
+      /* WHO CONTENDS FOR THE THRONE. The renderer gives each contending banner a colour of
+       * its own and everyone else the neutral, and the sim cannot ask the realm — so the war
+       * stamps its contenders here. On a plain board every seat is playing to win, as it always was; in a country
        * only the realm knows who contends, and until it says otherwise the human seat alone
        * does. */
       heirs: opts && opts.heirs ? opts.heirs.slice()
@@ -130,9 +130,6 @@
         essence: C.START_ESSENCE,
         out: false,             // toppled: still on the board as a ruin, but out of the match
         eco: 1,                 // income handicap: 1 = full strength (always 1 in a duel)
-        /* how many cities beyond his first this heir may hold — the brake on the snowball.
-         * Read only where `rules.reach` is on; a lord is WON at the take (see holdCities). */
-        lords: C.REALM.lords0,
         /* COMPANIES. A standard is its own thing, not a property of a barracks: several halls
          * may muster into one company, which is what keeps the flag tray readable once you
          * hold a dozen of them. Company 0 is not a company — it means "follows the War
@@ -326,8 +323,8 @@
    *                    one he was born to, so a dispossessed lord still has a place on the
    *                    map and a toppled one still has a ruin to draw.
    *   citiesOf(w, pi)  the city he holds: one, or none while his court lies yielded.
-   *   realmCities(w,pi) every city under his BANNER — what the lord brake counts and what the
-   *                    war is won and lost by.
+   *   realmCities(w,pi) every city under his BANNER — what the HUD counts and what the war
+   *                    is won and lost by.
    *   cityAt(w, x, y)  whose court is this ground, if anyone's.
    * `cityOf` is kept and keeps its meaning — the SITE his seat stands on — because a hundred
    * call sites want a place and not a record. */
@@ -2682,7 +2679,20 @@
   function joinCo(world, pi, want, at) {
     const pl = world.players[pi];
     const n = +want || 0;
-    if (want !== 'new' && n && coOf(world, pi, n)) return n;
+    /* ---- A HALL MAY ONLY FLY A STANDARD OF ITS OWN CITY ----
+     * Naming an existing company joined it, wherever that company belonged. Under the reach
+     * law a company may only be ORDERED inside its city's disc, so a hall raised in a court
+     * you have just taken and assigned to a standard of your home city musters men who cannot
+     * be sent anywhere near the ground they stand on — a garrison born under a flag that
+     * cannot reach them. Asked at the door rather than in the sheet, so the rule holds for a
+     * guest's order and a bot's alike; a hall whose city cannot take the company simply raises
+     * one of its own, which is what `joinCo` has always done when asked for nothing. */
+    if (want !== 'new' && n) {
+      const has = coOf(world, pi, n);
+      if (has && !world.rules.reach) return n;
+      if (has && has.city == null) return n;
+      if (has && has.city === cityIdxFor(world, pi, at)) return n;
+    }
     const co = { id: pl.nextCo++, rally: null };
     /* under `rules.reach` a company is BORN TO A CITY — the one whose reach holds the hall
      * that raised it — and that stamp is what every order is judged against */
@@ -4434,8 +4444,8 @@
   function seatDown(world, city, by) {
     const pi = city.owner;
     if (!world.rules.occupy) return topple(world, pi, by);
-    /* WHO IT FELL FROM, kept: the lord brake pays out only for conquest of an heir, and the
-     * take moment (holdCities) is long after the yield — by then `owner` says nobody */
+    /* WHO IT FELL FROM, kept: the take (holdCities) comes long after the yield — by then
+     * `owner` says nobody — and a chronicle of a war wants to know whose court this was */
     city.fell = pi;
     city.owner = -1;
     city.hp = 0;
@@ -4473,32 +4483,15 @@
       if (claimant < 0 || contested) { city.hold = null; continue; }
       if (!city.hold || city.hold.pi !== claimant) city.hold = { pi: claimant, since: world.t };
       if (world.t - city.hold.since < C.CITY.take) continue;
-      /* THE LORD BRAKE, ENFORCED WHERE THE GROUND CHANGES HANDS. One city by right and one
-       * more per lord; past that a court simply WILL NOT SWEAR to you — it stays free and the
-       * map is told which one and why, rather than a number being quietly ignored. It used to
-       * be checked one level up, in the old region realm's `leave`; the Reach War has no seam
-       * to check it at, so it lives at the take itself. `pl.lords` may be missing on a
-       * half-world dressed as one (a snapshot, a suite's bare board): missing means the
-       * war's opening allowance, never "no brake". */
-      if (world.rules.reach) {
-        /* the allowance is the BANNER'S, kept by its founder — a vassal does not carry an
-         * allowance of his own, or a realm could grow by having each new lord swear the next */
-        const pl = world.players[realmOf(world, claimant)];
-        const lords = pl && pl.lords != null ? pl.lords : C.REALM.lords0;
-        if (realmCities(world, claimant).length >= 1 + lords) {
-          city.hold = null;
-          emit(world, { e: 'refused', pi: claimant, id: city.id, x: city.x, y: city.y });
-          continue;
-        }
-        /* AND A LORD IS WON, NEVER BOUGHT: a city that FELL from a contending heir brings
-         * his lord over with it; one taken from a minor holding — or taken BACK from
-         * yourself — wins ground and nothing else. That is what stops a war being won by
-         * eating the weak. `city.fell` is stamped at the yield (seatDown), because by the
-         * take `owner` has long said nobody. */
-        if (city.fell != null && city.fell >= 0 && realmOf(world, city.fell) !== realmOf(world, claimant) &&
-            world.heirs && world.heirs.indexOf(city.fell) >= 0)
-          pl.lords = lords + 1;
-      }
+      /* THERE IS NO LORD BRAKE ANY MORE. A realm could hold one city by right and one more per
+       * LORD, a lord being won only by taking a court from a contender — so a court you had
+       * broken, stood in and held for twenty seconds would simply refuse you, and the map said
+       * so. On the designer's call: what you break and hold, you keep. The cost of a conquest
+       * is the army it takes to break the Seat and the twenty seconds of holding the court
+       * uncontested, and that is the whole of it.
+       * `pl.lords` and `CONST.REALM.lords0` are gone with it rather than left as a field
+       * nothing reads, and so is the `refused` event — a rule that no longer exists has no
+       * business still having a banner. */
       /* ---- THE COURT SWEARS ----
        * What changes hands is ALLEGIANCE, not property. Its lord kneels: he keeps his purse,
        * his Gates, his halls, his crews and whatever men he has left, and from this tick he
@@ -4509,8 +4502,9 @@
        * ground; and a "victory" that handed the winner a name on a map and no economy.
        * The throne itself still comes back hurt (`CITY.back`) and at level one: breaking a
        * seat is meant to cost the seat something, and a realm that could storm one court and
-       * immediately storm the next off its spoils is the snowball the lord brake exists to
-       * stop. The brake above is the real limit; this is the tax.
+       * immediately storm the next off its spoils would run away with the war. The army it
+       * takes to break a Seat and the twenty uncontested seconds in the court are the real
+       * limit; this is the tax.
        * His terms are struck with him: a lord's peace is his banner's, and he has a new one. */
       const lord = city.born != null ? city.born : claimant;
       const to = realmOf(world, claimant);

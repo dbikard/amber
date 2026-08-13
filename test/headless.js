@@ -7526,13 +7526,14 @@ suite('there is one Pattern, and it lies in AMBER');
   ok('a single match still carries its own Pattern', ok2, 'a skirmish refused a Shrine');
 }
 
-/* ---- THE LORD BRAKE, IN THE SIM ----
- * One city by right and one more per lord; past that a court will not swear. It used to be
- * checked in the old realm's `leave` — the one seam the country learned anything through —
- * and the Reach War has no seam, so it is enforced at the take itself, in `holdCities`.
- * A lord is WON: a city that FELL from a contender brings his lord over, a minor holding
- * brings ground and nothing else. */
-suite('the lord brake, enforced where the ground changes hands');
+/* ---- WHAT YOU BREAK AND HOLD, YOU KEEP ----
+ * There WAS a lord brake: one city by right and one more per lord, a lord won only by taking a
+ * court from a contender — so a court you had broken, stood in and held for its full twenty
+ * seconds could simply refuse you, and the map was told which one and why. Taken out on the
+ * designer's call. What remains as the brake on a conquest is the army it costs to break a Seat
+ * and the twenty uncontested seconds in its court, and this suite is what says there is nothing
+ * else: three courts in a row, all of them sworn, none of them refused. */
+suite('what you break and hold, you keep');
 {
   const w = World.createWorld(31, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
                               { country: true, heirs: [0, 1, 2] });
@@ -7541,9 +7542,8 @@ suite('the lord brake, enforced where the ground changes hands');
   w.chaosNext = 1e9;
   for (const c of w.cities) c.cd = 1e9;              // the guns stay out of the rig
   for (const p of w.players) p.musterPaused = true;  // and so does every muster
-  const p0 = w.players[0];
-  eq('you begin with one lord', p0.lords, C.REALM.lords0);
-  eq('...and one city', World.realmCities(w, 0).length, 1);
+  eq('you begin holding one city', World.realmCities(w, 0).length, 1);
+  eq('...and no allowance is kept any more', w.players[0].lords, undefined);
 
   /* the take rig: two men PLACED and PINNED in the court — the same idiom as the suite
    * 'a company belongs to a city', because a man's standing order would march him home */
@@ -7557,38 +7557,84 @@ suite('the lord brake, enforced where the ground changes hands');
     }
   };
 
-  /* a minor lord's city: the first extra city sticks (lords0 = 1) */
+  /* a minor lord's court */
   const a = w.cities[3];
   World.seatDown(w, a, 0);
   eq('the rig is alive: a yielded court remembers whom it fell from', a.fell, 3);
   press(a, C.CITY.take + 15);
   eq('the first extra city swears', World.realmOf(w, a.owner), 0);
   eq('...to its own lord, who keeps it', a.owner, 3);
-  eq('...and a minor holding brings no lord', p0.lords, C.REALM.lords0);
 
-  /* the next take is REFUSED: the court stays free and the map is told which one and why */
+  /* AND SO DOES THE NEXT, which is the whole of the change: this court used to refuse */
   const b = w.cities[4];
   World.seatDown(w, b, 0);
   w.events.length = 0;
   press(b, C.CITY.take + 15);
-  eq('the next court will not swear', b.owner, -1);
-  ok('...and the refusal is an event the map can carry',
-     w.events.some((e) => e.e === 'refused' && e.pi === 0 && e.id === b.id),
-     w.events.filter((e) => e.e === 'refused').map((e) => JSON.stringify(e)).join(' ') || 'no refusal spoke');
-  eq('...and you still hold two', World.realmCities(w, 0).length, 2);
+  eq('the next court swears too', World.realmOf(w, b.owner), 0);
+  ok('...and nothing refuses it', !w.events.some((e) => e.e === 'refused'),
+     w.events.filter((e) => e.e === 'refused').map((e) => JSON.stringify(e)).join(' '));
+  eq('...so the banner holds three', World.realmCities(w, 0).length, 3);
 
-  /* a CONTENDER's city brings his lord over — room is made first, so the brake is not what
-   * is being tested */
+  /* and a CONTENDER's court is no different — it was the one that used to pay for the next */
   const h = w.cities[1];
   ok('the rig is alive: seat 1 contends', w.heirs.indexOf(1) >= 0, w.heirs.join(','));
   World.seatDown(w, h, 0);
   eq('...and his fall is remembered', h.fell, 1);
-  p0.lords++;
-  const before = p0.lords;
   press(h, C.CITY.take + 15);
-  eq('a contender\'s city is taken', World.realmOf(w, h.owner), 0);
-  eq('...and his lord comes over with it', p0.lords, before + 1);
-  ok('...and the contender himself is sworn, not dead', !w.players[1].out && !World.foe(w, 0, 1));
+  eq('a contender\'s city swears on the same terms', World.realmOf(w, h.owner), 0);
+  ok('...and he is sworn, not dead', !w.players[1].out && !World.foe(w, 0, 1));
+  eq('...so the banner holds four', World.realmCities(w, 0).length, 4);
+}
+
+/* ---- A HALL FLIES A STANDARD OF ITS OWN CITY ----
+ * Naming an existing company on a build joined it wherever it belonged. Under the reach law a
+ * company may only be ORDERED inside its city's disc, so a hall raised in a court you have just
+ * taken, under a standard of your home city, musters men no order of yours can reach — a
+ * garrison born under a flag that cannot reach them. Reported from play. */
+suite('a hall flies a standard of its own city');
+{
+  const spec = {
+    name: 'the two-court rig', seed: 7, ground: 'PLAIN', height: 0.5,
+    seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+    springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }]
+  };
+  const w = World.createWorld(1, 2, spec, { reach: 1, occupy: 1, endOnSeat: 0 });
+  w.chaosNext = 1e9;
+  w.cities[0].reach = 700; w.cities[1].reach = 700;
+  const pl = w.players[0];
+  pl.essence = 99999;
+  /* a SECOND company of player 0, stamped to the other city — the state `{c:'assign'}` can
+   * reach through overlapping reaches, and the only way one player holds two cities' flags */
+  const far = { id: pl.nextCo++, rally: null, city: 1 };
+  pl.companies.push(far);
+  eq('the rig is alive: he holds a standard of another city', far.city, 1);
+  let raised = null;
+  for (const [ox, oy] of [[190, 0], [-190, 0], [0, 190], [0, -190], [150, 130], [240, 60]]) {
+    const r = World.applyCommand(w, 0, { c: 'build', x: 520 + ox, y: 420 + oy,
+                                         bt: 'barracks', co: far.id });
+    if (r.ok) { raised = pl.buildings[pl.buildings.length - 1]; break; }
+  }
+  ok('a hall rises in his own court', !!raised);
+  if (raised) {
+    ok('...and it did NOT take the other city\'s standard', raised.co !== far.id, String(raised.co));
+    const co = pl.companies.find((q) => q.id === raised.co);
+    eq('...it flies one of the city it stands in', co && co.city, 0);
+  }
+  /* and a board, where a company has no city at all, is unchanged: the named flag is taken */
+  const bw = World.createWorld(5, 2);
+  const bp = bw.players[0];
+  bp.essence = 99999;
+  const first = bp.companies[0];
+  ok('the rig is alive: a board company carries no city', first && first.city === undefined);
+  let b2 = null;
+  const bc = World.cityOf(bw, 0);
+  for (const [ox, oy] of [[190, 0], [-190, 0], [0, 190], [0, -190], [150, 130], [240, 60]]) {
+    const r = World.applyCommand(bw, 0, { c: 'build', x: bc.x + ox, y: bc.y + oy,
+                                          bt: 'barracks', co: first.id });
+    if (r.ok) { b2 = bp.buildings[bp.buildings.length - 1]; break; }
+  }
+  ok('a hall rises on a board', !!b2);
+  if (b2) eq('...and joins the standard it was told to', b2.co, first.id);
 }
 
 /* ---- A WAR FITS IN A POCKET ----
@@ -7615,7 +7661,9 @@ suite('a war fits in a pocket');
     const run = REALM.run(realm);
     eq('a fresh war answers null', run.tick(w), null);
     ok('...and says where the Pattern lies', /AMBER/.test(run.say()), run.say());
-    ok('...and how much is held', /1 of 2/.test(run.say()), run.say());
+    /* out of the WHOLE COUNTRY — there is no allowance to count against any more */
+    ok('...and how much of the country is held',
+       new RegExp('1 of ' + w.cities.length + ' cities').test(run.say()), run.say());
     eq('...and has no tutorial', run.hint(), null);
 
     /* --- mutate: build, march, treat, take, and two minutes of war --- */
@@ -7648,7 +7696,7 @@ suite('a war fits in a pocket');
       w.events.length = 0;
     }
     eq('the rig is alive: the prize swore inside the run', World.realmOf(w, prize.owner), 0);
-    eq('...and, an heir\'s, it brought his lord over', p0.lords, C.REALM.lords0 + 1);
+    eq('...and its own lord holds it still', prize.owner, 1);
     ok('...and the war moved: men stand and essence flowed',
        w.units.filter((u) => u.hp > 0).length > 2 && w.t > 119, `${w.units.length} units at t=${w.t.toFixed(1)}`);
 

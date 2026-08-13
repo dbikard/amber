@@ -719,6 +719,48 @@ below.
         the hp of the seat its heir currently ruled FROM, two different cities — belongs to the
         city. Also fixed: the city sheet read `players[1 - viewer]`, duel arithmetic that told
         you seat 1's business about every court in a sixteen-seat war.
+      - **AND THEN THE BRAKE CAME OFF.** From play: *"I don't like this lord and courts not
+        swearing to you mechanism. You should be able to take control of all cities you take."*
+        The lord brake is gone whole — `pl.lords`, `REALM.lords0`, the `refused` event, its
+        banner and its refusal line. What you break and hold, you keep; the cost of a conquest
+        is the army it takes to break a Seat and the twenty uncontested seconds in the court.
+        The HUD counts the whole country now ("2 of 16 cities held") rather than an allowance
+        whose ceiling was two.
+      - **AND A HALL FLIES A STANDARD OF ITS OWN CITY.** From play: *"when constructing a new
+        hall in a city you conquered you should only be able to assign it to a flag of that
+        city."* Two halves: the BUILD sheet read the VIEWER's purse and companies, so taking
+        command of a conquered court and opening it offered your home city's essence and its
+        standards (`hand()` now, along with the upgrade sheet, the wall preview and the anchor
+        check); and `joinCo` took any named company, so the rule is at the sim's door where a
+        guest's order and a bot's meet it too — a company may only be ORDERED inside its city's
+        disc, so a hall under a far city's flag musters men no order can reach.
+      - **AND THE LAN TABLE HAS TWO BEGINNINGS.** From play: *"LAN doesn't work anymore. LAN
+        should have 2 modes, the old one and the reach war."* One BEGIN meant a plain board or
+        the whole table dealt into the host's war depending on whether a war happened to be
+        saved — invisible, and the same button either way. `lan-start` deals a board and
+        `lan-start-war` (shown only when there is an undecided war) deals the table into it.
+        Every send in the deal is guarded too: the loop that told each peer to start was
+        unprotected, and one channel throwing took the whole handler with it — no match, no
+        message, and a BEGIN that does nothing is indistinguishable from one that is not wired.
+      - **AND THE SPRING A SWORN LORD HOLDS IS YOURS.** Reported from play with a picture: a
+        Gate inside a court just taken, ringed in the enemy's crimson and captioned "(the
+        rival's)". The site ring, the minimap's node dots and the site sheet all asked "same
+        seat"; they ask the banner now, and the sheet NAMES the holder rather than saying "the
+        rival's" about one of sixteen. The sheet has no world to ask, so game.js answers and
+        passes it — the one place that knows.
+      - **AND A RIVER WAS A CHAIN OF BEADS.** Reported from play as "that river looks very
+        weird", and a baked tile showed it plainly: water was a radial gradient drawn PER CELL
+        onto the finished land, so alphas compounded where discs overlapped (a bright core in
+        every cell, a scalloped bank) and the pass ran AFTER the blur that softens the rest of
+        the world, so a hard saturated cutout sat on a painterly landscape. Water is ONE body
+        now — the cells into their own layer at full alpha, blurred (which is what makes a run
+        of squares a channel), composited once — and the DEPTH falls out of the same mask
+        blurred harder, because a lake keeps its alpha in the middle and a one-cell river blurs
+        away. So a lake is dark at the heart and pale at the shoal and a river is light all the
+        way across, from the geometry rather than from a rule. Measured down a channel's
+        centreline: 14.9 of 255 between neighbouring cell centres before, 1.0 after. The blur is
+        clamped to what the tile's `pad` can support, and a suite bakes two overlapping windows
+        and compares the strip they share (mean difference 0.01 of 255).
       - **AND A COUNTRY'S SPRINGS WERE BURIED UNDER ITS OWN GROUND.** Reported from play with
         two screenshots — a spring is a pool on a board and a dark hole in a war — and the cause
         was the thing the report guessed at: a second code path for the big case. `R.groundH` is

@@ -159,20 +159,89 @@
       g.restore();
     }
 
-    /* ---- water reads as one body, not a grid of squares ---- */
-    for (const [x, y, r] of waters) {
-      const gr = g.createRadialGradient(x, y, 0, x, y, r * 1.35);
-      gr.addColorStop(0, 'rgba(20,44,70,0.95)'); gr.addColorStop(0.7, 'rgba(14,32,54,0.7)');
-      gr.addColorStop(1, 'rgba(10,24,40,0)');
-      g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 1.35, 0, 7); g.fill();
-    }
-    for (const [x, y, r] of waters) {
-      /* the sparkle is the CELL's, not the walk's — see the determinism note up top */
-      const s1 = cellHash((x / cw) | 0, (y / cw) | 0, seed + 5150);
-      if (s1 > 0.22) continue;
-      const s2 = cellHash((y / cw) | 0, (x / cw) | 0, seed + 5151);
-      g.strokeStyle = 'rgba(150,200,240,0.16)'; g.lineWidth = 1.2;
-      g.beginPath(); g.ellipse(x + (s1 - 0.11) * 55, y + (s2 - 0.5) * 10, r * 0.5, r * 0.18, 0, 0, 7); g.stroke();
+    /* ---- WATER IS ONE BODY, AND ITS DEPTH IS ITS WIDTH ----
+     * This was a radial gradient PER CELL, each one drawn straight onto the finished land at
+     * 0.95 in the middle. Two things followed and both are visible from orbit: the alphas
+     * COMPOUND where discs overlap, so a river came out as a chain of beads with a bright core
+     * in every cell and a scalloped bank; and the whole pass landed AFTER the blur that softens
+     * the rest of the world, so a hard saturated blue cutout sat on top of a painterly
+     * landscape. Reported from play as "that river looks very weird", and a baked tile shows it
+     * plainly: a pile of stamped circles.
+     * A body of water is ONE thing, so it is composited ONCE. The cells go into their own layer
+     * at full alpha — no compounding possible — the layer is blurred, which is what turns a run
+     * of squares into a channel with banks, and the result is laid down in a single draw.
+     * AND THE DEPTH COMES FOR FREE. The same mask blurred HARDER keeps its alpha in the middle
+     * of a lake and loses it in a one-cell river, because a narrow thing blurs away and a broad
+     * one does not — so painting the deep colour through that second mask makes a lake dark at
+     * the heart and pale at the shoal, and leaves a river light all the way across. That is the
+     * right answer for both, from the geometry itself, with no rule about which is which. */
+    if (waters.length && typeof g.filter === 'string') {
+      /* TWO canvases for the whole pass, not two per layer. This runs once per detail tile and
+       * a tile is ~1320² — minting four of those per bake is megabytes of churn a frame on the
+       * one device that cannot afford it. `shape` holds the raw mask and is painted ONCE;
+       * `wcv` is the scratch each layer blurs and colours it into. */
+      const shape = document.createElement('canvas');
+      shape.width = cv2.width; shape.height = cv2.height;
+      const sg = shape.getContext('2d');
+      sg.scale(px, px); sg.translate(-RX0, -RY0);
+      sg.fillStyle = '#fff';
+      /* the cells, whole and opaque — the mask is a SHAPE, and a shape has no alpha to add */
+      for (const [x, y, r] of waters) sg.fillRect(x - r / 2 - 0.6, y - r / 2 - 0.6, r + 1.2, r + 1.2);
+      const wcv = document.createElement('canvas');
+      wcv.width = cv2.width; wcv.height = cv2.height;
+      const wg = wcv.getContext('2d');
+      const layer = (blurPx, colour, alpha) => {
+        wg.setTransform(1, 0, 0, 1, 0, 0);
+        wg.clearRect(0, 0, wcv.width, wcv.height);
+        /* blur the shape into the scratch: the bank, and the reason a channel is a channel */
+        wg.filter = 'blur(' + blurPx + 'px)';
+        wg.drawImage(shape, 0, 0);
+        wg.filter = 'none';
+        /* colour the shape through itself, so the alpha is the mask's and nothing else */
+        wg.globalCompositeOperation = 'source-in';
+        wg.fillStyle = colour;
+        wg.fillRect(0, 0, wcv.width, wcv.height);
+        wg.globalCompositeOperation = 'source-over';
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalAlpha = alpha;
+        g.drawImage(wcv, 0, 0);
+        g.restore();
+      };
+      /* AND NO BLUR MAY REACH PAST THE PAD. A tile is painted with `pad` of ground beyond its
+       * edge and cropped back, which is what makes two neighbours meet on identical pixels —
+       * a blur wider than the pad samples ground the neighbour tile painted differently, and
+       * the seam comes back. A Gaussian reaches about 1.5× its stated radius, so that is what
+       * is budgeted against. The full-land bake has no rect and no ceiling. */
+      const roof = rect ? (pad * px) / 1.5 : Infinity;
+      const soft = Math.min(roof / 3.4, Math.max(2.0, cw * px * 0.42));
+      /* THE BANK FIRST, so the water sits IN the ground rather than on it: a wide, weak wash of
+       * wet earth reaching further than the water does. Without it the body has a soft edge but
+       * the LAND has a hard one, and the eye reads a decal either way. */
+      layer(soft * 3.4, 'rgb(46,40,30)', 0.34);
+      layer(soft, 'rgb(26,58,84)', 0.90);          // the body, banks and all
+      layer(soft * 2.6, 'rgb(9,20,36)', 0.85);     // the deep, which only broad water reaches
+      /* ---- and the light on it ----
+       * A few long, faint crests, in the INTERIOR only: the old ones were struck on any water
+       * cell including the bank, at an alpha that read as a scratch on a hard blue decal. On a
+       * body with a soft edge they are the one thing that says the surface moves. */
+      for (const [x, y, r] of waters) {
+        const gx2 = (x / cw) | 0, gy2 = (y / cw) | 0;
+        let deep = true;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const i2 = (gy2 + dy) * nav.W + (gx2 + dx);
+          if (i2 < 0 || i2 >= nav.terra.length || nav.terra[i2] !== T.WATER) { deep = false; break; }
+        }
+        if (!deep) continue;
+        /* the crest is the CELL's, not the walk's — see the determinism note up top */
+        const s1 = cellHash(gx2, gy2, seed + 5150);
+        if (s1 > 0.14) continue;
+        const s2 = cellHash(gy2, gx2, seed + 5151);
+        g.strokeStyle = 'rgba(160,205,240,0.10)'; g.lineWidth = 1.1;
+        g.beginPath();
+        g.ellipse(x + (s1 - 0.07) * 40, y + (s2 - 0.5) * 8, r * 0.62, r * 0.13, 0, 0, 7);
+        g.stroke();
+      }
     }
 
     /* ---- a bridge is a BUILT thing: planks across the span, rails at the edges ----

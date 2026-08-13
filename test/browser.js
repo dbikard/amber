@@ -4661,6 +4661,139 @@ async function match(browser, base, renderer) {
        !pool.err && pool.lip >= 1 && pool.water >= 1,
        pool.err || `${pool.lip} lip / ${pool.water} water at ${pool.name}`);
 
+    /* ---- A RIVER IS ONE BODY, NOT A CHAIN OF BEADS ----
+     * Water was a radial gradient drawn PER CELL straight onto the finished land, so the alphas
+     * compounded where discs overlapped and every cell of a one-wide channel came out with a
+     * bright core. Reported from play as "that river looks very weird"; a baked tile shows a
+     * pile of stamped circles. Measured rather than looked at: sample the painted ground at
+     * each cell centre down the longest channel in the country and read the step between
+     * neighbours. On the old pass that step is 14.9 of 255 and the run's deviation 4.9; one
+     * composited body gives 1.0 and 0.6. */
+    const beads = await pg.evaluate(() => {
+      const w = window.Game.game.world, T = window.WorldGen.T, nav = w.nav;
+      const chan = (gx, gy) => {
+        if (nav.terra[gy * nav.W + gx] !== T.WATER) return false;
+        let n = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+          if (nav.terra[(gy + dy) * nav.W + gx + dx] === T.WATER) n++;
+        return n <= 2;                                   // a channel, not a lake
+      };
+      /* WALK THE RIVER, DO NOT SCAN THE GRID. A river meanders, so a run of channel cells in
+       * a straight line down a column is a thing some countries simply do not have — and a rig
+       * that looks for one reports "no rivers here" rather than "I only looked one way", which
+       * is a skip dressed as a result. This follows the water: any channel cell, then greedily
+       * on to an unvisited 8-neighbour that is also channel, which is the river's own course
+       * and exactly the line the beads used to run along. */
+      const seen = new Set(), key = (gx, gy) => gy * nav.W + gx;
+      const walkFrom = (sx, sy) => {
+        const path = [{ gx: sx, gy: sy }];
+        const mine = new Set([key(sx, sy)]);
+        for (;;) {
+          const at = path[path.length - 1];
+          let next = null;
+          for (let dy = -1; dy <= 1 && !next; dy++) for (let dx = -1; dx <= 1 && !next; dx++) {
+            if (!dx && !dy) continue;
+            const gx = at.gx + dx, gy = at.gy + dy;
+            if (gx < 1 || gy < 1 || gx >= nav.W - 1 || gy >= nav.H - 1) continue;
+            if (mine.has(key(gx, gy)) || !chan(gx, gy)) continue;
+            next = { gx, gy };
+          }
+          if (!next) return path;
+          mine.add(key(next.gx, next.gy));
+          path.push(next);
+        }
+      };
+      let run = null;
+      for (let gy = 1; gy < nav.H - 1 && !run; gy++) for (let gx = 1; gx < nav.W - 1; gx++) {
+        if (seen.has(key(gx, gy)) || !chan(gx, gy)) continue;
+        const path = walkFrom(gx, gy);
+        for (const q of path) seen.add(key(q.gx, q.gy));
+        if (path.length >= 8 && (!run || path.length > run.length)) { run = path; break; }
+      }
+      if (!run) return { err: 'no channel to walk in this country' };
+      const cw = nav.cw;
+      const cell = (k) => run[k];
+      let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+      for (const q of run) {
+        mnx = Math.min(mnx, q.gx); mxx = Math.max(mxx, q.gx);
+        mny = Math.min(mny, q.gy); mxy = Math.max(mxy, q.gy);
+      }
+      const rect = { x0: Math.max(0, mnx * cw - 200), y0: Math.max(0, mny * cw - 200),
+                     x1: mxx * cw + 200, y1: mxy * cw + 200 };
+      const view = { map: w.map, nav: w.nav, mapSeed: w.seed, players: w.players, cities: w.cities };
+      const bk = window.Terrain.bake(view, 0, { props: false, labels: false, rect, px: 1.1 });
+      const c = bk.canvas, ctx = c.getContext('2d'), px = c.width / (rect.x1 - rect.x0);
+      /* THE ARTEFACT IS A TROUGH BETWEEN TWO CENTRES, and that is what is counted. A disc per
+       * cell puts a bright core at every cell centre and leaves the seam between two of them
+       * darker than either, over and over down the river. One body has no such period: the
+       * midpoint lies between its neighbours.
+       * The obvious metric — the step in brightness from one cell centre to the next — was
+       * tried first and DOES NOT DISCRIMINATE: on a meander the sample lands near the bank as
+       * often as mid-channel, and the old pass scored 8.51 against the new one's 9.64. It
+       * looked like a measurement and it was noise. This one reads 53% of steps dipping, the
+       * deepest by 7.8, against 16% and 2.2. */
+      const lum = (wx, wy) => {
+        const sx = Math.round((wx - rect.x0) * px), sy = Math.round((wy - rect.y0) * px);
+        if (sx < 0 || sy < 0 || sx >= c.width || sy >= c.height) return null;
+        const d = ctx.getImageData(sx, sy, 1, 1).data;
+        return 0.2126 * d[0] + 0.7152 * d[1] + 0.0722 * d[2];
+      };
+      let dips = 0, steps = 0, deepest = 0;
+      for (let k = 0; k + 1 < run.length; k++) {
+        const q = cell(k), r2 = cell(k + 1);
+        const ax = q.gx * cw + cw / 2, ay = q.gy * cw + cw / 2;
+        const bx = r2.gx * cw + cw / 2, by = r2.gy * cw + cw / 2;
+        const la = lum(ax, ay), lb = lum(bx, by), lm = lum((ax + bx) / 2, (ay + by) / 2);
+        if (la == null || lb == null || lm == null) continue;
+        steps++;
+        const d = (la + lb) / 2 - lm;
+        if (d > 1.5) { dips++; deepest = Math.max(deepest, d); }
+      }
+      return { cells: run.length, steps, dips, frac: +(dips / Math.max(1, steps)).toFixed(2),
+               deepest: +deepest.toFixed(2) };
+    });
+    ok('a river is painted as one body, not a bead per cell',
+       !beads.err && beads.steps >= 6 && beads.frac < 0.35 && beads.deepest < 5,
+       beads.err || `${beads.dips} of ${beads.steps} steps dip, deepest by ${beads.deepest}`);
+
+    /* ---- AND A TILE'S PAINT DOES NOT DEPEND ON WHERE THE WINDOW WAS CUT ----
+     * That is the whole job of the pad-and-crop, and the water pass is the thing most able to
+     * break it: it blurs, and a blur wider than the pad reaches into ground the neighbouring
+     * tile painted from its own window. Two OVERLAPPING windows must agree about the strip
+     * they share. (The speckle is rng-walked from the window origin and shifts by a pixel or
+     * two, which is why this is a mean and not an equality — measured at 0.01 of 255.) */
+    const seam = await pg.evaluate(() => {
+      const w = window.Game.game.world, T = window.WorldGen.T, nav = w.nav;
+      let best = null, bs = -1;
+      for (let ty = 1; ty < Math.floor(w.mapH / 1200) - 1; ty++)
+        for (let tx = 1; tx < Math.floor(w.mapW / 1200) - 1; tx++) {
+          let n = 0;
+          for (let gy = Math.floor(ty * 1200 / nav.cw); gy < Math.floor((ty + 1) * 1200 / nav.cw); gy++)
+            for (let gx = Math.floor(tx * 1200 / nav.cw); gx < Math.floor((tx + 1) * 1200 / nav.cw); gx++)
+              if (nav.terra[gy * nav.W + gx] === T.WATER) n++;
+          if (n > bs) { bs = n; best = { x0: tx * 1200, y0: ty * 1200 }; }
+        }
+      if (!best || bs < 20) return { err: 'no watery window' };
+      const view = { map: w.map, nav: w.nav, mapSeed: w.seed, players: w.players, cities: w.cities };
+      const opt = { props: false, labels: false, px: 1.1 };
+      const A = window.Terrain.bake(view, 0, Object.assign({
+        rect: { x0: best.x0, y0: best.y0, x1: best.x0 + 1200, y1: best.y0 + 1200 } }, opt));
+      const B = window.Terrain.bake(view, 0, Object.assign({
+        rect: { x0: best.x0 + 600, y0: best.y0, x1: best.x0 + 1800, y1: best.y0 + 1200 } }, opt));
+      const px = A.canvas.width / 1200;
+      const wpx = Math.floor(600 * px), h = Math.min(A.canvas.height, B.canvas.height);
+      const a = A.canvas.getContext('2d').getImageData(A.canvas.width - wpx, 0, wpx, h).data;
+      const b = B.canvas.getContext('2d').getImageData(0, 0, wpx, h).data;
+      let sum = 0, n2 = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        sum += (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / 3;
+        n2++;
+      }
+      return { water: bs, mean: +(sum / n2).toFixed(3), px: +px.toFixed(2) };
+    });
+    ok('two overlapping windows paint the ground they share identically',
+       !seam.err && seam.mean < 0.5, seam.err || `mean difference ${seam.mean} of 255`);
+
     /* ---- AND THE MAP SAYS WHOSE COURT IS WHOSE ----
      * A country seats sixteen and the seat palette had four, so from the fifth lord on every
      * banner came out one crimson — an ally at terms, a neutral and the army marching on you
@@ -4694,6 +4827,33 @@ async function match(browser, base, renderer) {
      * viewer (`heirs: [0]`), a war crowns three, and the rule is the same either way */
     ok('...while every contending banner keeps a colour of its own',
        banners.distinct === banners.heirs, JSON.stringify(banners));
+    /* A SPRING'S RING SAYS WHOSE, IN THE SAME COLOUR EVERYTHING ELSE DOES. Reported from play
+     * with a picture: a Gate on a spring inside a court he had just taken, ringed in the
+     * enemy's crimson. The ring had its own two-colour palette (`holder === viewer`), which is
+     * a second spelling of "whose" and drifted the moment a lord could be sworn. Asserted as
+     * the property rather than as a scenario: EVERY held spring wears exactly `tintOf` of its
+     * holder — true whoever happens to hold what, and false on the old code for every spring
+     * not the viewer's own. */
+    const rings = await pg.evaluate(() => {
+      const R = window.Render, w = window.Game.game.world, view = window.Game.game;
+      const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+      const rows = [];
+      for (const s of w.map.sites) {
+        if (s.kind !== 'node') continue;
+        const holder = window.World.nodeHolder(w, s);
+        if (holder < 0) continue;
+        const worn = R.debugSiteRing(s.id);
+        if (!worn) continue;
+        rows.push({ id: s.id, holder, worn, want: hex(R.tintOf(holder, 0)) });
+      }
+      void view;
+      return { n: rows.length, foreign: rows.filter((r2) => r2.holder !== 0).length,
+               wrong: rows.filter((r2) => r2.worn !== r2.want).slice(0, 3) };
+    });
+    ok('the rig is alive: springs are held, and not all of them by you',
+       rings.n > 0 && rings.foreign > 0, JSON.stringify(rings));
+    ok('every held spring is ringed in its holder\'s own colour',
+       rings.wrong.length === 0, JSON.stringify(rings.wrong));
     ok('...and every lord sworn to nobody shares the one neutral',
        banners.otherNeutral === banners.before, JSON.stringify(banners));
 

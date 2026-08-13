@@ -286,13 +286,12 @@
      * of them, which is the point: he holds ground and does not contend for the throne */
     holder: 'greedy',
     crossing: 45,
-    /* HOW MANY CITIES YOU MAY HOLD, and it is the brake on the whole snowball. One is yours
-     * by right; every other needs a LORD to hold it, and a lord is WON — you take one when you
-     * take a city from an heir, never from a minor lord and never with essence. So conquest
-     * pays for conquest only when it is conquest of a rival, and a war cannot be won by eating
-     * the weak. Over the limit a court simply will not swear to you: it goes back to being
-     * free, which is a refusal the player can see rather than a number quietly ignored. */
-    lords0: 1,
+    /* THERE IS NO CEILING ON HOW MANY CITIES YOU MAY HOLD. There was: one by right and one
+     * more per LORD, a lord won only by taking a court from a contender — so a court you had
+     * broken, stood in and held for its full twenty seconds could simply refuse you. On the
+     * designer's call: what you break and hold, you keep. The brake on a conquest is the army
+     * it costs and the twenty seconds of holding the court uncontested, which is a brake you
+     * can see and fight over rather than a number saying no. */
     lords: ['a Shadow-lord', 'a Marcher Baron', 'the Warden of the Ford', 'a Petty King',
             'the Keeper of the Pass', 'a Sworn Brother', 'an Old Duke']
   };

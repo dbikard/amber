@@ -214,6 +214,21 @@ progress. AI reads only what a human could see (see `AI.view()`).
   the fix was to make them one surface rather than to tune the gap.** Three browser tests hold
   it — the raycast, a tile's vertices, and a country's spring having its pool.
 
+- **WATER IS ONE BODY, AND ITS DEPTH IS ITS WIDTH.** The bake painted a radial gradient PER
+  WATER CELL onto the finished land, so the alphas compounded where discs overlapped and a
+  one-cell river came out as a chain of beads with a bright core in every cell — and the pass
+  ran AFTER the blur that softens everything else, so a hard saturated cutout sat on a
+  painterly landscape. Reported from play as "that river looks very weird". The cells go into
+  their own layer at full alpha (a shape has no alpha to compound), the layer is blurred — which
+  is what turns a run of squares into a channel with banks — and it is composited ONCE. Depth
+  falls out of the same mask blurred harder: a lake keeps its alpha in the middle and a
+  one-cell river blurs away, so the deep colour only reaches broad water, with no rule about
+  which is which. Measured down a channel's centreline: the step between neighbouring cell
+  centres was 14.9 of 255 and is 1.0. **No blur may reach past `pad`** — a tile is painted with
+  `cw*2` of ground beyond its edge and cropped back, and that is the whole reason two neighbours
+  meet on identical pixels; the blur is clamped to what the pad can support and a suite bakes
+  two overlapping windows and compares the strip they share.
+
 - **`node test/run.js` runs the two suites AT ONCE** — they contend for nothing (pure Node vs
   Chromium on its own ephemeral port), so the wall clock was simply the sum of them. Each
   child's output is buffered and printed whole as it finishes, because two `report()` tallies
@@ -489,6 +504,16 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
 - **A war can be LOST** (`REALM.run.tick`: your banner holds no city) **and WON by absorption**
   (`holdCities`: one banner left holding ground → `win(..., 'castle')`, only where `endOnSeat`
   is off, so toppling still owns that rule everywhere else).
+- **WHAT YOU BREAK AND HOLD, YOU KEEP.** There was a lord brake — one city by right and one more
+  per LORD, a lord won only from a contender — so a court you had broken, stood in and held for
+  its full twenty seconds could refuse you outright. Gone on the designer's call, and with it
+  `pl.lords`, `CONST.REALM.lords0`, the `refused` event and its banner. The brake on a conquest
+  is the army it takes to break a Seat and the twenty uncontested seconds in the court.
+- **A HALL MAY ONLY FLY A STANDARD OF ITS OWN CITY** (`joinCo`). A company may only be ORDERED
+  inside its city's disc, so a hall raised in a court you have just taken under a standard of
+  your home city musters men no order of yours can reach. Asked at the sim's door, so a guest's
+  order and a bot's are held to it too; a hall whose city cannot take the named company raises
+  one of its own.
 - **There is no steward brain, and no `{c:'seat'}`.** The player's instruction to a sworn lord is
   a PARAMETER to that lord's own doctrine — `AI.make().step(world, me, issue, dt, order)`, five
   words: `hold`, `gates`, `walls`, `attack{target}`, `support{target}` — not a second, thinner
@@ -501,6 +526,12 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.
+- **A LAN TABLE HAS TWO BEGINNINGS, and the button says which.** One BEGIN used to mean a plain
+  board or the whole table dealt into the host's war depending on whether a war happened to be
+  saved — the same button, two games, nothing on screen saying which. `lan-start` deals a board;
+  `lan-start-war` appears only when there is an undecided war and deals the table into it. And
+  every `Net.send` in the deal is guarded: one channel throwing used to take the whole handler
+  down, which looks exactly like a BEGIN that is not wired up.
 
 ### THE MAP SAYS WHOSE
 

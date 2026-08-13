@@ -598,12 +598,12 @@
     gone: 'There is nothing left of it to throw down',
     elsewhere: 'There is one Pattern, and it is not here — take the city that holds it',
     /* ---- THE REACH WAR'S REFUSALS ----
-     * The one rule the reach adds to an ORDER, and the one it adds to an oath. Both must
-     * SPEAK: a company that will not march reads as a bug, not a border, unless the border
-     * says its name — the prototype's own first finding. */
+     * The rules the reach adds to an ORDER, and they must SPEAK: a company that will not
+     * march reads as a bug, not a border, unless the border says its name — the prototype's
+     * own first finding. (There was a third, `refused`, for a court that would not swear past
+     * the lord allowance. The allowance is gone: what you break and hold, you keep.) */
     reach: 'Beyond that company’s reach — take a city nearer to it',
-    city: 'That hall stands outside the city’s reach — only overlapping reaches share halls',
-    refused: 'The court will not swear to you — win a lord by taking a city from an heir'
+    city: 'That hall stands outside the city’s reach — only overlapping reaches share halls'
   };
   /* WHOEVER SITS IN THAT SEAT. `game.names` is filled per mode — two in a duel, the seat names
    * at a LAN table — and a banner about a third heir must not read "undefined breaks the truce". */
@@ -805,12 +805,6 @@
       else if (ev.e === 'razed') UI.banner(ours(ev.pi)
         ? 'You throw the city down — it will be nobody’s now'
         : seatName(ev.pi) + ' throws the city down', ours(ev.pi) ? '' : 'warn');
-      /* THE REFUSAL MUST SPEAK LOUDEST OF ALL: the player did everything right — broke the
-       * city, held the court, waited out the claim — and the brake said no. Silent, it reads
-       * as a bug ('I don't understand how to claim a city I conquered' — reported from play,
-       * because this event was emitted and never routed). */
-      else if (ev.e === 'refused' && ours(ev.pi))
-        UI.banner('The court will not swear to you — you have no lord to hold it. Take a city from an HEIR and his lord comes with it', 'warn');
       else if (ev.e === 'offer' && !ours(ev.pi)) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
       else if (ev.e === 'pact' && !ours(ev.pi)) {
         /* a pact between two OTHER heirs is public and is the most important thing on the board
@@ -1111,14 +1105,14 @@
          * cannot be too short or too long, and saying so would be a lie about a run that does
          * not exist yet. A guest holds no world; the host judges, as it does for everything. */
         if (game.world) {
-          const bad = World.placementError(game.world, game.viewer, w.x, w.y, game.placing.bt);
+          const bad = World.placementError(game.world, hand(), w.x, w.y, game.placing.bt);
           if (bad) { sayErr(bad); return; }
         }
         game.span = { x: w.x, y: w.y, bt: game.placing.bt, co: game.placing.co };
         /* `reach` is how long a run the idle masons can cover — the only limit on a wall's
          * length — so the preview can refuse a run for the real reason before the second tap
          * does. A guest holds no world; the host validates, and its preview does not judge. */
-        const reach = game.world ? World.wallReach(game.world, game.viewer) : 0;
+        const reach = game.world ? World.wallReach(game.world, hand()) : 0;
         Render.span = { x: w.x, y: w.y, from: Render.pointer, reach };
         UI.banner(reach ? 'Now tap where the wall should END — the masons reach ' + Math.round(reach)
                         : 'Now tap where the wall should END', 'alert');
@@ -1171,7 +1165,8 @@
     }
     /* one of your own works first (they overlap everything), then sites, then bare ground */
     if (bid >= 0) {
-      const me = view.players[game.viewer];
+      /* a work belongs to the lord whose court it stands in, and the sheet spends his purse */
+      const me = view.players[hand()];
       const b = me.buildings.find((q) => q.id === bid);
       if (b) { Render.selected = bid; UI.upSheet(b, me.essence, me.walking, me); return; }
     }
@@ -1211,10 +1206,18 @@
        * the rival info is the city's holder rather than `players[1 - viewer]`, which was duel
        * arithmetic and told you seat 1's business about every court in a sixteen-seat war */
       const mineIdx = hand();
-      UI.siteSheet(site, view.sites[siteId], game.viewer, view.players[mineIdx].essence, foeCity,
+      /* WHO HOLDS THIS SITE, answered here because only game.js has the world: a spring Gated
+       * by a lord sworn to you is YOURS, and it read as the rival's until this asked the
+       * banner. Named rather than "the rival's" — a country seats sixteen. */
+      const st2 = view.sites[siteId];
+      const hold = st2 && st2.holder != null && st2.holder >= 0 ? st2.holder : -1;
+      const own = hold < 0 ? null
+        : { mine: World.realmOf(view, hold) === World.realmOf(view, game.viewer),
+            name: seatName(hold) };
+      UI.siteSheet(site, st2, game.viewer, view.players[mineIdx].essence, foeCity,
                    view.players[mineIdx],
                    cRec && cRec.owner >= 0 ? view.players[cRec.owner] : view.players[1 - game.viewer],
-                   war);
+                   war, own);
       return;
     }
     /* bare ground does nothing now: raising a work begins at the BUILD button, so the map is
@@ -1451,26 +1454,47 @@
         const n = Net.seated();
         $('lan-start').classList.remove('hidden');
         $('lan-start').textContent = 'BEGIN — ' + n + ' HEIRS';
+        /* AND THE WAR IS ITS OWN BUTTON. One BEGIN used to mean two things depending on
+         * whether a war happened to be saved — a duel on a fresh board, or the whole table
+         * dealt into the host's country — and nothing on the screen said which you were about
+         * to get. Offered only when there IS an undecided war to be dealt into. */
+        const openWar = REALM.saved() ? REALM.load() : null;
+        const wb = $('lan-start-war');
+        wb.classList.toggle('hidden', !(openWar && !openWar.done));
+        wb.textContent = 'BEGIN IN YOUR WAR — ' + n + ' HEIRS';
         $('qr-host').textContent = Net.canAdd() ? 'ADD ANOTHER HEIR' : 'FOUR IS THE LIMIT';
         $('qr-host').disabled = !Net.canAdd();
         $('qr-host').classList.remove('hidden');
         say(n + ' of ' + C.MAX_PLAYERS + ' seated — add another, or begin');
       } else say('LINKED — awaiting the host…');
     };
-    $('lan-start').addEventListener('click', () => {
+    /* ---- DEALING THE TABLE ----
+     * `inWar` picks the mode, and it is the BUTTON that picks it rather than a save nobody can
+     * see. The country is never sent either way — a guest regenerates it from the seed exactly
+     * as it does a board — and the war's history rides the ordinary snapshots, because the host
+     * is authoritative and a snapshot is absolute.
+     * EVERY SEND IS GUARDED. This looped over the peers sending the start message, and one
+     * channel throwing took the whole handler down with it: no match, no message, and a BEGIN
+     * that does nothing at all is indistinguishable from a button that is not wired up. The
+     * host deals to whoever it can reach and says so when it can reach nobody. */
+    const deal = (inWar) => {
       const seed = (Math.random() * 0xffffffff) >>> 0;
       const seats = Net.seated();
-      /* IF THE HOST HAS A WAR OPEN, THE TABLE FIGHTS IN IT. The country is never sent — a
-       * guest regenerates it from the seed exactly as a board — and the war's history rides
-       * the ordinary snapshots, because the host is authoritative and a snapshot is absolute.
-       * A decided war is not dealt: the table gets a plain board instead. */
-      const saved = REALM.load();
+      const saved = inWar ? REALM.load() : null;
       const war = saved && !saved.done ? { seed: saved.seed } : null;
-      for (const p of Net.peers)
-        if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx);
+      let dealt = 0;
+      for (const p of Net.peers) {
+        if (!p.dc || p.dc.readyState !== 'open') continue;
+        try { Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx); dealt++; }
+        catch (e) { lanNote = 'seat ' + p.idx + ' would not take the deal: ' + e.message; paintDiag(); }
+      }
+      if (!dealt) { say('no seat could be dealt to — pair again'); return; }
       $('lan-start').classList.add('hidden');
+      $('lan-start-war').classList.add('hidden');
       startMP(seed, seats, 0, war, war ? saved : null);
-    });
+    };
+    $('lan-start').addEventListener('click', () => deal(false));
+    $('lan-start-war').addEventListener('click', () => deal(true));
     Net.onStart = (m) => startMP(m.seed, m.seats, m.idx, m.war || null);
     /* A GUEST MAY ORDER HIS OWN LORDS AND NOBODY ELSE'S, and the host is where that is
      * decided — the seat the message arrived on is the only thing that cannot be forged, so
@@ -1596,7 +1620,7 @@
        * same reason the halt does: two seats tapping it at once must not cancel each other. */
       onFlip: (id) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
-        const b = view && (view.players[game.viewer].buildings || []).find((q) => q.id === id);
+        const b = view && (view.players[hand()].buildings || []).find((q) => q.id === id);
         issue({ c: 'flip', id, on: !(b && b.flip) });
       },
       onBuild: (x, y, bt, co) => issue({ c: 'build', x, y, bt, co }),
@@ -1606,7 +1630,12 @@
         const view = game.mode === 'guest' ? (snapCur && guestView()) : hostView();
         if (!view) return;
         game.targeting = false; game.armedFlag = null;
-        UI.buildSheet(view.players[game.viewer].essence, view.players[game.viewer]);
+        /* THE HAND'S PURSE, AND THE HAND'S FLAGS. This read the VIEWER's, so taking command
+          * of a conquered court and opening the BUILD sheet offered your HOME city's essence
+          * and its standards — a hall raised there would have flown a flag belonging to a city
+          * on the other side of the country. Reported from play in exactly those words. */
+        const hb = view.players[hand()];
+        UI.buildSheet(hb.essence, hb);
       },
       /* a card was chosen: hold it, and let the next tap on the map say where */
       onPick: (bt, co) => {

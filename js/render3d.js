@@ -1659,6 +1659,14 @@
    * this has had was a tower drawn toppled while the sim said it was at full health. */
   /* test handle: the colour a Seat is actually WEARING, so a suite can prove a court that
    * changes hands re-dresses rather than trusting that it was asked to */
+  /* test handle: the colour a site's ownership ring is WEARING, so a suite can prove the ring
+   * and `tintOf` cannot drift apart — which they did, and a spring held by a sworn lord came
+   * out in the enemy's crimson */
+  R.debugSiteRing = (id) => {
+    const so = siteObjs && siteObjs.get(id);
+    if (!so || !so.ring || !so.ring.visible) return null;
+    return '#' + so.ring.material.color.getHex().toString(16).padStart(6, '0');
+  };
   R.debugSeatTint = (pi) => {
     const g = cityObjs && cityObjs[pi];
     return g && g.tint != null ? '#' + g.tint.toString(16).padStart(6, '0') : null;
@@ -2707,7 +2715,10 @@
         so.hash = hash;
         so.ring.visible = !!(st && st.holder != null && st.holder >= 0);
         if (so.ring.visible) {
-          so.ring.material.color.setHex(st.holder === viewer ? 0xffd98a : 0xff8a96);
+          /* WHOSE SPRING, by BANNER. A Gate raised by a lord sworn to you was ringed in the
+           * enemy's crimson — reported from play looking at a spring inside a city he had
+           * just taken. `tintOf` is the one answer to "whose colour is this". */
+          so.ring.material.color.setHex(tintOf(st.holder, viewer));
           so.ring.material.opacity = st.live ? 0.65 : 0.3;
         }
         /* nothing is built ON a site any more — a Gate is a work standing near one, and the
@@ -3583,7 +3594,9 @@
          * "nobody's yet" on the one screen where the difference decides where you march */
         if (c2 && c2.razed) { g.fillStyle = 'rgba(10,8,18,0.9)'; g.fillRect(X - 1.5, Y - 1.5, 3, 3); }
       } else {
-        g.fillStyle = !st ? '#3a3444' : (st.holder == null || st.holder === -1 ? '#8a8098' : (st.holder === viewer ? '#ffd98a' : '#ff8a96'));
+        g.fillStyle = !st ? '#3a3444'
+          : (st.holder == null || st.holder < 0 ? '#8a8098'
+            : '#' + tintOf(st.holder, viewer).toString(16).padStart(6, '0'));
         g.beginPath(); g.arc(X, Y, st && st.holder >= 0 ? 2.6 : 1.6, 0, 7); g.fill();
       }
     }

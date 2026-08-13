@@ -4,8 +4,8 @@
  * little two-seat board when somebody went there — enter/compact/march, a seam, and the
  * war's two rules enforced AT the seam because only the realm could see across it. The
  * Reach War removed the seam: `createWorld(seed, 2, null, rules, {country: true})` grows
- * one continuous land with every city on it at once, so the lord brake lives in the sim's
- * own take (holdCities) and the one Pattern in its own placement rule (placementError),
+ * one continuous land with every city on it at once, so the take lives in the sim itself
+ * (holdCities) and the one Pattern in its own placement rule (placementError),
  * both gated on the war's `world.rules`. What is left up here is exactly three things:
  * making a war, answering the HUD about it, and fitting it in a pocket.
  *
@@ -35,8 +35,8 @@
   /* WHO CONTENDS. Seat 0 is the player; worldgen dealt seats 1 and 2 the thrones furthest
    * from AMBER, so they are the rivals with room to grow into. Everyone else is a minor
    * lord — he holds ground and does not contend, which is where the early game lives.
-   * `world.heirs` is the sim's copy: the lord brake pays a lord for conquest of a
-   * CONTENDER only, and the sim cannot ask the realm. */
+   * `world.heirs` is the sim's copy: it decides who gets a colour of his own on the map and
+   * who is scenery, and the sim cannot ask the realm. */
   const HEIRS = [0, 1, 2];
 
   REALM.create = function (seed) {
@@ -75,10 +75,14 @@
         if (W.realmMembers(w, 0).some((pi) => w.players[pi].pattern >= 100))
           return 'The Pattern holds, and it answers to your name.';
         const mine = W.realmCities(w, 0).length;
-        const room = 1 + (me.lords != null ? me.lords : C.REALM.lords0);
+        const all = w.cities.filter((c) => !c.razed).length;
         const pc = w.pattern != null ? w.cities[w.pattern] : null;
         const at = pc ? (w.map.sites[pc.site].name || 'AMBER') : 'the centre';
-        const held = `${mine} of ${room} ${room === 1 ? 'city' : 'cities'} held`;
+        /* OUT OF THE WHOLE COUNTRY, not out of an allowance. It used to read "1 of 2 cities
+         * held" against an allowance ceiling, which is gone — and a ceiling of two was the
+         * least interesting number on the screen anyway. What a war is about is how much of
+         * the country flies your banner. */
+        const held = `${mine} of ${all} ${all === 1 ? 'city' : 'cities'} held`;
         /* AMBER is "yours" when its lord flies your banner — you do not hold it yourself, you
          * hold his oath, which is the whole shape of the war */
         if (pc && pc.owner >= 0 && W.realmOf(w, pc.owner) === W.realmOf(w, 0))
@@ -135,7 +139,7 @@
       cities: w.cities.map((c) => [c.owner, Math.round(c.hp), c.level, c.razed ? 1 : 0,
                                    c.fell != null ? c.fell : -1]),
       players: w.players.map((p) => ({
-        e: Math.round(p.essence), out: p.out ? 1 : 0, lords: p.lords, pattern: p.pattern,
+        e: Math.round(p.essence), out: p.out ? 1 : 0, pattern: p.pattern,
         /* WHOSE BANNER — the one fact a war is actually made of, and the one thing the seed
          * cannot rebuild. Without it a saved war reloads with every oath forgotten. */
         realm: p.realm != null ? p.realm : -1,
@@ -183,7 +187,6 @@
       const p = world.players[pi], r = rec.players[pi];
       p.essence = r.e; p.out = !!r.out; p.pattern = r.pattern || 0;
       if (r.realm != null && r.realm >= 0) p.realm = r.realm;
-      if (r.lords != null) p.lords = r.lords;
       p.walking = !!r.walking; p.revealed = !!r.revealed;
       p.nextCo = r.nextCo || 1; p.musterPaused = !!r.musterPaused;
       p.offers = (r.offers || []).map((o) => (o ? 1 : 0));

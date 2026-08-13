@@ -1022,12 +1022,18 @@
     road: 'A milestone of the black road. Chaos favors this ground.',
     city: 'A Seat of Power.'
   };
-  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, war) {
+  /* `own` is game.js's answer about WHO HOLDS THIS — `{mine, name}` — because whether a spring
+   * is yours is a question about BANNERS now and the sheet has no world to ask. Without it a
+   * Gate raised by a lord sworn to you read as "the rival's", which is what it did from the
+   * moment a conquest started taking oaths. Absent (a board, a chronicle), the old seat test. */
+  UI.siteSheet = function (site, st, viewer, essence, foeCity, pinfo, foeInfo, war, own) {
     freshSheet();
     const el = $('sheet');
     el._me = pinfo || null;
-    const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder === -1 ? 'unclaimed'
-      : st.holder === viewer ? 'yours' : 'the rival’s';
+    const mineSite = own ? own.mine : (st && st.holder === viewer);
+    const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder < 0 ? 'unclaimed'
+      : mineSite ? 'yours'
+      : (own && own.name ? own.name + '’s' : 'the rival’s');
     el.innerHTML = `<div class="sheet-title">${site.name} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
 
