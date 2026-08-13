@@ -4519,6 +4519,185 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- the LAN table, from linked to playing ----------------
+   * REPORTED FROM PLAY, with photographs: two phones pair — the diagnostics say "datachannel
+   * OPEN — linked ✔ (seat 1)" and the status line says "2 of 4 seated — add another, or
+   * begin" — and there is no BEGIN button anywhere on the screen, so the game can never
+   * start. It was not the button. The host taps BEGIN, the button hides itself, the match
+   * DOES start (measured: the world ticking, seven messages out to the guest) — and
+   * `#lan-screen` stays on top of all of it, covering the HUD, still reading "add another, or
+   * begin". `UI.startMatch` puts away `#menu`, `#end`, `#halt` and `#knell`; the LAN panel
+   * used to live inside `#menu` and went away with it, and the menu refactor moved it out to
+   * a screen of its own that the one door into a match was never told about. Which is why
+   * this asserts on the GLASS — a rect inside the viewport, and what `elementFromPoint`
+   * answers at the middle of the screen — and never on the `hidden` class. A screen you can
+   * walk away from and come back to must also be able to DRAW ITSELF, so the second half
+   * leaves the table and returns to it and asks what it says then. */
+  {
+    suite('the LAN table: linked, begun, and back again');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    /* the lobby, in the state the photographs were taken in: a host, one guest seated, and
+     * the diagnostics ON and long — which is the state the first repro attempt blamed */
+    const lobby = await pg.evaluate(() => {
+      const $ = (id) => document.getElementById(id), Net = window.Net;
+      window.REALM.forget();
+      window.UI.lan();                                  // as the menu's LAN card opens it
+      Net.isHost = true; Net.active = true; window.__sent = [];
+      Net.peers = [{ idx: 1, dc: { readyState: 'open', send: (m) => window.__sent.push(JSON.parse(m)) }, pc: {} }];
+      Net.diag = Array.from({ length: 14 }, (_, i) => i +
+        's  cand host 192.168.1.10 / 2a01:cb15:352:3400:3ac3:a049:6a66:f43 srflx 86.220.36.99');
+      Net.diag.push('12s  datachannel OPEN — linked ✔ (seat 1)');
+      Net.onDiag(Net.diag);
+      Net.onOpen();                                     // the channel comes up
+      /* ON THE GLASS, not merely un-`hidden`: a real rectangle, inside the viewport, with
+       * this button and not something over it answering at its own centre */
+      const glass = (id) => {
+        const b = $(id), r = b.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight
+            && !!hit && (hit === b || b.contains(hit));
+      };
+      return { start: glass('lan-start'), war: glass('lan-start-war'),
+               status: $('lan-status').textContent, diagLines: $('lan-diag').textContent.split('\n').length };
+    });
+    ok('a linked table has a way to begin ON THE GLASS, diagnostics and all',
+       lobby.start, `status "${lobby.status}", ${lobby.diagLines} lines of diagnostics`);
+    ok('...and the second way to begin beside it', lobby.war);
+    /* the tap, and what the player is looking at one second later */
+    await pg.click('#lan-start');
+    await inMatchNow(pg);
+    await pg.waitForTimeout(600);
+    const begun = await pg.evaluate(() => {
+      const $ = (id) => document.getElementById(id);
+      const mid = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+      return { mode: window.Game.game.mode, ticking: window.Game.game.world.tick > 0,
+               table: !$('lan-screen').classList.contains('hidden'),
+               hud: !$('hud').classList.contains('hidden'),
+               onGlass: mid ? (mid.id || mid.className || mid.tagName) : 'NONE' };
+    });
+    ok('BEGIN begins the match', begun.mode === 'host' && begun.ticking, JSON.stringify(begun));
+    ok('...and the table comes OFF the glass when it does',
+       !begun.table && begun.onGlass !== 'lan-screen', `the glass says ${begun.onGlass}`);
+    ok('...leaving the HUD to be seen', begun.hud);
+    /* AND THE TABLE DRAWS ITSELF WHEN YOU COME BACK. Leaving the match closes the link, so a
+     * table that still said "2 of 4 seated — add another, or begin" would be promising a game
+     * it can no longer deal — which is the exact screen that was reported. */
+    await pg.evaluate(() => window.Game.toMenu());
+    await pg.waitForTimeout(200);
+    const back = await pg.evaluate(() => {
+      const $ = (id) => document.getElementById(id);
+      window.UI.lan();
+      return { status: $('lan-status').textContent, host: $('qr-host').textContent,
+               seated: window.Net.seated(), active: window.Net.active,
+               start: !$('lan-start').classList.contains('hidden') };
+    });
+    ok('a table nobody is seated at offers no way to begin',
+       back.seated === 1 && !back.start, `seated ${back.seated}, begin shown ${back.start}`);
+    ok('...and says so, rather than what was true an hour ago',
+       !/seated/.test(back.status) && /pair/i.test(back.status), back.status);
+    /* the guest's half of the same door: it is TOLD to start, and the table must go too */
+    const guest = await pg.evaluate(async () => {
+      const $ = (id) => document.getElementById(id), Net = window.Net;
+      window.UI.lan();
+      Net.isHost = false; Net.localIdx = 1; Net.active = true; Net.peers = []; Net.send = () => {};
+      Net.onStart({ seed: 7788, seats: 2, idx: 1 });
+      await new Promise((res) => setTimeout(res, 200));
+      return { mode: window.Game.game.mode, table: !$('lan-screen').classList.contains('hidden') };
+    });
+    ok('a guest dealt in by the host loses the table too',
+       guest.mode === 'guest' && !guest.table, JSON.stringify(guest));
+    await pg.evaluate(() => window.Game.toMenu());
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- the LAN table: two ways to begin, always both ----------------
+   * "There is also no choice of the game mode, regular vs. reach war." The war button was
+   * offered only while a war happened to be sitting in the host's pocket, so a host who had
+   * never played one saw a single BEGIN and no choice at all — the same invisible state that
+   * made one button mean two different games before it was split in two. Both are offered
+   * whenever the table is seated; without a war to continue, the war button GROWS one. What
+   * is asserted is what each button actually DEALS, off the wire and off the world. */
+  {
+    suite('the LAN table: two ways to begin, and each deals the one it names');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    const seatOne = () => pg.evaluate(() => {
+      const Net = window.Net;
+      window.UI.lan();
+      Net.isHost = true; Net.active = true; window.__sent = [];
+      Net.peers = [{ idx: 1, dc: { readyState: 'open', send: (m) => window.__sent.push(JSON.parse(m)) }, pc: {} }];
+      Net.onOpen();
+      const label = (id) => {
+        const b = document.getElementById(id), r = b.getBoundingClientRect();
+        return { shown: r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight,
+                 text: b.textContent };
+      };
+      return { start: label('lan-start'), war: label('lan-start-war') };
+    });
+    await pg.evaluate(() => window.REALM.forget());
+    const cold = await seatOne();
+    ok('a host who has never played a war is still offered one',
+       cold.start.shown && cold.war.shown, JSON.stringify(cold));
+    /* THE LABELS ARE THE WHOLE POINT: two buttons that both say BEGIN are the bug again */
+    ok('...and the two labels name the two games',
+       /skirmish/i.test(cold.start.text) && /war/i.test(cold.war.text) &&
+       cold.start.text !== cold.war.text, `${cold.start.text} // ${cold.war.text}`);
+    ok('...the new war saying it is new', /new/i.test(cold.war.text), cold.war.text);
+    /* THE TAP ITSELF, and it is a real actionable click — a button that cannot be hit is not
+     * offered however well it measures. Caught, because a throw here would take the whole
+     * FILE's tally down with it: `report()` would never run, every suite above would go
+     * unprinted, and a run that found a fault would look like a run that crashed. The
+     * assertion below says what happened either way. The wait is generous because this one
+     * really does grow 8000x9600 of land inside the click. */
+    let tapped = '';
+    try { await pg.click('#lan-start-war', { timeout: 5000 }); }
+    catch (e) { tapped = String(e.message || e).split('\n')[0]; }
+    ok('...and the war button can actually be tapped', !tapped, tapped);
+    await until(pg, () => !!(window.Game.game.mode && window.Game.game.war), 30000);
+    const war = await pg.evaluate(() => {
+      const g = window.Game.game, st = window.__sent.find((m) => m.t === 'start');
+      return { war: g.war === true, seats: g.world.players.length, reach: g.world.rules.reach,
+               saved: window.REALM.saved(), seedSent: !!(st && st.war && st.war.seed != null),
+               sameSeed: !!(st && st.war && st.war.seed === g.world.seed),
+               keys: st && st.war ? Object.keys(st.war) : [] };
+    });
+    ok('the war button deals a war when there is none to continue',
+       war.war && war.seats >= 8 && war.reach === 1, JSON.stringify(war));
+    ok('...and the wire carries the seed and nothing else of the country',
+       war.seedSent && war.sameSeed && war.keys.length === 1, war.keys.join(','));
+    ok('...and it becomes the host\'s war, so a rematch can find it', war.saved === true);
+    /* back at the table, with a war in the pocket now, the button says it is YOURS */
+    await pg.evaluate(() => window.Game.toMenu());
+    await pg.waitForTimeout(200);
+    const warm = await seatOne();
+    ok('a host with a war is offered THAT war, and says so',
+       warm.war.shown && /your war/i.test(warm.war.text) && !/new/i.test(warm.war.text),
+       warm.war.text);
+    /* ...and the other button still deals a plain board, war or no war in the pocket */
+    await pg.click('#lan-start');
+    await inMatchNow(pg);
+    const board = await pg.evaluate(() => {
+      const g = window.Game.game, st = window.__sent.find((m) => m.t === 'start');
+      return { war: g.war === true, seats: g.world.players.length,
+               sentWar: st ? st.war : 'no start sent' };
+    });
+    ok('BEGIN still deals a plain board beside a saved war',
+       !board.war && board.seats === 2 && board.sentWar === null, JSON.stringify(board));
+    await pg.evaluate(() => { window.Game.toMenu(); window.REALM.forget(); });
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   /* ---------------- the reach dev boot ----------------
    * `?reach=SEED` is a rig, not a mode: one country through the real renderer, a marcher on
    * every seat but the viewer's. What must be true: it boots, it is the world it claims to

@@ -1463,9 +1463,70 @@
       else { el.classList.add('hidden'); return; }
       el.classList.remove('hidden');
     };
+    /* ---- THE TABLE DRAWS ITSELF, FROM THE NET AND NOT FROM THE LAST EVENT ----
+     * Everything on this screen — the status line, the host button's label, whether there is
+     * any way to begin at all — used to be written by the ONE event that last changed it
+     * (`Net.onOpen`, which fires once per channel opening and never again). So the table you
+     * came back to was the table you left, however long ago and whatever had happened since:
+     * a screen that had been dealt into a match still read "2 of 4 seated — add another, or
+     * begin" with the ways to begin gone, because the deal had hidden them by hand.
+     * `Net.seated()` is the honest measure — it counts OPEN channels, so a link that died
+     * without an event still empties the table — and `game.mode` is the other half: a lobby
+     * is the moment between pairing and playing, and there is nothing to offer outside it. */
+    const paintTable = () => {
+      const n = Net.seated();
+      const lobby = Net.isHost && n > 1 && !game.mode;
+      /* TWO MODES, ALWAYS BOTH, AND EACH SAYS WHICH GAME IT IS. The war button used to appear
+       * only when a war happened to be sitting in the host's pocket, so a host who had never
+       * played one was offered a single BEGIN and no choice — the same invisible state that
+       * made one button mean two games in the first place. Offered together or not at all;
+       * without a war to continue the war button GROWS one for the table. */
+      const twoLine = (el, head, sub) => {
+        el.innerHTML = '';
+        const b = document.createElement('b'), s = document.createElement('small');
+        b.textContent = head; s.textContent = sub;
+        el.appendChild(b); el.appendChild(s);
+      };
+      for (const id of ['lan-start', 'lan-start-war']) $(id).classList.toggle('hidden', !lobby);
+      if (lobby) {
+        twoLine($('lan-start'), 'BEGIN — ' + n + ' HEIRS', 'a skirmish: one fresh board, first Seat to fall');
+        /* `REALM.saved()` and not `REALM.load()`: load REGROWS the whole country from its seed,
+         * which is seconds of work on a phone, and this runs every time the screen is opened.
+         * The label is the only question here; the war itself is not wanted until the tap. */
+        const has = !!(REALM && REALM.saved && REALM.saved());
+        twoLine($('lan-start-war'),
+                (has ? 'YOUR WAR — ' : 'A NEW WAR — ') + n + ' HEIRS',
+                has ? 'the reach war in your pocket, dealt to this table'
+                    : 'the reach war: a new country, sixteen thrones, one Pattern');
+        $('qr-host').textContent = Net.canAdd() ? 'ADD ANOTHER HEIR' : 'FOUR IS THE LIMIT';
+        $('qr-host').disabled = !Net.canAdd();
+        $('qr-host').classList.remove('hidden');
+        say(n + ' of ' + C.MAX_PLAYERS + ' seated — add another, or begin');
+      } else if (!Net.active && !Net._pairing) {
+        /* nothing in flight and nobody linked: the opening line, not whatever was true once */
+        $('qr-host').textContent = 'HOST THE TABLE';
+        $('qr-host').disabled = false;
+        say('same Wi-Fi · no server · pair by QR · two to four heirs');
+      }
+    };
+    /* ---- AND THE TABLE LEAVES THE GLASS WHEN THE MATCH BEGINS ----
+     * THE BUG, and it was not the button. The host taps BEGIN, the match starts underneath —
+     * world ticking, snapshots going out to the guest — and `#lan-screen` stays on top of it
+     * all, covering the HUD, still reading "2 of 4 seated — add another, or begin" with the
+     * BEGIN button gone because the deal had just hidden it. Reported from play as "the BEGIN
+     * button is not on screen, so the game can never start", which from behind that screen is
+     * exactly what it looks like. `UI.startMatch` clears `#menu`, `#end`, `#halt` and
+     * `#knell`; the LAN panel used to live INSIDE `#menu` and went away with it, and the menu
+     * refactor moved it out to a screen of its own that the one door into a match had never
+     * been told about. It is closed at both doors a LAN match can come through — this seat
+     * dealing, and the host's start message arriving — because those are the two places in
+     * this file that call `startMP`. */
+    const leaveTable = () => { $('lan-screen').classList.add('hidden'); paintTable(); };
     /* the LAN table is a screen now — ui.js calls `onLanOpen` when it comes up, and that is
-     * registered with every other handler in UI.init below rather than bolted on here */
-    lanOpened = paintNet;
+     * registered with every other handler in UI.init below rather than bolted on here. It
+     * repaints the WHOLE table, not just the Wi-Fi line: a screen you can walk away from and
+     * come back to has to be able to draw itself. */
+    lanOpened = () => { paintNet(); paintTable(); };
     paintNet();
     $('lan-status').addEventListener('click', () => $('lan-diag').classList.toggle('hidden'));
     /* repainted on a timer as well as on events: ICE moves without telling us, and a stuck
@@ -1609,24 +1670,11 @@
     Net.onOpen = () => {
       if (pairStop) { pairStop(); pairStop = null; }
       qrScanReply.classList.add('hidden'); qrJoin.classList.remove('hidden');
-      if (Net.isHost) {
-        /* up to three guests, added one at a time; play with however many are in */
-        const n = Net.seated();
-        $('lan-start').classList.remove('hidden');
-        $('lan-start').textContent = 'BEGIN — ' + n + ' HEIRS';
-        /* AND THE WAR IS ITS OWN BUTTON. One BEGIN used to mean two things depending on
-         * whether a war happened to be saved — a duel on a fresh board, or the whole table
-         * dealt into the host's country — and nothing on the screen said which you were about
-         * to get. Offered only when there IS an undecided war to be dealt into. */
-        const openWar = REALM.saved() ? REALM.load() : null;
-        const wb = $('lan-start-war');
-        wb.classList.toggle('hidden', !(openWar && !openWar.done));
-        wb.textContent = 'BEGIN IN YOUR WAR — ' + n + ' HEIRS';
-        $('qr-host').textContent = Net.canAdd() ? 'ADD ANOTHER HEIR' : 'FOUR IS THE LIMIT';
-        $('qr-host').disabled = !Net.canAdd();
-        $('qr-host').classList.remove('hidden');
-        say(n + ' of ' + C.MAX_PLAYERS + ' seated — add another, or begin');
-      } else say('LINKED — awaiting the host…');
+      /* up to three guests, added one at a time; play with however many are in. What the
+       * table looks like is `paintTable`'s answer and nobody else's — this event only says
+       * that something CHANGED. */
+      if (Net.isHost) paintTable();
+      else say('LINKED — awaiting the host…');
     };
     /* ---- DEALING THE TABLE ----
      * `inWar` picks the mode, and it is the BUTTON that picks it rather than a save nobody can
@@ -1640,22 +1688,47 @@
     const deal = (inWar) => {
       const seed = (Math.random() * 0xffffffff) >>> 0;
       const seats = Net.seated();
-      const saved = inWar ? REALM.load() : null;
-      const war = saved && !saved.done ? { seed: saved.seed } : null;
+      /* THE WAR BUTTON MAKES A WAR WHEN THERE IS NONE. It used to be offered only while one
+       * was already saved, so a host who had never played a reach war could not begin one at
+       * a table at all — the choice existed but was invisible, which is the same fault the
+       * two buttons were drawn to fix. `REALM.create` is exactly what the menu's own card
+       * does; growing the country costs seconds on a phone, so it is done at the TAP and
+       * never at the paint. It is saved as the host's war, because a rematch reloads the war
+       * from the pocket (`rematch`) and would otherwise fall back to a board. */
+      /* nobody to deal to is answered BEFORE the country is grown: a table nobody is sitting
+       * at is not worth eight thousand units of land, and growing one would overwrite the war
+       * in the host's pocket to play it with himself */
+      const open = Net.peers.filter((p) => p.dc && p.dc.readyState === 'open');
+      if (!open.length) { say('no seat could be dealt to — pair again'); paintTable(); return; }
+      let saved = inWar ? REALM.load() : null;
+      if (inWar && !(saved && !saved.done)) {
+        say('growing the country — a moment…');
+        saved = REALM.create(seed);
+        REALM.save(saved);
+      }
+      const war = inWar && saved ? { seed: saved.seed } : null;
       let dealt = 0;
-      for (const p of Net.peers) {
-        if (!p.dc || p.dc.readyState !== 'open') continue;
+      for (const p of open) {
         try { Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx); dealt++; }
         catch (e) { lanNote = 'seat ' + p.idx + ' would not take the deal: ' + e.message; paintDiag(); }
       }
-      if (!dealt) { say('no seat could be dealt to — pair again'); return; }
-      $('lan-start').classList.add('hidden');
-      $('lan-start-war').classList.add('hidden');
-      startMP(seed, seats, 0, war, war ? saved : null);
+      if (!dealt) { say('no seat could be dealt to — pair again'); paintTable(); return; }
+      /* THE BUTTONS ARE NOT PUT AWAY BY THE TAP — they are put away by the match. They used
+       * to hide themselves here, before `startMP` had done anything, so any throw past this
+       * line left a table that said "2 of 4 seated — add another, or begin" with nothing on
+       * it to begin WITH, which is indistinguishable from a button that was never wired up.
+       * `paintTable` hides them because `game.mode` is set; a failure leaves them standing
+       * and says what went wrong. */
+      try { startMP(seed, seats, 0, war, war ? saved : null); }
+      catch (e) {
+        say('the table could not be dealt: ' + (e.message || e));
+        lanNote = 'deal failed: ' + (e.message || e); paintDiag(); paintTable(); return;
+      }
+      leaveTable();
     };
     $('lan-start').addEventListener('click', () => deal(false));
     $('lan-start-war').addEventListener('click', () => deal(true));
-    Net.onStart = (m) => startMP(m.seed, m.seats, m.idx, m.war || null);
+    Net.onStart = (m) => { startMP(m.seed, m.seats, m.idx, m.war || null); leaveTable(); };
     /* A GUEST MAY ORDER HIS OWN LORDS AND NOBODY ELSE'S, and the host is where that is
      * decided — the seat the message arrived on is the only thing that cannot be forged, so
      * the lord it names is checked against it and falls back to the sender himself. */
@@ -1695,7 +1768,14 @@
          * — nobody is mid-match — but the button must stop promising a game that can no
          * longer be dealt, so redraw the screen with what is actually left. */
         else if (game.over) endScreen();
-      } else say('link lost');
+      } else {
+        /* AT THE TABLE: A SEAT THAT HAS GONE COMES OFF IT. `paintTable` counts the open
+         * channels, so it speaks last — at a table of four, one phone leaving is 'link lost'
+         * overwritten by the two that are still seated, which is the truth; at a table of two
+         * there is nothing left to say and the loss stands. */
+        say('link lost');
+        paintTable();
+      }
     };
   }
 

@@ -389,6 +389,15 @@ body {
 .diff-note { flex-basis: 100%; text-align: center; font-size: 11px; font-style: italic; color: #b8a878; margin: -2px 0 4px; }
 #lan-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #lan-status { font-size: 12px; font-style: italic; color: #b8a878; }
+/* THE TWO WAYS TO BEGIN SAY WHICH GAME THEY ARE. A mode is not a label — "BEGIN" and "BEGIN
+   IN YOUR WAR" are the same sentence to anyone who has not read the code — so each carries a
+   second line naming the game it deals. Two lines, one tap target. */
+#lan-start, #lan-start-war { padding: 9px 12px; line-height: 1.3; }
+#lan-start b, #lan-start-war b { display: block; font-size: 15px; letter-spacing: 2px; }
+#lan-start small, #lan-start-war small {
+  display: block; font-size: 11px; letter-spacing: 0; font-style: italic;
+  color: #b8a878; margin-top: 2px; text-transform: none;
+}
 #qr-display { width: min(72vw, 300px); height: min(72vw, 300px); image-rendering: pixelated; border-radius: 6px; }
 #lan-net { font-size: 12px; color: #9cc8ff; margin-bottom: 4px; }
 #lan-net.warn { color: #ffc8ce; }
