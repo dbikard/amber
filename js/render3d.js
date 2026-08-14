@@ -1272,12 +1272,20 @@
     }
     return best;
   };
-  R.hitSite = function (px, py, view, viewer, forFlag) {
+  /* ONE ANSWER TO "WHAT SITE IS UNDER THIS TAP", and the same one for every caller. A flag
+   * used to take the WHOLE COURT — `CITY.r + 20`, a circle 2.7 times the radius every other
+   * site answers in — so a standard planted anywhere inside a city circle silently relocated
+   * itself to the middle of the court instead of going where the finger was. Reported from
+   * play as tapping inside a city circle behaving differently, and it is: a rule that moves
+   * your order without saying so is worse than no rule, and the naming it bought fed a banner
+   * that no longer exists (a rally is silent — see the banner rule). A site now answers for
+   * its own ground, a Seat for the tower's, and a tap that is on neither is the ground it is
+   * on, everywhere on the map alike. */
+  R.hitSite = function (px, py, view, viewer) {
     const w2 = R.toWorld(px, py);
     let best = -1, bd = Infinity;
     for (const s of view.map.sites) {
-      /* a sheet-tap on a Seat covers only the tower's own ground; a FLAG takes the whole court */
-      const r2 = s.kind === 'city' ? (forFlag ? C.CITY.r + 20 : C.CITY.seatR) : 62;
+      const r2 = s.kind === 'city' ? C.CITY.seatR : 62;
       const dd = (w2.x - s.x) * (w2.x - s.x) + (w2.y - s.y) * (w2.y - s.y);
       if (dd < r2 * r2 && dd < bd) { bd = dd; best = s.id; }
     }

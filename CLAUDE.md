@@ -280,6 +280,13 @@ standard and turns the army home. The AI still uses it as its general muster, wh
 removing it outright would mean rewriting every heir's doctrine.
 Tapping your own troops arms their company (`Render.hitUnit`, tight 24 reach on purpose).
 
+**A CITY CIRCLE IS NOT A SPECIAL CASE, AND A STANDARD GOES WHERE YOU POINT.** `hitSite` judged
+a FLAG tap against `CITY.r + 20` and everything else against the site's own ground — a circle
+2.7× the radius, so an order planted anywhere inside a city circle silently relocated itself to
+the middle of the court. Reported from play as tapping in a city circle behaving differently. A
+rule that moves your order without saying so is worse than no rule, and the naming it bought fed
+a banner that no longer exists (a rally is silent). One radius rule, both callers, no `forFlag`.
+
 **SAY IT TWICE AND IT IS MEANT LITERALLY.** An ordinary rally is a SUGGESTION the acquire loop
 overrides constantly — right for the ordinary case, and exactly what makes a deliberate order
 impossible to give. A second tap on the order just given sets `hard` on it: the company acquires

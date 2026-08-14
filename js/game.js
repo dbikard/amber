@@ -1410,34 +1410,15 @@
       if (!r || r.ok !== false) clearPlacing();   // a refusal leaves it armed to try again
       return;
     }
-    /* ---- SAY IT TWICE AND IT IS MEANT LITERALLY ----
-     * A second tap on the order just given makes it a FORCED one: march through whatever is in
-     * the way, or — if the second tap lands on an enemy work — bring that down and answer
-     * nothing else.
-     * THE SECOND TAP UPGRADES THE ORDER RATHER THAN THE FIRST TAP WAITING FOR IT. Holding the
-     * first tap for a double-tap window would put that delay on EVERY order given in the game
-     * to buy a gesture used occasionally, and a rally that arrives 400ms late is a worse game
-     * for the sake of a better one. So the ordinary order goes out instantly and is never made
-     * worse; saying it again re-issues the same order with the bit set. It is also the honest
-     * reading of the gesture: tap to send them, tap again to mean it.
-     * There is no banner. The standard on the ground grows a SECOND pennant for as long as the
-     * order stands, which says it for as long as it is true — and a banner that echoed an order
-     * the player had just given twice is the one thing the corner is forbidden. */
-    if (twice && Date.now() - twice.at < DOUBLE.ms &&
-        Math.hypot(x - twice.sx, y - twice.sy) < DOUBLE.px) {
-      const foeW = Render.hitFoeWork ? Render.hitFoeWork(x, y, view, game.viewer) : null;
-      issue(Object.assign({ c: 'rally', co: twice.co, hard: 1 },
-                          foeW ? { x: foeW.x, y: foeW.y, tpi: foeW.pi, tid: foeW.id } : twice.where));
-      twice = null;
-      return;
-    }
     if (game.armedFlag != null) {
       const id = game.armedFlag;
       game.armedFlag = null;
-      /* A standard goes wherever you point. Tapping a site names it — so the banner reads
-       * "at the Drowned Bell" rather than a bare coordinate — but bare ground is just as
-       * valid an order, and the column pathfinds toward it. There is nothing here to refuse. */
-      const siteId = Render.hitSite(x, y, view, game.viewer, true);   // flags: whole court counts
+      /* A STANDARD GOES WHERE YOU POINT, AND A CITY IS NOT A SPECIAL CASE. Tapping a site
+       * still names it, so an order given ON a spring or a court is recorded as that place —
+       * but by the site's OWN ground, the same question asked everywhere else. It used to take
+       * the whole court, which meant an order placed anywhere inside a city circle jumped to
+       * the middle of it. There is nothing here to refuse. */
+      const siteId = Render.hitSite(x, y, view, game.viewer);
       const w = Render.toWorld(x, y, game.viewer);
       const where = siteId >= 0 ? { site: siteId } : { x: w.x, y: w.y };
       const r = issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
@@ -1455,6 +1436,36 @@
     /* A sheet is a modal: the first tap outside it just dismisses it. Armed flags and storm
      * targeting are handled above, so an explicit armed action still goes through. */
     if (UI.sheetOpen()) { UI.closeSheet(); return; }
+    /* ---- SAY IT TWICE AND IT IS MEANT LITERALLY ----
+     * A second tap on the order just given makes it a FORCED one: march through whatever is in
+     * the way, or — if the second tap lands on an enemy work — bring that down and answer
+     * nothing else.
+     * THE SECOND TAP UPGRADES THE ORDER RATHER THAN THE FIRST TAP WAITING FOR IT. Holding the
+     * first tap for a double-tap window would put that delay on EVERY order given in the game
+     * to buy a gesture used occasionally, and a rally that arrives 400ms late is a worse game
+     * for the sake of a better one. So the ordinary order goes out instantly and is never made
+     * worse; saying it again re-issues the same order with the bit set. It is also the honest
+     * reading of the gesture: tap to send them, tap again to mean it.
+     * IT SITS HERE, BELOW EVERY CLAIM THAT IS MORE URGENT THAN A SELECTION, and that placement
+     * is the whole of getting it right. Above the armed flag it stole the second tap from a
+     * DIFFERENT company you had just armed; above the sheet dismissal it left a modal standing
+     * while it issued an order behind it; above the storm it swallowed the aim. All three are
+     * explicit acts the player is plainly in the middle of, and an upgrade to the last order is
+     * not. What it does outrank is ordinary selection, because "double tap an enemy work" means
+     * the second tap lands ON something, and that is the order rather than a request to look at
+     * it. Reported from play as tapping inside a city circle behaving differently — which is
+     * exactly where works, men and standards are densest.
+     * There is no banner. The standard on the ground grows a SECOND pennant for as long as the
+     * order stands, which says it for as long as it is true — and a banner that echoed an order
+     * the player had just given twice is the one thing the corner is forbidden. */
+    if (twice && Date.now() - twice.at < DOUBLE.ms &&
+        Math.hypot(x - twice.sx, y - twice.sy) < DOUBLE.px) {
+      const foeW = Render.hitFoeWork ? Render.hitFoeWork(x, y, view, game.viewer) : null;
+      issue(Object.assign({ c: 'rally', co: twice.co, hard: 1 },
+                          foeW ? { x: foeW.x, y: foeW.y, tpi: foeW.pi, tid: foeW.id } : twice.where));
+      twice = null;
+      return;
+    }
     /* ---- A WORK UNDER THE FINGER ALWAYS WINS ----
      * Men were asked first once, so a company standing on a hall made that hall unopenable;
      * then the NEARER of the two answered, which is better and still not right. A work is a
@@ -2101,7 +2112,9 @@
       onFlagArm: (id) => {
         game.targeting = false;
         clearPlacing();   // picking up a standard is not placing a work
-
+        /* reaching for a standard is a new sentence: whatever order was waiting to be repeated
+         * is not the one being given now, and the next tap belongs to this company */
+        twice = null;
         game.armedFlag = game.armedFlag === id ? null : id;   // the chip lights; that is the caption
       },
       /* NO PER-COMPANY HOLD BUTTON. It sat beside the armed flag and was the only way to

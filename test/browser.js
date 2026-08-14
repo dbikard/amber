@@ -686,7 +686,7 @@ async function match(browser, base, renderer) {
       for (let i = 0; i < 90 && s.y > lid; i++) { R.pan(0, -20); s = R.project(c.x + a, c.y + b); }
       /* the offset is a starting guess: works and springs accumulate as a match runs, so walk
        * outward until the renderer agrees there is nothing but ground under the finger */
-      const bare = (p) => R.hitBuilding(p.x, p.y) < 0 && R.hitSite(p.x, p.y, g.world, 0, false) < 0
+      const bare = (p) => R.hitBuilding(p.x, p.y) < 0 && R.hitSite(p.x, p.y, g.world, 0) < 0
         && R.hitUnit(p.x, p.y, 0) === 0;
       /* SWEEP ANGLES AS WELL AS DISTANCE, and say so if nothing bare was found. The old walk
        * only pushed straight outward and, when no candidate fitted on screen, returned the
@@ -991,7 +991,7 @@ async function match(browser, base, renderer) {
         let q = R.project(s.x, s.y);
         for (let i = 0; i < 90 && q.y > lid; i++) { R.pan(0, -30); q = R.project(s.x, s.y); }
         if (q.y > lid || q.y < 60 || q.x < 20 || q.x > window.innerWidth - 20) continue;
-        if (R.hitSite(q.x, q.y, g.world, 0, true) !== s.id) continue;
+        if (R.hitSite(q.x, q.y, g.world, 0) !== s.id) continue;
         return { id: s.id, x: q.x, y: q.y, before: g.world.players[0].banner && g.world.players[0].banner.site };
       }
       return null;
@@ -1022,7 +1022,7 @@ async function match(browser, base, renderer) {
       for (const [zm, lx, ly] of setups) {
         R.setZoom(zm); R.lookAt(lx, ly);
         for (let py = 110; py < lid; py += 12) for (let px = 30; px < window.innerWidth - 30; px += 12) {
-          if (R.hitSite(px, py, g.world, 0, true) >= 0) continue;
+          if (R.hitSite(px, py, g.world, 0) >= 0) continue;
           if (R.hitUnit(px, py, 0) > 0) continue;   // a man there means his standard, not ground
           const w2 = R.toWorld(px, py, 0);
           if (!w2 || w2.x < 30 || w2.y < 30 || w2.x > C.MAP.W - 30 || w2.y > C.MAP.H - 30) continue;
@@ -1461,7 +1461,7 @@ async function match(browser, base, renderer) {
           const sa = R.project(A.x, A.y), sb = R.project(B.x, B.y);
           const onScreen = (q) => q.x > 30 && q.x < window.innerWidth - 30 && q.y > 90 && q.y < lid;
           if (!onScreen(sa) || !onScreen(sb)) continue;
-          if (R.hitSite(sa.x, sa.y, g.world, 0, false) >= 0) continue;
+          if (R.hitSite(sa.x, sa.y, g.world, 0) >= 0) continue;
           if (R.hitBuilding(sa.x, sa.y) >= 0) continue;
           /* ...and clear of your own men: a tap on a soldier picks up his standard now */
           if (R.hitUnit(sa.x, sa.y, 0) > 0 || R.hitUnit(sb.x, sb.y, 0) > 0) continue;
@@ -2055,7 +2055,7 @@ async function match(browser, base, renderer) {
         await frame();
         const p = R.project(s2.x, s2.y);
         if (!(p.x > 40 && p.x < window.innerWidth - 40 && p.y > 100 && p.y < lid)) continue;
-        if (R.hitSite(p.x, p.y, g.world, 0, false) !== s2.id) continue;
+        if (R.hitSite(p.x, p.y, g.world, 0) !== s2.id) continue;
         if (R.hitUnit(p.x, p.y, 0) > 0 || R.hitBuilding(p.x, p.y) >= 0) continue;
         return { ok: true, x: p.x, y: p.y, name: s2.name };
       }
@@ -2591,6 +2591,114 @@ async function match(browser, base, renderer) {
       ok('the rig is alive: that ground carries no work of his', onMan.work < 0, `work ${onMan.work}`);
       ok('a man on open ground still arms his standard', onMan.armed === onMan.co,
          `armed ${onMan.armed}, wanted ${onMan.co}`);
+    }
+
+    /* ---------------- a city circle is not a special case ----------------
+     * A flag tap used to be judged against `CITY.r + 20` — a circle 2.7x the radius every
+     * other site answers in — so a standard planted anywhere inside a city circle silently
+     * relocated itself to the middle of the court. Reported from play as tapping inside a city
+     * circle behaving differently. Measured where it mattered: a point well inside the circle
+     * and well outside the tower's own ground must plant the standard THERE. */
+    suite(`${r} · a standard goes where you point, in a court as anywhere`);
+    const court = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const pl = g.world.players[0];
+      window.UI.closeSheet(); g.armedFlag = null; g.targeting = false;
+      const co = Math.max(0, ...pl.companies.map((q) => q.id)) + 1;
+      pl.companies.push({ id: co, rally: null });
+      const seat = g.world.map.sites[g.world.map.cities[0]];
+      R.lookAt(seat.x, seat.y); R.setZoom(1.3);
+      await paint();
+      /* inside the court, outside the Seat's own ground — the band the old rule swallowed */
+      const off = (C.CITY.seatR + C.CITY.r) / 2;
+      const want = { x: seat.x + off, y: seat.y + 24 };
+      const inCircle = Math.hypot(want.x - seat.x, want.y - seat.y) < C.CITY.r;
+      const outSeat = Math.hypot(want.x - seat.x, want.y - seat.y) > C.CITY.seatR;
+      const p = R.project(want.x, want.y, 0);
+      if (!p) return { skip: 'the court did not project' };
+      g.armedFlag = co;
+      const cv = document.getElementById('game');
+      for (const t of ['pointerdown', 'pointerup'])
+        cv.dispatchEvent(new PointerEvent(t, { pointerId: 31, clientX: p.x, clientY: p.y,
+                                               pointerType: 'touch', bubbles: true, isPrimary: true }));
+      await new Promise((res) => setTimeout(res, 200));
+      const rally = (pl.companies.find((q) => q.id === co) || {}).rally;
+      return { inCircle, outSeat, planted: !!rally,
+               off: rally ? Math.round(Math.hypot(rally.x - want.x, rally.y - want.y)) : -1,
+               toCourt: rally ? Math.round(Math.hypot(rally.x - seat.x, rally.y - seat.y)) : -1 };
+    });
+    if (court.skip) ok('a standard goes where you point in a court (skipped)', true, court.skip);
+    else {
+      ok('the rig is alive: the tap is inside the court and outside the Seat',
+         court.inCircle && court.outSeat);
+      ok('the standard is planted at all', court.planted);
+      ok('...where the finger was, not at the middle of the court', court.off < 40,
+         `${court.off} units from the tap, ${court.toCourt} from the court's centre`);
+    }
+
+    /* ---------------- the double tap sits below every more urgent claim ----------------
+     * Reported from play as tapping inside a city circle behaving differently. The upgrade
+     * ("say it twice and it is meant literally") was checked FIRST, above the armed flag and
+     * above the sheet dismissal, so within its window it swallowed taps that plainly belonged
+     * to something else — and a city circle is exactly where works, men and standards are
+     * densest, so that is where it showed. Each claim below is one the player is explicitly in
+     * the middle of making; an upgrade to the previous order is not. */
+    suite(`${r} · a second tap does not steal a deliberate one`);
+    const steal = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const pl = g.world.players[0];
+      const out = {};
+      const cv = document.getElementById('game');
+      const tap = async (p, id) => {
+        for (const t of ['pointerdown', 'pointerup'])
+          cv.dispatchEvent(new PointerEvent(t, { pointerId: id, clientX: p.x, clientY: p.y,
+                                                 pointerType: 'touch', bubbles: true, isPrimary: true }));
+        await new Promise((res) => setTimeout(res, 60));
+      };
+      window.UI.closeSheet(); g.armedFlag = null; g.targeting = false;
+      /* two companies, so "the order was for the OTHER one" is a question that can be asked */
+      const coA = Math.max(0, ...pl.companies.map((q) => q.id)) + 1;
+      pl.companies.push({ id: coA, rally: null });
+      const coB = coA + 1;
+      pl.companies.push({ id: coB, rally: null });
+      const seat = g.world.map.sites[g.world.map.cities[0]];
+      R.lookAt(seat.x, seat.y); R.setZoom(1.4);
+      await paint();
+      const spot = R.project(seat.x + 210, seat.y + 40, 0);
+      if (!spot) return { skip: 'the ground did not project' };
+      /* --- arm A, order it, then arm B and tap the SAME place at once --- */
+      g.armedFlag = coA;
+      await tap(spot, 21);
+      out.aOrdered = !!(pl.companies.find((q) => q.id === coA) || {}).rally;
+      window.Game.game.armedFlag = coB;              // the player reaches for another standard
+      await tap(spot, 22);
+      const A = pl.companies.find((q) => q.id === coA) || {};
+      const B = pl.companies.find((q) => q.id === coB) || {};
+      out.bOrdered = !!B.rally;
+      out.aNotForced = !A.hard;
+      /* --- and a sheet standing open is dismissed by the next tap, not talked over --- */
+      g.armedFlag = coA;
+      await tap(spot, 23);
+      document.getElementById('btn-build').click();
+      await new Promise((res) => setTimeout(res, 200));
+      out.sheetWasOpen = window.UI.sheetOpen();
+      await tap(spot, 24);
+      out.sheetClosed = !window.UI.sheetOpen();
+      const A2 = pl.companies.find((q) => q.id === coA) || {};
+      out.notForcedByDismiss = !A2.hard;
+      return out;
+    });
+    if (steal.skip) ok('a second tap does not steal a deliberate one (skipped)', true, steal.skip);
+    else {
+      ok('the rig is alive: the first tap gave the first company its order', steal.aOrdered);
+      ok('a standard armed after it takes the next tap for ITSELF', steal.bOrdered,
+         'the second company never got its order');
+      ok('...and the first company is not forced by it', steal.aNotForced);
+      ok('the rig is alive: a sheet really was open', steal.sheetWasOpen);
+      ok('a sheet standing open is dismissed by the next tap', steal.sheetClosed);
+      ok('...and no order is forced behind it', steal.notForcedByDismiss);
     }
 
     /* ---------------- a gateway that knows its own ----------------
