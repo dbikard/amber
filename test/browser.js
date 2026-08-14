@@ -2516,15 +2516,22 @@ async function match(browser, base, renderer) {
         g.world.units.push(u); men.push(u);
       }
       await paint();
-      /* aim between the work's centre and one of them, but NEARER the work — the finger is on
-       * the stone with a man at its elbow, which is the tap that used to arm the standard */
+      /* AIM NEARER THE MAN THAN THE WORK, and still on the work. This is the tap that was
+       * reported from play: a work ringed with its own company has men closer to nearly every
+       * part of it than its centre is, so "the nearer of the two answers" armed the standard
+       * however deliberately you pressed on the stone. `t` past 0.5 puts the finger in the
+       * man's half of the gap while staying inside the work's own 38, which is the whole
+       * point — both are hit, and the work has to win anyway. */
       const m = men[0];
       const L = Math.hypot(m.x - hall.x, m.y - hall.y) || 1;
-      const t = 0.42;
+      const t = 0.72;
       const p = R.project(hall.x + (m.x - hall.x) / L * (L * t), hall.y + (m.y - hall.y) / L * (L * t), 0);
       if (!p) return { skip: 'the hall did not project' };
       const uAt = {}, bAt = {};
       const hitU = R.hitUnit(p.x, p.y, 0, uAt), hitB = R.hitBuilding(p.x, p.y, bAt);
+      /* ...and the finger really is in the man's half, or this proves nothing beyond the
+       * weaker claim the suite already made */
+      const nearerMan = uAt.d < bAt.d;
       /* and now the tap itself, through the real handler */
       window.UI.closeSheet(); g.armedFlag = null;
       R.selected = -1;
@@ -2533,7 +2540,7 @@ async function match(browser, base, renderer) {
       const cv = document.getElementById('game');
       cv.dispatchEvent(ev('pointerdown')); cv.dispatchEvent(ev('pointerup'));
       await new Promise((res) => setTimeout(res, 120));
-      return { hitU, hitB, hallId: hall.id, both: hitU > 0 && hitB >= 0,
+      return { hitU, hitB, hallId: hall.id, both: hitU > 0 && hitB >= 0, nearerMan,
                armed: g.armedFlag, selected: R.selected,
                sheet: !document.getElementById('sheet').classList.contains('hidden') };
     });
@@ -2542,10 +2549,48 @@ async function match(browser, base, renderer) {
     } else {
       ok('the tap really did land on both a work and a company', onWork.both,
          `unit co ${onWork.hitU}, work ${onWork.hitB}`);
+      ok('...and the finger was NEARER the man, which is the hard case', onWork.nearerMan);
       ok('...and it is the WORK that answers', onWork.hitB === onWork.hallId && onWork.selected === onWork.hallId,
          `selected ${onWork.selected}, wanted ${onWork.hallId}`);
       ok('...its sheet opens', onWork.sheet);
       ok('...and no standard is armed by it', !onWork.armed, String(onWork.armed));
+    }
+    /* AND THE MEN ARE STILL REACHABLE. A rule that made works win by making men unhittable
+     * would be the old bug with the targets swapped — point at a man on open ground, well
+     * outside any work, and his standard must still arm. */
+    await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
+    const onMan = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const pl = g.world.players[0];
+      const d = C.UNITS.soldier;
+      const co = Math.max(0, ...pl.companies.map((q) => q.id)) + 1;
+      pl.companies.push({ id: co, rally: null });
+      /* open ground: 200 clear of every work of his, so nothing but the man is under it */
+      let spot = null;
+      for (let a = 0; a < 6.283 && !spot; a += 0.4) for (const rr of [220, 300, 380]) {
+        const sx = pl.buildings[0].x + Math.cos(a) * rr, sy = pl.buildings[0].y + Math.sin(a) * rr;
+        if (pl.buildings.every((b) => Math.hypot(b.x - sx, b.y - sy) > 200)) { spot = [sx, sy]; break; }
+      }
+      if (!spot) return { skip: 'no open ground near his court' };
+      g.world.units.push({ id: g.world.nextId++, owner: 0, kind: 'soldier', x: spot[0], y: spot[1],
+        ox: 0, oy: 0, hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co, from: -1, tier: 1 });
+      R.lookAt(spot[0], spot[1]); R.setZoom(1.6);
+      await paint();
+      const p = R.project(spot[0], spot[1], 0);
+      if (!p) return { skip: 'the man did not project' };
+      const ev = (type) => new PointerEvent(type, { clientX: p.x, clientY: p.y, pointerId: 3,
+                                                    pointerType: 'touch', bubbles: true, isPrimary: true });
+      const cv = document.getElementById('game');
+      cv.dispatchEvent(ev('pointerdown')); cv.dispatchEvent(ev('pointerup'));
+      await new Promise((res) => setTimeout(res, 120));
+      return { work: R.hitBuilding(p.x, p.y), armed: g.armedFlag, co };
+    });
+    if (onMan.skip) ok('a man on open ground still arms his standard (skipped)', true, onMan.skip);
+    else {
+      ok('the rig is alive: that ground carries no work of his', onMan.work < 0, `work ${onMan.work}`);
+      ok('a man on open ground still arms his standard', onMan.armed === onMan.co,
+         `armed ${onMan.armed}, wanted ${onMan.co}`);
     }
 
     /* ---------------- a gateway that knows its own ----------------
@@ -3119,6 +3164,7 @@ async function match(browser, base, renderer) {
     const gone = await pg.evaluate(async () => {
       const { Game, Net, World, CONST: C } = window;
       const raf = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const LINK_QUIET = 3;   // game.js LINK.quiet — the suite states it rather than importing it
       const out = {};
       const banners = () => Array.from(document.querySelectorAll('#banner-wrap > *'))
         .map((e) => e.textContent).join(' | ');
@@ -3128,37 +3174,63 @@ async function match(browser, base, renderer) {
       const hw = World.createWorld(777);
       for (let i = 0; i < 30 * 10; i++) { World.update(hw, C.SIM_DT); hw.events.length = 0; }
       Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
-      /* the corner holds three lines for 3.4s each, so whatever the last suite said is still
-       * standing — and this control is about what THIS link makes the loop say, which is
-       * nothing. Clear it, then run frames on a snapshot that has only just landed. */
-      document.getElementById('banner-wrap').innerHTML = '';
-      await raf(); await raf();
-      out.liveSaysNothing = /quiet|severed|left the table/.test(banners());
-      /* wind back WHEN the last snapshot landed, exactly as a silent host would leave it, and
-       * run frames. The hook moves the clock, never the answer — the staleness rule under
-       * test is the shipping one, read by the shipping loop. */
+      /* THE RULE READS A WALL CLOCK, SO THE RIG MUST NOT RACE IT — it must ASK it. Pacing this
+       * with frames was wrong and the parallel runner proved it: on a loaded box two
+       * `requestAnimationFrame`s take longer than LINK.quiet all by themselves, so the control
+       * ("a live link says nothing") failed, the table ended for no reason, and the stray
+       * `leaving` timer walked into a later suite and broke a lobby test. `debugQuiet(n)` sets
+       * the clock to "the last snapshot landed n seconds ago" and returns what the SHIPPING
+       * rule (`linkCheck`, the one the frame calls) makes of it — synchronously, so no step
+       * inherits the time any other step spent. The banners are read as well, because the
+       * verdict and the word to the player are two different claims. */
       out.hasHook = !!Game.debugQuiet;
-      Game.debugQuiet && Game.debugQuiet(4);
-      await raf(); await raf();
+      document.getElementById('banner-wrap').innerHTML = '';
+      out.live = Game.debugQuiet(0);                       // a snapshot that has only just landed
+      out.liveSaysNothing = !/quiet|severed|left the table/.test(banners());
+      /* now wind the clock back, exactly as a silent host would leave it */
+      out.quietVerdict = Game.debugQuiet(LINK_QUIET + 1);
       out.quiet = /gone quiet/.test(banners());
       out.stillIn = Game.game.mode === 'guest';
-      /* ...and a snapshot takes it straight back */
+      /* A HOST WHO COMES BACK KEEPS HIS TABLE — including one already inside the grace after
+       * a DEAD verdict. The frame loop is a second caller of this rule and cannot be paused,
+       * so on a slow box it reaches `dead` between two of these lines all by itself; that is
+       * how the case was found. Drive it deliberately: go dead, then land a snapshot, and the
+       * departure must be called off rather than merely gone quiet about. */
+      out.deadVerdict = Game.debugQuiet(30);
       Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
-      await raf();
-      Game.debugQuiet && Game.debugQuiet(4);
-      await raf(); await raf();
-      out.quietAgain = /gone quiet/.test(banners());   // it must be sayable a second time
-      /* --- and a host who says goodbye ends it outright --- */
+      out.backAfterDead = Game.game.mode === 'guest';
+      out.saidBack = /link is back/.test(banners());
+      /* ...and the flags clear with it, so the next silence is sayable again */
+      document.getElementById('banner-wrap').innerHTML = '';
+      Game.debugQuiet(LINK_QUIET + 1);
+      out.quietAgain = /gone quiet/.test(banners());
+      /* --- and a host who says goodbye ends it outright, without waiting for any silence --- */
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, hw.events.splice(0)))));
+      document.getElementById('banner-wrap').innerHTML = '';
+      Game.debugQuiet(0);
+      out.stillInBefore = Game.game.mode === 'guest';
       Net.onBye(0);
-      await raf();
       out.byeSaid = /left the table/.test(banners());
+      /* and the ordinary loop must NOT then also cry about the silence it is now in */
+      out.afterBye = Game.debugQuiet(LINK_QUIET + 1);
       return out;
     });
-    ok('the rig is alive: a guest with a live link is told nothing', !gone.liveSaysNothing);
-    ok('a guest notices the link has gone quiet', gone.hasHook && gone.quiet, JSON.stringify(gone));
+    ok('the rig is alive: a live link is neither quiet nor dead, and says nothing',
+       gone.hasHook && gone.live === null && gone.liveSaysNothing, JSON.stringify(gone));
+    ok('a guest notices the link has gone quiet',
+       gone.quietVerdict === 'quiet' && gone.quiet, JSON.stringify(gone));
     ok('...and is still in the match, because a host may come back', gone.stillIn);
+    ok('a link gone dead schedules the departure', gone.deadVerdict === 'dead',
+       String(gone.deadVerdict));
+    ok('...and a snapshot inside the grace calls it off', gone.backAfterDead && gone.saidBack,
+       `mode kept=${gone.backAfterDead}, said=${gone.saidBack}`);
     ok('...and says so again if it goes quiet a second time', gone.quietAgain);
+    ok('...and is still at the table when the goodbye arrives', gone.stillInBefore);
     ok('a host saying goodbye ends the table by name', gone.byeSaid);
+    /* ...and the staleness rule then holds its tongue: the table is already over, and being
+     * told a second time that a host who has said goodbye is quiet is not news */
+    ok('...and the silence that follows it is not reported twice', gone.afterBye === null,
+       String(gone.afterBye));
     await pg.evaluate(() => window.Game.toMenu());
 
     /* A REMATCH KEEPS THE LINK, AND EITHER PHONE MAY CALL IT. Pairing by QR is the price of
@@ -4788,10 +4860,18 @@ async function match(browser, base, renderer) {
      * assertion below says what happened either way. The wait is generous because this one
      * really does grow 8000x9600 of land inside the click. */
     let tapped = '';
-    try { await pg.click('#lan-start-war', { timeout: 5000 }); }
+    try { await pg.click('#lan-start-war', { timeout: 20000 }); }
     catch (e) { tapped = String(e.message || e).split('\n')[0]; }
-    ok('...and the war button can actually be tapped', !tapped, tapped);
     await until(pg, () => !!(window.Game.game.mode && window.Game.game.war), 30000);
+    /* THE CLAIM IS THE OUTCOME, NOT THE CLICK CALL. `page.click` waits for the page to settle
+     * AFTER dispatching, and this handler grows 8000x9600 of land inside itself — on a box
+     * running both suites at once that outran a 5s ceiling while the button worked perfectly,
+     * which is a flaky rig reporting a healthy game as broken. So the war starting is the
+     * evidence, and a click that reported a timeout while the war ran is noted rather than
+     * failed. A button that truly cannot be hit fails on both halves and says which. */
+    const started = await pg.evaluate(() => !!(window.Game.game.mode && window.Game.game.war));
+    ok('...and the war button can actually be tapped', started,
+       tapped ? `no war started, and the click said: ${tapped}` : 'the click landed but no war ran');
     const war = await pg.evaluate(() => {
       const g = window.Game.game, st = window.__sent.find((m) => m.t === 'start');
       return { war: g.war === true, seats: g.world.players.length, reach: g.world.rules.reach,

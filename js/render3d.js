@@ -1196,7 +1196,13 @@
      * SEPARATELY and a work with a place beats a work with a length, exactly as the army's
      * targeting does. */
     let best = -1, bd = 38 * 38, wall = -1, wdd = 38 * 38;
-    for (const b of curView.players[curViewer].buildings) {
+    /* THE HAND'S WORKS, not the viewer's — the sheet this opens spends the HAND's purse and
+     * game.js looks the id up in the hand's own list, so asking the viewer here meant that
+     * while driving a sworn lord every tap on one of his works returned an id his liege did
+     * not own and fell through to bare ground, and every tap on the liege's own works returned
+     * one the hand could not open. `hitUnit` has always asked the hand; this was the one place
+     * in the renderer that did not. */
+    for (const b of curView.players[handOf(curViewer)].buildings) {
       if (b.x2 != null) {
         const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
         const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;

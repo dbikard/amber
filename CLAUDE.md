@@ -280,6 +280,22 @@ standard and turns the army home. The AI still uses it as its general muster, wh
 removing it outright would mean rewriting every heir's doctrine.
 Tapping your own troops arms their company (`Render.hitUnit`, tight 24 reach on purpose).
 
+**A WORK UNDER THE FINGER ALWAYS WINS.** Men were asked first once, so a company standing on a
+hall made that hall unopenable; then the NEARER of the two answered, which is better and still
+not right — a work is a fixed point the size of a fingertip, and men are many, they move, and
+they gather exactly where the works are, so a hall with its own company mustered round it had a
+ring of men nearer to almost every part of it than its own centre was. Reported from play as
+buildings being very hard to select. **The tie is broken by what a miss COSTS, not by which is
+nearer**: the sheet is the only way to reach a work at all — no upgrade, no fork, no mend, no
+way even to see what it is — while a company also has the flag tray, which names every one of
+them and is always on screen. So a work hit at all answers and men answer on the ground around
+it, which is the same rule `hitBuilding` already used one level down for a bastion against the
+curtain it stands in. One code path, so every mode is held to it.
+**And `hitBuilding` asks for the HAND'S works**, not the viewer's. It was the one place in the
+renderer that asked the viewer for something belonging to the hand, so while driving a sworn
+lord every tap on his works returned an id his liege did not own and fell through to bare
+ground — a conquered court whose halls could not be opened at all.
+
 **A COMPANY'S COLOURS ARE CARRIED BY A MAN.** `World.bearers` names one per company each tick:
 the senior man (lowest id) who is out in the open — a man shut in a tower is passed over while
 anyone else stands, since the renderer does not draw him. Lowest id is arithmetic, so every

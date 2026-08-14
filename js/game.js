@@ -382,6 +382,34 @@
     return true;
   }
 
+  /* SILENCE IS A STATE, AND THIS IS WHERE IT IS READ. The men freeze on their own once the gap
+   * passes `snapGap` (the interpolation alpha saturates at 1), so what was missing was never
+   * the stillness but the WORD for it. Said once, and taken back the instant a snapshot lands
+   * — `onSnap` clears both flags, so a host who was merely in a tunnel comes back without the
+   * player ever leaving the match.
+   * It is a FUNCTION rather than a few lines in the frame because it is the one rule in the
+   * client that reads a wall clock, and a rule that reads a wall clock cannot be tested by
+   * pacing frames: on a loaded box two `requestAnimationFrame`s can take longer than
+   * `LINK.quiet` all by themselves, so the rig raced the rule and lost — the control failed,
+   * the table ended for no reason, and a stray `leaving` timer walked into the next suite.
+   * Called once per frame; also called directly, with the clock set, by the suite. */
+  function linkCheck() {
+    if (game.mode !== 'guest' || !snapCur || game.over || linkLost === 'bye') return null;
+    const quiet = (performance.now() - snapAt) / 1000;
+    if (quiet > LINK.dead) {
+      endTable('The link to the host is gone — the match is ended');
+      return 'dead';
+    }
+    if (quiet > LINK.quiet) {
+      if (!quietSaid) {
+        quietSaid = true; linkLost = 'quiet';
+        UI.banner('The link has gone quiet — waiting for the host', 'warn');
+      }
+      return 'quiet';
+    }
+    return null;
+  }
+
   function toMenu() {
     /* THE WAR IS PUT DOWN, NOT THROWN AWAY — walking out is how an evening ends, so the save
      * rides the same door as every other way out. */
@@ -1249,19 +1277,7 @@
       UI.tick(hp.essence);
       UI.flags(view, hv, game.armedFlag);
     } else if (game.mode === 'guest' && snapCur) {
-      /* SILENCE IS A STATE, AND IT IS READ HERE. The men freeze on their own once the gap
-       * passes `snapGap` (the interpolation alpha saturates at 1), so what is missing is not
-       * the stillness but the WORD for it. Said once, and taken back the instant a snapshot
-       * lands — `onSnap` clears both flags, so a host who was merely in a tunnel comes back
-       * without the player ever leaving the match. */
-      const quiet = (performance.now() - snapAt) / 1000;
-      if (!game.over && linkLost !== 'bye') {
-        if (quiet > LINK.dead) endTable('The link to the host is gone — the match is ended');
-        else if (quiet > LINK.quiet && !quietSaid) {
-          quietSaid = true; linkLost = 'quiet';
-          UI.banner('The link has gone quiet — waiting for the host', 'warn');
-        }
-      }
+      linkCheck();
       const view = guestView();
       /* the chip is the war's whole readout and it belongs to the SCREEN, not to the sim —
        * it was drawn from inside the `game.run` block, which only a host holds, so a guest
@@ -1410,31 +1426,36 @@
     /* A sheet is a modal: the first tap outside it just dismisses it. Armed flags and storm
      * targeting are handled above, so an explicit armed action still goes through. */
     if (UI.sheetOpen()) { UI.closeSheet(); return; }
-    /* A TROOP OF YOURS IS HIS COMPANY'S FLAG. Finding the right chip in the tray means
-     * remembering which colour you gave which hall; pointing at the men themselves does not.
-     * Tapping one arms his standard, and the next tap is where they go.
+    /* ---- A WORK UNDER THE FINGER ALWAYS WINS ----
+     * Men were asked first once, so a company standing on a hall made that hall unopenable;
+     * then the NEARER of the two answered, which is better and still not right. A work is a
+     * fixed point the size of a fingertip and men are many, they move, and they gather exactly
+     * where the works are — so a hall with a company mustered round it had a ring of men
+     * closer to almost every part of it than its own centre was, and the harder you pressed
+     * the more certainly you armed the standard. Reported from play as buildings being very
+     * hard to select.
+     * The tie is broken by what each target COSTS to miss, not by which is nearer: the work's
+     * sheet is the only way to reach the work at all — no upgrade, no fork, no mend, no way
+     * even to see what it is — while a company has the flag tray, which names every one of
+     * them and is always on screen. So a work hit at all answers, and men answer on the ground
+     * around it. This is the same rule the wall/bastion tie already uses one level down in
+     * `hitBuilding`, and it is one code path, so every mode is held to it.
      *
-     * YOU GET WHAT YOU WERE POINTING AT. Men were asked FIRST and won outright, so a company
-     * standing on a hall made that hall unopenable — no upgrade, no fork, no way to see what it
-     * was — and the harder you pressed on the building the more certainly you armed the men.
-     * Both are asked now and the NEARER one answers, which is what `hitUnit` always claimed to
-     * do. A man at the door still gets you his standard; a finger on the roof gets you the
-     * work. */
-    const uAt = {}, bAt = {};
-    const uco = Render.hitUnit ? Render.hitUnit(x, y, game.viewer, uAt) : 0;
-    const bid = Render.hitBuilding(x, y, bAt);
-    if (uco > 0 && !(bid >= 0 && bAt.d <= uAt.d)) {
-      game.armedFlag = game.armedFlag === uco ? null : uco;
-      /* the ring the renderer draws round the armed company, and the lit chip in the tray,
-       * already say this — and say it for as long as it is true rather than for 3.4 seconds */
-      return;
-    }
-    /* one of your own works first (they overlap everything), then sites, then bare ground */
+     * A TROOP OF YOURS IS HIS COMPANY'S FLAG: point at men on open ground and the next tap is
+     * where they go. */
+    const bid = Render.hitBuilding(x, y);
     if (bid >= 0) {
       /* a work belongs to the lord whose court it stands in, and the sheet spends his purse */
       const me = view.players[hand()];
       const b = me.buildings.find((q) => q.id === bid);
       if (b) { Render.selected = bid; UI.upSheet(b, me.essence, me.walking, me); return; }
+    }
+    const uco = Render.hitUnit ? Render.hitUnit(x, y, game.viewer) : 0;
+    if (uco > 0) {
+      game.armedFlag = game.armedFlag === uco ? null : uco;
+      /* the ring the renderer draws round the armed company, and the lit chip in the tray,
+       * already say this — and say it for as long as it is true rather than for 3.4 seconds */
+      return;
     }
     const siteId = Render.hitSite(x, y, view, game.viewer);
     if (siteId >= 0) {
@@ -1891,8 +1912,17 @@
     Net.onSnap = (s) => {
       const now = performance.now();
       if (snapAt) snapGap = snapGap * 0.7 + Math.max(50, Math.min(400, now - snapAt)) * 0.3;
-      /* the link is alive again, whatever it was doing a moment ago */
-      linkLost = null; quietSaid = false;
+      /* THE LINK IS ALIVE AGAIN, WHATEVER IT WAS DOING A MOMENT AGO — and that includes a
+       * departure already scheduled. Clearing the two flags but leaving the eviction timer
+       * armed meant a host who came back inside the grace still had his guest dropped to the
+       * menu two seconds later, with the match running and snapshots arriving: the recovery
+       * was noticed and then thrown away. A goodbye is different and is not taken back — no
+       * snapshot follows it, and `linkLost === 'bye'` says the table is over on purpose. */
+      if (leaving && linkLost !== 'bye') {
+        clearTimeout(leaving); leaving = 0;
+        UI.banner('The link is back', 'alert');
+      }
+      if (linkLost !== 'bye') { linkLost = null; quietSaid = false; }
       snapPrev = snapCur; snapCur = s; snapAt = now;
       if (!game.over) {
         Rec.sample(Rec.fromSnap(s, game.viewer));
@@ -2181,7 +2211,10 @@
    * its world, where a suite can already read it), and the veil's window is clamped to it, so
    * a mask cut to the wrong extents is a black screen with nothing else to measure. */
   global.Game = { game, startSP, startMP, startChapter, toChapters, toMenu, LADDER,
-                  debugQuiet: (secs) => { snapAt = performance.now() - secs * 1000; },
+                  /* set the clock and ask the rule, in one synchronous call: the suite drives
+                   * the RULE rather than the render loop, which is the only way to test a
+                   * wall-clock rule on a machine slower than its own threshold */
+                  debugQuiet: (secs) => { snapAt = performance.now() - secs * 1000; return linkCheck(); },
                   debugSeen: () => (guestSeen ? { gw: guestSeen.gw, gh: guestSeen.gh,
                                                   cell: guestSeen.cell, marks: guestSeen.v,
                                                   at: (x, y) => !!guestSeen.g[((y / guestSeen.cell) | 0)
