@@ -14,34 +14,60 @@ touches no balance surface.
 
 ## From play — bugs with a witness
 
-- [ ] **A conquered city's halls fly the wrong colours.** Reported with a screenshot: the halls
-      in a court taken from another lord muster into the company that was chosen for them, and
-      the men come out under that standard, but the HALL goes on displaying its old colours.
-      The work's group is cached by a key that is supposed to carry everything drawn into it,
-      the company included (`R.modelKey` — see the note in CLAUDE.md under "A COMPANY'S COLOURS
-      ARE CARRIED BY A MAN"), so either the key is not reaching the flag or the flag is not
-      keyed. The men being right and the building wrong says the sim is right and this is a
-      renderer bug. Start at `buildingModel`'s standard arm and `Render.tintOf` — colour in a
-      war is by BANNER, and a hall in a conquered court belongs to a lord whose banner is now
-      yours, which is exactly the case the seat-keyed palette used to get wrong.
-      *(The other half of that report — "I also cannot select the halls" — was two bugs and is
-      FIXED at v0.10.10: works now beat men in the tap arbitration, and `R.hitBuilding` was the
-      one place in the renderer asking the VIEWER for works that belong to the HAND, so while
-      driving a sworn lord every tap on his works fell through to bare ground. Worth
-      re-checking on a real phone that nothing is left.)*
-
-- [ ] **The Seat tower does not heal.** A castle knocked down to a sliver stays there for the
-      rest of the match, so one early raid that nobody could answer permanently halves a heir's
-      last line — and in a war, where a Seat YIELDS rather than ends the match, a court can be
-      left standing at 5% forever with no way to make it defensible again. It should regain hp
-      slowly and automatically, the way a besieged castle recovers between assaults. Open
-      questions before writing it: does it heal while an enemy stands in the court (it must
-      not, or a siege becomes unwinnable at the margin), and does it heal for a heir whose
-      Seat has already fallen? The hp lives on the CITY (`world.cities[i].hp`), not on
-      `pl.buildings`, so this is a pass of its own next to `seatFire` rather than a line in the
-      building loop — and `CONST.SEAT_GUN` is the precedent for deriving its rate from
-      something rather than picking a number. `[REF]`: a healing Seat lengthens every match
-      that ends on a castle, so the durations section is the referee.
+- [ ] **`gates` and `walls` are dead orders, and the council offers them anyway.** From play:
+      *"asked to build gates the bot doesn't even explore to look for gates."* Measured in the
+      source: `js/ai.js` line ~672, `mode === 'hold' || mode === 'gates' || mode === 'walls'`
+      is ONE branch and its whole body is `home()` — strike the rally and keep the court. So two
+      of the five words a liege can say to a sworn lord are accepted, written into the helm,
+      printed back in the council row as "ordered to gates", and change nothing whatever. This
+      is the dead-button failure the end screen already taught once, and it is worse here
+      because the row asserts the order is standing.
+      Two honest ways out and they want deciding before either is written: teach the doctrine to
+      answer them (a `gates` lord prospects for unheld springs inside his reach and raises Gates
+      on them; a `walls` lord spends on curtain where his court is approached), or delete both
+      words until it does. Do not leave them offered. **`ORDERS` in game.js is the list the
+      council draws**, so removing them is a two-line change; teaching them is real doctrine
+      work and belongs with the survey below.
+- [ ] **Review the heirs' play in a war generally.** From play: *"bots intelligence in war reach
+      is really bad."* Every lord in a country — sworn or not — runs the `lord` baseline, whose
+      entire vocabulary is rallies plus a few probed works, and it was written to make the reach
+      law demonstrable rather than to play well. A country is also where its weaknesses show
+      most: sixteen of them, each with a real economy, on ground where marching is expensive.
+      The survey under "The heirs play one army and one and a half orders" below is about the
+      DUEL heirs and mostly still applies; this is the same exercise for the baseline that
+      actually plays a war. Start by watching one: `?reach=SEED` boots a country through the
+      real renderer with a lord on every other seat.
+- [ ] **Let an heir throw down his own work.** There is no way to remove a building you raised —
+      a Gate on a spring that has stopped mattering, a hall in the wrong place, a curtain drawn
+      where it now blocks your own march — so an early misplacement is permanent, and the ground
+      under it is spoken for until a rival breaks it for you. Wants a command
+      (`{c:'raze', id}`), a place on the work sheet, and a decision about what it costs and
+      returns: instant with no refund is the simplest honest rule, and a partial refund makes
+      "raise it, look at it, take it down" a free way to survey the map. Rubble already has a
+      meaning for walls (`WALL.rubble`), so a razed curtain should probably follow that path
+      rather than vanish. `[REF]` — anything that makes a misplaced work cheap changes how
+      freely the heirs build.
+- [ ] **A DOUBLE TAP IS AN ORDER MEANT LITERALLY.** From play, two related asks, and they are
+      the same gesture: a double tap when placing a company's flag should mean *go there and
+      keep going* — the men break off whatever they are engaged in and march, instead of
+      stopping to fight everything on the way; and a double tap on an enemy WORK should mean
+      *bring that down and nothing else*, a company that walks past men to reach it. Today a
+      rally is a suggestion the acquire loop constantly overrides, which is right for the
+      ordinary case and is exactly what makes a deliberate order impossible to give.
+      What it needs: a second bit on the rally (`{c:'rally', co, x, y, hard:1}` or a target id),
+      honoured in `acquire`/the march so an engaged man disengages, and some way for it to
+      EXPIRE — an order to ignore the enemy forever is how a company walks into a mill and dies
+      to a rule the player forgot he set. The renderer must say which kind of order is standing,
+      or the two are indistinguishable on screen. Input side: `game.js` already has the tap
+      plumbing and a 320ms fat-finger guard the double tap has to live inside.
+      `[REF]` — this is a real change to how armies fight, not a UI affordance.
+- [ ] **Springs are too thinly spread in a war — double them.** From play. `CONST.REACHWAR`
+      `perCity: 2` is the scatter beside each city's own writ spring (`js/worldgen.js` ~816,
+      `wantScatter = RW.cities * RW.perCity`), so 2 → 4. It is one number, but it is the war's
+      whole economy: springs are what a Gate is raised on, Gates are what buy crews, and crews
+      are what a lord can spend at all. `[REF]` on its own, not stacked with another change —
+      and worldgen has to be re-checked for placement failures at the higher count, since a
+      scatter it cannot place is silently a smaller number.
 
 ## Measured — open questions that already have data behind them
 

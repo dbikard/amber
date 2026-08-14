@@ -650,6 +650,30 @@ it). Reported from play with a screenshot.
 
 ### THE MAP SAYS WHOSE
 
+**"MINE" IS ASKED EVERY FRAME, AND IT IS THE BANNER'S.** `g.own` was `pi === viewer`, decided
+once in `buildCity` and never revisited — the same assumption `redressCities` exists to undo,
+left standing one level down. So every work in a conquered court stayed dressed as an enemy's
+for the rest of the war: the dark foe pad, no selection highlight, and — reported from play —
+**no company standard at all**, because the pennant hangs behind that test. The halls went on
+mustering into the company they were assigned and the men came out under its colours while the
+hall over them flew nothing. `mineOf(view, viewer, pi)` is the one answer (realm, with the seat
+rule as the fallback for a view that carries no realms), it is asked in the works loop each
+frame, and **it is part of the work group's cache key** — a group built before the oath must not
+survive it, exactly as a level or a breach must not.
+
+**A THRONE LEFT ALONE MENDS ITSELF** (`seatMend`, beside `seatFire`). Every other work already
+self-mends (`STRUCT_REGEN` after `STRUCT_REGEN_WAIT`); the Seat never did, for the same reason
+it needed a gunnery pass of its own — it is the CITY record, not one of `pl.buildings`, so every
+loop that mends stone walked past it, and nothing in the game could raise its hit points at all.
+One early raid nobody could answer halved a heir's last line permanently. The WAIT is the shared
+one, so "has this been hit lately" has a single spelling; only the RATE is the Seat's own
+(`maxHp / CITY.mend`, a whole throne in five minutes) because 2 hp/s would take twenty-one on a
+ten-minute median. **A yielded throne is not mended, it is TAKEN** — healing one off the floor
+would quietly repeal `occupy`, so it stops at zero and `holdCities` owns everything below. It
+says nothing: the castle bar is already on screen saying it for as long as it is true. Measured
+before and after with `node sim.js`: every score and both road targets unchanged, castle-decided
+matches a little longer (6.7→7.0m, 9.4→10.2m), which is the change doing what it says.
+
 Four seat colours answer a table of four. A war seats sixteen, so from the fifth lord on every
 banner came out the same crimson — an ally at terms, an unaligned neutral and the army marching
 on you were one colour, and a court that swore looked no different the tick after. Colour is by

@@ -5073,6 +5073,65 @@ async function match(browser, base, renderer) {
        !pool.err && pool.lip >= 1 && pool.water >= 1,
        pool.err || `${pool.lip} lip / ${pool.water} water at ${pool.name}`);
 
+    /* ---- A COURT THAT CHANGES HANDS RE-DRESSES ITS WORKS ----
+     * Reported from play with a screenshot: the halls in a conquered city muster into the
+     * company they were assigned to and the men come out under its colours, but the hall flies
+     * nothing. `g.own` was `pi === viewer`, decided once in `buildCity` and never revisited —
+     * the very assumption `redressCities` exists to undo, left standing one level down — and
+     * the company standard hangs behind that test. So every work in a taken court stayed
+     * dressed as an enemy's for the rest of the war.
+     * Driven through the sim's own oath (`pl.realm`), which is what a conquest actually does,
+     * and read off `R.debugStandard`, which returns the standard mesh's colour or null. */
+    const swore = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, W = window.World, g = window.Game.game, w = g.world;
+      const paint = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      /* a lord who is NOT of the viewer's banner, with a hall of his own to fly a flag over */
+      let pi = -1;
+      for (let i = 1; i < w.players.length; i++) {
+        if (W.realmOf(w, i) === W.realmOf(w, 0)) continue;
+        if (w.players[i].buildings.some((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns)) { pi = i; break; }
+      }
+      if (pi < 0) return { skip: 'no rival lord with a mustering hall' };
+      const hall = w.players[pi].buildings.find((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns);
+      hall.raise = 0; hall.work = 0;
+      /* his hall must be SEEN, or the veil is what is being measured and not the oath */
+      const co = w.players[pi].companies[0];
+      hall.co = co ? co.id : hall.co;
+      R.lookAt(hall.x, hall.y); R.setZoom(1.6);
+      const seen = w.players[0].seen;
+      for (const p of w.players) p.explored = p.explored || {};
+      w.players[0].out = true;                      // spectate: no veil at all, so sight is not the variable
+      await paint(); await paint();
+      const before = { own: R.debugWorks ? null : null, flag: R.debugStandard(hall.id) };
+      /* THE OATH ITSELF — the one thing a conquest does to a lord */
+      const wasRealm = w.players[pi].realm;
+      w.players[pi].realm = W.realmOf(w, 0);
+      await paint(); await paint();
+      const after = { flag: R.debugStandard(hall.id) };
+      /* PUT THE WORLD BACK. This suite runs on the shared `?reach=` page and the ones after it
+       * read the same world — leaving a lord sworn changed who held what, and the spring-ring
+       * suite downstream failed on a colour that was correct for a board this test had quietly
+       * conquered. A rig that mutates a shared world owes it the state it borrowed. */
+      w.players[pi].realm = wasRealm;
+      w.players[0].out = false;
+      await paint();
+      return { pi, hallId: hall.id, co: hall.co, before, after, seen: !!seen,
+               want: '#' + (hall.co
+                 ? [0xe8ecff, 0x64d8d8, 0xc48eff, 0xff9ad8, 0x9adcff, 0xffc27a, 0xb0e8a0, 0xd8b0ff][(hall.co - 1) % 8]
+                 : 0xffd98a).toString(16).padStart(6, '0') };
+    });
+    if (swore.skip) {
+      ok('a court that swears flies its own standards (skipped)', true, swore.skip);
+    } else {
+      ok('the rig is alive: a rival lord\'s hall flies no standard of yours',
+         swore.before.flag === null, `flag ${swore.before.flag}`);
+      ok('a court that swears flies its company\'s standard',
+         swore.after.flag !== null, 'still no standard after the oath');
+      ok('...in that company\'s own colour',
+         swore.after.flag && ('#' + swore.after.flag) === swore.want,
+         `#${swore.after.flag}, wanted ${swore.want} for company ${swore.co}`);
+    }
+
     /* ---- A RIVER IS ONE BODY, NOT A CHAIN OF BEADS ----
      * Water was a radial gradient drawn PER CELL straight onto the finished land, so the alphas
      * compounded where discs overlapped and every cell of a one-wide channel came out with a

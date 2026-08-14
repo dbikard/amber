@@ -18,7 +18,29 @@
                   * and HOLDING it are meant to be different problems, and that difference is the
                   * whole reason a Seat yields rather than falling. `back` is what the throne comes
                   * back at, which is what stops one conquest paying for the next. */
-                 court: 150, take: 20, back: 0.35 };
+                 court: 150, take: 20, back: 0.35,
+                 /* ---- A THRONE LEFT ALONE MENDS ITSELF ----
+                  * Reported from play: a castle knocked down to a sliver stayed there for the
+                  * rest of the match, so one early raid nobody could answer permanently halved
+                  * a heir's last line — and in a WAR, where a Seat yields instead of ending the
+                  * match, a court could sit at 5% forever with no way to make it defensible
+                  * again. There is no other repair for it: `{c:'fix'}` mends a breached curtain
+                  * and the Wardens mend men, but the Seat is not in `pl.buildings` at all and
+                  * nothing in the game could touch its hp upward.
+                  * `mend` is stated as the TIME a whole throne takes rather than a rate, because
+                  * that is the sentence a player can hold in his head — five minutes of peace
+                  * from nothing to whole, on a match whose median is about ten. Fast enough that
+                  * surviving a raid means something, far too slow to out-heal an assault: the
+                  * cheapest siege line in the game does more damage in a second than this
+                  * returns in twenty.
+                  * HOW LONG AFTER THE LAST BLOW is not a new number: it is `STRUCT_REGEN_WAIT`,
+                  * the same wait every other work already observes. Only the RATE is the Seat's
+                  * own, because `STRUCT_REGEN` is 2 hp/s and a throne is 2,500 — the shared
+                  * constant would mend it in twenty-one minutes, which on a ten-minute median is
+                  * a rule that exists and never bites. Without the wait the mend fights the
+                  * assault directly and every siege becomes an arithmetic problem at the margin
+                  * instead of a fight; with it, a throne under attack is simply under attack. */
+                 mend: 300 };
 
   /* ---- Free placement (open world, stage 4) ----
    * You may raise a work anywhere your writ runs, on ground that will bear it. Your writ is

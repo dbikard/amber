@@ -3548,6 +3548,28 @@
    * besieger would raise is a curtain across the court, and the throne's own guns would be
    * switched off by the cheapest work in the game from outside their reach. It stands a hundred
    * feet over its own city; it shoots over everything, including its owner's walls. */
+  /* ---- A THRONE LEFT ALONE MENDS ITSELF ----
+   * Every other work in the game already does this (`STRUCT_REGEN` after `STRUCT_REGEN_WAIT`
+   * unhit); the Seat never did, for the same reason it needed a gunnery pass of its own — it
+   * is not in `pl.buildings`, it is the city record, so every loop that mends stone walked
+   * straight past it. Nothing else could touch its hit points upward either: `{c:'fix'}` mends
+   * a breached curtain and the Wardens mend men. So one early raid nobody could answer halved
+   * a heir's last line permanently, and in a WAR — where a Seat yields instead of ending the
+   * match — a court could sit at a sliver for the rest of the game with no way back.
+   * The WAIT is the shared one, so "has this been hit lately" has a single spelling. Only the
+   * RATE is the Seat's own, and it is stated as the time a whole throne takes: `maxHp/mend`
+   * scales with the throne rather than needing a retune if CASTLE_HP ever moves.
+   * A YIELDED THRONE IS NOT MENDED, IT IS TAKEN. Healing one off the floor would quietly repeal
+   * `occupy` — the whole point of a Seat yielding is that the ground must then be held — so
+   * this stops at zero and `holdCities` owns everything below it.
+   * It says nothing. It is slow, it is continuous, and the castle bar is already on screen
+   * saying it for as long as it is true, which is the banner rule's second test exactly. */
+  function seatMend(world, city, dt) {
+    if (!city || city.owner < 0 || city.razed) return;
+    if (city.hp <= 0 || city.hp >= city.maxHp) return;
+    if (world.t - (city.lastHurt == null ? -1e9 : city.lastHurt) < C.STRUCT_REGEN_WAIT) return;
+    city.hp = Math.min(city.maxHp, city.hp + (city.maxHp / C.CITY.mend) * dt);
+  }
   function seatFire(world, city, dt) {
     /* a Seat nobody holds is a ruin, and a ruin does not shoot */
     if (!city || city.owner < 0 || city.hp <= 0) return;
@@ -3850,7 +3872,7 @@
       }
       /* and the Seat itself, which is a tower with no work to hang its gunnery on */
       /* ...and every Seat this heir holds answers for itself, on its own cadence */
-      for (const c of citiesOf(world, pi)) seatFire(world, c, dt);
+      for (const c of citiesOf(world, pi)) { seatFire(world, c, dt); seatMend(world, c, dt); }
       /* the solo handicap: an heir set to an easier footing simply draws less from the same
        * ground. It plays its own game exactly as it would otherwise — it is just poorer. */
       income *= pl.eco;
@@ -4025,6 +4047,7 @@
               if (seat && seat.owner >= 0 && seat.hp > 0) {
                 const tp = world.players[seat.owner];
                 seat.hp -= wall;
+                seat.lastHurt = world.t;   // the throne mends when it is left alone — see seatMend
                 emit(world, { e: 'siege', pi: seat.owner, x: u.x, y: u.y });
                 if (seat.hp <= 0 && tp && !tp.out) { if (seatDown(world, seat, u.owner)) return; }
               }

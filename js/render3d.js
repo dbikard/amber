@@ -2062,6 +2062,16 @@
    * everyone sworn to nobody shares the neutral. `curView`/`curViewer` are what the frame is
    * drawing; a view with no realms on it (a board, a chronicle's half-world) falls straight
    * through to the seat rule. */
+  /* "IS THIS ONE OF MINE" — the banner's answer, with the seat rule as the fallback. The same
+   * question `tintOf` asks below, spelled once so the works loop, the pad and the standard
+   * cannot drift from the colour. */
+  const mineOf = (view, viewer, pi) => {
+    if (pi === viewer) return true;
+    if (pi < 0 || !view || !view.players || !view.players[pi]) return false;
+    if (view.players[pi].realm == null || !global.World) return false;
+    const W = global.World;
+    return W.realmOf(view, pi) === W.realmOf(view, viewer);
+  };
   const tintOf = (owner, viewer) => {
     if (owner === C.CHAOS_ID) return C.CHAOS_TINT;
     if (owner === viewer) return C.SEAT_TINT[0];
@@ -2761,6 +2771,21 @@
     for (let pi = 0; pi < cityObjs.length; pi++) {
       const g = cityObjs[pi];
       const pl = view.players[pi];
+      /* ---- "MINE" IS ASKED EVERY FRAME, AND IT IS THE BANNER'S ----
+       * `g.own` was `pi === viewer`, decided once in `buildCity` and never revisited — the
+       * same assumption `redressCities` was written to undo one level up, left standing here.
+       * So a court taken from another lord kept every one of its works dressed as an enemy's:
+       * the dark foe pad under them, no selection highlight, and — the reported symptom —
+       * NO COMPANY STANDARD, because the pennant hangs behind this test. The halls went on
+       * mustering into the company they were assigned to and the men came out under its
+       * colours, while the hall over them flew nothing.
+       * It is the realm's question, not the seat's: a sworn lord's works are my banner's, his
+       * `co` rides to me in full (`Net.snapFor`'s `mine`), and a rival's company is a secret
+       * that must stay one. `own` stays on the group for the city-level readers below.
+       * A view with no realms on it (a board, a chronicle's half-world) falls through to the
+       * seat rule, exactly as `tintOf` does — the renderer stays isolated and asks `global`. */
+      g.own = mineOf(view, viewer, pi);
+      const own = g.own;
       /* A RIVAL'S COURT STAYS OUT OF THE WORLD UNTIL SOMEBODY HAS SEEN THAT ONE — the court,
        * not the realm. `continue` here skipped the whole works loop for an unfound seat, and
        * since a work's group is only ever built by this loop, every OUTLYING work they owned
@@ -2803,6 +2828,12 @@
            * the hall went on being the old company's until something ELSE (a level, a wound,
            * a mason) happened to rebuild the group. */
           + (b.co ? '/' + b.co : '')
+          /* ...AND WHETHER IT IS MINE, which is no longer decided once at the city's birth.
+           * A court that changes hands re-dresses its works — the pad under them, and the
+           * company standard, which only flies over a hall of my own banner — so "mine" is as
+           * much a part of what is drawn as the level or the breach, and a group built before
+           * the oath must not survive it. */
+          + (own ? '&' : '')
           + (ghost ? '~' : '') + (b.raise > 0 ? '^' : '') + (b.work > 0 ? '#' : '');
         let w = g.works.get(id);
         if (!w || w.key !== key) {
@@ -2816,9 +2847,9 @@
           const pad = isW
             ? new THREE.Mesh(new THREE.PlaneGeometry(Math.hypot(b.x2 - b.x, b.y2 - b.y) * 2 + 26, 34)
                 .rotateX(-Math.PI / 2).rotateY(-Math.atan2(b.y2 - b.y, b.x2 - b.x)),
-                fogPatch(new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 })))
+                fogPatch(new THREE.MeshLambertMaterial({ color: own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 })))
             : new THREE.Mesh(new THREE.CircleGeometry(24, 12).rotateX(-Math.PI / 2),
-                fogPatch(new THREE.MeshLambertMaterial({ color: g.own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 })));
+                fogPatch(new THREE.MeshLambertMaterial({ color: own ? 0x46382a : 0x3a222a, transparent: true, opacity: 0.9 })));
           pad.position.y = -0.4;
           grp.add(pad, isW ? wallModel(b, hurt) : buildingModel(mkey));
           /* THE GATE HANGS ON THE FINISHED RUN. A breached run is rubble and has no gateway to
@@ -2834,7 +2865,7 @@
            * broken — and a curtain is spared it, since a whole run tipping together would
            * lift one end of it clear off the ground. */
           if (!isW && hurt > 1) grp.rotation.z = 0.05;
-          if (g.own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
+          if (own && C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns) {
             /* the company's pennant flies over its mustering hall */
             /* the hall flies its COMPANY's colour, and every hall has one */
             const pole = meshOf([part(cyl(0.6, 0.6, 28, 4), 0xd8c8a8, 14, 33, 8)]);
@@ -2887,7 +2918,7 @@
          * reference to the wall as it stood one order ago */
         if (w.gate) { w.gate.row = b; w.gate.city = { x: g.cx, y: g.cy }; }
         w.seen = true;
-        if (g.own) w.pad.material.color.setHex(R.selected === id ? 0x8a6c3c : 0x46382a);
+        if (own) w.pad.material.color.setHex(R.selected === id ? 0x8a6c3c : 0x46382a);
       }
       for (const [id, w] of [...g.works]) {
         if (w.seen) { w.seen = false; continue; }

@@ -7981,6 +7981,67 @@ suite('the war has answers to a distant walk');
   eq('...and an unstated pace is a board\'s, exactly', walked(rig({ walkMul: 1 }), 20), full);
 }
 
+/* ---------------- A THRONE LEFT ALONE MENDS ITSELF ----------------
+ * Reported from play: a castle knocked to a sliver stayed there for the rest of the match.
+ * Every other work already self-mends; the Seat never did, because it is the CITY record and
+ * not one of `pl.buildings`, so every loop that mends stone walked past it — and nothing else
+ * in the game could raise its hit points at all.
+ * The dangerous half of this is the floor: a Seat at zero has YIELDED, and healing one off the
+ * floor would quietly repeal `occupy` — the rule that a broken court must then be held. */
+suite('a throne left alone mends itself');
+{
+  const peace = (secs, set) => {
+    const w = World.createWorld(9, 2);
+    w.chaosNext = 1e9;                     // the black road would knock it about and prove nothing
+    const c = w.cities[0];
+    set(c, w);
+    const from = c.hp;
+    for (let i = 0; i < 30 * secs; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    return { from, to: c.hp, max: c.maxHp, w, c };
+  };
+  const hurtOnce = peace(60, (c) => { c.hp = c.maxHp * 0.2; c.lastHurt = -99; });
+  ok('the rig is alive: a throne can stand below full', hurtOnce.from < hurtOnce.max,
+     `${hurtOnce.from} of ${hurtOnce.max}`);
+  ok('a throne left alone gains hit points', hurtOnce.to > hurtOnce.from,
+     `${Math.round(hurtOnce.from)} -> ${Math.round(hurtOnce.to)}`);
+  /* the rate is the STATED one: a whole throne in CITY.mend seconds, whatever it is worth */
+  near('...at the rate the constant states', hurtOnce.to - hurtOnce.from,
+       hurtOnce.max / C.CITY.mend * 60, hurtOnce.max * 0.01);
+  /* NOT WHILE IT IS BEING HIT — the shared wait, so a siege stays a fight rather than becoming
+   * an arithmetic problem at the margin */
+  const underFire = (() => {
+    const w = World.createWorld(9, 2);
+    w.chaosNext = 1e9;
+    const c = w.cities[0];
+    c.hp = c.maxHp * 0.2;
+    const from = c.hp;
+    for (let i = 0; i < 30 * 20; i++) { c.lastHurt = w.t; World.update(w, C.SIM_DT); w.events.length = 0; }
+    return { from, to: c.hp };
+  })();
+  eq('a throne under the hammer mends not at all', underFire.to, underFire.from);
+  /* AND A YIELDED THRONE IS TAKEN, NOT MENDED */
+  const yielded = peace(60, (c) => { c.hp = 0; c.lastHurt = -99; });
+  eq('a yielded throne stays yielded, however long the peace', yielded.to, 0);
+  /* ...and a whole one is not overfilled */
+  const whole = peace(30, (c) => { c.hp = c.maxHp; c.lastHurt = -99; });
+  eq('a whole throne stays exactly whole', whole.to, whole.max);
+  /* the wait is the SHARED one, not a second number to keep in step */
+  const justHit = (() => {
+    const w = World.createWorld(9, 2);
+    w.chaosNext = 1e9;
+    const c = w.cities[0];
+    c.hp = c.maxHp * 0.2; c.lastHurt = w.t;
+    const from = c.hp;
+    /* stop short of the wait: nothing yet */
+    for (let i = 0; i < 30 * (C.STRUCT_REGEN_WAIT - 2); i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    const early = c.hp;
+    for (let i = 0; i < 30 * 10; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    return { from, early, late: c.hp };
+  })();
+  eq('...and holds its hand until the shared wait has passed', justHit.early, justHit.from);
+  ok('...then mends', justHit.late > justHit.from, `${Math.round(justHit.late)}`);
+}
+
 /* ---------------- A MEMORY OF THE LAND IS CUT TO THE LAND ----------------
  * `markSeen`'s fast path OR-ed two grids index for index. Both are cut at C.FOG.cell, so cell
  * (gx, gy) is the same ground in either — but the flat INDEX is not, and a country-sized live
