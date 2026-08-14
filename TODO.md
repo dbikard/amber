@@ -14,6 +14,23 @@ touches no balance surface.
 
 ## From play — bugs with a witness
 
+- [ ] **A resumed war can lose its ground texture.** Reported from play with a screenshot: the
+      props, works, labels, roads and reach rings all draw, and the LAND under them is black.
+      Not the veil — a shrouded world drains the props too, and they are at full colour — so it
+      is the ground mesh's own texture. NOT REPRODUCED in three flows, all of which came back
+      clean (luma ~50 on a 2237x2684 base): resume with the same seed already built, a fresh
+      page load resuming a played war, and a WebGL context lost and restored under
+      `WEBGL_lose_context`. Ruled out by reading: both bakers return `{canvas,...}` so the
+      `groundDirty` re-bake is not passing an undefined image, and every canvas in `terrain.js`
+      is created fresh, so nothing shares a scratch that could be cleared under it.
+      What would localise it: whether it was resuming the APP (backgrounded PWA) or resuming a
+      saved WAR from the menu; whether it recovers by panning far away and back (which re-bakes
+      the detail tiles but not the base); and the chronicle from that match. The most likely
+      remaining mechanism is a phone's browser discarding a large canvas backing store — the
+      base is ~24MB — where a desktop keeps it, which would explain why it survives every rig
+      here. If so the fix is to re-bake on `webglcontextrestored` / `visibilitychange` rather
+      than trusting the texture to survive, and to make that measurable with a debug hook.
+
 - [ ] **Review the heirs' play in a war generally.** From play: *"bots intelligence in war reach
       is really bad."* Every lord in a country — sworn or not — runs the `lord` baseline, whose
       entire vocabulary is rallies plus a few probed works, and it was written to make the reach
@@ -38,20 +55,6 @@ touches no balance surface.
       meaning for walls (`WALL.rubble`), so a razed curtain should probably follow that path
       rather than vanish. `[REF]` — anything that makes a misplaced work cheap changes how
       freely the heirs build.
-- [ ] **A DOUBLE TAP IS AN ORDER MEANT LITERALLY.** From play, two related asks, and they are
-      the same gesture: a double tap when placing a company's flag should mean *go there and
-      keep going* — the men break off whatever they are engaged in and march, instead of
-      stopping to fight everything on the way; and a double tap on an enemy WORK should mean
-      *bring that down and nothing else*, a company that walks past men to reach it. Today a
-      rally is a suggestion the acquire loop constantly overrides, which is right for the
-      ordinary case and is exactly what makes a deliberate order impossible to give.
-      What it needs: a second bit on the rally (`{c:'rally', co, x, y, hard:1}` or a target id),
-      honoured in `acquire`/the march so an engaged man disengages, and some way for it to
-      EXPIRE — an order to ignore the enemy forever is how a company walks into a mill and dies
-      to a rule the player forgot he set. The renderer must say which kind of order is standing,
-      or the two are indistinguishable on screen. Input side: `game.js` already has the tap
-      plumbing and a 320ms fat-finger guard the double tap has to live inside.
-      `[REF]` — this is a real change to how armies fight, not a UI affordance.
 
 ## Measured — open questions that already have data behind them
 

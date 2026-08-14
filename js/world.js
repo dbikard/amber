@@ -165,6 +165,7 @@
       paused: null,               // a halt anyone at the table may call: { by: seat, at: t }
       nav: null, navVersion: 0,   // movement grid; the version counts changes to what blocks
       walls: [], anyWall: false,  // the standing curtains, rebuilt whenever one rises or falls
+      hardOn: 0,                  // companies under a forced order — see acquire's first test
       nextId: 1,
       chaosNext: C.CHAOS.firstAt, chaosParity: 0, surged: false,
       vis: null,                // per-viewer vision cache: [ {g,gw,gh,cell} mask per seat ]
@@ -543,6 +544,35 @@
    * IT IS A PICTURE, NOT A RULE. A bearer fights, dies and is replaced like anyone and
    * losing him costs nothing. Making the flag worth killing — morale, a rout, a capture —
    * is a different design and would have to go to the referee before it went in. */
+  /* ---- THE FORCED ORDER, AND ITS TWO ENDINGS ----
+   * `world.hardOn` counts the live ones so `acquire` — the hot path, 94% of a busy tick — can
+   * skip the whole question with one integer test in every match that never gives one. It is
+   * incremented in exactly one place (the rally command) and decremented in exactly one (here),
+   * which is the only way a counter like this stays honest. */
+  function clearHard(world, co) {
+    if (!co.hard) return;
+    co.hard = 0; co.mark = null;
+    world.hardOn = Math.max(0, (world.hardOn || 0) - 1);
+  }
+  /* Asked once a tick per company under one, with the company's own BEARER — already chosen
+   * just above — standing in for "has the company got there". A bearer is the senior man in the
+   * open, so he is a fair reading of where the body is, and it costs nothing to ask. */
+  function foldHard(world, co, bearer) {
+    if (!co.hard) return;
+    if (world.t >= co.hard || !bearer) { clearHard(world, co); return; }
+    if (co.mark) {
+      /* the work it named is down, or was taken, or its owner has fallen: the order is done */
+      const tp = world.players[co.mark.pi];
+      if (!tp || tp.out || !foe(world, co._pi, co.mark.pi) ||
+          !tp.buildings.some((b) => b.id === co.mark.id)) clearHard(world, co);
+      return;
+    }
+    /* A FORCED MARCH IS OBEYED THE MOMENT IT ARRIVES. Left standing to the full span it would
+     * hold a company on the ground it was sent to, passive, being shot at by men it is
+     * forbidden to answer — which is the rule doing the opposite of what it was asked for. */
+    if (co.rally && d2(bearer.x, bearer.y, co.rally.x, co.rally.y) < C.HARD.arrive * C.HARD.arrive)
+      clearHard(world, co);
+  }
   function bearers(world) {
     const best = new Map();                       // owner*1e6+co -> the man who should hold it
     for (const u of world.units) {
@@ -556,6 +586,9 @@
       for (const co of world.players[pi].companies) {
         const u = best.get(pi * 1e6 + co.id);
         co.bearer = u ? u.id : null;
+        /* the forced order is folded here because this is the one pass that already knows,
+         * per company, which man is carrying its colours — see foldHard */
+        if (co.hard) { co._pi = pi; foldHard(world, co, u); }
       }
   }
 
@@ -2593,6 +2626,22 @@
           return { ok: false, err: 'reach' };
       }
       co.rally = p;
+      /* ---- AND THE SAME ORDER SAID TWICE IS MEANT LITERALLY ----
+       * `hard` is the whole of it: for as long as it stands the company acquires nothing (a
+       * forced march) or nothing but the named work (a forced siege), so an engaged man breaks
+       * off and goes. It is asked for on the ORDER rather than as a mode the company sits in,
+       * because a mode is a thing the player has to remember he switched on; an order lapses.
+       * `tpi`/`tid` name the work, and they are only a request: the mark is dropped unless it
+       * is a work this heir may actually strike, checked here at the door rather than trusted
+       * in `acquire`, so a guest cannot ask for one it should not have. */
+      clearHard(world, co);
+      if (cmd.hard) {
+        co.hard = world.t + C.HARD.span;
+        world.hardOn = (world.hardOn || 0) + 1;
+        const tp = cmd.tpi != null ? world.players[cmd.tpi] : null;
+        if (tp && !tp.out && foe(world, pi, cmd.tpi) &&
+            tp.buildings.some((b) => b.id === cmd.tid)) co.mark = { pi: cmd.tpi, id: cmd.tid };
+      }
       emit(world, { e: 'rally', pi, co: co.id, site: p.site, x: p.x, y: p.y });
       return { ok: true };
     }
@@ -3247,6 +3296,29 @@
     return { t: v, kind: 'unit', d, x: v.x, y: v.y };
   }
   function acquire(world, u, radius) {
+    /* ---- AN ORDER MEANT LITERALLY OUTRANKS EVERYTHING A MAN CAN SEE ----
+     * Asked BEFORE the retarget cache, not after: a company told to march through is told now,
+     * not in up to RETARGET ticks' time, and a man holding a sticky mark from a second ago is
+     * exactly the man the order is for. `world.hardOn` is zero in every match that never gives
+     * one, so the ordinary game pays a single integer test here.
+     * A forced march has NO target at all — that is the whole order, and it is why it lapses.
+     * A forced siege has exactly one, and a shooter under it has none, because a shooter has
+     * no target among works in the first place and this order does not make him a besieger. */
+    if (world.hardOn > 0 && u.co) {
+      const co = coOf(world, u.owner, u.co);
+      if (co && co.hard > world.t) {
+        u._t = null;
+        if (!co.mark) return null;
+        if (C.UNITS[u.kind].menOnly) return null;
+        const tp = world.players[co.mark.pi];
+        const b = tp && tp.buildings.find((q) => q.id === co.mark.id);
+        if (!b) return null;
+        const w2 = isWall(b), aim = w2 ? segNear(b, u.x, u.y) : b;
+        const d = w2 ? Math.sqrt(segD2(b, u.x, u.y)) : Math.sqrt(d2(u.x, u.y, b.x, b.y));
+        return d < radius ? { t: { pi: co.mark.pi, id: b.id }, kind: 'work', d, x: aim.x, y: aim.y }
+                          : null;
+      }
+    }
     if ((world.tick + u.id) % RETARGET !== 0) {
       const held = cached(world, u, radius);
       if (held) return held;

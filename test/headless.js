@@ -7981,6 +7981,123 @@ suite('the war has answers to a distant walk');
   eq('...and an unstated pace is a board\'s, exactly', walked(rig({ walkMul: 1 }), 20), full);
 }
 
+/* ---------------- AN ORDER MEANT LITERALLY ----------------
+ * An ordinary rally is a suggestion the acquire loop overrides constantly, which is right and is
+ * exactly what makes a deliberate order impossible to give. Saying it twice makes it literal:
+ * march THROUGH what is in the way, or bring down that one work and nothing else.
+ * Everything below is measured against the SAME world with only the `hard` bit changed, because
+ * the geometry around a blocked road is not a controlled comparison on its own. */
+suite('an order meant literally');
+{
+  const SPEC = () => ({ name: 'the forced march rig', seed: 7, ground: 'PLAIN', height: 0.5,
+    seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+    springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }] });
+  /* A WALL OF MEN ACROSS THE ROAD. They are pinned by their own banner (left to themselves they
+   * simply marched off to their city and the column never met them — the first version of this
+   * rig measured a closest approach of 301 against an aggro of 140, which is a control that was
+   * never alive), and they deal NO damage, so what is being measured is where the column got to
+   * and not who won a fight. */
+  const march = (hard) => {
+    const w = World.createWorld(1, 2, SPEC());
+    w.chaosNext = 1e9;
+    const co = w.players[0].companies[0];
+    const d = C.UNITS.soldier;
+    const men = [];
+    for (let k = 0; k < 8; k++) {
+      const u = manAt(w, 0, 'soldier', 560 + k * 10, 800);
+      u.co = co.id; men.push(u);
+    }
+    w.players[1].banner = { x: 610, y: 1150 };
+    const foes = [];
+    for (let k = 0; k < 5; k++) {
+      const f = manAt(w, 1, 'soldier', 560 + k * 14, 1150);
+      f.hp = f.maxHp = d.hp * 400; f.dmg = 0; foes.push(f);
+    }
+    World.applyCommand(w, 0, Object.assign({ c: 'rally', co: co.id, x: 640, y: 1700 },
+                                           hard ? { hard: 1 } : null));
+    for (let i = 0; i < 30 * 20; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    const a = men.filter((u) => u.hp > 0);
+    return { got: a.length ? Math.round(a.reduce((s, u) => s + u.y, 0) / a.length) : 0,
+             arrived: a.filter((u) => u.y > 1600).length,
+             dealt: Math.round(foes.reduce((s, f) => s + f.maxHp - f.hp, 0)), co, w };
+  };
+  const soft = march(false), hard = march(true);
+  /* THE CONTROL, and it has to be alive or the line below means nothing: an ordinary order
+   * really is stopped by men standing across it. */
+  ok('the rig is alive: an ordinary order stops to fight what blocks it',
+     soft.arrived === 0 && soft.dealt > 300,
+     `reached y=${soft.got}, ${soft.arrived} arrived, ${soft.dealt} damage dealt`);
+  ok('an order meant literally marches through', hard.got > soft.got + 300,
+     `forced reached y=${hard.got} against y=${soft.got}`);
+  ok('...and men arrive who otherwise never would', hard.arrived > 0,
+     `${hard.arrived} of 8 arrived`);
+  ok('...having barely stopped to swing at anything', hard.dealt < soft.dealt / 4,
+     `${hard.dealt} damage against ${soft.dealt}`);
+  /* IT LAPSES — the whole safety of the rule. Two endings, and both are tested: the span runs
+   * out, and the company arrives. */
+  {
+    const w = World.createWorld(1, 2, SPEC());
+    w.chaosNext = 1e9;
+    const co = w.players[0].companies[0];
+    /* nobody to carry the colours yet, so the arrival ending cannot fire — only the clock */
+    World.applyCommand(w, 0, { c: 'rally', co: co.id, x: 640, y: 1700, hard: 1 });
+    ok('a forced order is counted while it stands', w.hardOn === 1, `hardOn ${w.hardOn}`);
+    ok('...and is on the company', co.hard > 0, String(co.hard));
+    for (let i = 0; i < 30 * (C.HARD.span + 2); i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    eq('...and lapses when its span runs out', co.hard, 0);
+    eq('...and the count comes back down with it', w.hardOn, 0);
+  }
+  {
+    const w = World.createWorld(1, 2, SPEC());
+    w.chaosNext = 1e9;
+    const co = w.players[0].companies[0];
+    const u = manAt(w, 0, 'soldier', 700, 640);
+    u.co = co.id;
+    World.applyCommand(w, 0, { c: 'rally', co: co.id, x: 760, y: 700, hard: 1 });
+    ok('the rig is alive: the order stands before he gets there', co.hard > 0);
+    for (let i = 0; i < 30 * 8; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    eq('...and is obeyed the moment the company arrives, well inside its span', co.hard, 0);
+    ok('...he really did arrive', Math.hypot(u.x - 760, u.y - 700) < C.HARD.arrive,
+       `${Math.round(u.x)},${Math.round(u.y)}`);
+  }
+  /* AND THE OTHER HALF: named at a WORK, the company answers nothing else. Same world twice,
+   * only the mark differing — men and a work both in reach, and the question is which is hit. */
+  {
+    const strike = (mark) => {
+      const w = World.createWorld(1, 2, SPEC());
+      w.chaosNext = 1e9;
+      const co = w.players[0].companies[0];
+      const def = C.BUILDINGS.gate;
+      const b = { id: w.nextId++, bt: 'gate', level: 1, x: 900, y: 1000, cd: 0, raise: 0,
+                  raiseFor: 0, hp: def.hp * 20, maxHp: def.hp * 20, lastHurt: -99, node: -1, co: 0 };
+      w.players[1].buildings.push(b);
+      w.players[1].banner = { x: 900, y: 1060 };
+      const foes = [];
+      for (let k = 0; k < 3; k++) {
+        const f = manAt(w, 1, 'soldier', 880 + k * 16, 1060);
+        f.hp = f.maxHp = C.UNITS.soldier.hp * 400; f.dmg = 0; foes.push(f);
+      }
+      for (let k = 0; k < 6; k++) {
+        const u = manAt(w, 0, 'soldier', 880 + k * 12, 930);
+        u.co = co.id;
+      }
+      World.applyCommand(w, 0, Object.assign({ c: 'rally', co: co.id, x: 900, y: 1000 },
+        mark ? { hard: 1, tpi: 1, tid: b.id } : null));
+      for (let i = 0; i < 30 * 14; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+      return { work: Math.round(b.maxHp - b.hp),
+               men: Math.round(foes.reduce((s, f) => s + f.maxHp - f.hp, 0)) };
+    };
+    const loose = strike(false), aimed = strike(true);
+    ok('the rig is alive: left alone, a company fights the MEN and not the stone',
+       loose.men > 0 && loose.men > loose.work,
+       `${loose.men} to the men, ${loose.work} to the work`);
+    ok('named at a work, the company brings that work down', aimed.work > loose.work,
+       `${aimed.work} against ${loose.work}`);
+    ok('...and answers the men beside it not at all', aimed.men === 0,
+       `${aimed.men} damage to men who were never the order`);
+  }
+}
+
 /* ---------------- GATES IS AN ORDER THAT MOVES AN ARMY ----------------
  * Reported from play: *"asked to build gates the bot doesn't even explore to look for gates."*
  * He was not failing to look — nothing ever sent him. `gates` fell in with `hold` in one branch

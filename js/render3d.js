@@ -1245,6 +1245,33 @@
     if (out && best) out.d = bd;
     return best;
   };
+  /* A WORK OF SOMEBODY ELSE'S UNDER THE FINGER — for the order that names one. `hitBuilding`
+   * answers for the HAND'S works and must go on doing so (it is what opens the sheet); this is
+   * the other question, and it can only ever return something the veil has already handed over,
+   * because it walks the VIEW. Ghosts are deliberately not offered: an order to bring down a
+   * work you merely remember is an order to walk to where it used to be. */
+  R.hitFoeWork = function (px, py, view, viewer) {
+    if (!view || !view.players) return null;
+    const w2 = R.toWorld(px, py);
+    let best = null, bd = 44 * 44;
+    for (let pi = 0; pi < view.players.length; pi++) {
+      if (mineOf(view, viewer, pi)) continue;
+      for (const b of (view.players[pi].buildings || [])) {
+        /* a run answers along its whole length, exactly as your own does */
+        let dd;
+        if (b.x2 != null) {
+          const ax = b.x * 2 - b.x2, ay = b.y * 2 - b.y2;
+          const vx = b.x2 - ax, vy = b.y2 - ay, L2 = vx * vx + vy * vy || 1;
+          let t2 = ((w2.x - ax) * vx + (w2.y - ay) * vy) / L2;
+          t2 = t2 < 0 ? 0 : t2 > 1 ? 1 : t2;
+          const qx = ax + vx * t2, qy = ay + vy * t2;
+          dd = (w2.x - qx) * (w2.x - qx) + (w2.y - qy) * (w2.y - qy);
+        } else dd = (w2.x - b.x) * (w2.x - b.x) + (w2.y - b.y) * (w2.y - b.y);
+        if (dd < bd) { bd = dd; best = { pi, id: b.id, x: b.x, y: b.y }; }
+      }
+    }
+    return best;
+  };
   R.hitSite = function (px, py, view, viewer, forFlag) {
     const w2 = R.toWorld(px, py);
     let best = -1, bd = Infinity;
@@ -3003,22 +3030,38 @@
     }
     const cos = (me.companies || []).filter((co) => co.rally);
     cos.forEach((s, i) => {
-      active.add(s.id);
-      let f = coFlags.get(s.id);
+      /* AN ORDER MEANT LITERALLY LOOKS LIKE ONE, and it is said the way the player said it:
+       * TWO pennants on the pole, because the order was given twice. Without this the two
+       * kinds are indistinguishable on the board — the men behave completely differently and
+       * nothing on screen says which order they are under, which is the state the whole
+       * feature would have shipped in. The hardness is part of the POOL KEY, so a marker
+       * built for an ordinary rally cannot survive the order being repeated, and one built
+       * for a forced order comes down the moment it lapses. */
+      const hard = !!(s.hard && s.hard > (view.t || 0));
+      const key = s.id + (hard ? '!' : '');
+      active.add(key);
+      let f = coFlags.get(key);
       if (!f) {
         f = new THREE.Group();
         const pole = meshOf([part(cyl(0.7, 0.7, 34, 5), 0xd8c8a8, 0, 17, 0)]);
-        const pf = new THREE.Mesh(new THREE.PlaneGeometry(17, 10).translate(8.5, 0, 0),
-          fogPatch(new THREE.MeshBasicMaterial({ color: PENNANT[(s.id - 1) % PENNANT.length], side: THREE.DoubleSide })));
-        pf.position.set(0, 29, 0);
+        const tint = PENNANT[(s.id - 1) % PENNANT.length];
+        const pennant = (y2) => {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(17, 10).translate(8.5, 0, 0),
+            fogPatch(new THREE.MeshBasicMaterial({ color: tint, side: THREE.DoubleSide })));
+          m.position.set(0, y2, 0);
+          return m;
+        };
+        const pf = pennant(29);
         f.add(pole, pf); f._flag = pf;
+        if (hard) { const pf2 = pennant(16); f.add(pf2); f._flag2 = pf2; }
         worldG.add(f);
-        coFlags.set(s.id, f);
+        coFlags.set(key, f);
       }
       const a2 = (i / Math.max(1, cos.length)) * Math.PI * 2;
       const fx2 = s.rally.x + Math.cos(a2) * 32, fz2 = s.rally.y + Math.sin(a2) * 32;
       f.position.set(fx2, groundH(fx2, fz2), fz2);
       f._flag.rotation.y = Math.sin(T * 2.2 + i) * 0.3;
+      if (f._flag2) f._flag2.rotation.y = Math.sin(T * 2.2 + i + 0.7) * 0.3;
     });
     /* AND THE STONE FLIES THE STANDARD OF WHOEVER HOLDS IT. A garrisoned tower shows shield
      * badges and a manned wall shows the men — but neither says WHOSE they are without

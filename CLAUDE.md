@@ -280,6 +280,26 @@ standard and turns the army home. The AI still uses it as its general muster, wh
 removing it outright would mean rewriting every heir's doctrine.
 Tapping your own troops arms their company (`Render.hitUnit`, tight 24 reach on purpose).
 
+**SAY IT TWICE AND IT IS MEANT LITERALLY.** An ordinary rally is a SUGGESTION the acquire loop
+overrides constantly — right for the ordinary case, and exactly what makes a deliberate order
+impossible to give. A second tap on the order just given sets `hard` on it: the company acquires
+NOTHING (a forced march, so an engaged man breaks off and goes) or nothing but the work the tap
+named (`tpi`/`tid` → `co.mark`, vetted at the sim's door so a guest cannot ask for a work it may
+not strike). Measured on one world with only the bit changed: an ordinary order stalls at the
+enemy line having dealt 1,071 damage and lands nobody; the forced one reaches 440 further, four
+of eight arrive, and it deals 27.
+**IT MUST LAPSE, AND IT LAPSES TWO WAYS** — `HARD.span` is the ceiling (an order to ignore the
+enemy forever is how a company walks into a mill), and arriving is the ordinary ending, folded
+in `bearers` because that pass already knows which man carries each company's colours. `hardOn`
+counts the live ones so `acquire` — 94% of a busy tick — skips the whole question with one
+integer test in every match that never gives one, and it is incremented in exactly one place and
+decremented in exactly one.
+**THE SECOND TAP UPGRADES; THE FIRST NEVER WAITS.** A double-tap window on the first tap would
+put that delay on every order in the game to buy a gesture used occasionally. And there is no
+banner: the standard on the ground grows a SECOND pennant for as long as the order stands, which
+is the rule ("say it for as long as it is true") and is why hardness is part of the flag pool's
+KEY — a marker built for an ordinary rally must not survive the order being repeated.
+
 **A WORK UNDER THE FINGER ALWAYS WINS.** Men were asked first once, so a company standing on a
 hall made that hall unopenable; then the NEARER of the two answered, which is better and still
 not right — a work is a fixed point the size of a fingertip, and men are many, they move, and

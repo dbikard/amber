@@ -53,6 +53,12 @@
   const LINK = { quiet: 3, dead: 10 };
   let linkLost = null, quietSaid = false, leaving = 0;
   let endArmed = 0;   // when the host was last warned that back ends the table — see onPopState
+  /* THE ORDER JUST GIVEN, and the window in which repeating it means it literally. `px` is
+   * generous because a thumb does not land twice on the same pixel and the two taps are meant
+   * to be the SAME order, not two different ones; `ms` is long enough to be deliberate and
+   * short enough that an unrelated second order a moment later is never mistaken for it. */
+  const DOUBLE = { ms: 450, px: 48 };
+  let twice = null;   // { co, where, sx, sy, at }
 
   /* ---------------- campaign ladder ---------------- */
   const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
@@ -1404,6 +1410,27 @@
       if (!r || r.ok !== false) clearPlacing();   // a refusal leaves it armed to try again
       return;
     }
+    /* ---- SAY IT TWICE AND IT IS MEANT LITERALLY ----
+     * A second tap on the order just given makes it a FORCED one: march through whatever is in
+     * the way, or — if the second tap lands on an enemy work — bring that down and answer
+     * nothing else.
+     * THE SECOND TAP UPGRADES THE ORDER RATHER THAN THE FIRST TAP WAITING FOR IT. Holding the
+     * first tap for a double-tap window would put that delay on EVERY order given in the game
+     * to buy a gesture used occasionally, and a rally that arrives 400ms late is a worse game
+     * for the sake of a better one. So the ordinary order goes out instantly and is never made
+     * worse; saying it again re-issues the same order with the bit set. It is also the honest
+     * reading of the gesture: tap to send them, tap again to mean it.
+     * There is no banner. The standard on the ground grows a SECOND pennant for as long as the
+     * order stands, which says it for as long as it is true — and a banner that echoed an order
+     * the player had just given twice is the one thing the corner is forbidden. */
+    if (twice && Date.now() - twice.at < DOUBLE.ms &&
+        Math.hypot(x - twice.sx, y - twice.sy) < DOUBLE.px) {
+      const foeW = Render.hitFoeWork ? Render.hitFoeWork(x, y, view, game.viewer) : null;
+      issue(Object.assign({ c: 'rally', co: twice.co, hard: 1 },
+                          foeW ? { x: foeW.x, y: foeW.y, tpi: foeW.pi, tid: foeW.id } : twice.where));
+      twice = null;
+      return;
+    }
     if (game.armedFlag != null) {
       const id = game.armedFlag;
       game.armedFlag = null;
@@ -1413,7 +1440,9 @@
       const siteId = Render.hitSite(x, y, view, game.viewer, true);   // flags: whole court counts
       const w = Render.toWorld(x, y, game.viewer);
       const where = siteId >= 0 ? { site: siteId } : { x: w.x, y: w.y };
-      issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
+      const r = issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
+      /* remembered only if it was TAKEN: a refused order is not one to double down on */
+      twice = (!r || r.ok !== false) ? { co: id, where, sx: x, sy: y, at: Date.now() } : null;
       return;
     }
     if (game.targeting) {

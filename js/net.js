@@ -505,7 +505,12 @@
         /* the BEARER rides with the company and is the owner's alone, like the rest of it —
          * which company a rival's men belong to has never crossed the wire, and a flag is the
          * plainest possible statement of it */
+        /* a FORCED order rides with the company for its owner alone, like everything else
+         * about it — the renderer draws the standard differently for one, and a guest's screen
+         * has to be able to tell a march-through from an ordinary rally */
         companies: mine ? pl.companies.map((co) => ({ id: co.id, rally: co.rally,
+                                                     ...(co.hard ? { hard: co.hard } : {}),
+                                                     ...(co.mark ? { mark: co.mark } : {}),
                                                      /* the city a company is born to — the reach
                                                       * ring and every order it frames need it */
                                                      ...(co.city != null ? { city: co.city } : {}),

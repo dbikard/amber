@@ -376,6 +376,19 @@
               'the Wind Scarp', 'the Old Barrow', 'the Black Tor', 'the Raven Steps']
   };
 
+  /* ---- AN ORDER MEANT LITERALLY ----
+   * An ordinary rally is a SUGGESTION: the acquire loop overrides it constantly, which is right
+   * — men who walked past an enemy in arm's reach to stand on a flag would be absurd — and it is
+   * exactly what makes a deliberate order impossible to give. So there is a second kind, asked
+   * for by saying the same order twice: march THROUGH whatever is in the way, or bring down that
+   * one work and nothing else.
+   * It must LAPSE, and both ways matter. `span` is the ceiling: a company told to ignore the
+   * enemy forever walks into a mill and dies to a rule the player set two minutes ago and has
+   * forgotten. `arrive` is the ordinary ending — the order was to get THERE, and once the
+   * company's own bearer is there it is obeyed, so the men go back to fighting like men rather
+   * than standing on the spot they were sent to being shot. `arrive` is generously wide because
+   * a company is a body a hundred units across, not a point. */
+  CONST.HARD = { span: 25, arrive: 110 };
   CONST.STRUCT_REGEN = 2;         // hp/sec self-mending after STRUCT_REGEN_WAIT unharmed
   CONST.STRUCT_REGEN_WAIT = 10;   // s a work must go unhit before the mending starts
   /* HOW MUCH MENDING ONE MAN CAN TAKE, hp/sec, however many Wardens are attending him.
