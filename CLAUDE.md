@@ -559,6 +559,19 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   lord's WRIT at a vassal's court. `Render.hand` tells the renderer the same thing — the writ
   outline, the reach ring, the armed halo, the minimap pennants and "did I tap my own men"
   answer for the hand; the veil, the camera and the colours answer for the viewer.
+- **AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING.** `gates` fell in with `hold` in a
+  branch whose whole body was `home()`, so it was accepted, written into the helm and printed
+  back in the council row as "ordered to gates" while changing nothing — the dead-button failure
+  the end screen already taught once, and worse here because the row asserts the order stands.
+  Reported from play as *"the bot doesn't even explore to look for gates"*: he was not failing
+  to look, nothing ever sent him. **The order is a MARCH, because a spring is taken before it is
+  built on** — every spring past the opening one lies beyond the writ and `placementError` wants
+  men standing on it — so the doctrine walks the company to the nearest unheld spring inside its
+  own city's REACH (the only ground it may be ordered onto) and the crew then spends what the
+  march won. `freeSpring` is one answer used by both halves on purpose: the march that takes a
+  spring and the mason who builds on it must want the same one, or a lord ends a war with a full
+  purse and no ground. `walls` was never dead — it has a works arm (towers on the court's rim,
+  faced at the nearest rival court) and coming home is the right march for a defensive order.
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.

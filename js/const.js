@@ -348,7 +348,16 @@
      * the size of several boards. */
     reachMul: 1.6,
     reachCap: 3000,
-    perCity: 2,          // scattered springs per city, beside each city's own writ spring
+    /* SCATTERED springs per city, beside each city's own writ spring. Doubled from 2 on a
+     * report from play that a war's ground was too thin: springs are what a Gate is raised on,
+     * Gates are what buy mason crews, and crews are the whole of what a lord can spend — so
+     * this one number is the war's economy and its rate of expansion at once.
+     * Measured before shipping it, because a scatter worldgen cannot place is silently a
+     * smaller number and would have read as the change not working: 16 cities carry 48 springs
+     * at 2 and 80 at 4, identical on five seeds, every one placed. The TOTAL is 1.67x rather
+     * than 2x — every city keeps its own opening spring either way — and it is the SCATTER,
+     * the part you have to march out and take, that doubles. */
+    perCity: 4,
     /* rivers run from the high ground to the sea and BAR a column exactly as a lake does —
      * except that a river crosses the whole country, which is what makes the bridges the
      * road carver builds over them worth their toll, and every bridge is a chokepoint */

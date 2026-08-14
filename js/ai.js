@@ -594,6 +594,26 @@
     }
   };
 
+  /* THE NEAREST SPRING NOBODY HOLDS, INSIDE HIS OWN CITY'S REACH. One answer, because the
+   * march that goes and takes it and the works arm that then raises a Gate on it must want the
+   * SAME spring — sending the company to one and spending the crew on another is how a lord
+   * ends a war with a full purse and no ground. Reach-bounded on purpose: that is the only
+   * ground a company may be ordered onto (`rules.reach`), so a spring outside it is not a
+   * target, it is a refusal repeated every think. */
+  const freeSpring = (v, seat) => {
+    const w = v.world, W = global.World;
+    if (!seat || !w.map || !w.map.sites) return null;
+    const rr = seat.reach ? seat.reach * seat.reach : Infinity;
+    let best = null, bd = Infinity;
+    for (const s of w.map.sites) {
+      if (s.kind !== 'node' || W.nodeHolder(w, s) !== -1) continue;
+      const d = d2(s.x, s.y, seat.x, seat.y);
+      if (d > rr || d >= bd) continue;
+      bd = d; best = s;
+    }
+    return best;
+  };
+
   /* ---------------- baseline bots (skill-gradient proof) ---------------- */
   const BASELINES = {
     /* THE MARCHER — the Reach War's proof of life, not a doctrine. The heirs are MUTE in a
@@ -669,8 +689,26 @@
            * it is struck once, not re-struck every think. */
           if (v.visHostiles.some((u) => d2(u.x, u.y, seat.x, seat.y) < 500 * 500)) {
             home();
-          } else if (mode === 'hold' || mode === 'gates' || mode === 'walls') {
-            home();   // three orders about the ground: the company keeps the court
+          } else if (mode === 'hold' || mode === 'walls') {
+            /* two orders about his own ground: the company keeps the court. WALL UP also has a
+             * works arm below — towers on the rim, faced at the nearest rival court — so it is
+             * an order about what he BUILDS as well as where he stands. */
+            home();
+          } else if (mode === 'gates') {
+            /* ---- GO AND TAKE THE SPRINGS ----
+             * This order used to fall in with `hold` and strike the rally, which is why it did
+             * nothing: reported from play as *"asked to build gates the bot doesn't even
+             * explore to look for gates."* He was not failing to look — nothing ever sent him.
+             * A Gate needs a free spring, and every spring past the opening one is BEYOND the
+             * writ, so it must be TAKEN: `placementError` wants his men standing on it. The
+             * march is therefore the whole order, and the works arm below merely spends what
+             * the march has won.
+             * Bounded by the CITY'S REACH, because that is the only ground he may be ordered
+             * onto (`rules.reach`) — a rally past the rim is refused, and a refusal re-issued
+             * every think is a lord shouting at a wall. */
+            const s = freeSpring(v, seat);
+            if (s && men >= 4) rallyAt(s);
+            else if (!s || men < 2) home();   // nothing left to take, or nobody left to take it
           } else if (mode === 'attack' && w.cities[order.target]) {
             /* MARCHED ON A NAMED COURT, and re-pointed as the company refills — a liege who
              * has to re-issue the order every time a company is spent is a liege doing the
@@ -747,9 +785,17 @@
             if (spot) issue({ c: 'build', x: spot.x, y: spot.y, bt: 'shrine' });
           } else if (v.essence > 400) {
             /* A GATE on a free spring the rules will take — placementError answers reach,
-             * writ and presence in one word, so a spring his men happen to hold counts. */
+             * writ and presence in one word, so a spring his men happen to hold counts.
+             * THE ONE HIS MEN WERE SENT TO IS TRIED FIRST. Under a `gates` order the march
+             * above picks a spring and walks the company onto it; taking the first legal
+             * spring in `map.sites` order instead would spend the crew on whichever one his
+             * writ already covered and leave the company standing on ground he never built,
+             * which is the order half-obeyed and looks from outside exactly like the order
+             * being ignored. Everything else falls through to the old sweep unchanged. */
             let spot = null;
-            for (const s of w.map.sites)
+            const want = mode === 'gates' ? freeSpring(v, seat) : null;
+            if (want && !W.placementError(w, v.me, want.x, want.y, 'gate')) spot = want;
+            if (!spot) for (const s of w.map.sites)
               if (s.kind === 'node' && W.nodeHolder(w, s) === -1 &&
                   !W.placementError(w, v.me, s.x, s.y, 'gate')) { spot = s; break; }
             if (spot) issue({ c: 'build', x: spot.x, y: spot.y, bt: 'gate' });

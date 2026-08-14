@@ -7981,6 +7981,69 @@ suite('the war has answers to a distant walk');
   eq('...and an unstated pace is a board\'s, exactly', walked(rig({ walkMul: 1 }), 20), full);
 }
 
+/* ---------------- GATES IS AN ORDER THAT MOVES AN ARMY ----------------
+ * Reported from play: *"asked to build gates the bot doesn't even explore to look for gates."*
+ * He was not failing to look — nothing ever sent him. `gates` fell in with `hold` in one branch
+ * whose whole body was `home()`, so the order was accepted, written into the helm, printed back
+ * in the council row as "ordered to gates", and changed nothing whatever.
+ * The doctrine now knows what the order MEANS: every spring past the opening one is beyond the
+ * writ and must be TAKEN, men standing on it, before a Gate can go up — so the march is the
+ * order and the crew merely spends what the march won. Bounded by the city's reach, because
+ * that is the only ground a company may be ordered onto. */
+suite('gates is an order that moves an army');
+{
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  ok('the rig is alive: a country with a reach law', !!w && w.rules.reach === 1);
+  if (w) {
+    w.chaosNext = 1e9;
+    const me = 3;
+    const seat = World.seatOf(w, me);
+    const co = w.players[me].companies.find((q) => q.city === me);
+    ok('...and the lord has a company of his own', !!co);
+    /* a free spring inside his reach, or the order has nothing to be about */
+    const free = w.map.sites.filter((s) => s.kind === 'node' && World.nodeHolder(w, s) === -1 &&
+      (s.x - seat.x) ** 2 + (s.y - seat.y) ** 2 <= seat.reach * seat.reach);
+    ok('...and unheld springs inside his reach to be sent at', free.length > 0, `${free.length}`);
+    if (co && free.length) {
+      /* men enough to be worth marching — the doctrine will not send a skeleton company */
+      for (let k = 0; k < 10; k++) {
+        const m = manAt(w, me, 'soldier', seat.x + 30 + k * 8, seat.y);
+        m.co = co.id;
+      }
+      const bot = AI.make('lord', {});
+      const issue = (cmd) => World.applyCommand(w, me, cmd);
+      const drive = (order, n) => { for (let k = 0; k < (n || 4); k++) bot.step(w, me, issue, 1.0, order); };
+      /* THE CONTROL: told to HOLD, he keeps the court — so a rally appearing under `gates`
+       * is the order and not the doctrine wandering off on its own. */
+      drive({ mode: 'hold' });
+      eq('the rig is alive: ordered to hold, no standard stands', co.rally, null);
+      drive({ mode: 'gates' });
+      ok('ordered to the gates, a standard is planted', !!co.rally,
+         co.rally ? 'planted' : 'no rally — the order did nothing');
+      if (co.rally) {
+        const onSpring = free.some((s) =>
+          (co.rally.x - s.x) ** 2 + (co.rally.y - s.y) ** 2 < 60 * 60);
+        ok('...on a spring nobody holds', onSpring,
+           `rally ${Math.round(co.rally.x)},${Math.round(co.rally.y)}`);
+        ok('...inside his own city\'s reach, so the order is not refused',
+           (co.rally.x - seat.x) ** 2 + (co.rally.y - seat.y) ** 2 <= seat.reach * seat.reach);
+      }
+      /* AND IT ENDS IN A GATE. The march is only half the order: let him walk there and spend.
+       * This is the claim the whole change is for — ground held that was not held before. */
+      const gates0 = w.players[me].buildings.filter((b) => b.bt === 'gate').length;
+      w.players[me].essence = 4000;
+      for (let i = 0; i < 30 * 150; i++) {
+        if (i % 30 === 0) bot.step(w, me, issue, 1.0, { mode: 'gates' });
+        World.update(w, C.SIM_DT);
+        w.events.length = 0;
+      }
+      const gates1 = w.players[me].buildings.filter((b) => b.bt === 'gate').length;
+      ok('...and the order ends in a Gate he did not have', gates1 > gates0,
+         `${gates0} -> ${gates1} Gates`);
+    }
+  }
+}
+
 /* ---------------- A THRONE LEFT ALONE MENDS ITSELF ----------------
  * Reported from play: a castle knocked to a sliver stayed there for the rest of the match.
  * Every other work already self-mends; the Seat never did, because it is the CITY record and

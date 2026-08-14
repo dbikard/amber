@@ -14,20 +14,6 @@ touches no balance surface.
 
 ## From play — bugs with a witness
 
-- [ ] **`gates` and `walls` are dead orders, and the council offers them anyway.** From play:
-      *"asked to build gates the bot doesn't even explore to look for gates."* Measured in the
-      source: `js/ai.js` line ~672, `mode === 'hold' || mode === 'gates' || mode === 'walls'`
-      is ONE branch and its whole body is `home()` — strike the rally and keep the court. So two
-      of the five words a liege can say to a sworn lord are accepted, written into the helm,
-      printed back in the council row as "ordered to gates", and change nothing whatever. This
-      is the dead-button failure the end screen already taught once, and it is worse here
-      because the row asserts the order is standing.
-      Two honest ways out and they want deciding before either is written: teach the doctrine to
-      answer them (a `gates` lord prospects for unheld springs inside his reach and raises Gates
-      on them; a `walls` lord spends on curtain where his court is approached), or delete both
-      words until it does. Do not leave them offered. **`ORDERS` in game.js is the list the
-      council draws**, so removing them is a two-line change; teaching them is real doctrine
-      work and belongs with the survey below.
 - [ ] **Review the heirs' play in a war generally.** From play: *"bots intelligence in war reach
       is really bad."* Every lord in a country — sworn or not — runs the `lord` baseline, whose
       entire vocabulary is rallies plus a few probed works, and it was written to make the reach
@@ -37,6 +23,11 @@ touches no balance surface.
       DUEL heirs and mostly still applies; this is the same exercise for the baseline that
       actually plays a war. Start by watching one: `?reach=SEED` boots a country through the
       real renderer with a lord on every other seat.
+      One piece of it is DONE and is the shape the rest should take: `gates` was a dead order
+      (accepted, shown in the council, and `home()` in the doctrine), and teaching it meant
+      working out what the order MEANS on this map — a spring is taken before it is built on, so
+      the order is a march. Expect the other weaknesses to be the same kind: not a bad
+      heuristic, but a sentence the doctrine has no way to say at all.
 - [ ] **Let an heir throw down his own work.** There is no way to remove a building you raised —
       a Gate on a spring that has stopped mattering, a hall in the wrong place, a curtain drawn
       where it now blocks your own march — so an early misplacement is permanent, and the ground
@@ -61,13 +52,6 @@ touches no balance surface.
       or the two are indistinguishable on screen. Input side: `game.js` already has the tap
       plumbing and a 320ms fat-finger guard the double tap has to live inside.
       `[REF]` — this is a real change to how armies fight, not a UI affordance.
-- [ ] **Springs are too thinly spread in a war — double them.** From play. `CONST.REACHWAR`
-      `perCity: 2` is the scatter beside each city's own writ spring (`js/worldgen.js` ~816,
-      `wantScatter = RW.cities * RW.perCity`), so 2 → 4. It is one number, but it is the war's
-      whole economy: springs are what a Gate is raised on, Gates are what buy crews, and crews
-      are what a lord can spend at all. `[REF]` on its own, not stacked with another change —
-      and worldgen has to be re-checked for placement failures at the higher count, since a
-      scatter it cannot place is silently a smaller number.
 
 ## Measured — open questions that already have data behind them
 
