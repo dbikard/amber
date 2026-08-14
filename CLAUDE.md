@@ -599,6 +599,28 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   spring and the mason who builds on it must want the same one, or a lord ends a war with a full
   purse and no ground. `walls` was never dead — it has a works arm (towers on the court's rim,
   faced at the nearest rival court) and coming home is the right march for a defensive order.
+- **AND HIS DEFAULT — no order at all — HAD THE SAME THREE HOLES, all reported from play.** The
+  march asked only "is a court of another banner on my own border", so **an interior lord did
+  nothing whatever**: conquer a cluster and every lord inside it is ringed by his own banner,
+  finds no target, and stands at home for the rest of the war while his halls muster (measured:
+  14 men in his company, ZERO commands in eighty thinks). "Trouble at home" was hostiles within
+  500 of his SEAT, so **Chaos could gnaw an outlying Gate** — the thing his economy rests on —
+  while he stood in his yard. And he never marched to a spring, so **he could never build on
+  one**, because `placementError` wants men standing on it. The default now reads: trouble
+  anywhere in his country (`troubleAt` — the seat means come home, a work means go to the work)
+  → a rival court on his border → a free spring inside his reach (`freeSpring`, the same one
+  `gates` wants) → the neighbouring court of his banner that is pressed or exposed
+  (`reserveAt`) → nothing at all, which is the honest answer when every neighbour is as safe as
+  he is. **A lord behind the lines is a reserve, not a statue.**
+- **THE HEIRS AND THE LORD SHARE PLUMBING AND NOTHING ELSE.** `AI.make` resolves
+  `HEIRS[kind] || BASELINES[kind]`, so both get the same think stagger, the same `step`
+  signature and the same `AI.view`; the DOCTRINE is disjoint, and `lord.custom` opens with
+  `if (!v.world.rules.reach) return;` so it is mute on any board without the reach law. A
+  country fills `game.bots` with lords, so an heir never plays a war, and difficulty
+  (`CONST.DIFFICULTY`: `slow`, `noise`, `eco`, `hold`) is an `opts` bag on an heir and reaches
+  the lord not at all. **A change to the lord baseline therefore cannot move a `node sim.js`
+  score** — the referee plays heir duels — which is why the war doctrine can be worked on
+  without a balance run, and why the heirs' years of doctrine have never been available to a war.
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.

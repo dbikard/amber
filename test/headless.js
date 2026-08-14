@@ -8098,6 +8098,136 @@ suite('an order meant literally');
   }
 }
 
+/* ---------------- A LORD BEHIND THE LINES IS A RESERVE ----------------
+ * Reported from play: *"I don't see lords from cities I conquered order any troop movements."*
+ * The march asked his own neighbours for a court of ANOTHER banner, which is right on a
+ * frontier and leaves an interior lord with nothing at all to do — take a cluster of courts and
+ * every lord inside it is ringed by his own banner, finds no target, and stands at home for the
+ * rest of the war while his halls go on mustering. */
+suite('a lord behind the lines is a reserve');
+{
+  const rig = (swearRing) => {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+    w.chaosNext = 1e9;
+    const nbrs = w.map.gen.nbrs, pi = 5;
+    w.players[pi].realm = 0;
+    if (swearRing) for (const i of (nbrs[pi] || [])) w.players[i].realm = 0;
+    const co = w.players[pi].companies[0];
+    /* a real army, so the eight-man threshold is never what is being measured */
+    for (let k = 0; k < 14; k++) {
+      const u = manAt(w, pi, 'soldier', w.cities[pi].x + 40 + k * 9, w.cities[pi].y + 30);
+      u.co = co.id;
+    }
+    const bot = AI.make('lord', {});
+    const cmds = [];
+    for (let k = 0; k < 80; k++)
+      bot.step(w, pi, (c) => { cmds.push(c.c); return World.applyCommand(w, pi, c); }, 1.0, null);
+    return { w, pi, co, nbrs, cmds };
+  };
+  /* THE CONTROL: on a FRONTIER — neighbours of other banners — he has always marched, so a
+   * silent interior lord is the doctrine's gap and not a dead rig. */
+  const front = rig(false);
+  ok('the rig is alive: a lord with a rival court beside him marches',
+     !!front.co.rally, `${front.cmds.length} commands`);
+  const inside = rig(true);
+  ok('...and every neighbour of the interior lord really is his own banner',
+     (inside.nbrs[inside.pi] || []).every((i) =>
+       World.realmOf(inside.w, inside.w.cities[i].owner) === 0),
+     'the rig did not seal him in');
+  ok('a lord ringed by his own banner still moves his army', !!inside.co.rally,
+     'no standard planted — he stood at home with 14 men');
+  if (inside.co.rally) {
+    const r = inside.co.rally, seat = inside.w.cities[inside.pi];
+    /* AND THE PRIORITY IS STATED, not merely "he went somewhere": ground of his own to TAKE
+     * first — a spring is what a Gate is raised on and what buys the crews — then the court
+     * next door that needs him. Whichever applies, it has to be one of the two. */
+    const spring = inside.w.map.sites.filter((q) => q.kind === 'node' &&
+        World.nodeHolder(inside.w, q) === -1 &&
+        (q.x - seat.x) ** 2 + (q.y - seat.y) ** 2 <= seat.reach * seat.reach)
+      .sort((a, b2) => ((a.x - seat.x) ** 2 + (a.y - seat.y) ** 2) -
+                       ((b2.x - seat.x) ** 2 + (b2.y - seat.y) ** 2))[0];
+    const onNbr = (inside.nbrs[inside.pi] || []).some((i) =>
+      Math.hypot(inside.w.cities[i].x - r.x, inside.w.cities[i].y - r.y) < 60);
+    if (spring) {
+      ok('...to the nearest spring nobody holds, which is ground worth taking',
+         Math.hypot(r.x - spring.x, r.y - spring.y) < 60,
+         `${Math.round(r.x)},${Math.round(r.y)} — the spring is at ${Math.round(spring.x)},${Math.round(spring.y)}`);
+    } else {
+      ok('...to a neighbouring court of his own banner, having no ground left to take', onNbr,
+         `${Math.round(r.x)},${Math.round(r.y)}`);
+    }
+    ok('...and inside his own reach, so the order is not refused',
+       Math.hypot(r.x - seat.x, r.y - seat.y) <= seat.reach);
+  }
+  /* ---- HIS COUNTRY, NOT JUST HIS COURT ----
+   * "Trouble at home" was hostiles within 500 of his SEAT and nothing else, so Chaos could gnaw
+   * an outlying Gate — the thing his whole economy rests on — while he stood in his yard.
+   * Reported from play alongside the above.
+   * NOTE THE WARM-UP: vision is refreshed on the sim's own cadence, and a rig that pushes a
+   * work and a foe into the world and steps the bot on the NEXT tick measures a lord who
+   * cannot see either of them yet. The first version of this rig did exactly that and read as
+   * the doctrine ignoring the attack. */
+  {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+    w.chaosNext = 1e9;
+    const pi = 5;
+    for (const i of [pi].concat(w.map.gen.nbrs[pi] || [])) w.players[i].realm = 0;
+    const co = w.players[pi].companies[0];
+    for (let k = 0; k < 14; k++) {
+      const u = manAt(w, pi, 'soldier', w.cities[pi].x + 40 + k * 9, w.cities[pi].y + 30);
+      u.co = co.id;
+    }
+    const seat = World.seatOf(w, pi), def = C.BUILDINGS.gate;
+    const gx = seat.x + 700, gy = seat.y + 120;
+    w.players[pi].buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: gx, y: gy, cd: 0,
+      raise: 0, raiseFor: 0, hp: def.hp, maxHp: def.hp, lastHurt: -99, node: -1, co: 0 });
+    for (let k = 0; k < 3; k++) {
+      const f = manAt(w, C.CHAOS_ID, 'fiend', gx + 20 + k * 10, gy + 15);
+      f.hp = f.maxHp = 800;
+    }
+    for (let i = 0; i < 8; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    ok('the rig is alive: he can see what is at his own Gate',
+       World.canSee(w, pi, gx + 20, gy + 15));
+    const bot = AI.make('lord', {});
+    for (let k = 0; k < 20; k++) bot.step(w, pi, (c) => World.applyCommand(w, pi, c), 1.0, null);
+    ok('a lord answers Chaos at an outlying Gate of his own',
+       !!co.rally && Math.hypot(co.rally.x - gx, co.rally.y - gy) < 60,
+       co.rally ? `${Math.round(co.rally.x)},${Math.round(co.rally.y)} — the Gate is at ${Math.round(gx)},${Math.round(gy)}`
+                : 'no standard planted');
+  }
+  /* AND A LORD WITH NOTHING LEFT TO DO STAYS PUT — the reserve is for ground worth taking and
+   * a court that needs him, not a rule that keeps every army permanently on the road. The
+   * conditions have to be built rather than assumed: the whole country under one banner, so
+   * nobody is pressed or exposed, AND a lord with no free spring inside his own reach, since
+   * taking one now outranks reinforcing. If this country seats no such lord the claim cannot
+   * be made here and the line says so instead of quietly passing. */
+  {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+    w.chaosNext = 1e9;
+    for (const p of w.players) p.realm = 0;
+    let pi = -1;
+    for (let i = 1; i < w.cities.length; i++) {
+      const s = w.cities[i];
+      const free = w.map.sites.some((q) => q.kind === 'node' && World.nodeHolder(w, q) === -1 &&
+        (q.x - s.x) ** 2 + (q.y - s.y) ** 2 <= s.reach * s.reach);
+      if (!free && w.players[i].companies[0]) { pi = i; break; }
+    }
+    if (pi < 0) {
+      ok('a lord with nothing left to do keeps his own court (skipped)', true,
+         'every lord in this country has a free spring inside his reach');
+    } else {
+      const co = w.players[pi].companies[0];
+      for (let k = 0; k < 14; k++) {
+        const u = manAt(w, pi, 'soldier', w.cities[pi].x + 40 + k * 9, w.cities[pi].y + 30);
+        u.co = co.id;
+      }
+      const bot = AI.make('lord', {});
+      for (let k = 0; k < 40; k++) bot.step(w, pi, (c) => World.applyCommand(w, pi, c), 1.0, null);
+      eq('a lord with nothing left to do keeps his own court', co.rally, null);
+    }
+  }
+}
+
 /* ---------------- GATES IS AN ORDER THAT MOVES AN ARMY ----------------
  * Reported from play: *"asked to build gates the bot doesn't even explore to look for gates."*
  * He was not failing to look — nothing ever sent him. `gates` fell in with `hold` in one branch

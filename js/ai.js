@@ -614,6 +614,70 @@
     return best;
   };
 
+  /* ---- A LORD BEHIND THE LINES IS A RESERVE, NOT A STATUE ----
+   * The march only ever asked his own neighbours for a court of ANOTHER banner, which is right
+   * on a frontier and leaves an interior lord with nothing whatever to do: take a cluster of
+   * courts and every lord inside it is ringed by his own banner, finds no target, and stands at
+   * home for the rest of the war while his halls go on mustering. Measured on a country with a
+   * lord and all three of his neighbours sworn: 14 men in his company and ZERO commands in
+   * eighty thinks. Reported from play as conquered lords never ordering any troop movement.
+   * What a liege actually wants from a vassal behind the lines is REINFORCEMENT, so that is the
+   * fall-through: the neighbouring court of his own banner that most needs him — one with
+   * enemies at it first, then one that merely borders somebody else — and nothing at all when
+   * every neighbour is as safe as he is, because then standing at his own court IS the job.
+   * Bounded by his own reach like every other order he can give; neighbouring reaches overlap
+   * by construction (`reachMul`), so this is nearly always a legal order, and asking first is
+   * what keeps a refusal from being re-issued every think. */
+  /* ---- HIS COUNTRY, NOT JUST HIS COURT ----
+   * "Trouble at home" was hostiles within 500 of his SEAT and nothing else, so a Gate out on a
+   * spring — the thing his whole economy rests on — could be gnawed down by Chaos while he
+   * stood in his yard and never looked up. Reported from play: sworn lords do not defend gates
+   * attacked by Chaos. A work of his under attack IS trouble at home, and the answer is to send
+   * the company to the work rather than to strike the rally and hold the court.
+   * Returns the point to answer, and null when nothing of his is being touched. The seat is
+   * checked first and returned as itself, because a threat AT the court still means "come
+   * home" — which is a different order from "march to that Gate". Reach-bounded like every
+   * order he can give; his own works are inside his writ, so this is nearly always legal. */
+  const troubleAt = (v, seat) => {
+    const w = v.world;
+    if (!v.visHostiles.length) return null;
+    if (v.visHostiles.some((u) => d2(u.x, u.y, seat.x, seat.y) < 500 * 500)) return seat;
+    const rr = seat.reach ? seat.reach * seat.reach : Infinity;
+    let best = null, bd = Infinity;
+    for (const b of v.pl.buildings) {
+      if (b.raise > 0) continue;                       // a shell is not worth the whole company
+      if (d2(b.x, b.y, seat.x, seat.y) > rr) continue; // he may not be ordered past his rim
+      for (const u of v.visHostiles) {
+        const d = d2(u.x, u.y, b.x, b.y);
+        if (d < 260 * 260 && d < bd) { bd = d; best = b; }
+      }
+    }
+    return best;
+  };
+
+  const reserveAt = (v, seat, seatIdx) => {
+    const w = v.world, W = global.World;
+    const nbrs = (w.map.gen.nbrs && w.map.gen.nbrs[seatIdx]) || [];
+    const rr = seat.reach ? seat.reach * seat.reach : Infinity;
+    const mine = W.realmOf(w, v.me);
+    let best = null, bs = 0;
+    for (const i of nbrs) {
+      const c = w.cities[i];
+      if (!c || c.razed || c.owner < 0) continue;
+      if (W.realmOf(w, c.owner) !== mine) continue;
+      if (d2(c.x, c.y, seat.x, seat.y) > rr) continue;
+      const pressed = w.units.some((u) => u.hp > 0 && u.owner >= 0 && W.foe(w, v.me, u.owner) &&
+                                          d2(u.x, u.y, c.x, c.y) < 650 * 650) ? 2 : 0;
+      const exposed = ((w.map.gen.nbrs && w.map.gen.nbrs[i]) || []).some((j) => {
+        const o = w.cities[j];
+        return o && !o.razed && (o.owner < 0 || W.realmOf(w, o.owner) !== mine);
+      }) ? 1 : 0;
+      const s = pressed + exposed;
+      if (s > bs) { bs = s; best = c; }
+    }
+    return best;
+  };
+
   /* ---------------- baseline bots (skill-gradient proof) ---------------- */
   const BASELINES = {
     /* THE MARCHER — the Reach War's proof of life, not a doctrine. The heirs are MUTE in a
@@ -687,8 +751,12 @@
           /* HOLD: hostiles at the court outrank any march. Striking the rally is the whole
            * order — under the reach law a company with no rally holds at its own city — and
            * it is struck once, not re-struck every think. */
-          if (v.visHostiles.some((u) => d2(u.x, u.y, seat.x, seat.y) < 500 * 500)) {
+          const trouble = troubleAt(v, seat);
+          if (trouble === seat) {
             home();
+          } else if (trouble) {
+            /* something of his is being pulled down out in the country — go and stop it */
+            rallyAt(trouble);
           } else if (mode === 'hold' || mode === 'walls') {
             /* two orders about his own ground: the company keeps the court. WALL UP also has a
              * works arm below — towers on the rim, faced at the nearest rival court — so it is
@@ -742,7 +810,25 @@
               if (d < bd) { bd = d; tgt = o; }
             }
             if (tgt && men >= 8) rallyAt(tgt);
-            else if (men < 4 && co.rally) home();
+            /* NOTHING OF ANOTHER BANNER ON HIS OWN BORDER — so he is behind the lines, and a
+             * lord behind the lines reinforces the court that needs him rather than standing
+             * at his own with a growing army. See reserveAt. */
+            else if (!tgt && men >= 8) {
+              /* NOTHING OF ANOTHER BANNER ON HIS OWN BORDER, so he is behind the lines. There
+               * are two useful things a lord back there can do and they go in this order.
+               * FIRST, TAKE A SPRING. Every spring past his opening one lies beyond the writ
+               * and `placementError` wants men standing on it, so a lord who never marches to
+               * one can never build on one — which is why an unordered lord expanded exactly
+               * never, and why "they don't explore to look for shadow gates" is a doctrine gap
+               * and not a bad heuristic. It is the same march the `gates` order gives, wanting
+               * the same spring (`freeSpring`), so an order merely makes deliberate what a lord
+               * behind the lines does anyway.
+               * THEN REINFORCE: with no ground of his own left to take, the court next door
+               * that is pressed or exposed is where his army is worth something. */
+              const spring = freeSpring(v, seat);
+              const help = spring || reserveAt(v, seat, seatIdx);
+              if (help) rallyAt(help); else if (co.rally) home();
+            } else if (men < 4 && co.rally) home();
           }
         }
         /* Does any city he holds carry the Pattern? Public knowledge — the country is
