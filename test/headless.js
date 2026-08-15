@@ -7751,6 +7751,24 @@ suite('a war fits in a pocket');
          `${alive} then ${back.world.units.filter((u) => u.hp > 0).length}`);
     }
 
+    /* --- A DECIDED WAR COMES BACK DECIDED ---
+     * `done` was set on the realm in memory and never written to the record nor read back out
+     * of one, so every load looked undecided and the menu's "a decided war is not resumed"
+     * check could not fire once in the game's life: finish a war, press the war button, and the
+     * same seed came back with its ending waiting to be re-declared. Reported from play as the
+     * end screen of the previous game appearing instead of a new war. */
+    {
+      const r2 = REALM.create(31337);
+      r2.done = 'won';
+      REALM.save(r2);
+      const back2 = REALM.load();
+      ok('the rig is alive: it saved and loaded at all', !!back2, 'nothing came back');
+      eq('a war decided is remembered as decided', back2 && back2.done, 'won');
+      const r3 = REALM.create(31338);
+      REALM.save(r3);
+      eq('...and an undecided one is not', (REALM.load() || {}).done, null);
+    }
+
     /* --- the old war is lost, and said to be --- */
     eq('a saved v2 war reads as saved', REALM.saved(), true);
     store.amber_realm = JSON.stringify({ v: 1, seed: 7, state: {}, marches: [] });

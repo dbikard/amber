@@ -59,6 +59,20 @@ touches no balance surface.
       rather than vanish. `[REF]` — anything that makes a misplaced work cheap changes how
       freely the heirs build.
 
+- [ ] **Make a fenced flow field sparse to its bound.** A field is a `Float32Array` over the
+      WHOLE nav grid — 750KB on a country — and a bounded one only ever fills the cells inside
+      its city's reach: measured, **21% of the grid**. So a country's 74-field working set holds
+      ~55MB where ~12MB would do. The Dijkstra already visits only the disc, so this is
+      allocation and indexing, not search: give the field an origin and a stride of its own and
+      map (gx,gy) into it, returning "unreachable" outside. It would also make a bigger cache
+      ceiling cheap, which is the knob that fixed the war's stutter. `[SAFE]` — no rule changes,
+      and the suite's steering tests are the referee.
+      (Asked and answered while measuring this: a scheme where a company shares ONE field and
+      men orient by PROXIMITY to each other does not help. Reads are 92,793 against 15 builds,
+      6,186 to one — the cost is the Dijkstra, and builds are per distinct GOAL, already
+      essentially one per company. It would also strand followers behind terrain their leader
+      rounded, and collide with `shove`/cohesion, which is local-proximity behaviour already.)
+
 ## Measured — open questions that already have data behind them
 
 These are not guesses. Each carries the numbers it was decided on, and the rig that produced

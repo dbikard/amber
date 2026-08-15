@@ -2698,8 +2698,27 @@
       if (t) { t.at = T; continue; }
       if (!tileQueue.includes(key)) tileQueue.push(key);
     }
-    /* one bake a frame, and only if it is still wanted by the time its turn comes */
+    /* ---- ONE BAKE A FRAME, AND IT IS THE ONE YOU ARE LOOKING AT ----
+     * The queue was insertion-ordered, so after a pan the nine wanted tiles baked in the order
+     * the 3x3 loop happens to visit them — top-left first — and the tile under the MIDDLE of
+     * the screen could be eighth. Reported from play as dark angular artifacts on the ground
+     * that never lift: they are not the veil at all, they are the cheap base showing where no
+     * detail tile has arrived. Measured: the base is 0.28 px per world unit against a tile's
+     * 1.1, so an untiled patch is a 3.9x magnification of a flat bake, and its cliff colouring
+     * smears into exactly those hard dark wedges. A tile costs 91-199ms and one bakes a frame,
+     * so a 3x3 block is over a second of it.
+     * Sorting by distance to the camera's centre does not make the block arrive sooner; it
+     * makes the middle of the screen — where the player is looking — sharpen FIRST, and the
+     * corners last. `want` is small (nine at most), so the sort is free. */
     let key = null;
+    if (tileQueue.length > 1) {
+      const rank = (k) => {
+        const ix = +k.split(':')[0], iy = +k.split(':')[1];
+        const dx = (ix + 0.5) * TILE - cx, dy = (iy + 0.5) * TILE - cy;
+        return dx * dx + dy * dy;
+      };
+      tileQueue.sort((a, b) => rank(a) - rank(b));
+    }
     while (tileQueue.length && key == null) {
       const k = tileQueue.shift();
       if (want.has(k) && !tileMap.has(k)) key = k;

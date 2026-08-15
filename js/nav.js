@@ -306,7 +306,22 @@
     if (ration && nav.builds >= ration) { dbgDeferred++; return null; }
     nav.builds++;
     dbgBuilt++;
-    if (nav.fields.size >= C.NAV.cacheMax) nav.fields.clear();
+    /* ---- THE CEILING IS THE WORLD'S, BECAUSE THE WORKING SET IS ----
+     * `NAV.cacheMax` was sized for a duel: two seats, a handful of goals. A country has sixteen
+     * economies with companies of their own, and its working set MEASURED 74 fields — which sat
+     * just above the ceiling of 48, the worst possible place for it. The cache filled, dropped
+     * EVERYTHING, and every field was built again: measured over twenty simulated seconds,
+     * 1,098 field requests deferred and 41 rebuilt, which is the ration saturated on essentially
+     * every tick — and a deferred field means a man steering straight at his goal instead of
+     * down a field, all over the country. That is what a war felt like.
+     * With room for the working set: 0 deferred, 15 builds, and the sim got FASTER (3.05 ->
+     * 2.29ms a frame) because it stopped rebuilding what it had just thrown away.
+     * A field is a Float32Array over the whole grid — 768KB on a country — so this is a real
+     * memory decision and not a free one; the ceiling is per-world so a duel keeps its 48 and
+     * pays nothing. Making the fields sparse to the bound they are fenced by would make the
+     * whole question cheap, and is written down rather than done here. */
+    const cap = world.navCache != null ? world.navCache : C.NAV.cacheMax;
+    if (nav.fields.size >= cap) nav.fields.clear();
     const built = buildField(nav, world, owner, goal, shut, bound);
     nav.fields.set(key, built);
     return built;

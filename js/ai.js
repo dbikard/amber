@@ -959,7 +959,7 @@
    * stays exactly as it is for every human order; this only decides what the heir ASKS for.
    * Off entirely without `rules.reach`, so a board and `node sim.js` see the caller's own
    * `issue` untouched, byte for byte. */
-  function warOrders(world, me, issue, order) {
+  function warOrders(world, me, issue, order, st) {
     if (!world.rules || !world.rules.reach) return issue;
     const W = global.World;
     /* ---- AND THE LIEGE'S STANDING ORDER IS A BIAS ON THE SAME BRAIN ----
@@ -1023,11 +1023,25 @@
         const told = mode ? orderAim() : null;
         /* the Recall, and every order that means "keep your own court": standards struck */
         if (told === 'home' || (cmd.site === -1 && cmd.x == null && !told)) {
+          if (st) st.aim = null;
           for (const co of cos) if (co.rally) issue({ c: 'rally', co: co.id });
           return { ok: true };
         }
         const at = told || aimOf(cmd);
         if (!at) return { ok: true };
+        /* ---- THE SAME ORDER TWICE IS NOISE, AND HERE IT WAS RUINOUS ----
+         * Under `rules.reach` the sim's banner handler strikes the standards and sets NO aim,
+         * so `pl.banner` stays null and an heir's own `want !== v.banner` latch can never
+         * close: it re-issued its banner every think, and every one of those fanned out to a
+         * rally per company. Measured over thirty simulated seconds of a sixteen-seat war:
+         * 597 rallies, 68 flow fields built and 1,218 field requests DEFERRED — the ration
+         * saturated on essentially every tick, which means men steering blind at the goal
+         * instead of down a field, all over the country. That is the lag.
+         * So the aim is remembered on the bot and the fan-out is skipped while it has not
+         * moved. 40 units is the sim's own threshold for "this is the same order" (see the
+         * lord's `rallyAt`), so the two agree about what repeating an order means. */
+        if (st && st.aim && d2(st.aim.x, st.aim.y, at.x, at.y) < 40 * 40) return { ok: true };
+        if (st) st.aim = { x: at.x, y: at.y };
         let last = { ok: true };
         for (const co of cos) {
           const p = within(cityOfCo(co), at.x, at.y);
@@ -1056,6 +1070,12 @@
     let mission = null;    // {site, bt, since} — march there, build, move on
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
     let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
+    /* WHERE THIS BOT'S ARMY WAS LAST SENT IN A WAR — see warOrders. It is remembered HERE, on
+     * the bot, because the sim cannot remember it for us: under `rules.reach` a banner command
+     * strikes the standards and sets no aim, so `v.banner` stays null forever and an heir's own
+     * "have I already said this?" check can never latch. Without this the heir re-issues its
+     * banner EVERY think and each one fans out to a rally per company. */
+    const warSt = { aim: null };
 
     function decide(world, me, issue, order) {
       const v = view(world, me);
@@ -1603,7 +1623,7 @@
 
     return {
       kind, title: P.title,
-      reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; },
+      reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for
        * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord
        * goes on running his own city, his own purse and his own muster exactly as he did
@@ -1619,7 +1639,7 @@
           timer = interval * rng.next();
         }
         timer -= dt;
-        if (timer <= 0) { timer += interval; decide(world, me, warOrders(world, me, issue, order), order); }
+        if (timer <= 0) { timer += interval; decide(world, me, warOrders(world, me, issue, order, warSt), order); }
       }
     };
   }

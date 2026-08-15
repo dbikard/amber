@@ -173,6 +173,18 @@
       sight: null               // what the land does to a sight line, baked per fog cell
     };
     for (let pi = 0; pi < world.players.length; pi++) world.players[pi].realm = pi;
+    /* ---- A COUNTRY PAYS FOR ITS OWN PATHFINDING ----
+     * Both of these are duel numbers, and a country is sixteen economies rather than two. Its
+     * MEASURED working set is 74 flow fields against a ceiling of 48 — so the cache filled,
+     * dropped everything and rebuilt it, over and over: 1,098 field requests deferred in twenty
+     * simulated seconds, every one of them a man steering blind at his goal instead of down a
+     * field. Given room, the same country deferred NOTHING and the sim got faster (3.05 ->
+     * 2.29ms a frame), because it stopped rebuilding what it had just discarded.
+     * The ration follows for the same reason — one cold field a tick is a duel's budget, and a
+     * reach world's fields are FENCED to a city's disc, which is what makes them affordable at
+     * this size (5.5ms bounded against 70ms open, measured when the reach law was written).
+     * Both are per-WORLD, so a board is untouched to the byte and pays no memory for this. */
+    if (opts && opts.country) { world.navCache = 96; world.navRation = 4; }
     world.nav = NAV.build(world.map.gen);
     bakeSight(world);
     /* EVERY HEIR OPENS WITH A GATE ON HIS OWN SPRING — finished, drawing, and standing where

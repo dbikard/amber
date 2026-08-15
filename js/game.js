@@ -530,6 +530,22 @@
     Rec.end(winner, reason, game.world ? Rec.fromWorld(game.world)
                           : snapCur ? Rec.fromSnap(snapCur, game.viewer) : null);
     const won = winner === game.viewer;
+    /* ---- A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT ----
+     * `realm.done` was written in one place only: where `run.tick` answers. But a war ends
+     * through the SIM as often as through its run — a Seat toppling, or `holdCities` finding
+     * one banner left holding ground — and neither of those ever asks `tick`. So a war won by
+     * force was saved as an UNDECIDED one, `onRealm`'s "a decided war is not resumed" check
+     * never fired, and the menu handed the player back the country he had already won: measured,
+     * pressing the war button after a decided match resumed the same seed rather than dealing a
+     * new one, and its run re-declared the ending on the spot. Reported from play as the end
+     * screen of the previous game appearing instead of a new war.
+     * Marked HERE because this is the one choke point every ending passes through, host and
+     * guest and objective and throne alike — the same argument the seat-fall hold above makes.
+     * It never overwrites an answer `tick` already gave, which is the more specific one. */
+    if (game.war && game.realm) {
+      if (!game.realm.done) game.realm.done = won ? 'won' : 'lost';
+      REALM.save(game.realm);
+    }
     /* whoever it was, name them: with four seats "the other one" is not a person */
     const other = (winner >= 0 && game.names[winner]) || 'Another heir';
     game.endWon = won;

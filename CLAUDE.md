@@ -641,6 +641,30 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   **The `lord` baseline still exists and the game no longer seats it** — its four suites still
   hold it — which means the five words now have TWO implementations and can drift. Deleting it
   is the next step, not a decision anyone should defer twice.
+- **A COUNTRY PAYS FOR ITS OWN PATHFINDING.** `NAV.cacheMax` (48) and `NAV.perTick` (1) are
+  DUEL numbers — two seats, a handful of goals — and a country is sixteen economies. Its measured
+  working set is 74 flow fields, which sat just above the ceiling: the cache filled, dropped
+  EVERYTHING and rebuilt it, over and over. Measured over twenty simulated seconds, 1,098 field
+  requests DEFERRED and 41 rebuilt — the ration saturated on essentially every tick, and a
+  deferred field is a man steering straight at his goal instead of down a field, all over the
+  country. That is what the lag was. Given room (`world.navCache` 96, `world.navRation` 4, both
+  per-WORLD so a board is untouched to the byte): 0 deferred, 15 builds, and the sim got FASTER,
+  3.05 → 2.29ms a frame, because it stopped rebuilding what it had just thrown away.
+  **The reads were never the problem and a proximity scheme would not have helped**: 92,793
+  reads against 15 builds in that window, 6,186 to one. A read is a Map lookup and a bilinear
+  blend; the cost is the Dijkstra, and builds are per distinct GOAL — which is already
+  essentially one per company (74 fields, 41 ordered companies). The lever for fewer fields is
+  fewer distinct goals, which is exactly what one doorway per wall run did (29 fields thrashing
+  → 3), never fewer readers. **What IS wasted is size**: a bounded field is fenced to a city's
+  disc but allocates the whole grid — 750KB, of which the disc is 21%. Sparse-to-the-bound is a
+  4.7x memory cut with no behaviour change, and is written down rather than done.
+- **A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT.** Two links in one chain, both
+  reported from play as the previous game's end screen appearing instead of a new war. `done` was
+  written only where `run.tick` answers — but a war ends through the SIM as often as through its
+  run (a throne down, `holdCities` finding one banner left), and neither asks `tick`; it is set
+  at `endMatch` now, the door every ending passes through. And `done` was never written to the
+  RECORD nor read back out of one, so `REALM.load` always returned a war that looked undecided
+  and the menu's "a decided war is not resumed" check could not fire once in the game's life.
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.

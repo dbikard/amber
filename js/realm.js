@@ -164,7 +164,18 @@
       /* the HELM is the player's own arrangement of the war — which city commands, which
        * stewards keep the rest and under what orders. Not sim state (a steward only ISSUES
        * ordinary commands), but a war put down must come back with its government intact. */
-      helm: realm.helm || null
+      helm: realm.helm || null,
+      /* ---- AND WHETHER IT IS OVER ----
+       * `done` was set on the realm in memory and never written to the record, nor read back
+       * out of one — so `REALM.load` always returned a war that looked undecided, and the
+       * menu's "a decided war is not resumed" check could never fire once in the game's life.
+       * Measured: finish a war, press the war button, and the SAME seed comes back with its
+       * ending waiting to be re-declared. Reported from play as the end screen of the previous
+       * game appearing instead of a new war. Two links in one chain — the other is that a war
+       * decided by the SIM (a throne down, one banner left) never set `done` at all, because
+       * only the run's `tick` wrote it; that is fixed at `endMatch`, the door every ending
+       * passes through. */
+      done: realm.done || null
     };
   }
 
@@ -282,7 +293,10 @@
     /* the old region war cannot be poured into a continuous country: lost, and said once */
     if (p && p.v === 1) { REALM.lost = true; return null; }
     if (!p || p.v !== 2 || p.seed == null) return null;
-    try { return { v: 2, seed: p.seed >>> 0, world: unpack(p), helm: p.helm || null }; }
+    try {
+      return { v: 2, seed: p.seed >>> 0, world: unpack(p), helm: p.helm || null,
+               done: p.done || null };
+    }
     catch (e) { return null; }
   };
   REALM.forget = function () { try { global.localStorage.removeItem(KEY); } catch (e) {} };
