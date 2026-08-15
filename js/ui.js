@@ -346,6 +346,85 @@
     $('council').classList.add('hidden');
     $('hud').classList.remove('hidden');
   };
+  /* THE COUNTRY AS A PICTURE. Drawn once when the council opens — the war goes on running
+   * behind it, but a map that redrew every frame would be a second renderer, and what this
+   * answers ("who holds what, and what can reach what") does not change in the second you
+   * spend looking at it. The ground comes from `Terrain.bakeBase`, which is the same flat
+   * whole-country image the 3D ground already stands on: one ImageData pass, no props, no
+   * blur, milliseconds at any size. If it is not to hand the marks are drawn on bare dark,
+   * because a map with no ground still answers the question. */
+  function warMap(m, H2) {
+    const wrap = document.createElement('div');
+    wrap.className = 'cc-map';
+    const cv = document.createElement('canvas');
+    /* sized to the panel, in device pixels, with the country's own aspect kept */
+    const W2 = Math.min(560, Math.round(window.innerWidth * 0.92));
+    const H3 = Math.max(120, Math.round(W2 * (m.land.h / m.land.w)));
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = W2 * dpr; cv.height = H3 * dpr;
+    cv.style.width = W2 + 'px'; cv.style.height = H3 + 'px';
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const sx = W2 / m.land.w, sy = H3 / m.land.h;
+    g.fillStyle = '#0b0910';
+    g.fillRect(0, 0, W2, H3);
+    if (UI.mapGround) { try { g.drawImage(UI.mapGround, 0, 0, W2, H3); } catch (e) { /* bare dark */ } }
+    /* a wash, so the marks and their names read over painted ground */
+    g.fillStyle = 'rgba(8,6,14,0.42)';
+    g.fillRect(0, 0, W2, H3);
+    /* THE REACHES FIRST, under everything: they are the ground an army may be ordered onto,
+     * which is the question the reach law makes you ask and nothing else on screen answers. */
+    for (const c of m.marks) {
+      if (!c.r || c.razed) continue;
+      g.beginPath();
+      g.ellipse(c.x * sx, c.y * sy, c.r * sx, c.r * sy, 0, 0, 7);
+      g.fillStyle = c.mine ? 'rgba(255,217,138,0.10)' : 'rgba(255,255,255,0.045)';
+      g.fill();
+    }
+    const hit = [];
+    for (const c of m.marks) {
+      const px = c.x * sx, py = c.y * sy;
+      const r = c.hand ? 6.5 : 5;
+      g.beginPath();
+      g.arc(px, py, r, 0, 7);
+      g.fillStyle = c.razed ? '#4a4258' : c.tint;
+      g.fill();
+      /* a court of your own hand wears a ring, exactly as it does on the roster */
+      if (c.hand || c.mine) {
+        g.beginPath(); g.arc(px, py, r + 3, 0, 7);
+        g.strokeStyle = c.hand ? '#ffe9a8' : 'rgba(255,233,168,0.5)';
+        g.lineWidth = c.hand ? 2 : 1; g.stroke();
+      }
+      /* a yielded court is a ring with nothing in it: open, and anyone's who can hold it */
+      if (c.yielded && !c.razed) {
+        g.beginPath(); g.arc(px, py, r + 1, 0, 7);
+        g.strokeStyle = '#9a93a8'; g.lineWidth = 1.5; g.stroke();
+      }
+      g.font = '10px ui-serif, Georgia, serif';
+      g.textAlign = 'center';
+      g.fillStyle = c.razed ? '#6a6478' : (c.mine ? '#ffe9a8' : '#cdc6d8');
+      /* the name below the mark, nudged inside the edges so nothing is cut off */
+      const ty = Math.min(H3 - 3, Math.max(11, py + 14));
+      g.fillText(c.razed ? '(' + c.name + ')' : c.name,
+                 Math.min(W2 - 26, Math.max(26, px)), ty);
+      hit.push({ x: px, y: py, idx: c.idx });
+    }
+    wrap.appendChild(cv);
+    /* TAPPING A COURT IS TAPPING ITS ROW — the same handler, so the map can never become a
+     * second way to reach a city that behaves differently from the first. */
+    cv.addEventListener('click', (e) => {
+      const b = cv.getBoundingClientRect();
+      const cx = e.clientX - b.left, cy = e.clientY - b.top;
+      let best = null, bd = 26 * 26;
+      for (const h of hit) {
+        const d2 = (h.x - cx) * (h.x - cx) + (h.y - cy) * (h.y - cy);
+        if (d2 < bd) { bd = d2; best = h; }
+      }
+      if (best) { H2.onLook(best.idx); UI.councilClose(); }
+    });
+    return wrap;
+  }
+
   UI.council = function (d, H2) {
     const body = $('council-body');
     body.innerHTML = '';
@@ -369,6 +448,19 @@
     top.appendChild(line('men afield', String(d.men)));
     body.appendChild(top);
     if (d.pattern) body.appendChild(el('div', 'cc-note', d.pattern));
+
+    /* ---- THE COUNTRY, DRAWN ----
+     * A roster is a list and a war is a SHAPE. Sixteen courts on 8000x9600 cannot be found by
+     * dragging and cannot be held in the head from a column of names, so the same rows are
+     * drawn as the map they describe: the land as one flat bake, a mark per court in its
+     * BANNER's colour, its name beside it, and its reach as a faint disc — which is the war's
+     * real geometry, since the reach law is what decides where an army may be sent at all.
+     * It is not the minimap and must not become it: the minimap answers "where am I and where
+     * is the fighting" every frame at a glance, and sixteen labels would destroy that. This is
+     * a thing you open, read, and act on.
+     * Tapping a court does exactly what its ROW does, through the same handler — one way to
+     * reach a city, not two that drift apart. */
+    if (d.map && d.map.marks.length) body.appendChild(warMap(d.map, H2));
 
     /* ---- THE COURTS ---- */
     body.appendChild(el('h3', 'cc-head', 'THE COURTS'));

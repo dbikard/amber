@@ -5533,6 +5533,67 @@ async function match(browser, base, renderer) {
     ok('...ordered by how much of the country each holds', cc.termsSorted,
        cc.termHolds.join(' '));
 
+    /* ---- THE COUNTRY, DRAWN ----
+     * A roster is a list and a war is a shape: sixteen courts on 8000x9600 cannot be found by
+     * dragging and cannot be held in the head from a column of names. The map is built from the
+     * same `view.cities` the rows are, so the two cannot disagree about who holds what, and a
+     * tap on a court goes through the SAME handler as its row — one way to reach a city, not
+     * two that drift. The ground is the renderer's own canvas handed over rather than baked a
+     * second time (a country's base is 2237x2684; a second one is twenty-odd megabytes on a
+     * phone for a picture that already exists). */
+    const mp = await pg.evaluate(async () => {
+      const cv = document.querySelector('.cc-map canvas');
+      if (!cv) return { err: 'no map in the council' };
+      const g = window.Game.game, w = g.world, R = window.Render;
+      const land = { w: w.nav.W * w.nav.cw, h: w.nav.H * w.nav.cw };
+      const b = cv.getBoundingClientRect();
+      /* a court that is NOT the one the hand is on, so "it took me somewhere" is a real claim */
+      let idx = -1;
+      for (let i = 0; i < w.cities.length; i++)
+        if (!w.cities[i].razed && w.cities[i].owner !== g.handOf()) { idx = i; break; }
+      if (idx < 0) return { err: 'every court is the hand\'s' };
+      const c = w.cities[idx];
+      const before = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
+      cv.dispatchEvent(new MouseEvent('click', { bubbles: true,
+        clientX: b.left + (c.x / land.w) * b.width, clientY: b.top + (c.y / land.h) * b.height }));
+      await new Promise((res) => setTimeout(res, 260));
+      const mid = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
+      return { ground: !!window.UI.mapGround, aspect: +(b.width / b.height).toFixed(2),
+               want: +(land.w / land.h).toFixed(2),
+               closed: document.getElementById('council').classList.contains('hidden'),
+               moved: before && mid ? Math.round(Math.hypot(mid.x - before.x, mid.y - before.y)) : -1,
+               miss: mid ? Math.round(Math.hypot(mid.x - c.x, mid.y - c.y)) : -1,
+               court: [c.x | 0, c.y | 0] };
+    });
+    ok('the council carries a map of the country', !mp.err, mp.err || '');
+    if (!mp.err) {
+      ok('...drawn on the land itself', mp.ground);
+      ok('...at the country\'s own aspect', Math.abs(mp.aspect - mp.want) < 0.05,
+         `${mp.aspect} against ${mp.want}`);
+      ok('tapping a court on the map takes you to it', mp.miss >= 0 && mp.miss < 400,
+         `${mp.miss} units from ${mp.court}, camera moved ${mp.moved}`);
+      ok('...and closes the council, exactly as its row does', mp.closed);
+    }
+
+    /* THE COUNCIL IS A PLACE YOU GO, SO BACK IS THE WAY OUT OF IT — back to the WAR, which is
+     * still running behind it, and never out of the match. A back press that left the war
+     * because the player happened to have the council open is the worst reading of the
+     * gesture, and it is what happened before the council joined the peel chain. */
+    const backOut = await pg.evaluate(async () => {
+      document.getElementById('war-chip').click();
+      await new Promise((r2) => setTimeout(r2, 200));
+      const open = !document.getElementById('council').classList.contains('hidden');
+      history.back();
+      await new Promise((r2) => setTimeout(r2, 300));
+      return { open, closed: document.getElementById('council').classList.contains('hidden'),
+               hud: !document.getElementById('hud').classList.contains('hidden'),
+               stillIn: !!(window.Game.game.mode && window.Game.game.world) };
+    });
+    ok('the rig is alive: the council was open', backOut.open);
+    ok('back closes the council', backOut.closed);
+    ok('...and puts the HUD back', backOut.hud);
+    ok('...and does NOT leave the war', backOut.stillIn);
+
     /* A ROW IS THE WAY TO A CITY — on 8000x9600 you cannot find a court by dragging the map,
      * which is why taking command of one was effectively unreachable. */
     const jump = await pg.evaluate(async () => {

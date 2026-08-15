@@ -487,6 +487,14 @@ body {
   font-size: 11px; letter-spacing: 3px; color: #c9a44f; font-weight: normal;
   margin: 18px 0 6px; border-bottom: 1px solid #c9a44f33; padding-bottom: 4px;
 }
+/* THE COUNTRY, DRAWN. Sits at the top of the council because it is the thing you came to look
+   at; the roster under it is the same courts said as a list. It scrolls with the panel rather
+   than pinning, so a long country is read by scrolling and not by pinching. */
+.cc-map {
+  margin: 2px 0 4px; border: 1px solid #c9a44f44; border-radius: 4px;
+  overflow: hidden; background: #0b0910; line-height: 0;
+}
+.cc-map canvas { display: block; max-width: 100%; }
 /* A COURT IS A ROW, AND THE ROW IS THE BUTTON. On a country you cannot find a city to tap on
    the map — that was the whole reason the take-command flow was unreachable — so the row jumps
    the camera to it. Yours are lit; the one your own hand is on says so. */

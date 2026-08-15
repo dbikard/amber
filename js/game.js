@@ -312,6 +312,12 @@
     /* the rivals and the LAN table sit over the menu the same way, and peel the same way */
     if (UI.screensOpen && UI.screensOpen()) { UI.screensClose(); return; }
     if (!game.mode) return;                       // at the menu: let the browser have it
+    /* THE COUNCIL IS A PLACE YOU GO, so back is the way out of it — and it is peeled FIRST
+     * because it is a panel over everything else, including a sheet that may still be open
+     * underneath it. It returns to the MATCH and not to the menu: the war is still running
+     * behind it, and a back press that walked out of the war because the player had the
+     * council open would be the worst possible reading of the gesture. */
+    if (UI.councilOpen && UI.councilOpen()) { UI.councilClose(); armBack(); return; }
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
     const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
     if (halted) { issue({ c: 'pause', on: false }); armBack(); return; }
@@ -888,9 +894,26 @@
     const RANK = { asked: 0, sealed: 1, offered: 2, war: 3 };
     terms.sort((a2, b2) => (RANK[a2.state] - RANK[b2.state]) || (b2.n - a2.n) ||
                            a2.name.localeCompare(b2.name));
+    /* ---- AND THE COUNTRY ITSELF, because a roster is a list and a war is a SHAPE ----
+     * Sixteen courts on 8000x9600 cannot be found by dragging and cannot be held in the head
+     * from a list of names. The map is the same `view.cities` the roster is built from — the
+     * one place ownership is read — so the two screens cannot disagree about who holds what.
+     * OWNERSHIP IS LIVE, on the owner's call: it is what the sim publishes to every seat, and
+     * a remembered one would put the map and the row beside it at odds over the same court.
+     * What is NOT here is where the men are. That is fogged everywhere else and this is not the
+     * screen that undoes it: a court is public, an army is not. */
+    const land = { w: view.nav.W * view.nav.cw, h: view.nav.H * view.nav.cw };
+    const marks = view.cities.map((c, ci) => ({
+      idx: ci, x: c.x, y: c.y, r: c.reach || 0,
+      name: view.map.sites[c.site].name || 'a Seat of Power',
+      tint: c.owner < 0 ? hex(C.NEUTRAL_TINT) : tint(c.owner),
+      mine: ours(c.owner), hand: c.owner === hand(),
+      razed: !!c.razed, yielded: c.owner >= 0 ? 0 : 1
+    }));
     return { held: cities.filter((c) => c.mine).length,
              all: view.cities.filter((c) => !c.razed).length,
-             income, crews, free, men, pattern, cities, terms };
+             income, crews, free, men, pattern, cities, terms,
+             map: { land, marks } };
   }
 
   /* ---------------- view assembly (render-ready, fog applied) ---------------- */
@@ -2166,6 +2189,9 @@
       onCouncil: () => {
         const d = councilData();
         if (!d) return;
+        /* the land for the council's map: the renderer's own ground canvas, handed over rather
+         * than baked again — see Render.groundImage. Null is fine; the marks draw on dark. */
+        UI.mapGround = Render.groundImage ? Render.groundImage() : null;
         UI.council(d, councilHandlers);
       },
       onRecall: () => {

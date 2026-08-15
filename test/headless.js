@@ -32,7 +32,12 @@ for (const seed of SEEDS) {
   const w = World.createWorld(seed);
   const ms = Date.now() - t0;
   ok(`seed ${seed} generates`, !!w && !!w.map && w.map.sites.length > 4, `${w && w.map && w.map.sites.length} sites`);
-  ok(`seed ${seed} generates quickly`, ms < 400, `${ms}ms`);
+  /* A WALL-CLOCK THRESHOLD IS LOAD-SENSITIVE, AND THE MESSAGE HAS TO SAY SO. Measured on a
+   * quiet box these are 58-106ms against a ceiling of 400; measured with the browser suite and
+   * another headless run competing for the same cores, 406-600ms. A red line reading only
+   * "468ms" sends the next reader hunting a worldgen regression that is not there. */
+  ok(`seed ${seed} generates quickly`, ms < 400,
+     `${ms}ms — quiet, this is well under 150ms; a figure near the ceiling usually means the box is busy`);
   const stranded = NAV.audit(w.nav, w.map);
   eq(`seed ${seed}: no site is stranded`, stranded.length, 0, stranded.join(','));
   const c0 = w.map.sites[w.map.cities[0]], c1 = w.map.sites[w.map.cities[1]];

@@ -1683,6 +1683,14 @@
     }
     return null;
   };
+  /* THE LAND AS ONE FLAT PICTURE, for anything that wants to draw the country in 2D — the war
+   * council's map today. It is the canvas the ground mesh is ALREADY textured with, handed out
+   * rather than baked again: a country's base is a 2237x2684 canvas and a second one would be
+   * another twenty-odd megabytes on a phone for a picture that already exists, redrawn each
+   * time the panel opened. Handing out the live one also means the map cannot disagree with the
+   * ground — a court that changes hands repaints the wash in both at once. */
+  R.groundImage = () => (ground && ground.material && ground.material.map &&
+                         ground.material.map.image) || null;
   R.model = buildingModel;
   /* THE SEAT IS SEEN TO FALL. The sim ends the match on the tick the last hit lands — the
    * referee's clocks must not move — so the fall is presentation: the tower sinks, tilts and

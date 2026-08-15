@@ -711,6 +711,23 @@ it). Reported from play with a screenshot.
   rest by how much of the country they hold), never by withholding what the sim publishes.
 - **The masons moved to the purse.** They are the same question — what can I spend — and the top
   of the screen had no room left.
+- **THE COUNTRY IS DRAWN, because a roster is a list and a war is a SHAPE.** Sixteen courts on
+  8000x9600 cannot be found by dragging or held in the head from a column of names, so the
+  council opens on a MAP: the land, a mark per court in its BANNER's colour, its name, and its
+  reach as a faint disc — which is the war's real geometry, since the reach law decides where an
+  army may be sent at all. Ownership is LIVE, on the owner's call, because it is what the sim
+  publishes; a remembered one would put the map and the row beside it at odds over the same
+  court. It is built from the same `view.cities` the rows are, and a tap on a court goes through
+  the SAME handler as its row — one way to reach a city, not two that drift. The ground is
+  `Render.groundImage()`, the canvas the 3D ground is already textured with, handed over rather
+  than baked again: a country's base is 2237x2684 and a second one is twenty-odd megabytes on a
+  phone for a picture that already exists. It is NOT the minimap and must not become it — the
+  minimap answers "where am I, where is the fighting" every frame at a glance, and sixteen labels
+  would destroy that.
+- **BACK IS THE WAY OUT OF THE COUNCIL**, peeled FIRST in `onPopState` because it is a panel over
+  everything including a sheet still open beneath it — and it returns to the MATCH, never the
+  menu: the war is running behind it, and a back press that left the war because the council
+  happened to be open is the worst reading of the gesture.
 - **The right rail is a STACK and the chip is its top item.** `#walkers` is anchored at the same
   place, so `UI.warChip` measures the chip and pushes the board below it; without that the two
   sit on each other the moment anybody steps onto the Pattern, which is this same bug one
