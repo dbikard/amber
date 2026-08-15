@@ -940,6 +940,110 @@
     }
   };
 
+  /* ---------------- AN HEIR'S ARMY ORDERS, TRANSLATED FOR A WAR ----------------
+   * THE HEIRS WERE MUTE IN A COUNTRY, and it was one word that did it. Every heir moves its
+   * whole army with `{c:'banner'}` — the royal War Banner — and under the reach law there is no
+   * one banner an army answers: `standingOrder` falls back to a company's OWN CITY, so a
+   * banner order changes nothing at all. Their doctrine was not wrong for a war, it was
+   * SPEAKING A WORD THE WAR DOES NOT HAVE. That is why sixteen seats ran a 181-line baseline
+   * whose whole vocabulary is rally/build/walk, while five heirs with years of doctrine sat
+   * unused.
+   * So the word is translated rather than the doctrine rewritten, in ONE place, so every heir
+   * gains the war at once and none of them has to know the reach law exists:
+   *   - a banner planted anywhere  → every company of his, rallied at that point;
+   *   - the RECALL (`site: -1`)    → every company's standard struck, which is what it means;
+   *   - any rally, his own or ours → clamped into that company's city disc.
+   * CLAMPED, NOT REFUSED. The sim refuses an order past the rim on purpose — a player must be
+   * told the truth rather than have his order silently moved — but a bot with no one to tell
+   * wants the honest reading of the same intent: march as far toward it as I may. The refusal
+   * stays exactly as it is for every human order; this only decides what the heir ASKS for.
+   * Off entirely without `rules.reach`, so a board and `node sim.js` see the caller's own
+   * `issue` untouched, byte for byte. */
+  function warOrders(world, me, issue, order) {
+    if (!world.rules || !world.rules.reach) return issue;
+    const W = global.World;
+    /* ---- AND THE LIEGE'S STANDING ORDER IS A BIAS ON THE SAME BRAIN ----
+     * The five words are implemented in the LORD baseline's `custom`, and an heir has no
+     * `custom` — so the moment heirs took the war's seats, every order the council can give
+     * would have gone silently unread. That is the dead-button failure twice over, and worse
+     * than before, because the council row asserts the order is standing.
+     * They are applied HERE, at the same seam that translates the banner, because that is what
+     * an order actually is: a claim on where the WAR BODY goes. Everything else the heir does —
+     * its economy, its works, its powers, its errand company taking ground — goes on untouched
+     * underneath, which is the whole meaning of "a bias on the same brain, not a second brain".
+     * `hold`, `walls` and an unpressed `support` are all "keep your own court", which under the
+     * reach law is a struck standard and nothing else. */
+    const mode = order && order.mode;
+    const orderAim = () => {
+      const t = order && order.target != null ? world.cities[order.target] : null;
+      if (mode === 'attack') return t || null;
+      if (mode === 'support') {
+        if (!t) return null;
+        const pressed = world.units.some((u) => u.hp > 0 && u.owner >= 0 &&
+          W.foe(world, me, u.owner) && d2(u.x, u.y, t.x, t.y) < 650 * 650);
+        return pressed ? t : 'home';
+      }
+      if (mode === 'gates') {
+        /* the nearest spring nobody holds inside his own court's reach — the same ground the
+         * lord's `gates` order wants, and it must be TAKEN before it can be built on */
+        const seat = W.seatOf(world, me);
+        if (!seat) return null;
+        const rr = seat.reach ? seat.reach * seat.reach : Infinity;
+        let best = null, bd = Infinity;
+        for (const s of world.map.sites) {
+          if (s.kind !== 'node' || W.nodeHolder(world, s) !== -1) continue;
+          const d = d2(s.x, s.y, seat.x, seat.y);
+          if (d > rr || d >= bd) continue;
+          bd = d; best = s;
+        }
+        return best || 'home';
+      }
+      if (mode === 'hold' || mode === 'walls') return 'home';
+      return null;
+    };
+    const cityOfCo = (co) => (co && co.city != null ? world.cities[co.city] : null) ||
+                             W.seatOf(world, me);
+    /* the point itself if it is inside the disc, else the nearest point on the rim toward it */
+    const within = (c, x, y) => {
+      if (!c || !c.reach) return { x, y };
+      const dx = x - c.x, dy = y - c.y, d = Math.hypot(dx, dy);
+      if (d <= c.reach - 1) return { x, y };
+      const k = (c.reach - 2) / (d || 1);
+      return { x: c.x + dx * k, y: c.y + dy * k };
+    };
+    const aimOf = (cmd) => {
+      if (cmd.x != null) return { x: cmd.x, y: cmd.y };
+      const s = cmd.site != null && world.map.sites[cmd.site];
+      return s ? { x: s.x, y: s.y } : null;
+    };
+    return (cmd) => {
+      if (!cmd) return issue(cmd);
+      if (cmd.c === 'banner') {
+        const cos = world.players[me].companies || [];
+        const told = mode ? orderAim() : null;
+        /* the Recall, and every order that means "keep your own court": standards struck */
+        if (told === 'home' || (cmd.site === -1 && cmd.x == null && !told)) {
+          for (const co of cos) if (co.rally) issue({ c: 'rally', co: co.id });
+          return { ok: true };
+        }
+        const at = told || aimOf(cmd);
+        if (!at) return { ok: true };
+        let last = { ok: true };
+        for (const co of cos) {
+          const p = within(cityOfCo(co), at.x, at.y);
+          last = issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
+        }
+        return last;
+      }
+      if (cmd.c === 'rally' && cmd.x != null) {
+        const co = (world.players[me].companies || []).find((q) => q.id === cmd.co);
+        const p = within(cityOfCo(co), cmd.x, cmd.y);
+        return issue(Object.assign({}, cmd, { x: p.x, y: p.y }));
+      }
+      return issue(cmd);
+    };
+  }
+
   function make(kind, opts) {
     opts = opts || {};
     const P = HEIRS[kind] || BASELINES[kind];
@@ -1515,7 +1619,7 @@
           timer = interval * rng.next();
         }
         timer -= dt;
-        if (timer <= 0) { timer += interval; decide(world, me, issue, order); }
+        if (timer <= 0) { timer += interval; decide(world, me, warOrders(world, me, issue, order), order); }
       }
     };
   }

@@ -123,10 +123,8 @@
     game.run = REALM.run(realm);
     if (Render.clearSeatFalls) Render.clearSeatFalls();
     game.world = realm.world;
-    /* the lord if the merge has landed him, the marcher's plainer tongue if not */
-    const kind = AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher';
-    game.bot = AI.make(kind, {});
-    game.bots = game.world.players.map((_, i) => (i === 0 ? null : AI.make(kind, {})));
+    game.bot = warBot(game.world, 1);
+    game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
     game.names = game.world.players.map((_, i) => i === 0 ? 'Corwin'
       : game.world.map.sites[game.world.cities[i].site].name);
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
@@ -142,6 +140,23 @@
   }
   /* putting the war down — every door out of a war runs through here, because a war that
    * only saved on the polite exits would lose an evening to one swipe-up */
+  /* ---- EVERY SEAT IN A WAR IS AN HEIR ----
+   * A country used to run one 181-line baseline on all sixteen seats whose whole vocabulary was
+   * rally/build/walk, while five heirs with years of doctrine sat unused — because an heir moves
+   * its army with `{c:'banner'}` and the reach law has no banner, so an heir in a country was
+   * mute rather than wrong (see `warOrders` in ai.js, which translates the word).
+   * Now: a CONTENDER (`world.heirs`) is a full-strength heir, and every other lord is the same
+   * heir under `CONST.MINOR` — poorer, slower, noisier, and playing the same game. That is what
+   * "a minor lord is a weaker heir" means, and it is the same mechanism the classical game's
+   * footing already uses. The temperament is chosen by SEAT so the same court always fields the
+   * same character, on every machine and across a save, without a byte of state saying so. */
+  function warBot(world, pi) {
+    const kinds = Object.keys(AI.HEIRS);
+    const kind = kinds[pi % kinds.length];
+    const contends = (world.heirs || []).indexOf(pi) >= 0;
+    return AI.make(kind, contends ? {} : Object.assign({}, C.MINOR));
+  }
+
   function saveWar() {
     if (!game.war || !game.realm) return;
     REALM.save(game.realm);
@@ -183,7 +198,11 @@
      * duel, and `game.bots` exists only while a country world does. */
     game.bots = null;
     if (opts && opts.country && game.world.players.length > 2)
-      game.bots = game.world.players.map((_, i) => (i === 0 ? null : AI.make(kind, opts)));
+      /* A RIG THAT SEATS A DOCTRINE THE GAME DOES NOT USE MISLEADS THE PERSON USING IT. The
+       * `?reach=` boot exists so a country can be watched through the real renderer, so it
+       * seats the country exactly as a war does — contenders and minor lords — rather than the
+       * marchers it was given before heirs could speak in a war at all. */
+      game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
     /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
     game.world.players[1].eco = (opts && opts.eco) || 1;
     /* a kind may be an heir or a baseline (the reach rig runs marchers) — both carry a title */
@@ -258,8 +277,8 @@
         game.realm = savedRealm;
         game.run = REALM.run(savedRealm);
         game.world = savedRealm.world;
-        const kind = AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher';
-        game.bots = game.world.players.map((_, i) => (i >= n ? AI.make(kind, {}) : null));
+        /* the seats nobody human took are played exactly as a solo war's are */
+        game.bots = game.world.players.map((_, i) => (i >= n ? warBot(game.world, i) : null));
       } else {
         /* a guest builds the same country from the seed alone — geometry, never history */
         game.world = null;
@@ -383,13 +402,12 @@
     if (game.mode !== 'host' || game.over || !w) return false;
     if (seat == null || seat < 1 || seat >= game.seats) return false;
     if (game.bots && game.bots[seat]) return false;              // already driven
-    /* a war's unclaimed seats run the lord's doctrine, so a war's DESERTED one runs it too;
-     * on a board it is an heir, chosen by the seat so the same seat always gets the same one */
+    /* a war's unclaimed seats are played by heirs, so a war's DESERTED one is played the same
+     * way — `warBot` answers contender-or-minor for that seat. On a board it is a full heir,
+     * chosen by the seat so the same seat always gets the same one. */
     const heirs = Object.keys(AI.HEIRS);
-    const kind = game.war ? (AI.BASELINES && AI.BASELINES.lord ? 'lord' : 'marcher')
-                          : heirs[seat % heirs.length];
     if (!game.bots) game.bots = w.players.map(() => null);
-    game.bots[seat] = AI.make(kind, {});
+    game.bots[seat] = game.war ? warBot(w, seat) : AI.make(heirs[seat % heirs.length], {});
     UI.banner(seatName(seat) + ' has left the table — a shadow of him fights on', 'warn');
     return true;
   }

@@ -5015,8 +5015,8 @@ async function match(browser, base, renderer) {
   }
 
   /* ---------------- the reach dev boot ----------------
-   * `?reach=SEED` is a rig, not a mode: one country through the real renderer, a marcher on
-   * every seat but the viewer's. What must be true: it boots, it is the world it claims to
+   * `?reach=SEED` is a rig, not a mode: one country through the real renderer, seated exactly
+   * as a war seats itself — a contender or a minor lord on every seat but the viewer's. What must be true: it boots, it is the world it claims to
    * be (ten seats, the war's rules, every opening company born to its own city), the fenced
    * march refuses what it should, and the page raises no errors while it runs. */
   {
@@ -5039,7 +5039,7 @@ async function match(browser, base, renderer) {
     });
     ok('the rig boots into a country', boot.seats === boot.want,
        `${boot.seats} seats, want ${boot.want}`);
-    ok('...with the war\'s rules and a marcher on every other seat',
+    ok('...with the war\'s rules and an heir on every other seat',
        boot.reach === 1 && boot.bots === boot.seats - 1, JSON.stringify(boot));
     ok('...every city reaching and every company born to its own',
        boot.cities && boot.cos, JSON.stringify(boot));

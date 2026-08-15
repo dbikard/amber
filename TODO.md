@@ -31,20 +31,23 @@ touches no balance surface.
       here. If so the fix is to re-bake on `webglcontextrestored` / `visibilitychange` rather
       than trusting the texture to survive, and to make that measurable with a debug hook.
 
-- [ ] **Review the heirs' play in a war generally.** From play: *"bots intelligence in war reach
-      is really bad."* Every lord in a country — sworn or not — runs the `lord` baseline, whose
-      entire vocabulary is rallies plus a few probed works, and it was written to make the reach
-      law demonstrable rather than to play well. A country is also where its weaknesses show
-      most: sixteen of them, each with a real economy, on ground where marching is expensive.
-      The survey under "The heirs play one army and one and a half orders" below is about the
-      DUEL heirs and mostly still applies; this is the same exercise for the baseline that
-      actually plays a war. Start by watching one: `?reach=SEED` boots a country through the
-      real renderer with a lord on every other seat.
-      One piece of it is DONE and is the shape the rest should take: `gates` was a dead order
-      (accepted, shown in the council, and `home()` in the doctrine), and teaching it meant
-      working out what the order MEANS on this map — a spring is taken before it is built on, so
-      the order is a march. Expect the other weaknesses to be the same kind: not a bad
-      heuristic, but a sentence the doctrine has no way to say at all.
+- [ ] **Delete the `lord` baseline, or give it a job.** The war seats heirs now (`warBot`), so
+      `BASELINES.lord` is unreachable from the shipped game and only four suites still exercise
+      it. That would be merely untidy except that the liege's five words — `hold`, `gates`,
+      `walls`, `attack`, `support` — are now implemented TWICE: once in `lord.custom`, where
+      nothing runs them, and once in `warOrders`, where everything does. Two spellings of one
+      rule is the drift hazard this codebase keeps warning about, and the unreachable copy is
+      the one a reader will find first. Either delete it and rewrite those suites against
+      heirs, or keep it deliberately as the weakest handicap preset and make `warOrders` the
+      single implementation both use. `[SAFE]` — it cannot touch a duel.
+- [ ] **Watch a country of heirs and judge it.** The retrofit is measured on ECONOMY (Gates,
+      springs, works, men — all roughly tripled) and on cost (0.96 → 2.3ms a frame), not on
+      whether the war is any GOOD to play against. Nobody has watched one yet. `?reach=SEED`
+      now seats the country exactly as a war does, so that is the way in. Do NOT reach for long
+      war simulations to answer this — the doctrines are already proven in the duel and what is
+      wanted here is judgement about the war's shape: whether minor lords at `CONST.MINOR` are
+      weak enough to be minor and strong enough to be worth conquering, whether contenders
+      actually contend, and whether sixteen busy economies make the map legible or noisy.
 - [ ] **Let an heir throw down his own work.** There is no way to remove a building you raised —
       a Gate on a spring that has stopped mattering, a hall in the wrong place, a curtain drawn
       where it now blocks your own march — so an early misplacement is permanent, and the ground

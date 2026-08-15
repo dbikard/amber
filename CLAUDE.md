@@ -612,15 +612,35 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   `gates` wants) → the neighbouring court of his banner that is pressed or exposed
   (`reserveAt`) → nothing at all, which is the honest answer when every neighbour is as safe as
   he is. **A lord behind the lines is a reserve, not a statue.**
-- **THE HEIRS AND THE LORD SHARE PLUMBING AND NOTHING ELSE.** `AI.make` resolves
-  `HEIRS[kind] || BASELINES[kind]`, so both get the same think stagger, the same `step`
-  signature and the same `AI.view`; the DOCTRINE is disjoint, and `lord.custom` opens with
-  `if (!v.world.rules.reach) return;` so it is mute on any board without the reach law. A
-  country fills `game.bots` with lords, so an heir never plays a war, and difficulty
-  (`CONST.DIFFICULTY`: `slow`, `noise`, `eco`, `hold`) is an `opts` bag on an heir and reaches
-  the lord not at all. **A change to the lord baseline therefore cannot move a `node sim.js`
-  score** — the referee plays heir duels — which is why the war doctrine can be worked on
-  without a balance run, and why the heirs' years of doctrine have never been available to a war.
+- **EVERY SEAT IN A WAR IS AN HEIR, AND A MINOR LORD IS A WEAKER ONE.** A country used to run
+  one 181-line baseline (`BASELINES.lord`) on all sixteen seats, whose whole vocabulary was
+  rally/build/walk — no upgrade, no fork, no power, no mend, and only ever `companies[0]` —
+  while five heirs with years of doctrine sat unused. The cause was ONE WORD: an heir moves its
+  army with `{c:'banner'}`, and under the reach law there is no one banner an army answers
+  (`standingOrder` falls back to a company's own city), so an heir in a country was MUTE rather
+  than wrong. So the word is translated and the doctrine is not rewritten: **`warOrders`** (ai.js)
+  wraps `issue` for every bot under `rules.reach` — a banner becomes a rally for each of his
+  companies at that point, the Recall (`site: -1`) strikes every standard, and any rally is
+  CLAMPED into its company's city disc. Clamped, not refused: the sim refuses a human's order
+  past the rim on purpose, and a bot with nobody to tell wants the honest reading of the same
+  intent, *march as far toward it as I may*. Off entirely without `rules.reach`, so a board and
+  `node sim.js` see the caller's own `issue` byte for byte.
+  **The liege's five words are applied at the SAME seam**, because an heir has no `custom` and
+  would otherwise have read none of them — the dead-button failure twice over. `attack`/pressed
+  `support`/`gates` replace the war body's destination; `hold`, `walls` and an unpressed
+  `support` strike the standards, which under the reach law is what "keep your own court" means.
+  Everything else the heir does — its economy, its works, its powers, its errand company taking
+  ground — runs untouched underneath, which is what "a bias on the same brain" means.
+  **`warBot(world, pi)`** in game.js seats it: a CONTENDER (`world.heirs`) is a full-strength
+  heir, every other lord is the same heir under `CONST.MINOR` (slower, noisier, poorer), and the
+  temperament is chosen by SEAT so a court always fields the same character on every machine and
+  across a save without a byte of state saying so. Measured over six simulated minutes on two
+  seeds, lords against heirs: Gates standing 16/17 → 44/55 (sixteen is exactly the opening one
+  apiece — the lords expanded ZERO), springs held 16/17 → 44/55, works 51/48 → 144/189, men
+  236/187 → 697/802. Cost 0.96 → 2.3ms a frame for the whole country, well inside the budget.
+  **The `lord` baseline still exists and the game no longer seats it** — its four suites still
+  hold it — which means the five words now have TWO implementations and can drift. Deleting it
+  is the next step, not a decision anyone should defer twice.
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.

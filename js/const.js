@@ -103,6 +103,15 @@
     prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 0.96, hold: 60,
                blurb: 'Very nearly the heir the other heirs face, and he comes almost at once.' }
   };
+  /* ---- A MINOR LORD IS A WEAKER HEIR, NOT A DUMBER ONE ----
+   * A country seats sixteen and only a few of them contend for the throne (`world.heirs`). The
+   * rest are minor lords, and the temptation is to give them a smaller brain — which is what
+   * the `lord` baseline was, and what made a war feel like a different, worse game than a duel.
+   * They run the SAME doctrine as a contender and are simply poorer and slower at it, which is
+   * exactly what `CONST.DIFFICULTY` already does for the classical game: the heir plays its own
+   * game, only worse off. So a minor lord is a personality plus this handicap, and there is one
+   * brain in the whole of Amber. */
+  CONST.MINOR = { slow: 1.5, noise: 0.20, eco: 0.62 };
   CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];
   CONST.DIFFICULTY_DEFAULT = 'heir';
 
