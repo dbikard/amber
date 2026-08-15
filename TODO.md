@@ -73,6 +73,16 @@ touches no balance surface.
       essentially one per company. It would also strand followers behind terrain their leader
       rounded, and collide with `shove`/cohesion, which is local-proximity behaviour already.)
 
+- [ ] **Detail tiles cost 91-199ms each, one per frame.** After a pan the ground is the cheap
+      base until they arrive — and the base is 0.28 px per world unit against a tile's 1.1, so
+      an untiled patch is a 3.9x magnification whose cliff colouring reads as hard dark wedges.
+      Reported from play as artifacts that never lift. They bake centre-first now, so the middle
+      of the screen sharpens first, but the cost itself is untouched: measured on the most
+      road-heavy tile, ~83ms is the painterly base and ~67ms is the cobblestone road pass. The
+      obvious trades are a lower tile `px` (cost scales with area: 1.1 → 0.85 is ~40% faster and
+      still 3x the base) or caching the road's stone courses instead of drawing rotated stones
+      per cell. Wants a phone to judge the quality loss, not a desktop.
+
 ## Measured — open questions that already have data behind them
 
 These are not guesses. Each carries the numbers it was decided on, and the rig that produced
