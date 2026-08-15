@@ -782,14 +782,16 @@
     const hex = (n) => '#' + n.toString(16).padStart(6, '0');
     const tint = (pi) => hex(Render.tintOf ? Render.tintOf(pi, game.viewer) : C.SEAT_TINT[0]);
     const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || {};
-    /* WHAT THIS HEIR HAS LAID EYES ON, ASKED THE SAME WAY ON BOTH SCREENS. This read
-     * `players[viewer].explored`, which is a field of the WORLD and never crosses the wire —
-     * so a guest's council silently listed none of the courts he had found and offered terms
-     * to nobody, while a host's listed them all. `view.sites` is the memory-filtered site
-     * list both views already carry (live if seen, `live:false` if remembered, absent if
-     * neither), built in ONE place for the host's screen and the wire alike, so a fog rule
-     * cannot land on one of these screens and miss the other. */
-    const found = (site) => !!view.sites[site];
+    /* ---- A COURT IS PUBLIC, AND THE COUNCIL MAY NOT INVENT A FOG THE SIM DOES NOT HAVE ----
+     * `world.cities` — where every court stands, and WHOSE it is — rides to everyone, on the
+     * host's own view and on the wire alike, because in a country "whose is that" IS the map
+     * (see `Net.snapFor`). The council nonetheless hid every row behind having laid eyes on the
+     * site, first through `players[viewer].explored` and then through `view.sites`. On a board
+     * that was invisible; on 8000x9600 it is the whole feature: measured two minutes into a war,
+     * fifteen standing banners all holding ground and the council offered terms to NONE of
+     * them, because the heir had seen one court of sixteen and may never see another.
+     * Reported from play as the council showing no enemies and terms being impossible to offer.
+     * What is fogged is where the ARMIES are, and that has not changed. */
     let income = 0, men = 0, crews = 0, free = 0, pattern = null;
     for (let pi = 0; pi < view.players.length; pi++) {
       if (!ours(pi)) continue;
@@ -805,8 +807,8 @@
     const cities = [];
     for (let ci = 0; ci < view.cities.length; ci++) {
       const c = view.cities[ci];
-      /* fogged like everything else: a court nobody of yours has seen is not on the list */
-      if (!ours(c.owner) && !found(c.site)) continue;
+      /* every court of the country is on the roster: it is public, and a war you cannot see
+       * the shape of is a war you cannot play */
       const mineC = ours(c.owner);
       const lordIdx = c.owner;
       const nm = view.map.sites[c.site].name || 'a Seat of Power';
@@ -863,14 +865,13 @@
         const holds = held2.length;
         if (!holds) continue;
         const his = !!((view.players[pi].offers || [])[me]), mine2 = !!myOffers[pi];
-        /* A BANNER YOU HAVE NOT MET IS NOT ONE YOU CAN TREAT WITH. A country seats sixteen, so
-         * listing every one of them gave fifteen identical rows reading "at war — tap to
-         * offer" — the same noise the tray was moved out of the HUD for, reprinted on a bigger
-         * screen. You must have laid eyes on a court of his; an offer already standing either
-         * way always shows, because a thing waiting on you must never be behind a filter. */
-        if (!his && !mine2 && !held2.some((c) => found(c.site))) continue;
+        /* EVERY STANDING BANNER MAY BE TREATED WITH. Hiding one until you had laid eyes on a
+         * court of his was meant to keep fifteen identical rows out of the panel; what it
+         * actually did was make terms unreachable on a country you cannot walk across. The
+         * noise is a PRESENTATION problem and it is solved by sorting and by the map, never by
+         * withholding a thing the sim publishes. */
         terms.push({
-          idx: pi, name: seatName(pi), tint: tint(pi),
+          idx: pi, name: seatName(pi), tint: tint(pi), n: holds,
           holds: holds + (holds === 1 ? ' city' : ' cities'),
           state: mine2 && his ? 'sealed' : his ? 'asked' : mine2 ? 'offered' : 'war',
           say: mine2 && his ? '⚑ at terms — tap to break'
@@ -879,6 +880,14 @@
         });
       }
     }
+    /* WHAT IS WAITING ON YOU, THEN WHAT IS BIGGEST. A country seats sixteen, so the panel is
+     * long and the order is what makes it readable: a banner ASKING for terms is a thing
+     * waiting on an answer and goes first, then one you are at terms with (the only row that
+     * can be broken), then your own offer standing, then everyone else by how much of the
+     * country they hold — which is the honest reading of who is worth treating with. */
+    const RANK = { asked: 0, sealed: 1, offered: 2, war: 3 };
+    terms.sort((a2, b2) => (RANK[a2.state] - RANK[b2.state]) || (b2.n - a2.n) ||
+                           a2.name.localeCompare(b2.name));
     return { held: cities.filter((c) => c.mine).length,
              all: view.cities.filter((c) => !c.razed).length,
              income, crews, free, men, pattern, cities, terms };

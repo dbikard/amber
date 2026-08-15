@@ -699,10 +699,16 @@ it). Reported from play with a screenshot.
   standing order, its throne — and a row per rival banner for terms. **A row is the way to a
   city**: on 8000×9600 you cannot find a court by dragging, which is why take-command was
   effectively unreachable.
-- **Everything in it is FOGGED like everything else** — `councilData` reads the VIEW, so a court
-  nobody of yours has seen is not listed, and a banner you have never met is not offered terms.
-  That last one is the same rule as the chip's dot: fifteen identical rows reading "at war" is
-  the noise the tray was moved out of the HUD for, reprinted on a bigger screen.
+- **A COURT IS PUBLIC, AND THE COUNCIL MAY NOT INVENT A FOG THE SIM DOES NOT HAVE.** `world.cities`
+  carries where every court stands and WHOSE it is, to every seat, on the host's view and the
+  wire alike — in a country "whose is that" IS the map. The council nonetheless hid every row
+  behind having laid eyes on the site. On a board that is invisible; on 8000x9600 it was the
+  whole feature: measured two minutes into a war, fifteen standing banners all holding ground and
+  terms offered to NONE of them, because the heir had seen one court of sixteen and might never
+  see another. Reported from play as the council showing no enemies. What stays fogged is where
+  the ARMIES are. The fifteen-identical-rows noise it was meant to prevent is a PRESENTATION
+  problem: terms sort by what is waiting on you (asking → at terms → your offer standing → the
+  rest by how much of the country they hold), never by withholding what the sim publishes.
 - **The masons moved to the purse.** They are the same question — what can I spend — and the top
   of the screen had no room left.
 - **The right rail is a STACK and the chip is its top item.** `#walkers` is anchored at the same

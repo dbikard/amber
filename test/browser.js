@@ -5502,16 +5502,36 @@ async function match(browser, base, renderer) {
                courts: rows.length, mine: document.querySelectorAll('.cc-city.mine').length,
                terms: document.querySelectorAll('.cc-term').length,
                stats: document.querySelectorAll('.cc-stat').length,
+               cities: window.Game.game.world.cities.filter((c) => !c.razed).length,
+               /* the holdings each terms row advertises, in the order they are drawn: with
+                * nobody at terms and nobody asking, that order must be biggest first */
+               termHolds: [...document.querySelectorAll('.cc-term')]
+                 .map((e) => { const m = /(\d+)\s+cit/.exec(e.textContent); return m ? +m[1] : -1; }),
                first: rows.length ? rows[0].textContent : '' };
     });
+    cc.termsSorted = cc.termHolds.every((n, i) => i === 0 || cc.termHolds[i - 1] >= n);
     ok('the chip opens the council', cc.open && cc.hudHidden, JSON.stringify(cc));
     /* asserted on the SHAPE, never on the name: a country's cities are named from its seed,
        and pinning one is a test about worldgen wearing a council's clothes */
     ok('...with your banner\'s totals and your own court in it',
        cc.stats === 4 && cc.mine >= 1 && /your own hand/.test(cc.first), JSON.stringify(cc));
-    /* A BANNER YOU HAVE NOT MET IS NOT ONE YOU CAN TREAT WITH. Fifteen rows reading "at war"
-     * is the noise the tray was moved out of the HUD for, reprinted on a bigger screen. */
-    ok('...and no terms are offered to banners you have never met', cc.terms === 0, String(cc.terms));
+    /* ---- A COURT IS PUBLIC, SO EVERY STANDING BANNER MAY BE TREATED WITH ----
+     * This used to assert the opposite — no terms until you had laid eyes on a court of his —
+     * and that rule was a fog the SIM does not have: `world.cities` carries where every court
+     * stands and whose it is, to every seat, because in a country "whose is that" is the map.
+     * On 8000x9600 the invented fog was the whole feature: measured two minutes into a war,
+     * fifteen standing banners all holding ground and terms offered to NONE of them, because
+     * the heir had seen one court of sixteen. Reported from play as the council showing no
+     * enemies. The noise it was meant to prevent is a PRESENTATION problem, and the order is
+     * the answer — which is the next assertion. */
+    ok('...and every standing banner can be treated with', cc.terms > 0,
+       `${cc.terms} banners offered terms`);
+    ok('...every court of the country on the roster', cc.courts === cc.cities,
+       `${cc.courts} rows for ${cc.cities} courts`);
+    /* WHAT IS WAITING ON YOU COMES FIRST, then what is biggest — fifteen rows sorted by
+     * urgency is a list, fifteen in seat order is the noise the filter was hiding. */
+    ok('...ordered by how much of the country each holds', cc.termsSorted,
+       cc.termHolds.join(' '));
 
     /* A ROW IS THE WAY TO A CITY — on 8000x9600 you cannot find a court by dragging the map,
      * which is why taking command of one was effectively unreachable. */
