@@ -1621,6 +1621,13 @@
   /* THE COUNCIL'S FOUR VERBS. `data` is handed back so a row that changes the war can redraw
    * the panel from the same door it was built through — an order given and a panel that still
    * says "no standing order" is the sort of thing that reads as a dead button. */
+  /* THE HANDLERS THE UI IS GIVEN, held so other panels can reach them. `councilHandlers`
+   * delegated to `H` — which never existed: `UI.init` was handed an object LITERAL, so every
+   * council action that forwarded to it (terms, COMMAND, a standing order) threw
+   * `H is not defined` the instant it was tapped and died there. From the panel that is a row
+   * that says "tap to offer" and does nothing at all, which is how it was reported. One name,
+   * assigned where the object is built, and the delegation resolves. */
+  let H = null;
   const councilHandlers = {
     data: councilData,
     /* LOOK: the reason the roster exists. On an 8000x9600 country you cannot find a court by
@@ -2089,7 +2096,7 @@
     }
     await Render.init($('game'));
     window.addEventListener('resize', Render.resize);
-    UI.init({
+    H = {
       /* THE CAMPAIGN IS CHAPTERS NOW, not a rung counter. The button opens the list; the list
        * opens a briefing; the briefing begins the match. The objective is stated BEFORE the
        * board is, which is what makes a varied objective legible rather than confusing. */
@@ -2275,7 +2282,8 @@
       onMenuAgain: () => UI.showMenu(campaignLabel(), campaignNote()),
       /* the codex opens over the menu, where nothing has armed the back button */
       onRollOpen: () => armBack(true)
-    });
+    };
+    UI.init(H);
     const cvs = $('game');
     cvs.addEventListener('pointerdown', onDown);
     cvs.addEventListener('pointermove', onMove);

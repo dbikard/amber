@@ -5618,6 +5618,71 @@ async function match(browser, base, renderer) {
     ok('a court you have seen joins the roster', jump.rows >= 2, JSON.stringify(jump));
     ok('...and tapping its row takes you there and closes the council',
        jump.moved > 200 && jump.closed, JSON.stringify(jump));
+
+    /* ---- EVERY ROW THAT SAYS "TAP" MUST DO SOMETHING WHEN TAPPED ----
+     * `councilHandlers` delegated three of its four actions to `H` — a name that never
+     * existed, because `UI.init` was handed an object LITERAL. Every one of them threw
+     * `H is not defined` the instant it was tapped and died inside the listener, which from
+     * the panel is a row reading "at war — tap to offer" that does nothing whatever.
+     * Reported from play in exactly those words. The one action that DID work (`onLook`, the
+     * row jump above) is the one written inline, which is why it was never caught.
+     * Driven through the real listeners, and asserted on the SIM's state rather than on the
+     * row's text, so a row that merely relabels itself cannot pass. */
+    const acts = await pg.evaluate(async () => {
+      const g = window.Game.game, W = window.World, w = g.world;
+      const out = {};
+      const open = async () => {
+        if (document.getElementById('council').classList.contains('hidden'))
+          document.getElementById('war-chip').click();
+        await new Promise((r2) => setTimeout(r2, 250));
+      };
+      await open();
+      /* TERMS: the offer is the sim's, so read it off the world */
+      const me = W.realmOf(w, g.viewer);
+      const before = (w.players[me].offers || []).filter(Boolean).length;
+      const row = document.querySelector('.cc-term');
+      out.hadTermsRow = !!row;
+      if (row) { row.click(); await new Promise((r2) => setTimeout(r2, 250)); }
+      out.offersBefore = before;
+      out.offersAfter = (w.players[me].offers || []).filter(Boolean).length;
+      /* COMMAND: swear a lord so there is a court of yours that is not already the hand */
+      await open();
+      let lord = -1;
+      for (let i = 1; i < w.players.length; i++)
+        if (w.cities[i] && !w.cities[i].razed && w.cities[i].owner === i) { lord = i; break; }
+      if (lord > 0) w.players[lord].realm = W.realmOf(w, g.viewer);
+      /* close and reopen so the sworn court is on the roster with its actions under it */
+      document.getElementById('war-chip').click();
+      await new Promise((r2) => setTimeout(r2, 150));
+      document.getElementById('war-chip').click();
+      await new Promise((r2) => setTimeout(r2, 300));
+      const handBefore = g.handOf();
+      const btns = [...document.querySelectorAll('.cc-acts .mbtn')];
+      const cmd = btns.find((b) => /COMMAND/.test(b.textContent));
+      out.hadCommand = !!cmd;
+      if (cmd) { cmd.click(); await new Promise((r2) => setTimeout(r2, 250)); }
+      out.handBefore = handBefore;
+      out.handAfter = g.handOf();
+      /* A STANDING ORDER: it lives on the helm, so read it there */
+      await open();
+      const ord = [...document.querySelectorAll('.cc-acts .mbtn')].find((b) => /HOLD/.test(b.textContent));
+      out.hadOrder = !!ord;
+      if (ord) { ord.click(); await new Promise((r2) => setTimeout(r2, 250)); }
+      out.orders = g.realm && g.realm.helm ? Object.keys(g.realm.helm.orders).length : -1;
+      return out;
+    });
+    ok('the rig is alive: the council offered a terms row', acts.hadTermsRow);
+    ok('tapping "tap to offer" actually offers terms',
+       acts.offersAfter > acts.offersBefore,
+       `${acts.offersBefore} offers standing before, ${acts.offersAfter} after`);
+    if (acts.hadCommand) {
+      ok('tapping COMMAND takes command of that court',
+         acts.handAfter !== acts.handBefore, `hand ${acts.handBefore} -> ${acts.handAfter}`);
+    } else ok('tapping COMMAND takes command of that court (skipped)', true, 'no sworn court on the roster');
+    if (acts.hadOrder) {
+      ok('tapping a standing order records one', acts.orders > 0, `${acts.orders} orders on the helm`);
+    } else ok('tapping a standing order records one (skipped)', true, 'no order buttons offered');
+
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }
