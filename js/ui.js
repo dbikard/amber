@@ -462,8 +462,14 @@
      * reach a city, not two that drift apart. */
     if (d.map && d.map.marks.length) body.appendChild(warMap(d.map, H2));
 
-    /* ---- THE COURTS ---- */
+    /* ---- THE COURTS: ONE ROSTER, AND TERMS ARE AN ACTION UNDER A ROW ----
+     * There were two lists about the same thing — a rival banner named once with its holdings
+     * and its state, then again by every court it holds. Terms now sit where every other action
+     * on this panel already lives: an inline strip under the row, exactly as COMMAND and the
+     * standing orders do for a court of your own. A banner's courts are adjacent and only the
+     * FIRST carries the strip, because terms are sworn between banners and not about a court. */
     body.appendChild(el('h3', 'cc-head', 'THE COURTS'));
+    {
     for (const c of d.cities) {
       const row = el('div', 'cc-city' + (c.mine ? ' mine' : '') + (c.hand ? ' hand' : ''));
       row.dataset.ci = c.idx;   // which court this row IS — the roster's order is not it
@@ -497,26 +503,19 @@
           btn(o.on ? '● ' + o.label : o.label, () => { H2.onOrder(c.lordIdx, o.mode, o.target); UI.council(H2.data(), H2); });
         body.appendChild(acts);
       }
-    }
-
-    /* ---- TERMS, one row per rival BANNER ---- */
-    if (d.terms.length) {
-      body.appendChild(el('h3', 'cc-head', 'TERMS'));
-      for (const t of d.terms) {
-        const row = el('div', 'cc-term ' + t.state);
-        const sw = el('i', 'cc-swatch');
-        sw.style.background = t.tint;
-        row.appendChild(sw);
-        const mid = el('div', 'cc-mid');
-        const nm = el('div', 'cc-name');
-        nm.appendChild(el('b', null, t.name));
-        nm.appendChild(el('span', 'cc-lord', t.holds));
-        mid.appendChild(nm);
-        mid.appendChild(el('div', 'cc-sub', t.say));
-        row.appendChild(mid);
-        row.addEventListener('click', () => { H2.onTerms(t.idx); UI.council(H2.data(), H2); });
-        body.appendChild(row);
+      /* ...and the terms a RIVAL banner is under, in the same place, on the first of its courts.
+       * The banner names itself here because the row above is a court: "KASHFA · 3 cities" is
+       * the whole of what the terms list used to say. */
+      if (c.terms) {
+        const acts = el('div', 'cc-acts cc-terms ' + c.terms.state);
+        acts.dataset.pi = c.terms.idx;   // which BANNER this offer is with — the label may repeat
+        acts.appendChild(el('span', 'cc-with', c.terms.name + ' · ' + c.terms.holds));
+        const b = el('button', 'mbtn small', c.terms.act);
+        b.addEventListener('click', () => { H2.onTerms(c.terms.idx); UI.council(H2.data(), H2); });
+        acts.appendChild(b);
+        body.appendChild(acts);
       }
+    }
     }
     $('hud').classList.add('hidden');
     $('council').classList.remove('hidden');

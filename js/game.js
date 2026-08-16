@@ -870,7 +870,14 @@
               : o.mode === 'support' ? 'ordered to support ' + ((view.cities[o.target] && view.map.sites[view.cities[o.target].site].name) || 'a court')
               : 'ordered to ' + o.mode);
           }
-        } else sub.push(seatName(c.owner) + '’s');
+        } else {
+          /* A COURT DOES NOT NEED TO SAY ITS OWN NAME BACK. In a country a lord is NAMED for his
+           * city, so a rival court's row read "KASHFA — KASHFA's", and with the banner strip now
+           * under it that was the same word three times. What is worth saying is the thing the
+           * row cannot show on its own: whose banner he answers to, when it is not his own. */
+          const rl = World.realmOf(view, c.owner);
+          if (rl !== c.owner) sub.push('sworn to ' + seatName(rl));
+        }
       }
       const nbrs = ((view.map.gen.nbrs && view.map.gen.nbrs[ci]) || [])
         .filter((i) => view.cities[i] && !ours(view.cities[i].owner) && !view.cities[i].razed)
@@ -879,6 +886,9 @@
                        on: orders[lordIdx] && orders[lordIdx].mode === 'attack' && orders[lordIdx].target === i }));
       cities.push({
         idx: ci, lordIdx, name: nm, mine: mineC, hand: c.owner === hand(),
+        /* WHOSE BANNER THIS COURT IS UNDER — the key the roster is grouped by. -1 is a court
+         * with no lord at all (yielded, or thrown down), which belongs to nobody's banner. */
+        realm: c.owner >= 0 ? World.realmOf(view, c.owner) : -1,
         tint: c.owner < 0 ? hex(C.NEUTRAL_TINT) : tint(c.owner),
         lord: c.owner < 0 ? 'no lord' : (mineC ? (c.owner === hand() ? 'your own hand' : 'sworn to you') : ''),
         sub: sub.join(' · '),
@@ -916,7 +926,12 @@
           state: mine2 && his ? 'sealed' : his ? 'asked' : mine2 ? 'offered' : 'war',
           say: mine2 && his ? '⚑ at terms — tap to break'
              : his ? 'asks for terms — tap to accept'
-             : mine2 ? 'your offer stands — tap to withdraw' : 'at war — tap to offer'
+             : mine2 ? 'your offer stands — tap to withdraw' : 'at war — tap to offer',
+          /* THE SAME THING AS A BUTTON. The roster is one list now and terms are a button under
+           * a court, so the state needs a label in the imperative — "tap to offer" reads as an
+           * instruction on a row and as a stutter on a button that is already tappable. */
+          act: mine2 && his ? '⚑ BREAK TERMS' : his ? '⚑ ACCEPT TERMS'
+             : mine2 ? '⚑ WITHDRAW OFFER' : '⚑ OFFER TERMS'
         });
       }
     }
@@ -928,6 +943,53 @@
     const RANK = { asked: 0, sealed: 1, offered: 2, war: 3 };
     terms.sort((a2, b2) => (RANK[a2.state] - RANK[b2.state]) || (b2.n - a2.n) ||
                            a2.name.localeCompare(b2.name));
+    /* ---- ONE ROSTER: A COURT IS A ROW, AND TERMS ARE A BUTTON UNDER ONE ----
+     * The courts and the terms were two lists about the same thing: a rival banner named once
+     * with its holdings and its state, and again by every court it holds. Reported from play as
+     * redundant, and it was — the same fifteen banners twice, on a panel already long enough
+     * that the second list was below the fold.
+     * THE FIX IS NOT A SECOND HEADING. Grouping the courts under banner header rows was tried
+     * and measured first: it reads better, and it does not CONDENSE — sixteen headers plus
+     * sixteen courts is 32 rows against the 31 it replaced, because at genesis every banner
+     * holds exactly one court. So terms go where every other action on this panel already
+     * lives: an inline strip under the row, exactly as COMMAND and the standing orders do for a
+     * court of your own. One tap target per thing you can do, and no heading at all.
+     * It is drawn under a banner's FIRST court and no others, because terms are sworn between
+     * BANNERS — five identical buttons under five courts would be the redundancy again, one
+     * level down. `cities` is therefore ordered so a banner's courts are adjacent.
+     * Grouped off the CITIES rather than off `terms`, because the cities are the thing that is
+     * certainly there: a banner that is `out`, or one the truce rules never built a terms row
+     * for, still holds ground and still needs its courts on the roster. */
+    const byRealm = new Map();
+    for (const c of cities) {
+      let g = byRealm.get(c.realm);
+      if (!g) byRealm.set(c.realm, (g = { realm: c.realm, cities: [] }));
+      g.cities.push(c);
+    }
+    const termOf = new Map(terms.map((t) => [t.idx, t]));
+    const groups = [...byRealm.values()].map((g) => {
+      const t = termOf.get(g.realm);
+      return { realm: g.realm, cities: g.cities, mine: g.realm === me, t,
+               n: g.cities.length,
+               name: g.realm < 0 ? '' : seatName(g.realm) };
+    });
+    /* yours first, then whatever is waiting on you, then the biggest — the order the terms list
+     * already used, now carrying its courts with it. Ground nobody holds is last: it is the
+     * only group that is not a player. */
+    groups.sort((a2, b2) => (b2.mine - a2.mine) || ((a2.realm < 0) - (b2.realm < 0)) ||
+                            ((a2.t ? RANK[a2.t.state] : 9) - (b2.t ? RANK[b2.t.state] : 9)) ||
+                            (b2.n - a2.n) || a2.name.localeCompare(b2.name));
+    /* flattened back into ONE list of courts, each carrying the terms strip only if it is the
+     * first court of a banner you may treat with */
+    cities.length = 0;
+    for (const g of groups) for (let k = 0; k < g.cities.length; k++) {
+      const c = g.cities[k];
+      c.terms = (k === 0 && g.t)
+        ? { idx: g.realm, name: g.t.name, state: g.t.state, act: g.t.act,
+            holds: g.n + (g.n === 1 ? ' city' : ' cities') }
+        : null;
+      cities.push(c);
+    }
     /* ---- AND THE COUNTRY ITSELF, because a roster is a list and a war is a SHAPE ----
      * Sixteen courts on 8000x9600 cannot be found by dragging and cannot be held in the head
      * from a list of names. The map is the same `view.cities` the roster is built from — the

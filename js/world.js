@@ -4141,9 +4141,26 @@
        * is cleared rather than left, because `acquire` would have cleared it — the difference
        * would be invisible for as long as nothing read it, which is exactly the kind of drift
        * the equivalence suite exists to refuse. */
+      /* ---- A MAN ENGAGES WHAT HE CAN ACTUALLY HIT ----
+       * `def.range` belongs in this max, and it was missing. `aggro` is "how far will I go
+       * LOOKING for a fight" and it is rightly the smaller number for everyone who has to walk
+       * up to what he strikes — but for every unit in the game bar one it is also the LARGER of
+       * the two, so the difference had never mattered and the rule read as if it did not exist.
+       * The Bombard is the exception, and it is the exception on purpose: 365 reach against 240
+       * aggro, sold on out-ranging every tower ever raised. It could not use a foot of that
+       * against a Seat. `acquire`'s radius was its aggro, so it engaged only what it had walked
+       * within 240 of, while a Seat is struck out to `range + 36` = 401 — and being a SHOOTER it
+       * is deliberately held in the back line, standing off behind the fighting men, which parks
+       * it precisely in the band where it can see the throne and will not fire.
+       * Measured: a bombard 260 from a rival court — comfortably inside its own reach — dealt
+       * ZERO over twenty seconds. Reported from play as cannons staying idle instead of
+       * attacking the city tower.
+       * Nothing here names the Bombard: a man engages what he can hit, so a longer-reaching kind
+       * added later lands on the right side of this by having a reach. */
       let mark = null;
       if (world.hush) u._t = null;
-      else mark = acquire(world, u, Math.max(def.aggro, par ? C.WALL.over : 0, gar) + (home ? C.CITY.homeAggro : 0));
+      else mark = acquire(world, u, Math.max(def.aggro, def.range, par ? C.WALL.over : 0, gar) +
+                                    (home ? C.CITY.homeAggro : 0));
       /* HE GOES ON TO HIS PLACE WHILE HE FIGHTS. Every other man with a foe in reach stands
        * where he is, which is right — but a garrison's places are dealt by a roster that moves
        * with the fighting, and a man who stops the moment anything is in range can neither

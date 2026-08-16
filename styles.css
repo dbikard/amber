@@ -515,8 +515,15 @@ body {
 .cc-bar { height: 4px; background: rgba(0,0,0,0.55); border-radius: 2px; margin-top: 5px; overflow: hidden; }
 .cc-bar i { display: block; height: 100%; }
 /* the orders under a court of your own — the same five words the lord's doctrine takes */
-.cc-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 8px 20px; }
+.cc-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 8px 20px; }
 .cc-acts .mbtn.small { margin: 0; font-size: 11px; padding: 5px 9px; min-width: 0; }
+/* TERMS ARE AN ACTION UNDER A COURT, not a second list of the same banners. The banner names
+   itself here because the row above is a court; the state is carried by the button's colour,
+   which is the one thing that used to need a row of its own. */
+.cc-terms .cc-with { font-size: 11px; color: #8d8478; letter-spacing: 0.5px; }
+.cc-terms.sealed .mbtn.small { border-color: #9fe6b0aa; color: #cfeed8; }
+.cc-terms.asked .mbtn.small { border-color: #ffe9a8cc; color: #ffe9a8; }
+.cc-terms.offered .mbtn.small { border-style: dashed; }
 .cc-term.sealed { border-color: #9fe6b0aa; background: rgba(16, 34, 22, 0.55); }
 .cc-term.asked { border-color: #ffe9a8cc; }
 .cc-term.offered { border-style: dashed; }

@@ -5500,12 +5500,12 @@ async function match(browser, base, renderer) {
       return { open: !document.getElementById('council').classList.contains('hidden'),
                hudHidden: document.getElementById('hud').classList.contains('hidden'),
                courts: rows.length, mine: document.querySelectorAll('.cc-city.mine').length,
-               terms: document.querySelectorAll('.cc-term').length,
+               terms: document.querySelectorAll('.cc-terms').length,
                stats: document.querySelectorAll('.cc-stat').length,
                cities: window.Game.game.world.cities.filter((c) => !c.razed).length,
                /* the holdings each terms row advertises, in the order they are drawn: with
                 * nobody at terms and nobody asking, that order must be biggest first */
-               termHolds: [...document.querySelectorAll('.cc-term')]
+               termHolds: [...document.querySelectorAll('.cc-terms')]
                  .map((e) => { const m = /(\d+)\s+cit/.exec(e.textContent); return m ? +m[1] : -1; }),
                first: rows.length ? rows[0].textContent : '' };
     });
@@ -5532,6 +5532,38 @@ async function match(browser, base, renderer) {
      * urgency is a list, fifteen in seat order is the noise the filter was hiding. */
     ok('...ordered by how much of the country each holds', cc.termsSorted,
        cc.termHolds.join(' '));
+    /* ---- ONE ROSTER, NOT TWO ----
+     * The courts and the terms were separate lists about the same banners — named once with
+     * their holdings, then again by every court they hold. Reported from play as redundant.
+     * Terms are an action strip under a court now, exactly where COMMAND and the standing
+     * orders already live, and there is no TERMS heading at all. Asserted three ways, because
+     * "it looks merged" is not a claim: the old section is GONE, a banner is offered terms
+     * ONCE however many courts it holds, and the strip still sits under a court row. */
+    const one = await pg.evaluate(() => {
+      const heads = [...document.querySelectorAll('.cc-head')].map((h) => h.textContent.trim());
+      const strips = [...document.querySelectorAll('.cc-terms')];
+      /* by the BANNER the strip is for, never by its label — a country names courts from its
+       * seed and several may fall back to the same one, which read as a duplicate that wasn't */
+      const names = strips.map((s) => s.dataset.pi);
+      const w = window.Game.game.world;
+      /* how many banners actually hold ground, minus your own — the number of strips there
+       * should be, whatever the courts are doing */
+      const me = window.World.realmOf(w, window.Game.game.viewer);
+      const banners = new Set();
+      for (const c of w.cities) if (c.owner >= 0 && !c.razed) banners.add(window.World.realmOf(w, c.owner));
+      banners.delete(me);
+      return { heads, strips: strips.length, banners: banners.size,
+               dupes: names.length - new Set(names).size,
+               underCourt: strips.every((s) => s.previousElementSibling &&
+                 /cc-city|cc-acts/.test(s.previousElementSibling.className)) };
+    });
+    ok('there is no second list: the TERMS heading is gone',
+       one.heads.indexOf('TERMS') < 0, one.heads.join(' | '));
+    ok('...a banner is offered terms once, however many courts it holds',
+       one.dupes === 0 && one.strips === one.banners,
+       `${one.strips} strips, ${one.banners} rival banners, ${one.dupes} repeated`);
+    ok('...and the offer sits under a court, where every other action on this panel lives',
+       one.underCourt, JSON.stringify(one));
 
     /* ---- THE COUNTRY, DRAWN ----
      * A roster is a list and a war is a shape: sixteen courts on 8000x9600 cannot be found by
@@ -5663,7 +5695,7 @@ async function match(browser, base, renderer) {
       /* TERMS: the offer is the sim's, so read it off the world */
       const me = W.realmOf(w, g.viewer);
       const before = (w.players[me].offers || []).filter(Boolean).length;
-      const row = document.querySelector('.cc-term');
+      const row = document.querySelector('.cc-terms .mbtn');
       out.hadTermsRow = !!row;
       if (row) { row.click(); await new Promise((r2) => setTimeout(r2, 250)); }
       out.offersBefore = before;

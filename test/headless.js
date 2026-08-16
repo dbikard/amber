@@ -8540,6 +8540,66 @@ suite('a deserted seat is played by somebody');
      `${held.men} against ${idle.men}`);
 }
 
+/* ---------------- A MAN ENGAGES WHAT HE CAN ACTUALLY HIT ----------------
+ * Reported from play: *"my cannons are staying idle instead of attacking the city tower."*
+ * `acquire`'s radius was the man's `aggro` — how far he will go LOOKING for a fight — and for
+ * every unit in the game bar one that is also the LARGER of aggro and reach, so the difference
+ * had never mattered and the rule read as though it did not exist. The Bombard is the exception
+ * on purpose: 365 reach against 240 aggro, sold on out-ranging every tower ever raised. It could
+ * not use a foot of that. Worse, being a SHOOTER it is held in the back line by design, standing
+ * off behind the fighting men — which parks it exactly in the band where it can see the throne
+ * and will not fire.
+ * The rig is the whole claim: a bombard placed at a measured distance from a rival court, left
+ * alone, and asked whether the throne loses hit points. The `bare` arm clears the rival's
+ * opening works first, because otherwise it shoots those instead — correctly, `acquire` takes
+ * the NEAREST — and the test would be measuring target choice rather than reach. */
+suite('a man engages what he can actually hit');
+{
+  /* the one unit whose reach exceeds his aggro; if that ever stops being true, say so here
+   * rather than letting this suite quietly become a test of nothing */
+  const over = Object.entries(C.UNITS).filter(([, d]) => d.range > d.aggro).map(([k]) => k);
+  ok('the rig is alive: a kind whose reach out-runs his aggro exists', over.length > 0,
+     over.join(',') || 'none — this suite has nothing to hold');
+  const gun = (dist, bare) => {
+    const w = World.createWorld(9, 2);
+    w.chaosNext = 1e9;
+    const city = World.seatOf(w, 1);
+    if (bare) w.players[1].buildings.length = 0;
+    const u = manAt(w, 0, 'bombard', city.x + dist, city.y);
+    const hp0 = city.hp;
+    for (let i = 0; i < 30 * 20; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    return { dealt: hp0 - city.hp, moved: Math.hypot(u.x - (city.x + dist), u.y - city.y) };
+  };
+  const d = C.UNITS.bombard, reach = d.range + 36;   // what `mark.d <= reach` allows for a Seat
+  ok('the rig is alive: a bombard out-reaches his own aggro against a throne',
+     reach > d.aggro, `strikes to ${reach}, looks to ${d.aggro}`);
+  /* INSIDE the old aggro — this always worked, and it is the control that says the rig fires */
+  const near = gun(200, true);
+  ok('a bombard inside his aggro brings the throne down', near.dealt > 0, `${near.dealt.toFixed(0)} dealt`);
+  /* BEYOND it, and still well inside his reach — this is the bug, and it was zero */
+  for (const dist of [260, 300, 360]) {
+    const far = gun(dist, true);
+    ok(`...and so does one at ${dist}, past his aggro and inside his reach`, far.dealt > 0,
+       `${far.dealt.toFixed(0)} dealt`);
+    ok('...without taking a step, which is what the stand-off IS', far.moved < 5,
+       `moved ${far.moved.toFixed(1)}`);
+  }
+  /* AND THE REACH IS STILL A LIMIT — "as far as he can hit", not "always".
+   * NOT tested just past `reach`: measured, a bombard dropped at 441 or 521 WALKS IN to exactly
+   * 365 (his range) and opens fire, which is correct and is what any unit does with a target it
+   * cannot yet reach. The claim here is about the radius he can find one at, so it is asked far
+   * enough out that walking cannot confuse it — at 700 he never engages at all and wanders off
+   * (measured: 701 -> 889 over the same twenty seconds, nothing dealt). */
+  const out = gun(700, true);
+  ok('a bombard far past his own reach never engages at all', out.dealt === 0,
+     `${out.dealt.toFixed(0)} dealt`);
+  /* AND THE NEAREST TARGET STILL WINS: with the rival's works standing he shoots those, not
+   * the throne behind them. A wider look must not become a preference for the bigger prize. */
+  const past = gun(300, false);
+  ok('...and a work in front of the throne is still the nearer target', past.dealt === 0,
+     `${past.dealt.toFixed(0)} dealt to the throne`);
+}
+
 /* ---------------- THE STONE NEAR A MAN IS BINNED, AND IT IS THE SAME ANSWER ----------------
  * Reported from play, with a screenshot of a country sixteen minutes in: serious lag.
  * `stand` and `steerClear` each answered "what works are near me" by walking every building of

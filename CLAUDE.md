@@ -444,6 +444,21 @@ one answer to who a hall raises and how often; `def.spawns` is only ever its lev
 A hall that forks clamps `b.paid` — a part-paid dear recruit becoming a cheap one would hand out
 several men at once. `br` never rides the wire to a rival (`net.js`), so a fork stays private.
 
+**A MAN ENGAGES WHAT HE CAN ACTUALLY HIT.** `acquire`'s radius is `max(aggro, range, ...)`, and
+`range` was missing from it. `aggro` is "how far will I go LOOKING for a fight" and is rightly
+the smaller number for anyone who must walk up to what he strikes — but for every unit bar one it
+is also the LARGER of the two, so the omission could not show. The Bombard is the exception on
+purpose: 365 reach against 240 aggro, sold on out-ranging every tower ever raised. It could not
+use a foot of it — and being a SHOOTER it is held in the back line by design, which parks it
+precisely in the band where it can see the throne and will not fire. Measured: a bombard 260 from
+a rival court, well inside its own reach, dealt ZERO in twenty seconds; the only way it ever
+fired on a Seat was to walk inside the Seat gun's range and die there. Reported from play as
+cannons staying idle instead of attacking the city tower. `node sim.js` before and after: mirrors
+and the skill gradient unchanged, the contested Pattern share 58% → 55% (target 50), the two
+roads 59/38 → 61/36 by force, and julian — the one heir whose doctrine always forks to `bombard`
+— went 10 wins to 12. Nothing names the Bombard: a longer-reaching kind added later lands on the
+right side of this by having a reach.
+
 **Three flags on `CONST.UNITS` decide what a man is for.** `menOnly` — no target among works or
 Seats *at all*; `acquire` returns before it looks, so he walks past stone hunting men. Every
 shooter has it, which is why no host of archers, sorcerers, wardens and binders can end a match,
@@ -794,6 +809,21 @@ it). Reported from play with a screenshot.
   the ARMIES are. The fifteen-identical-rows noise it was meant to prevent is a PRESENTATION
   problem: terms sort by what is waiting on you (asking → at terms → your offer standing → the
   rest by how much of the country they hold), never by withholding what the sim publishes.
+- **ONE ROSTER, AND TERMS ARE AN ACTION UNDER A COURT.** THE COURTS and TERMS were two lists
+  about the same banners — a rival named once with its holdings and its state, then again by
+  every court it holds. Reported from play as redundant. **Grouping the courts under banner
+  header rows was tried first and measured: it reads better and does not CONDENSE** — sixteen
+  headers plus sixteen courts is 32 rows against the 31 it replaced, because at genesis every
+  banner holds exactly one court. So terms go where every other action on this panel already
+  lives: an inline `cc-acts` strip under the row, exactly as COMMAND and the standing orders do
+  for a court of your own, and there is no TERMS heading at all. It is drawn under a banner's
+  FIRST court and no others — terms are sworn between BANNERS, so five identical buttons under
+  five courts would be the same redundancy one level down — which is why `cities` is ordered so
+  a banner's courts are adjacent. The strip carries `data-pi` because its LABEL may repeat: a
+  country names courts from its seed and several fall back to "a City of Shadow", which a test
+  comparing labels read as a duplicate that was not there. And a rival court's sub-line no longer
+  says its own name back at you (a lord is NAMED for his city, so the row read "KASHFA —
+  KASHFA's"); it says whose banner he answers to, when it is not his own.
 - **The masons moved to the purse.** They are the same question — what can I spend — and the top
   of the screen had no room left.
 - **THE COUNTRY IS DRAWN, because a roster is a list and a war is a SHAPE.** Sixteen courts on
