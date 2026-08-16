@@ -1190,6 +1190,62 @@
     }
     return false;
   }
+  /* ---------------- THE STONE NEAR A MAN, WITHOUT WALKING ALL OF IT ----------------
+   * `stand` and `steerClear` each asked "what works are near me" by walking every building of
+   * every player, for every man, every tick. That is the same question `rebin` was written to
+   * answer for MEN — nine cells instead of the whole board — and the works were simply never
+   * given the same treatment. It did not show on a board: two seats, thirty works. A country is
+   * sixteen economies, and profiled sixteen minutes into a war it was 27% of the tick between
+   * the two of them, with the whole sim at 40ms against a 33ms frame. Men x5.7 cost x14.7 —
+   * superlinear, because both terms grow.
+   * A WORKS BIN IS CHEAPER THAN A UNIT BIN because works barely move: it is rebuilt once a tick
+   * in `rebin`, O(works), which costs nothing next to O(men x works) and makes staleness
+   * impossible to observe rather than merely unlikely.
+   * THE ORDER IS PART OF THE ANSWER. `stand` projects a man off each work in turn and mutates
+   * him as it goes, so which work is asked first can change where he ends up; `_ord` is the
+   * position the full walk over `players[].buildings` gave each work, and the candidates are
+   * sorted back into it. A test plays the same seeded country both ways and compares every
+   * man's position, because "faster" and "the same" are two claims and only one of them is
+   * about speed. */
+  const WBIN = 96;
+  const worksScratch = [];   // one caller at a time — neither `stand` nor `steerClear` nests
+  function worksNear(world, x, y, radius) {
+    const out = worksScratch; out.length = 0;
+    /* THE CONTROL, kept in the shipping code so the equivalence test drives the REAL passes and
+     * not a copy of them: every point work, in the order the full walk visited them. Both
+     * callers do their own radius test inline, so this is the old behaviour byte for byte. */
+    if (global.World.slowWorks) {
+      for (let q = 0; q < world.players.length; q++)
+        for (const b of world.players[q].buildings) if (b.x2 == null) out.push(b);
+      return out;
+    }
+    const wb = world.wbins;
+    if (!wb) return out;
+    const gx = (x / WBIN) | 0, gy = (y / WBIN) | 0, reach = Math.max(1, Math.ceil(radius / WBIN));
+    for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+      const cell = wb.get((gy + dy) * 100003 + (gx + dx));
+      if (!cell) continue;
+      for (let i = 0; i < cell.length; i++) if (!cell[i].gone) out.push(cell[i]);
+    }
+    if (out.length > 1) out.sort(byOrd);
+    return out;
+  }
+  const byOrd = (a, b) => a._ord - b._ord;
+  function rebinWorks(world) {
+    const wb = world.wbins || (world.wbins = new Map());
+    wb.clear();
+    for (let q = 0; q < world.players.length; q++) {
+      const bs = world.players[q].buildings;
+      for (let i = 0; i < bs.length; i++) {
+        const b = bs[i];
+        if (b.x2 != null) continue;              // a run is `shove`'s business, never either caller's
+        b._ord = q * 1e6 + i;
+        const k = ((b.y / WBIN) | 0) * 100003 + ((b.x / WBIN) | 0);
+        const cell = wb.get(k);
+        if (cell) cell.push(b); else wb.set(k, [b]);
+      }
+    }
+  }
   /* `lx, ly` — where he stood before this tick moved him, when the caller knows. A push that
    * only REPELS wedges him: point works are not in the nav masks (only runs are), so the flow
    * field routes him straight at a hall, the march walks him in, and this walks him back out
@@ -1201,9 +1257,17 @@
    * with no motion to slide, or with the motion already leading away, this is the old push. */
   function stand(world, u, lx, ly) {
     const pad = C.BUILD.pass, p2 = pad * pad;
-    for (let q = 0; q < world.players.length; q++)
-      for (const b of world.players[q].buildings) {
-        if (b.x2 != null) continue;                       // a run is shoved by `shove`
+    /* `pad * 3`, NOT `pad`: this pass MOVES him as it goes, so the query has to cover where he
+     * ENDS as well as where he began — placement lets two works stand 44 apart (`foot + gap`)
+     * while their pads reach 26 each, so a second work can take him from further out than the
+     * question was asked. Measured over four simulated minutes of a full country: at most ONE
+     * work ever projects a man in a pass and the largest displacement was 24.16 units, so this
+     * is three times the observed worst case — and it is free, because with `WBIN` at 96 it is
+     * the same 3x3 of cells that `pad` alone would have looked at. */
+    const near = worksNear(world, u.x, u.y, pad * 3);
+    for (let n = 0; n < near.length; n++) {
+      {
+        const b = near[n];
         const dx = u.x - b.x, dy = u.y - b.y, dd = dx * dx + dy * dy;
         if (dd >= p2) continue;
         const L = Math.sqrt(dd);
@@ -1235,6 +1299,7 @@
          * the crowd, and they do not need to know about each other. */
         u.set = 1; u.pin = world.tick;
       }
+    }
   }
   /* THE GROUND HAS THE LAST WORD. The nav grid has always known rock and water are
    * impassable — it is what the flow fields route around — but knowing it and being bound
@@ -1324,9 +1389,13 @@
     const look = C.CROWD.look, speed = C.UNITS[u.kind].speed;
     const ahead = speed * look;
     let best = null, bestT = look;
-    for (let q = 0; q < world.players.length; q++)
-      for (const b of world.players[q].buildings) {
-        if (b.x2 != null || b.raise > 0) continue;      // runs are `shove`'s; a shell bars nothing
+    /* he only ever swerves round what is within `ahead + R` of him, which is exactly the query
+     * — no chain to allow for here, because this pass proposes a bearing and moves nobody */
+    const near = worksNear(world, u.x, u.y, ahead + C.BUILD.pass);
+    for (let n = 0; n < near.length; n++) {
+      {
+        const b = near[n];
+        if (b.raise > 0) continue;                     // a shell bars nothing
         const rx = b.x - u.x, ry = b.y - u.y;
         const d = Math.sqrt(rx * rx + ry * ry);
         const R = C.BUILD.pass;
@@ -1346,6 +1415,7 @@
         const tt = t / speed;                           // ...in seconds
         if (tt < bestT) { bestT = tt; best = { rx, ry, d, R, id: b.id }; }
       }
+    }
     if (!best) { u.dg = 0; return null; }
     /* GRAZE IT. The two courses that just clear the disc are the bearing to its middle turned
      * by asin(R/d); take whichever is the smaller turn from the course he wanted. Standing
@@ -3268,6 +3338,7 @@
       const cell = bins.get(k);
       if (cell) cell.push(v); else bins.set(k, [v]);
     }
+    rebinWorks(world);   // and the stone, for the same reason — see worksNear
   }
   /* every live unit within `radius` of a point, through the same grid. The visitor may not
    * add or remove units — collect first, act after, as the splash does. */
@@ -3589,6 +3660,11 @@
       }
       /* a man still WALKING to it was never in it — he keeps his feet and loses the errand */
       for (const u of world.units) if (u.tow === b.id) u.tow = 0;
+      /* AND THE WORKS BIN IS TOLD ON THIS TICK. The bin is rebuilt once a tick in `rebin`, and
+       * a work thrown down MID-tick would otherwise go on shouldering men aside until the next
+       * one — the array notices a splice instantly and a bin cannot. Measured as the only
+       * difference between the binned pass and the full walk over a whole country war. */
+      b.gone = 1;
       pl.buildings.splice(i, 1);
       if (isWall(b)) { world.navVersion++; noteWalls(world); }   // a breach is a hole
       if (b.bt === 'shrine') {
@@ -4723,7 +4799,10 @@
     emit(world, { e: 'win', winner, reason });
   }
 
-  global.World = { createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf, declare,
+  /* the works bin's control switch. It lives on the module object rather than on a world so a
+   * test can flip it between two plays of the SAME seeded country and compare man for man. */
+  global.World = { slowWorks: false,
+                   createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf, declare,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    /* noteWalls is out here for ONE caller: the realm's restore, which lays
                     * saved runs back onto a fresh board and must rebuild the standing set —

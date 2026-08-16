@@ -62,6 +62,22 @@ touches no balance surface.
       rather than vanish. `[REF]` — anything that makes a misplaced work cheap changes how
       freely the heirs build.
 
+- [ ] **The unit `BIN` is a duel number, and `acquire` pays for it.** With the works binned, the
+      sim over a country is 20.13ms/tick at 1111 men — half what it was, and still the biggest
+      thing in the frame. Profiled, what is left is `acquire` and its call site: **~40% of the
+      tick together**, and it is the nine-cell look over `world.bins`. `BIN` is **280**, so a
+      3x3 look scans an 840x840 box for an aggro radius of ~180 — **7x the area the question
+      needs**, and in a country men stack (a reported screenshot shows a column of ~80 in one
+      place), so a cell holds well over a hundred of them. `jostle` is worse in ratio: a
+      `CROWD.pull` of 44 asking through 280-unit cells scans ~360x the area it wants.
+      A smaller `BIN` (or a second, finer grid for the short-radius askers) should be most of
+      another halving. **NOT free, and this is the whole reason it is written down rather than
+      done**: `forNear` visits cells in grid order, so changing `BIN` reorders the candidates,
+      and `acquire` breaks ties by first-found — men would pick different targets. That is a
+      behaviour change in a duel as much as in a war, so it is a `node sim.js` change: run the
+      full 470 matches before and after and keep DESIGN_PRINCIPLES.md green.
+      (An alternative with no reordering at all: keep `BIN` and give `acquire` an early reject
+      on squared distance before it does any real work — cheaper, smaller win, no referee.)
 - [ ] **Make a fenced flow field sparse to its bound.** A field is a `Float32Array` over the
       WHOLE nav grid — 750KB on a country — and a bounded one only ever fills the cells inside
       its city's reach: measured, **21% of the grid**. So a country's 74-field working set holds

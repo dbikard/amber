@@ -672,6 +672,33 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   → 3), never fewer readers. **What IS wasted is size**: a bounded field is fenced to a city's
   disc but allocates the whole grid — 750KB, of which the disc is 21%. Sparse-to-the-bound is a
   4.7x memory cut with no behaviour change, and is written down rather than done.
+- **AND THE STONE NEAR A MAN IS BINNED TOO.** `rebin` was written so that "what is near me" is a
+  look at nine cells instead of a walk of the whole board — and it binned only the MEN. `stand`
+  (via `project`) and `steerClear` each walked every building of every player, **per man, per
+  tick**. Invisible on a board (two seats, thirty works); profiled sixteen minutes into a country
+  it was 27% of the tick between them, with the whole sim at **40.45ms against a 33ms frame** at
+  1111 men — superlinear, because both terms grow (men x5.7 → cost x14.7). That is the reported
+  lag. `world.wbins` is rebuilt once a tick in `rebin` (O(works), so staleness is impossible to
+  observe rather than merely unlikely) and `worksNear` answers from it: **20.13ms at the same
+  point, halved everywhere.**
+  Three things the fix turns on, and each was found by measuring rather than reasoning:
+  (1) **the ORDER is part of the answer** — `stand` projects a man off each work in turn and
+  MUTATES him as it goes, so `_ord` records the position the full walk gave each work and the
+  candidates are sorted back into it;
+  (2) **the query must cover where he ENDS, not where he began** — hence `pad * 3`, which is
+  three times the measured worst case (at most ONE work ever projects a man in a pass; largest
+  displacement 24.16 units over four sim-minutes) and free, because at `WBIN` 96 it is the same
+  3x3 of cells `pad` alone would look at;
+  (3) **a work thrown down MID-tick** is spliced from `pl.buildings`, which the array notices
+  instantly and a bin cannot — so `hurtBuilding` stamps `b.gone` and `worksNear` skips it. This
+  was the ONLY real difference between the two passes, it first showed at t=120.2s as one soldier
+  1.45 units adrift, and nothing but a lockstep comparison would ever have found it.
+  **The control ships with the code**: `World.slowWorks` is the full walk in its original order,
+  so the suite plays the same seeded country BOTH WAYS and compares man for man every tick — a
+  faster pass that plays a different game is not an optimisation. What is left on top is
+  `acquire` and its call site (~40% together); see TODO.md — the unit `BIN` is 280, which scans
+  7x the area an aggro radius needs, but changing it reorders `forNear` and therefore tie-breaks,
+  so it is a referee change and not a free one.
 - **A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT.** Two links in one chain, both
   reported from play as the previous game's end screen appearing instead of a new war. `done` was
   written only where `run.tick` answers — but a war ends through the SIM as often as through its

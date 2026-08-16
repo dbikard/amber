@@ -8540,6 +8540,74 @@ suite('a deserted seat is played by somebody');
      `${held.men} against ${idle.men}`);
 }
 
+/* ---------------- THE STONE NEAR A MAN IS BINNED, AND IT IS THE SAME ANSWER ----------------
+ * Reported from play, with a screenshot of a country sixteen minutes in: serious lag.
+ * `stand` and `steerClear` each answered "what works are near me" by walking every building of
+ * every player, per man, per tick — the question `rebin` exists to answer for MEN in nine cells,
+ * never asked of the works. Profiled over a country war: 27% of the tick between the two of
+ * them, the whole sim at 40.45ms against a 33ms frame at 1111 men, and superlinear because both
+ * terms grow (men x5.7 → cost x14.7). Binned: 20.13ms at the same point, halved everywhere.
+ *
+ * THE CLAIM UNDER TEST IS NOT SPEED, IT IS SAMENESS. A faster pass that plays a different game
+ * is not an optimisation, and a country is exactly where nobody would notice: 1176 men, and one
+ * of them a unit and a half out of place is invisible to everything except a comparison.
+ * So the shipping code keeps its control (`World.slowWorks` — the full walk, in the order it
+ * always used) and the same seeded country is played BOTH WAYS IN LOCKSTEP, compared man for
+ * man after every tick. That is what caught the one real difference: `hurtBuilding` splices a
+ * work out MID-tick, which the array notices instantly and a bin rebuilt at the top of the tick
+ * cannot — a felled tower went on shouldering men aside for the rest of its last tick. It first
+ * showed at t=120.2s as a single soldier 1.45 units adrift, and nowhere earlier.
+ * Short here on purpose: the divergence above needed four sim-minutes to appear, which is a
+ * probe and not a suite. What this holds is the everyday claim — that the two passes agree at
+ * all, tick by tick, over a country that is building as they run. How many works were thrown
+ * DOWN in the window is reported rather than asserted: at forty-five seconds it is usually
+ * none, and a suite that quietly claimed to cover the splice case would be worse than one that
+ * says plainly which case it caught. */
+suite('the stone near a man is binned, and it is the same answer');
+{
+  const mk = () => {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true });
+    const bots = w.players.map((p, i) => {
+      const k = Object.keys(AI.HEIRS);
+      return AI.make(k[i % k.length], (w.heirs || []).indexOf(i) >= 0 ? {} : Object.assign({}, C.MINOR));
+    });
+    return { w, bots };
+  };
+  World.slowWorks = true;  const A = mk();
+  World.slowWorks = false; const B = mk();
+  const step = (S, slow) => {
+    World.slowWorks = slow;
+    World.update(S.w, C.SIM_DT); S.w.events.length = 0;
+    for (let bi = 0; bi < S.bots.length; bi++)
+      S.bots[bi].step(S.w, bi, (cmd) => World.applyCommand(S.w, bi, cmd), C.SIM_DT, null);
+  };
+  const live = (w) => { const m = new Map(); for (const u of w.units) if (u.hp > 0) m.set(u.id, u); return m; };
+  let firstBad = null, ticks = 0, felled = 0;
+  const works0 = A.w.players.reduce((s, p) => s + p.buildings.length, 0);
+  for (let i = 0; i < 30 * 45 && !firstBad; i++) {
+    const before = A.w.players.reduce((s, p) => s + p.buildings.length, 0);
+    step(A, true); step(B, false); ticks++;
+    if (A.w.players.reduce((s, p) => s + p.buildings.length, 0) < before) felled++;
+    const ma = live(A.w), mb = live(B.w);
+    if (ma.size !== mb.size) { firstBad = { tick: i, why: `men ${ma.size} vs ${mb.size}` }; break; }
+    for (const [id, ua] of ma) {
+      const ub = mb.get(id);
+      if (!ub) { firstBad = { tick: i, why: `man ${id} missing` }; break; }
+      const d = Math.max(Math.abs(ua.x - ub.x), Math.abs(ua.y - ub.y), Math.abs(ua.hp - ub.hp));
+      if (d > 1e-9) { firstBad = { tick: i, why: `man ${id} (${ua.kind}) adrift by ${d.toFixed(4)}` }; break; }
+    }
+  }
+  World.slowWorks = false;   // never leave the control on — every suite after this one uses it
+  const men = live(A.w).size, works = A.w.players.reduce((s, p) => s + p.buildings.length, 0);
+  ok('the rig is alive: a country with men and works enough to tell the two apart',
+     men > 60 && works > works0, `${men} men, ${works0} -> ${works} works`);
+  ok('...and the control really is the other pass', World.slowWorks === false);
+  ok('the binned answer matches the full walk, man for man, every tick',
+     !firstBad, firstBad ? `${firstBad.why} at tick ${firstBad.tick}`
+                         : `${ticks} ticks identical, ${felled} works felled in the window`);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {
