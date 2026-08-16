@@ -125,6 +125,7 @@
     game.world = realm.world;
     game.bot = warBot(game.world, 1);
     game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
+    warPurses(game.world, game.bots);
     game.names = game.world.players.map((_, i) => i === 0 ? 'Corwin'
       : game.world.map.sites[game.world.cities[i].site].name);
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
@@ -150,11 +151,55 @@
    * "a minor lord is a weaker heir" means, and it is the same mechanism the classical game's
    * footing already uses. The temperament is chosen by SEAT so the same court always fields the
    * same character, on every machine and across a save, without a byte of state saying so. */
+  /* ---- AND THE FOOTING SCALES THE WHOLE COUNTRY ----
+   * The picker says "how hard the heirs play" and a war did not read it: a contender got `{}` —
+   * no handicap whatever, which is harder than PRINCE — and every other lord got a fixed
+   * `CONST.MINOR`, so SQUIRE and PRINCE dealt the same opposition. Worse, `startRealm` stamped
+   * the chosen footing into the CHRONICLE, so a war's record named a setting nothing in it had
+   * read; that is the dead-control failure landing on the one instrument used to diagnose
+   * reports from play.
+   * A contender now plays at the player's footing, and a minor lord at that footing made worse
+   * by `CONST.MINOR` — which is what "a minor lord is a weaker heir" already meant, now said
+   * relative to the footing instead of instead of it. The composition is per field and each
+   * follows what the field IS:
+   *   `slow`  — a think-interval multiplier, so the two multiply;
+   *   `noise` — the chance of skipping a think, so the WORSE of the two rather than both: they
+   *             are the same penalty said twice, and stacking them double-charges one axis;
+   *   `eco`   — an income fraction, so the two multiply;
+   *   `hold`  — the footing's own, untouched. It is a promise to the PLAYER about his own
+   *             ground and there is nothing for a minor lord to add to it.
+   * THE TOP OF THE RANGE IS TODAY'S WAR, which is what makes the change auditable: at PRINCE a
+   * contender is slow 1.0 / eco 0.96 against today's 1.0 / 1.0, and a minor lord is slow 1.5,
+   * noise 0.20, eco 0.60 against today's 1.5, 0.20, 0.62. Everything softer scales down from a
+   * war that has already been measured. */
+  /* what a seat's footing IS, as plain numbers — one answer, because the BOT is made from it
+   * and the purse is written from it and the two must not drift. `eco` is not an AI option at
+   * all: it is `players[pi].eco`, read by the sim's income pass, so the caller writes it. */
+  function warFooting(world, pi) {
+    /* `hold` is a promise about the PLAYER's ground, and in a country a lord's nearest rival
+     * court is usually another lord's — so it is aimed at the viewer's banner rather than at
+     * whoever happens to be nearest. Without that an easy footing stops the whole country
+     * making war on itself, which is a duller war and not an easier one. */
+    const foot = Object.assign({ holdOn: World.realmOf(world, game.viewer) },
+                               C.DIFFICULTY[UI.difficulty()] || {});
+    if ((world.heirs || []).indexOf(pi) >= 0) return Object.assign({}, foot);
+    const m = C.MINOR;
+    return Object.assign({}, foot, {
+      slow: (foot.slow || 1) * m.slow,
+      noise: Math.max(foot.noise || 0, m.noise),
+      eco: (foot.eco != null ? foot.eco : 1) * m.eco
+    });
+  }
   function warBot(world, pi) {
     const kinds = Object.keys(AI.HEIRS);
-    const kind = kinds[pi % kinds.length];
-    const contends = (world.heirs || []).indexOf(pi) >= 0;
-    return AI.make(kind, contends ? {} : Object.assign({}, C.MINOR));
+    return AI.make(kinds[pi % kinds.length], warFooting(world, pi));
+  }
+  /* THE PURSE IS PART OF THE FOOTING and it lives on the world, so it is dealt where the bots
+   * are — every AI seat, and never the player's own. Written once at the start of a war and
+   * again when a seat is adopted, which are the only two moments a seat gains a driver. */
+  function warPurses(world, bots) {
+    for (let i = 0; i < world.players.length; i++)
+      world.players[i].eco = bots && bots[i] ? (warFooting(world, i).eco || 1) : 1;
   }
 
   function saveWar() {
@@ -203,8 +248,11 @@
        * seats the country exactly as a war does — contenders and minor lords — rather than the
        * marchers it was given before heirs could speak in a war at all. */
       game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
-    /* the handicap is the heir's, not the board's: it plays its own game, only poorer */
-    game.world.players[1].eco = (opts && opts.eco) || 1;
+    /* the handicap is the heir's, not the board's: it plays its own game, only poorer. A COUNTRY
+     * deals every AI seat its own (`warPurses`), so the duel's single line would overwrite one
+     * seat of sixteen with the wrong number. */
+    if (game.bots) warPurses(game.world, game.bots);
+    else game.world.players[1].eco = (opts && opts.eco) || 1;
     /* a kind may be an heir or a baseline (the reach rig runs marchers) — both carry a title */
     const kindTitle = (AI.HEIRS[kind] && AI.HEIRS[kind].title) ||
                       (AI.BASELINES && AI.BASELINES[kind] && AI.BASELINES[kind].title) || 'a lord';
@@ -279,6 +327,7 @@
         game.world = savedRealm.world;
         /* the seats nobody human took are played exactly as a solo war's are */
         game.bots = game.world.players.map((_, i) => (i >= n ? warBot(game.world, i) : null));
+        warPurses(game.world, game.bots);   // a seat a human holds keeps a full purse
       } else {
         /* a guest builds the same country from the seed alone — geometry, never history */
         game.world = null;
@@ -408,6 +457,9 @@
     const heirs = Object.keys(AI.HEIRS);
     if (!game.bots) game.bots = w.players.map(() => null);
     game.bots[seat] = game.war ? warBot(w, seat) : AI.make(heirs[seat % heirs.length], {});
+    /* he was a human a moment ago and had a full purse; now he is a driver and takes its
+     * footing, the same as every other AI seat at this table */
+    if (game.war) warPurses(w, game.bots);
     UI.banner(seatName(seat) + ' has left the table — a shadow of him fights on', 'warn');
     return true;
   }

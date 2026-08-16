@@ -8540,6 +8540,81 @@ suite('a deserted seat is played by somebody');
      `${held.men} against ${idle.men}`);
 }
 
+/* ---------------- THE HOLD IS A PROMISE TO ONE BANNER ----------------
+ * `hold` — the seconds an easy footing buys you before an heir will march on your Seat — is
+ * checked against that heir's NEAREST rival court. In a duel that is the player's and nothing
+ * else, so the question never came up. A war seats sixteen, and for most lords the nearest
+ * rival court belongs to another bot: ungated, SQUIRE would have stopped the whole country
+ * making war on itself for thirteen minutes, which is a duller war rather than an easier one.
+ * So the guard asks whose banner the target answers to (`opts.holdOn`, the viewer's, seat 0 by
+ * default) — and a duel is identical to the byte, which is the first thing asserted. */
+suite('the hold is a promise to one banner');
+{
+  const foot = C.DIFFICULTY.squire;
+  /* A DUEL IS UNTOUCHED: the rival IS the protected banner, so the hold is exactly as it was */
+  {
+    const w = World.createWorld(17, 2);
+    const bot = AI.make('benedict', Object.assign({}, foot));
+    w.players[1].eco = foot.eco;
+    const seat = World.seatOf(w, 0);
+    let hit = 0;
+    for (let i = 0; i < 30 * 240; i++) {
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      bot.step(w, 1, (cmd) => World.applyCommand(w, 1, cmd), C.SIM_DT, null);
+      if (seat.hp < seat.maxHp) { hit = 1; break; }
+    }
+    ok('a duel on an easy footing still leaves the throne alone', !hit,
+       hit ? 'scratched inside four minutes' : 'untouched');
+  }
+  /* A COUNTRY GOES ON FIGHTING ITSELF. The claim is about the LORDS, not about the player:
+   * with the guard removed this is zero for the whole of `hold`. */
+  {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true });
+    const kinds = Object.keys(AI.HEIRS);
+    const m = C.MINOR;
+    const bots = w.players.map((p, i) => {
+      const isH = (w.heirs || []).indexOf(i) >= 0;
+      const f = isH ? Object.assign({ holdOn: 0 }, foot)
+                    : Object.assign({ holdOn: 0 }, foot, {
+                        slow: foot.slow * m.slow, noise: Math.max(foot.noise, m.noise),
+                        eco: foot.eco * m.eco });
+      if (i > 0) p.eco = f.eco;
+      return i === 0 ? null : AI.make(kinds[i % kinds.length], f);
+    });
+    ok('the rig is alive: the hold is longer than the window watched',
+       foot.hold > 300, `hold ${foot.hold}s`);
+    let war = 0, atMine = 0;
+    const mine = w.cities[0];
+    for (let i = 0; i < 30 * 300; i++) {
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      for (let bi = 1; bi < bots.length; bi++)
+        if (bots[bi]) bots[bi].step(w, bi, (cmd) => World.applyCommand(w, bi, cmd), C.SIM_DT, null);
+      if (i % 30 === 0) {
+        for (const u of w.units) {
+          if (u.hp <= 0 || u.owner < 0) continue;
+          const ur = World.realmOf(w, u.owner);
+          for (const c of w.cities) {
+            if (c.owner < 0 || World.realmOf(w, c.owner) === ur) continue;
+            if ((u.x - c.x) ** 2 + (u.y - c.y) ** 2 < (C.CITY.r * 1.5) ** 2) {
+              if (World.realmOf(w, c.owner) === 0) atMine++; else war++;
+              break;
+            }
+          }
+        }
+      }
+    }
+    ok('...while the country still makes war on itself well inside that hold', war > 0,
+       `${war} lord-in-a-rival-court samples before t=300`);
+    /* AND THE PLAYER'S OWN GROUND IS STILL THE QUIET ONE. Not "untouched": `CASTLE_ZONE` makes
+     * any man within 46 of a throne strike it, so a lord fighting over a spring beside your
+     * court will scratch it whatever his orders say — the promise is about being MARCHED on,
+     * and it is kept in the only sense the sim can keep it. */
+    ok('...and far less of it happens at yours', atMine * 4 < war,
+       `${atMine} at your court against ${war} elsewhere`);
+  }
+}
+
 /* ---------------- A MAN ENGAGES WHAT HE CAN ACTUALLY HIT ----------------
  * Reported from play: *"my cannons are staying idle instead of attacking the city tower."*
  * `acquire`'s radius was the man's `aggro` — how far he will go LOOKING for a fight — and for

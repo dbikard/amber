@@ -660,10 +660,34 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   `support` strike the standards, which under the reach law is what "keep your own court" means.
   Everything else the heir does — its economy, its works, its powers, its errand company taking
   ground — runs untouched underneath, which is what "a bias on the same brain" means.
-  **`warBot(world, pi)`** in game.js seats it: a CONTENDER (`world.heirs`) is a full-strength
-  heir, every other lord is the same heir under `CONST.MINOR` (slower, noisier, poorer), and the
-  temperament is chosen by SEAT so a court always fields the same character on every machine and
-  across a save without a byte of state saying so. Measured over six simulated minutes on two
+  **`warBot(world, pi)`** in game.js seats it, and **the footing scales the whole country**. The
+  picker says "how hard the heirs play" and a war did not read it: a contender got `{}` — no
+  handicap at all, which is harder than PRINCE — and every other lord a fixed `CONST.MINOR`, so
+  SQUIRE and PRINCE dealt the same opposition. Worse, `startRealm` stamped the chosen footing
+  into the CHRONICLE, so a war's record named a setting nothing in it had read — the dead-control
+  failure landing on the one instrument used to diagnose reports from play. `warFooting` is now
+  the one answer: a contender plays at the player's footing, a minor lord at that footing made
+  worse by `CONST.MINOR`, composed per field by what each field IS — `slow` and `eco` MULTIPLY
+  (a think-interval multiplier and an income fraction), `noise` takes the WORSE of the two (the
+  same penalty said twice, and stacking double-charges one axis), `hold` is the footing's own.
+  The purse is not an AI option at all — it is `players[pi].eco`, read by the sim's income pass —
+  so `warPurses` deals it wherever a seat gains a driver (a war's start, the `?reach=` boot, a
+  LAN table, a deserted seat), and never to a seat a human holds. **The top of the range is
+  today's war**, which is what makes it auditable: at PRINCE a minor lord is slow 1.5, noise 0.20,
+  eco 0.60 against today's 1.5, 0.20, 0.62, and measured over six simulated minutes the country
+  goes 677 men / 116 works / 43 Gates against today's 717 / 122 / 43. SQUIRE lands at 467 / 62 / 25.
+  **AND `hold` IS A PROMISE TO ONE BANNER.** It is checked against the heir's NEAREST rival court,
+  which in a duel is the player's and nothing else; a war seats sixteen, so for most lords that
+  is another bot — and ungated, an easy footing stopped **the whole country making war on itself**
+  for thirteen minutes, which is a duller war rather than an easier one. `opts.holdOn` (the
+  viewer's banner, seat 0 by default, so a duel is identical to the byte) gates both places `hold`
+  is read: the banner march and the answer to a rival's walk. Measured at SQUIRE with the gate:
+  lord-in-a-rival-court samples 3 → 20 → 5 over the first six minutes and two or three thrones
+  under the hammer, all of which would be zero without it. The promise to the player is kept in
+  the only sense the sim can keep it — `CASTLE_ZONE` makes any man within 46 of a throne strike
+  it, so a lord fighting over a spring beside your court scratches it whatever his orders say.
+  The temperament is chosen by SEAT so a court always fields the same character on every machine
+  and across a save without a byte of state saying so. Measured over six simulated minutes on two
   seeds, lords against heirs: Gates standing 16/17 → 44/55 (sixteen is exactly the opening one
   apiece — the lords expanded ZERO), springs held 16/17 → 44/55, works 51/48 → 144/189, men
   236/187 → 697/802. Cost 0.96 → 2.3ms a frame for the whole country, well inside the budget.

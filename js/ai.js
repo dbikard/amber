@@ -104,7 +104,10 @@
        * that it can never take a Seat. What a walker is risking is a RIVAL at the door while
        * his essence goes into the lines, so that is the number the walk is judged on. */
       rivals: threats.filter((u) => u.owner !== C.CHAOS_ID).length,
-      enCityId, frontier, unexplored: world.map.sites.filter((s) => !pl.explored[s.id]).length,
+      /* WHOSE court that is, as well as where. `hold` is a promise to the PLAYER about his own
+       * ground, and in a country the nearest rival court is very often another bot's — so the
+       * guard has to be able to ask whose banner it is answering for. */
+      enCityId, enIdx, frontier, unexplored: world.map.sites.filter((s) => !pl.explored[s.id]).length,
       nodes,
       /* what the realm EARNS and what it is already committed to — the two numbers a walk has
        * to be judged against, and neither of them was in the view */
@@ -1081,6 +1084,20 @@
     const interval = (P.interval || 1.5) * (opts.slow || 1);
     const noise = opts.noise != null ? opts.noise : (P.noise || 0);
     const hold = opts.hold || 0;   // s before this heir will march on your Seat at all
+    /* ---- AND IT IS *YOUR* SEAT, WHICH A COUNTRY MADE INTO A REAL QUESTION ----
+     * `hold` is checked against the heir's nearest rival court, which in a DUEL is the player's
+     * and nothing else. A war seats sixteen, so for most lords the nearest rival court belongs
+     * to another bot — and left ungated, an easy footing stopped the whole country making war on
+     * itself for thirteen minutes. That is not an easier war, it is a war with nothing in it:
+     * measured on today's country, men standing in a foreign court go 0 → 5 → 4 → 77 and three
+     * thrones are under the hammer by minute eight, and SQUIRE would have suppressed all of it.
+     * So the promise is kept to the banner it was made to. Seat 0 by default, which is the
+     * player in every single-player mode and leaves a duel identical to the byte. */
+    const holdOn = opts.holdOn != null ? opts.holdOn : 0;
+    /* "am I still holding off THIS banner" — the one spelling, so the march and the answer to a
+     * walk cannot come to different conclusions about the same promise */
+    const heldOff = (v, pi) => hold > 0 && v.t < hold && pi != null &&
+                               global.World.realmOf(v.world, pi) === holdOn;
     const noWalk = !!opts.noWalk;  // a chapter that is not about the Pattern shuts that road
     let timer = interval * 0.5, rng = null;
     let mission = null;    // {site, bt, since} — march there, build, move on
@@ -1430,7 +1447,7 @@
        * still send his banner to your Seat as the nearest unseen place and arrive inside the
        * hour the footing promised you. It is the same square of ground either way; whether he
        * has been told what is on it is not the player's problem. */
-      if (hold && v.t < hold && want === v.enCityId) want = v.myCity.id;
+      if (want === v.enCityId && heldOff(v, v.enIdx)) want = v.myCity.id;
       /* ---------------- THE ANSWER TO A WALK IS AN ARMY AT THE SHRINE ----------------
        * The heirs already REFUSE a race they have lost — every walker moves at the same rate,
        * so whoever stepped on first arrives first, and a hopeless walk is five and a half
@@ -1454,7 +1471,7 @@
       const race = v.walkers.filter((q) => q.x != null && q.pattern >= WALK_ANSWER)
                             .sort((a, b) => b.pattern - a.pattern)[0] || null;
       const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY &&
-                     !(hold && v.t < hold) ? race : null;
+                     !heldOff(v, race.pi) ? race : null;
       /* ...AND THE OTHER HALF OF IT: A WALKER GUARDS HIS OWN SHRINE. The answer above was
        * measured on its own first, and it was too good: the banner reached the burning Shrine
        * on 95% of samples against 62% before it, and brand — the one heir whose plan is dig,
