@@ -372,8 +372,16 @@
      * road carver builds over them worth their toll, and every bridge is a chokepoint */
     rivers: 8,
     growReach: 1.18, growPasses: 6,
+    /* EVERY COURT IS NAMED, and there must be MORE names than courts. Twelve of these against
+     * sixteen cities meant three fell back to 'a City of Shadow' — which is not a name, it is
+     * the absence of one, and it read as a bug on the council's roster (several identical rows)
+     * and in every banner that quoted it. A country names its courts from a bag, so the bag has
+     * to outlast the draw: `cities` is 16, one of which is AMBER, so fifteen is the floor and
+     * these are twenty. Add a city and add a name. */
     names: ['KOLVIR', 'ARDEN', 'REBMA', 'BEGMA', 'KASHFA', 'LORRAINE', 'GHENESH',
-            'HELGRAM', 'AVERNUS', 'TIR-NA', 'JIDRASH', 'DOMARIS']
+            'HELGRAM', 'AVERNUS', 'TIR-NA', 'JIDRASH', 'DOMARIS',
+            'THELBANE', 'SAWALL', 'HENDRAKE', 'JESBY', 'CHANICUT', 'AMBLERASH',
+            'DEIGA', 'BAYLE']
   };
 
   CONST.SITE_NAMES = {

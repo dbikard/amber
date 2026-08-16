@@ -178,6 +178,22 @@
   const worksNear = (v, x, y, bt, r) =>
     v.pl.buildings.some((b) => b.bt === bt && d2(b.x, b.y, x, y) < r * r);
 
+  /* WHAT A STANDING ORDER MAKES THE CREW WANT — the works half of the five words, in the same
+   * shape as a personality's own missions so the two simply concatenate and the order goes
+   * first. Off entirely without `rules.reach`, so a board and `node sim.js` never see one.
+   * `gates` wants the spring the MARCH was sent to take; `walls` wants a tower on the court's
+   * own vantages, which is what "wall up" means in works. `hold`, `attack` and `support` are
+   * orders about where the army stands and have nothing to add here. */
+  const ordered = (world, me, order) => {
+    if (!order || !world.rules || !world.rules.reach) return null;
+    if (order.mode === 'gates') {
+      const s = springTo(world, me, global.World.seatOf(world, me), true);
+      return s ? [{ bt: 'gate', pick: () => s }] : null;
+    }
+    if (order.mode === 'walls') return [wantWatch(2)];
+    return null;
+  };
+
   /* expansion mission wants, in priority order. Each: {bt, pick(v) → site|null} */
   const wantGates = (bucket, n) => ({ bt: 'gate', pick: (v) => nearestOf(v, v.nodes[bucket]).filter((s) => !held(v, s)).slice(0, n)[0] || null });
   const wantWatch = (n) => ({ bt: 'tower', pick: (v) => ownVantages(v).filter((s) => !worksNear(v, s.x, s.y, 'tower', 120)).slice(0, n)[0] || null });
@@ -1046,7 +1062,27 @@
           for (const co of cos) if (co.rally) issue({ c: 'rally', co: co.id });
           return { ok: true };
         }
-        const at = told || aimOf(cmd);
+        let at = told || aimOf(cmd);
+        /* ---- A MINOR LORD HOLDS GROUND; HE DOES NOT CONQUER ----
+         * Every seat in a war runs an heir's doctrine, and an heir's whole game is to find the
+         * nearest rival court and take it. On the two CONTENDERS that is the war; on the other
+         * thirteen it is fifteen little empires all trying to eat each other, which is not what
+         * a minor lord is for — he holds a country, and the throne is contended by the heirs.
+         * So his war body is turned away from a rival COURT and put on the nearest spring worth
+         * taking instead: he still expands, still answers trouble, still defends, and still
+         * marches wherever his LIEGE points him — an explicit `attack` or `support` is the
+         * player's order and outranks his doctrine, which is why `told` is exempt. */
+        if (at && !told && (world.heirs || []).indexOf(me) < 0) {
+          const court = (world.cities || []).some((c) => c && !c.razed && c.owner >= 0 &&
+            W.foe(world, me, c.owner) && d2(at.x, at.y, c.x, c.y) < C.CITY.r * C.CITY.r);
+          if (court) {
+            const s = springTo(world, me, W.seatOf(world, me), false);
+            if (s) at = { x: s.x, y: s.y };
+            else { if (st) st.aim = null;
+                   for (const co of cos) if (co.rally) issue({ c: 'rally', co: co.id });
+                   return { ok: true }; }
+          }
+        }
         if (!at) return { ok: true };
         /* ---- THE SAME ORDER TWICE IS NOISE, AND HERE IT WAS RUINOUS ----
          * Under `rules.reach` the sim's banner handler strikes the standards and sets NO aim,
@@ -1420,8 +1456,25 @@
       const hunting = !homeThreat && !v.enCity && !!v.frontier && call0 === v.frontier.id;
       /* an assault he cannot afford is not an errand either — he holds his own choke */
       const call = wantsWar && !ready ? ownChoke(v).id : call0;
+      /* ---- THE LIEGE'S ORDER BIASES THE CREW, NOT ONLY THE COLUMN ----
+       * `warOrders` rewrites where the war BODY goes and nothing else, so an heir told to go and
+       * get gates marched — and then his mason, who had never heard the order, went on wanting
+       * whatever his personality wanted. Reported from play as an inner lord sending troops to
+       * springs and never building on them, with a hundred men parked on one.
+       * The cause is `wantGates`: it picks from `nodes.own` (the 3 springs nearest his seat) and
+       * `nodes.mid` (4-7), capped at one or two, and filtered to springs NOBODY holds. For an
+       * inner lord in a developed country every one of those is already gated, so every gate
+       * mission returns null and he wants no Gate anywhere — wherever his army is standing.
+       * So an order prepends its own want, recomputed every think: as soon as one spring is
+       * taken the next free one inside his reach is wanted, which is the whole of "go and get
+       * gates" and is not something a fixed `slice(0, 2)` can say.
+       * FREE ONLY here, though the MARCH will happily go and take a rival's: a crew cannot raise
+       * a Gate on ground another Gate is standing on, and the moment the march brings that one
+       * down the spring is free and this picks it up. `springTo` is the same answer both halves
+       * ask, which is what keeps the column and the mason wanting the same ground. */
+      const led = ordered(world, me, order);
       if (!mission && !homeThreat) {
-        for (const w of P.missions(v)) {
+        for (const w of (led ? led.concat(P.missions(v)) : P.missions(v))) {
           const site = w.pick(v);
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
         }

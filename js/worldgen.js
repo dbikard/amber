@@ -1039,9 +1039,14 @@
       const cityIds = kept.filter((x) => x.kind === 'city').map((x) => x.id);
       const cityBag = (RW.names || []).slice();
       cityIds.forEach((id, k) => {
+        /* NO COURT IS NAMELESS. The bag is drawn without replacement and is sized to outlast
+         * the draw (`REACHWAR.names`); the fallback is a numbered Shadow rather than a shared
+         * 'a City of Shadow', because several courts wearing one name is worse than an ugly
+         * name — it made the council's roster read as duplicated rows and every banner quoting
+         * one ambiguous. If this ever fires, the bag is too small: add names, not a suffix. */
         kept[id].name = seatOrder[k] === pattern ? 'AMBER'
           : cityBag.length ? cityBag.splice(Math.floor(rng.next() * cityBag.length), 1)[0]
-          : 'a City of Shadow';
+          : 'SHADOW ' + (k + 1);
       });
 
       why.ok++;

@@ -358,6 +358,22 @@
     return world.cities.find((c) => c.owner === pi) || world.cities[pi] || null;
   };
   const citiesOf = (world, pi) => (world.cities || []).filter((c) => c.owner === pi);
+  /* ---- A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS ----
+   * Reported from play: a Seat yields, the claimant stands his twenty seconds in the court, and
+   * his men spend them knocking down the halls and Gates he is about to inherit — a conquest
+   * that pays for itself in the spoils it destroys.
+   * The sim already half-said this: a broken court's halls muster nobody (`occupied`, in the
+   * works pass), because a city with no throne pays no muster. This finishes the sentence — its
+   * towers stop firing and its works stop being targets — so what is left to decide is only who
+   * HOLDS the ground, which is exactly what `occupy` made the question.
+   * `players[i]` is the lord of `cities[i]` permanently, so this is one array read and no
+   * search. It cannot touch a duel by construction: a Seat only yields under `rules.occupy`,
+   * and without it a throne at zero ends the match. */
+  const fallen = (world, pi) => {
+    if (!world.rules || !world.rules.occupy || !world.cities || pi < 0) return false;
+    const c = world.cities[pi];
+    return !!c && c.owner < 0 && !c.razed;
+  };
   const cityOf = (world, pi) => {
     const c = seatOf(world, pi);
     return world.map.sites[c ? c.site : world.map.cities[pi]];
@@ -3452,6 +3468,9 @@
       if (!foe(world, u.owner, ci)) continue;
       const tp = world.players[ci];
       if (tp.out) continue;
+      /* his court has fallen and is not yet sworn: the fighting there is decided, and what is
+       * left is who stands in it — see `fallen`. Reported as troops razing the spoils. */
+      if (fallen(world, ci)) continue;
       for (const b of tp.buildings) {
         /* a shooter looks past every work but the Shrine — see the note above the loop */
         if (menOnly && b.bt !== 'shrine') continue;
@@ -3617,6 +3636,11 @@
   function hurtBuilding(world, pi, id, dmg, by) {
     /* the same door, for stone — see `hurt`. `by` is null for damage nobody dealt. */
     if (by != null && !foe(world, by, pi)) return;
+    /* AND A FALLEN COURT'S STONE TAKES NO BLOW AT ALL, guarded here as well as in `acquire` so
+     * a splash pass or a new weapon cannot forget to ask. `by` null is the world's own damage
+     * and is left alone: nothing in the game deals it to a work, and a rule about who may
+     * strike whom has nothing to say about it. */
+    if (by != null && fallen(world, pi)) return;
     const pl = world.players[pi], i = pl.buildings.findIndex((b2) => b2.id === id);
     if (i < 0) return;
     const b = pl.buildings[i];
@@ -3897,6 +3921,9 @@
         while (pl.alertIdx > 0 && pl.pattern < C.PATTERN_ALERTS[pl.alertIdx - 1].at) pl.alertIdx--;
       }
 
+      /* his court has fallen and is not yet sworn — asked once for the whole of his works
+       * rather than per building, since it is one array read about the man and not the stone */
+      const broken = fallen(world, pi);
       for (const b of pl.buildings) {
         const def = C.BUILDINGS[b.bt];
         const sp = b;
@@ -3989,6 +4016,10 @@
           }
         } else if (b.bt === 'tower') {
           if (working) continue;   // the gun deck is scaffolding while they are rebuilding it
+          /* ...and a court that has fallen does not shoot. Without this the claimant would be
+           * forbidden to strike the stone while the stone went on striking him, which is not a
+           * mercy, it is a one-sided fight. */
+          if (broken) continue;
           b.cd -= dt;
           if (b.cd <= 0) {
             const st = towerStats(b);

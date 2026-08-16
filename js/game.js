@@ -126,8 +126,7 @@
     game.bot = warBot(game.world, 1);
     game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
     warPurses(game.world, game.bots);
-    game.names = game.world.players.map((_, i) => i === 0 ? 'Corwin'
-      : game.world.map.sites[game.world.cities[i].site].name);
+    game.names = game.world.players.map((_, i) => warName(game.world, i));
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
     game.hints = [];
@@ -190,9 +189,27 @@
       eco: (foot.eco != null ? foot.eco : 1) * m.eco
     });
   }
-  function warBot(world, pi) {
+  function warKind(pi) {
     const kinds = Object.keys(AI.HEIRS);
-    return AI.make(kinds[pi % kinds.length], warFooting(world, pi));
+    return kinds[pi % kinds.length];
+  }
+  function warBot(world, pi) {
+    return AI.make(warKind(pi), warFooting(world, pi));
+  }
+  /* ---- A LORD IS NAMED FOR HIS CITY; AN HEIR IS NAMED FOR HIMSELF ----
+   * A country named every seat after its court, so a contender — the two rivals who can
+   * actually win the war — was indistinguishable from the fifteen lords who cannot, and a
+   * court's row read "KASHFA — KASHFA's". A minor lord IS his city, which is why that name
+   * suits him; an heir is a person who happens to hold one, and his own name is the thing that
+   * says "this one is playing for the throne". Seat 0 is the player.
+   * The heir's name comes off the doctrine he is actually running (`warKind`), so it can never
+   * disagree with the brain in the seat. */
+  function warName(world, pi) {
+    if (pi === 0) return 'Corwin';
+    const city = world.cities && world.cities[pi] && world.map.sites[world.cities[pi].site].name;
+    if ((world.heirs || []).indexOf(pi) < 0) return city || 'a lord of Shadow';
+    const k = warKind(pi);
+    return k.charAt(0).toUpperCase() + k.slice(1).toUpperCase();
   }
   /* THE PURSE IS PART OF THE FOOTING and it lives on the world, so it is dealt where the bots
    * are — every AI seat, and never the player's own. Written once at the start of a war and
@@ -259,8 +276,7 @@
     /* at a country's table every seat is named by ITS CITY — ten seats sharing one heir's
      * name would make every banner a riddle */
     game.names = game.bots
-      ? game.world.players.map((_, i) => i === 0 ? 'Corwin'
-          : game.world.map.sites[game.world.cities[i].site].name)
+      ? game.world.players.map((_, i) => warName(game.world, i))
       : ['Corwin', kindTitle];
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
@@ -334,8 +350,10 @@
         refWorld = REALM.create(war.seed).world;
       }
       const geo = Net.isHost ? game.world : refWorld;
+      /* the humans at the table keep their own seat names; every seat the host plays is named
+       * the way a solo war names it — a lord for his city, a contender for himself */
       game.names = geo.players.map((_, i) =>
-        i < n ? (C.SEAT_NAMES[i] || 'an heir') : geo.map.sites[geo.cities[i].site].name);
+        i < n ? (C.SEAT_NAMES[i] || 'an heir') : warName(geo, i));
     } else {
       game.names = C.SEAT_NAMES.slice(0, n);
       const build = () => World.createWorld(seed, n);

@@ -7352,6 +7352,13 @@ suite('a company belongs to a city');
     const mine = () => w.units.filter((u) => u.owner === 0 && u.hp > 0).length;
     const standing = mine();
     w.cities[0].hp = 1;
+    /* THE CLAIMANTS ARE HELD IN THE COURT, and the rig has to say so — the same way it already
+     * holds the defenders off it. Men with no order and nothing left to strike march home, and
+     * a fallen court gives them nothing to strike (`World.fallen`, which is what stops a
+     * conquest wrecking the spoils it is for), so they broke the Seat and walked off it. In a
+     * real war they are under a standing order: a human plants the standard, and `warOrders`
+     * rallies a bot's war body AT the court it was sent to take. A rally cannot say it HERE,
+     * because the reach law refuses an order onto ground that is not their own city's. */
     for (let k = 0; k < 3; k++) manAt(w, 1, 'soldier', w.cities[0].x + 30 + k * 12, w.cities[0].y);
     /* the defenders stand OFF the court, so the take is uncontested and the claim clean */
     for (const u of w.units) if (u.owner === 0) { u.x = w.cities[0].x + 400; u.y = w.cities[0].y + 400; }
@@ -7362,6 +7369,11 @@ suite('a company belongs to a city');
       if (fell == null && w.cities[0].owner === -1) fell = w.cities[0].fell;
       if (w.cities[0].owner >= 0 && World.realmOf(w, w.cities[0].owner) === 1) taken = w.t;
       for (const u of w.units) if (u.owner === 0) { u.x = w.cities[0].x + 400; u.y = w.cities[0].y + 400; u.hp = u.maxHp; }
+      /* ...and the claimants stay standing in it, which is the whole of what "taken by standing
+       * in it" means. Held rather than ordered, for the reach reason above. */
+      let k2 = 0;
+      for (const u of w.units) if (u.owner === 1 && u.hp > 0)
+        { u.x = w.cities[0].x + 30 + (k2++) * 12; u.y = w.cities[0].y; }
     }
     eq('a yielded city remembers whom it fell from', fell, 0);
     ok('...and is taken by standing in it', taken != null);
@@ -8538,6 +8550,198 @@ suite('a deserted seat is played by somebody');
   ok('...and marches', held.rallies > 0, `${held.rallies} standards planted`);
   ok('...and musters more men than an empty chair', held.men >= idle.men,
      `${held.men} against ${idle.men}`);
+}
+
+/* ---------------- EVERY COURT IS NAMED, AND A MINOR LORD DOES NOT CONQUER ----------------
+ * Two reports in one: *"there shouldn't be cities named a city of shadow, give a proper name to
+ * every city"*, and *"minor lords ... should never try to conquer neighbouring cities. Heirs ...
+ * try to conquer cities and expand."*
+ * THE NAMES: a country draws court names from a bag without replacement, and the bag held twelve
+ * against sixteen cities — so three courts came out as 'a City of Shadow', which is not a name
+ * but the absence of one. It read as duplicated rows on the council's roster and made every
+ * banner quoting one ambiguous. The bag is twenty now, and the fallback is a NUMBERED shadow, so
+ * a bag that ever runs short again is visible instead of collapsing several courts onto one
+ * name.
+ * THE CONQUEST: every seat in a war runs an heir's doctrine, and an heir's whole game is to find
+ * the nearest rival court and take it. On the two CONTENDERS that is the war; on the other
+ * thirteen it was fifteen little empires trying to eat each other. `warOrders` turns a minor
+ * lord's war body away from a rival COURT and onto the nearest spring worth taking — so he still
+ * expands, still defends, and still goes wherever his liege points him.
+ * The control is the same seat with ONE BIT changed: listed among `world.heirs` he marches on
+ * the court, left out of them he does not. */
+suite('every court is named, and a minor lord does not conquer');
+{
+  const seeds = [1, 7, 17, 42, 101, 2026];
+  let nameless = 0, dupes = 0;
+  for (const seed of seeds) {
+    const w = REALM.create(seed).world;
+    const names = w.cities.map((c) => w.map.sites[c.site].name);
+    if (names.some((n) => !n || /City of Shadow/.test(n))) nameless++;
+    if (new Set(names).size !== names.length) dupes++;
+  }
+  ok('every court of a country has a name of its own', nameless === 0,
+     `${nameless} of ${seeds.length} seeds had a nameless court`);
+  ok('...and no two courts share one', dupes === 0,
+     `${dupes} of ${seeds.length} seeds had a repeat`);
+  ok('the rig is alive: there are more names than courts',
+     C.REACHWAR.names.length > C.REACHWAR.cities,
+     `${C.REACHWAR.names.length} names for ${C.REACHWAR.cities} courts`);
+
+  /* ONE BIT: the same seat, the same army, contending or not */
+  const march = (contends) => {
+    const me = 3;
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true, heirs: contends ? [0, me] : [0] });
+    w.chaosNext = 1e9;
+    const seat = World.seatOf(w, me);
+    const co = w.players[me].companies.find((q) => q.city === me);
+    /* an army big enough that every doctrine wants to use it */
+    if (co) for (let k = 0; k < 24; k++)
+      manAt(w, me, 'soldier', seat.x + 30 + (k % 8) * 12, seat.y + ((k / 8) | 0) * 14).co = co.id;
+    /* he has to have SEEN a rival court to want it */
+    for (const c of w.cities) w.players[me].explored[c.site] = { kind: 'city' };
+    const bot = AI.make('benedict', contends ? {} : Object.assign({}, C.MINOR));
+    let atCourt = 0;
+    for (let k = 0; k < 60; k++) {
+      bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+      for (const q of w.players[me].companies) {
+        if (!q.rally) continue;
+        for (const c of w.cities) {
+          if (c.owner < 0 || World.realmOf(w, c.owner) === World.realmOf(w, me)) continue;
+          if ((q.rally.x - c.x) ** 2 + (q.rally.y - c.y) ** 2 < C.CITY.r * C.CITY.r) { atCourt++; break; }
+        }
+      }
+    }
+    return atCourt;
+  };
+  const heir = march(true), lord = march(false);
+  ok('the rig is alive: a CONTENDER on that seat marches on a rival court', heir > 0,
+     `${heir} standards planted on one`);
+  ok('...and the same seat as a minor lord never does', lord === 0,
+     `${lord} standards planted on a rival court`);
+}
+
+/* ---------------- A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS ----------------
+ * Reported from play: a Seat yields, the claimant stands his twenty seconds in the court, and
+ * his men spend them knocking down the halls and Gates he is about to inherit — a conquest that
+ * pays for itself in the spoils it destroys. Measured on the old code with the rig below: 2,781
+ * stone and three works of six, gone in eighteen seconds.
+ * The sim already half-said this — a broken court's halls muster nobody, because a city with no
+ * throne pays no muster. This finishes it: its towers stop firing and its works stop being
+ * targets, so what is left to decide is only who HOLDS the ground.
+ * THE CONTROL IS THE SAME ARMY ON A COURT THAT IS STILL STANDING, because "the works survived"
+ * proves nothing unless the same men demonstrably wreck a court that has not fallen. And the
+ * last claim is the one that could have gone wrong in the worst way: a court must still be
+ * TAKEABLE, or this would have quietly repealed `occupy`. */
+suite('a court that has fallen is out of the fight until it swears');
+{
+  const rig = (broken) => {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true });
+    w.chaosNext = 1e9;
+    const victim = 1, taker = 0, city = w.cities[victim];
+    if (broken) { city.hp = 0; city.owner = -1; city.born = victim; }
+    for (let k = 0; k < 4; k++)
+      w.players[victim].buildings.push({ id: w.nextId++, owner: victim, bt: 'barracks',
+        x: city.x + 60 + k * 45, y: city.y + 40, level: 1, hp: 600, maxHp: 600,
+        raise: 0, work: 0, co: 0 });
+    /* a claim happens under a STANDING ORDER — men with no rally and nothing left to strike
+     * march home, which is true before this change as well as after it */
+    const co = w.players[taker].companies[0];
+    for (let k = 0; k < 20; k++) {
+      const u = manAt(w, taker, 'soldier', city.x - 40 + (k % 5) * 20, city.y - 30 + ((k / 5) | 0) * 20);
+      u.co = co ? co.id : 0;
+    }
+    if (co) World.applyCommand(w, taker, { c: 'rally', co: co.id, x: city.x, y: city.y });
+    return { w, victim, taker, city };
+  };
+  const play = (r, secs) => {
+    const stone = () => r.w.players[r.victim].buildings.reduce((s, b) => s + b.hp, 0);
+    const hp0 = stone();
+    for (let i = 0; i < 30 * secs; i++) { World.update(r.w, C.SIM_DT); r.w.events.length = 0; }
+    return { lost: hp0 - stone(), works: r.w.players[r.victim].buildings.length };
+  };
+  /* THE RIG IS ALIVE: the same army, the same works, a court still standing */
+  const up = rig(false);
+  ok('the rig is alive: they may strike him at all',
+     World.foe(up.w, up.taker, up.victim));
+  const wreck = play(up, 18);
+  ok('...and an army in a court that has NOT fallen wrecks it', wreck.lost > 0,
+     `${Math.round(wreck.lost)} stone lost`);
+  /* THE CLAIM: nothing of his is touched while the court is broken */
+  const down = rig(true);
+  ok('the rig is alive: his court has yielded', down.city.owner < 0 && down.city.hp <= 0);
+  const kept = play(down, 18);
+  ok('a fallen court\'s works take no blow at all', kept.lost === 0,
+     `${Math.round(kept.lost)} stone lost`);
+  ok('...and none of them is thrown down', kept.works === 6, `${kept.works} of 6 standing`);
+  /* AND IT IS STILL TAKEN. The whole rule would be a disaster if the ground could not be won. */
+  const more = play(down, 72);
+  ok('...and the court still swears to the man who broke it',
+     World.realmOf(down.w, down.victim) === World.realmOf(down.w, down.taker),
+     `victim's banner is ${World.realmOf(down.w, down.victim)}`);
+  ok('...with its works still standing, which is what a conquest is FOR',
+     more.lost === 0 && down.w.players[down.victim].buildings.length === 6,
+     `${Math.round(more.lost)} lost, ${down.w.players[down.victim].buildings.length} works`);
+}
+
+/* ---------------- AN ORDER BIASES THE CREW, NOT ONLY THE COLUMN ----------------
+ * Reported from play, with a picture of a hundred men parked on a spring: *"my inner lord sends
+ * troops to springs but doesn't build gates."*
+ * `warOrders` rewrites where the war BODY goes and nothing else, so the mason never heard the
+ * order. An heir wants Gates through `wantGates`, which picks from the 3 springs nearest his
+ * seat and the next 4, capped at one or two, and filtered to springs NOBODY holds — so for an
+ * inner lord in a developed country every one of those is already gated, every gate mission
+ * returns null, and he wants no Gate anywhere however many his army is standing on.
+ * The rig builds exactly that country: every spring in his own/mid buckets gated by a rival,
+ * and free ground left inside his REACH — which is the only ground the order can send him to.
+ * Measured on the old code: 1 Gate to 2, and BOTH free springs in his reach still free. */
+suite('an order biases the crew, not only the column');
+{
+  const rig = () => {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true });
+    w.chaosNext = 1e9;
+    const me = 3, seat = World.seatOf(w, me), rr = seat.reach * seat.reach;
+    const all = w.map.sites.filter((s) => s.kind === 'node')
+      .sort((a, b) => (a.x - seat.x) ** 2 + (a.y - seat.y) ** 2
+                    - ((b.x - seat.x) ** 2 + (b.y - seat.y) ** 2));
+    const buckets = all.slice(0, 7);          // exactly `nodes.own` + `nodes.mid`
+    const inReach = all.filter((s) => (s.x - seat.x) ** 2 + (s.y - seat.y) ** 2 <= rr);
+    for (const s of buckets) if (World.nodeHolder(w, s) === -1)
+      w.players[1].buildings.push({ id: w.nextId++, owner: 1, bt: 'gate', x: s.x, y: s.y,
+        level: 1, hp: 100, maxHp: 100, raise: 0, work: 0, node: s.id });
+    const co = w.players[me].companies.find((q) => q.city === me);
+    if (co) for (let k = 0; k < 14; k++) manAt(w, me, 'soldier', seat.x + 30 + k * 8, seat.y).co = co.id;
+    w.players[me].essence = 6000;
+    return { w, me, buckets, inReach };
+  };
+  const play = (r, order) => {
+    const bot = AI.make('benedict', Object.assign({}, C.MINOR));
+    const g0 = r.w.players[r.me].buildings.filter((b) => b.bt === 'gate').length;
+    for (let i = 0; i < 30 * 180; i++) {
+      if (i % 30 === 0) bot.step(r.w, r.me, (cmd) => World.applyCommand(r.w, r.me, cmd), 1.0, order);
+      World.update(r.w, C.SIM_DT); r.w.events.length = 0;
+    }
+    return { gained: r.w.players[r.me].buildings.filter((b) => b.bt === 'gate').length - g0,
+             freeLeft: r.inReach.filter((s) => World.nodeHolder(r.w, s) === -1).length };
+  };
+  const r0 = rig();
+  ok('the rig is alive: every spring his doctrine would want is already held',
+     r0.buckets.every((s) => World.nodeHolder(r0.w, s) !== -1), `${r0.buckets.length} springs`);
+  const free0 = r0.inReach.filter((s) => World.nodeHolder(r0.w, s) === -1).length;
+  ok('...and there is free ground inside his reach to be sent at', free0 > 0, `${free0} free`);
+
+  /* THE CONTROL: told to keep his court, he raises none of them — so a Gate under `gates` is
+   * the ORDER and not the doctrine expanding on its own. */
+  const held = play(rig(), { mode: 'hold' });
+  const gates = play(r0, { mode: 'gates' });
+  ok('ordered to the gates, he raises Gates he did not have', gates.gained > 0,
+     `${gates.gained} raised`);
+  ok('...more than the same lord told to hold his court', gates.gained > held.gained,
+     `${gates.gained} under orders against ${held.gained} holding`);
+  ok('...and the free ground inside his reach is taken', gates.freeLeft < free0,
+     `${free0} free before, ${gates.freeLeft} after`);
 }
 
 /* ---------------- THE HOLD IS A PROMISE TO ONE BANNER ----------------

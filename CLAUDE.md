@@ -598,6 +598,55 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   its full twenty seconds could refuse you outright. Gone on the designer's call, and with it
   `pl.lords`, `CONST.REALM.lords0`, the `refused` event and its banner. The brake on a conquest
   is the army it takes to break a Seat and the twenty uncontested seconds in the court.
+- **EVERY COURT IS NAMED, AND A LORD IS NOT HIS CITY.** A country drew court names from a bag
+  without replacement and the bag held twelve against sixteen cities, so three came out as "a
+  City of Shadow" — not a name but the absence of one, which read as duplicated rows on the
+  council's roster and made every banner quoting one ambiguous. `REACHWAR.names` is twenty now
+  (add a city, add a name) and the fallback is a NUMBERED shadow, so a bag that runs short again
+  is visible instead of collapsing several courts onto one name.
+  **And a CONTENDER is named for himself.** Every seat was named after its court, so the two
+  rivals who can actually win the war were indistinguishable from the thirteen lords who cannot.
+  `warName` answers it: seat 0 is the player, a minor lord IS his city and keeps its name, and a
+  contender wears the name of the doctrine he is actually running (`warKind`), so the name can
+  never disagree with the brain in the seat. A CITY is still named as a city everywhere a city is
+  meant — the attack-order labels, the neighbour lists, the map.
+- **AND A MINOR LORD HOLDS GROUND; HE DOES NOT CONQUER.** Every seat runs an heir's doctrine and
+  an heir's whole game is to find the nearest rival court and take it — which on the two
+  contenders is the war, and on the other thirteen was fifteen little empires trying to eat each
+  other. `warOrders` turns a minor lord's war body away from a rival COURT and onto the nearest
+  spring worth taking (`springTo`), so he still expands, still answers trouble, still defends —
+  and an explicit `attack`/`support` from his LIEGE is exempt, because the player's order
+  outranks his doctrine. Measured over six simulated minutes of a sixteen-seat country: 276 war
+  bodies aimed at a rival court, every one turned. Beware the obvious metric — "men standing
+  inside a rival court's radius" does NOT measure this, because a rival's own writ spring sits
+  inside that radius and taking it is exactly what the lord is supposed to do instead.
+- **A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS** (`World.fallen`). Reported from
+  play: a Seat yields, the claimant stands his twenty seconds in the court, and his men spend them
+  knocking down the halls and Gates he is about to inherit — a conquest that pays for itself in
+  the spoils it destroys. Measured: 2,781 stone and three works of six, gone in eighteen seconds.
+  The sim already half-said this (a broken court's halls muster nobody — `occupied` — because a
+  city with no throne pays no muster); this finishes the sentence. Its works are **nobody's
+  target** (guarded in `acquire` AND at `hurtBuilding`'s door, so a splash pass added later cannot
+  forget) and **its towers do not fire** — without that second half the claimant would be
+  forbidden to strike the stone while the stone went on striking him, which is not a mercy but a
+  one-sided fight. His MEN fight on: what is decided is the court, not the man. `players[i]` is
+  the lord of `cities[i]` permanently, so the test is one array read; and it cannot touch a duel
+  by construction, because a Seat only yields under `rules.occupy`.
+- **AND AN ORDER BIASES THE CREW, NOT ONLY THE COLUMN.** `warOrders` rewrites where the war BODY
+  goes and nothing else, so an heir told to go and get gates marched — and his mason, who had
+  never heard the order, went on wanting whatever his personality wanted. Reported from play as
+  an inner lord sending troops to springs and never building on them, with a hundred men parked
+  on one. The cause is `wantGates`: it picks from `nodes.own` (the 3 springs nearest his seat)
+  and `nodes.mid` (4-7), capped at one or two, and filtered to springs NOBODY holds — so for an
+  inner lord in a developed country every one of those is already gated, every gate mission
+  returns null, and he wants no Gate anywhere however many his army is standing on. `ordered()`
+  prepends the order's own want to `P.missions(v)`, recomputed every think, so as soon as one
+  spring is taken the next free one inside his reach is wanted — which a fixed `slice(0, 2)`
+  cannot say. FREE only there, though the march will happily go and take a rival's: a crew cannot
+  raise a Gate where another stands, and the moment the march brings it down the spring is free.
+  `walls` gets the works arm it never had for an heir (`wantWatch`). Measured on a country where
+  every bucket spring was already gated: 1 Gate → 2 with both free reach springs untouched, and
+  1 → 4 with the order heard.
 - **A HALL MAY ONLY FLY A STANDARD OF ITS OWN CITY** (`joinCo`). A company may only be ORDERED
   inside its city's disc, so a hall raised in a court you have just taken under a standard of
   your home city musters men no order of yours can reach. Asked at the sim's door, so a guest's
