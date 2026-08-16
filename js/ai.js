@@ -594,25 +594,40 @@
     }
   };
 
-  /* THE NEAREST SPRING NOBODY HOLDS, INSIDE HIS OWN CITY'S REACH. One answer, because the
-   * march that goes and takes it and the works arm that then raises a Gate on it must want the
-   * SAME spring — sending the company to one and spending the crew on another is how a lord
-   * ends a war with a full purse and no ground. Reach-bounded on purpose: that is the only
-   * ground a company may be ordered onto (`rules.reach`), so a spring outside it is not a
-   * target, it is a refusal repeated every think. */
-  const freeSpring = (v, seat) => {
-    const w = v.world, W = global.World;
+  /* ---- THE SPRING TO GO AND TAKE, INSIDE HIS OWN CITY'S REACH ----
+   * One answer, because the march that goes and takes it and the works arm that then raises a
+   * Gate on it must want the SAME spring — sending the company to one and spending the crew on
+   * another is how a lord ends a war with a full purse and no ground. Reach-bounded on purpose:
+   * that is the only ground a company may be ordered onto (`rules.reach`), so a spring outside
+   * it is not a target, it is a refusal repeated every think.
+   *
+   * A SPRING A RIVAL HOLDS IS STILL A SPRING TO TAKE, and leaving it out is what made the
+   * `gates` order silently dead a second time. It asked only for springs NOBODY holds, and a
+   * lord whose reach is fully spoken for — which is every lord in the second half of a war, and
+   * every INNER lord almost from the start — found none and struck his standards. Measured on
+   * one seed: ten springs inside his reach, six of them a rival's, and under a standing order to
+   * go and get gates he issued not one rally in forty thinks. Reported from play as a lord asked
+   * to build gates never sending troops to look for any. Free ground is still preferred (walk on
+   * and build, against break-then-build), so this only ever adds targets where there were none.
+   * `freeOnly` is the WORKS arm's question — a crew cannot raise a Gate on a spring somebody
+   * else's Gate is standing on — and `World.foe` is the one spelling of "may I strike this", so
+   * a pact partner's spring is not a target either. */
+  const springTo = (w, me, seat, freeOnly) => {
+    const W = global.World;
     if (!seat || !w.map || !w.map.sites) return null;
     const rr = seat.reach ? seat.reach * seat.reach : Infinity;
-    let best = null, bd = Infinity;
+    let free = null, fd = Infinity, held = null, hd = Infinity;
     for (const s of w.map.sites) {
-      if (s.kind !== 'node' || W.nodeHolder(w, s) !== -1) continue;
+      if (s.kind !== 'node') continue;
       const d = d2(s.x, s.y, seat.x, seat.y);
-      if (d > rr || d >= bd) continue;
-      bd = d; best = s;
+      if (d > rr) continue;
+      const h = W.nodeHolder(w, s);
+      if (h === -1) { if (d < fd) { fd = d; free = s; } }
+      else if (!freeOnly && W.foe(w, me, h) && d < hd) { hd = d; held = s; }
     }
-    return best;
+    return free || (freeOnly ? null : held);
   };
+  const freeSpring = (v, seat) => springTo(v.world, v.me, seat, true);
 
   /* ---- A LORD BEHIND THE LINES IS A RESERVE, NOT A STATUE ----
    * The march only ever asked his own neighbours for a court of ANOTHER banner, which is right
@@ -762,7 +777,7 @@
              * works arm below — towers on the rim, faced at the nearest rival court — so it is
              * an order about what he BUILDS as well as where he stands. */
             home();
-          } else if (mode === 'gates') {
+          } else if (mode === 'gates' && springTo(w, v.me, seat, false)) {
             /* ---- GO AND TAKE THE SPRINGS ----
              * This order used to fall in with `hold` and strike the rally, which is why it did
              * nothing: reported from play as *"asked to build gates the bot doesn't even
@@ -773,10 +788,15 @@
              * the march has won.
              * Bounded by the CITY'S REACH, because that is the only ground he may be ordered
              * onto (`rules.reach`) — a rally past the rim is refused, and a refusal re-issued
-             * every think is a lord shouting at a wall. */
-            const s = freeSpring(v, seat);
+             * every think is a lord shouting at a wall.
+             * A SPRING A RIVAL HOLDS IS ONE TO TAKE (`springTo`), and WHEN HIS REACH HOLDS
+             * nothing to take at all the branch is not entered — he falls through to his own
+             * march below rather than striking his standards. An order that has run out of
+             * ground has nothing to say, and the honest answer to that is the doctrine he
+             * would have had without it. */
+            const s = springTo(w, v.me, seat, false);
             if (s && men >= 4) rallyAt(s);
-            else if (!s || men < 2) home();   // nothing left to take, or nobody left to take it
+            else if (men < 2) home();         // nobody left to take it
           } else if (mode === 'attack' && w.cities[order.target]) {
             /* MARCHED ON A NAMED COURT, and re-pointed as the company refills — a liege who
              * has to re-issue the order every time a company is spent is a liege doing the
@@ -984,19 +1004,15 @@
         return pressed ? t : 'home';
       }
       if (mode === 'gates') {
-        /* the nearest spring nobody holds inside his own court's reach — the same ground the
-         * lord's `gates` order wants, and it must be TAKEN before it can be built on */
-        const seat = W.seatOf(world, me);
-        if (!seat) return null;
-        const rr = seat.reach ? seat.reach * seat.reach : Infinity;
-        let best = null, bd = Infinity;
-        for (const s of world.map.sites) {
-          if (s.kind !== 'node' || W.nodeHolder(world, s) !== -1) continue;
-          const d = d2(s.x, s.y, seat.x, seat.y);
-          if (d > rr || d >= bd) continue;
-          bd = d; best = s;
-        }
-        return best || 'home';
+        /* THE SPRING TO GO AND TAKE inside his own court's reach — the same one `springTo`
+         * hands the lord baseline and the works arm, because the march that wins the ground and
+         * the crew that spends on it must want the same spring.
+         * NULL, NOT 'home', WHEN HIS REACH HOLDS NOTHING TO TAKE. This returned `'home'`, which
+         * under the reach law means "strike every standard": an order to go and get gates read
+         * as an order to stand in the yard, and said so to nobody. Null is a claim withdrawn —
+         * the heir's own aim passes through untouched — which is the right answer, because an
+         * order that has run out of ground should leave the doctrine it is biasing alone. */
+        return springTo(world, me, W.seatOf(world, me), false);
       }
       if (mode === 'hold' || mode === 'walls') return 'home';
       return null;

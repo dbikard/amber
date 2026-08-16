@@ -40,6 +40,9 @@ touches no balance surface.
       the one a reader will find first. Either delete it and rewrite those suites against
       heirs, or keep it deliberately as the weakest handicap preset and make `warOrders` the
       single implementation both use. `[SAFE]` — it cannot touch a duel.
+      **The hazard is no longer hypothetical**: "a spring a rival holds is still a spring to
+      take" had to be fixed in both copies at once, and the only reason it was caught in both
+      is that the fix went through the shared `springTo`. The next one may not.
 - [ ] **Watch a country of heirs and judge it.** The retrofit is measured on ECONOMY (Gates,
       springs, works, men — all roughly tripled) and on cost (0.96 → 2.3ms a frame), not on
       whether the war is any GOOD to play against. Nobody has watched one yet. `?reach=SEED`

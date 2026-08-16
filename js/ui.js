@@ -466,6 +466,7 @@
     body.appendChild(el('h3', 'cc-head', 'THE COURTS'));
     for (const c of d.cities) {
       const row = el('div', 'cc-city' + (c.mine ? ' mine' : '') + (c.hand ? ' hand' : ''));
+      row.dataset.ci = c.idx;   // which court this row IS — the roster's order is not it
       const sw = el('i', 'cc-swatch');
       sw.style.background = c.tint;
       row.appendChild(sw);

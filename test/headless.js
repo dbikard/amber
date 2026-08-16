@@ -8314,6 +8314,105 @@ suite('gates is an order that moves an army');
   }
 }
 
+/* ---------------- A SPRING A RIVAL HOLDS IS STILL A SPRING TO TAKE ----------------
+ * Reported from play, after `gates` was made to march at all: *"my inner lord when asked to
+ * build gates never sent troops to explore and find springs."*
+ * The order looked for springs NOBODY holds and nothing else, and returned `'home'` when it
+ * found none — which under the reach law strikes every standard. So a lord whose reach was
+ * fully spoken for stood in his yard while the council row said he was under orders, which is
+ * the dead-button failure a third time. And a reach is fully spoken for far more often than it
+ * sounds: an INNER lord's is ringed by courts that have been gating their own ground since
+ * genesis, and EVERY lord's is by the second half of a war.
+ * Measured on the old code with the rig below: ten springs inside his reach, six of them a
+ * rival's — the exact ground the order is about — and not one rally in forty thinks.
+ * Two claims, and the second is the one that took the reading from "wrong target" to "no
+ * target at all": a rival's spring IS a target (break the Gate, then build), and when there is
+ * genuinely nothing to take the order withdraws its claim rather than becoming "stand still" —
+ * the lord falls back to the doctrine he would have had without it.
+ * THE SHIPPING PATH IS WHAT IS DRIVEN. The suite above drives `BASELINES.lord`, which the game
+ * no longer seats; a war seats an HEIR through `warOrders`, and the two implementations of the
+ * five words are exactly where this bug survived being fixed once. Both are driven here. */
+suite('a spring a rival holds is still a spring to take');
+{
+  /* every free spring inside one lord's reach, taken by `who` — himself or a rival */
+  const spoken = (who) => {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true });
+    w.chaosNext = 1e9;
+    const me = 3, seat = World.seatOf(w, me), rr = seat.reach * seat.reach;
+    const co = w.players[me].companies.find((q) => q.city === me);
+    if (co) for (let k = 0; k < 12; k++) manAt(w, me, 'soldier', seat.x + 30 + k * 8, seat.y).co = co.id;
+    const inReach = w.map.sites.filter((s) => s.kind === 'node' &&
+      (s.x - seat.x) ** 2 + (s.y - seat.y) ** 2 <= rr);
+    /* CLEAR THE SPRING FIRST. Reaches overlap by construction, so several of his are already
+     * another lord's at genesis — filling only the FREE ones left the "nothing to take" rig
+     * with rival springs still in it, and it was the rig's own precondition that caught it. */
+    const to = who === 'him' ? me : 1;
+    for (const s of inReach) {
+      for (const p of w.players)
+        p.buildings = p.buildings.filter((b) => !(b.bt === 'gate' && b.node === s.id));
+      w.players[to].buildings.push({ id: w.nextId++, owner: to, bt: 'gate', x: s.x, y: s.y,
+        level: 1, hp: 100, maxHp: 100, raise: 0, work: 0, node: s.id });
+    }
+    return { w, me, seat, co, inReach };
+  };
+  /* forty thinks under a standing order to go and get gates, through the given bot */
+  const drive = (r, bot) => {
+    for (let k = 0; k < 40; k++)
+      bot.step(r.w, r.me, (cmd) => World.applyCommand(r.w, r.me, cmd), 1.0, { mode: 'gates' });
+    return r.co && r.co.rally;
+  };
+  const onSpring = (r, at, held) => at && r.inReach.some((s) =>
+    (at.x - s.x) ** 2 + (at.y - s.y) ** 2 < 80 * 80 &&
+    (held == null || World.nodeHolder(r.w, s) === held));
+
+  /* THE RIG IS ALIVE: a reach with springs in it, and not one of them free */
+  const rival = spoken('rival');
+  ok('the rig is alive: springs inside his reach', rival.inReach.length > 0,
+     `${rival.inReach.length} springs`);
+  ok('...and a company of his own to send', !!rival.co);
+  ok('...and every one of them held, so nothing is free to walk onto',
+     rival.inReach.every((s) => World.nodeHolder(rival.w, s) !== -1),
+     `${rival.inReach.filter((s) => World.nodeHolder(rival.w, s) === -1).length} free`);
+  ok('...by a rival, which is who the order is about',
+     rival.inReach.some((s) => World.foe(rival.w, rival.me, World.nodeHolder(rival.w, s))));
+
+  /* THE HEIR — the path a war actually seats, through `warOrders` */
+  {
+    const at = drive(rival, AI.make('benedict', Object.assign({}, C.MINOR)));
+    ok('an heir told to take the gates marches, though no spring is free', !!at,
+       at ? `rally ${Math.round(at.x)},${Math.round(at.y)}` : 'no rally — he stands in his yard');
+    ok('...at a spring a rival holds', onSpring(rival, at, 1),
+       at ? `${Math.round(at.x)},${Math.round(at.y)}` : 'nowhere');
+    ok('...inside his own city\'s reach, so the order is not refused',
+       !at || (at.x - rival.seat.x) ** 2 + (at.y - rival.seat.y) ** 2 <=
+              rival.seat.reach * rival.seat.reach);
+  }
+  /* THE BASELINE — still held to the same rule, and the reason this note exists twice */
+  {
+    const r2 = spoken('rival');
+    const at = drive(r2, AI.make('lord', {}));
+    ok('the lord baseline marches on a rival\'s spring too', !!at,
+       at ? `rally ${Math.round(at.x)},${Math.round(at.y)}` : 'no rally');
+    ok('...at a spring a rival holds', onSpring(r2, at, 1));
+  }
+  /* NOTHING LEFT TO TAKE: every spring in reach is his OWN. The order has run out of ground,
+   * and the answer is his own doctrine — NOT a struck standard. On the old code both of these
+   * were "no rally at all", which is what standing in the yard looks like from outside. */
+  {
+    const mine = spoken('him');
+    ok('the rig is alive: every spring in his reach is his own',
+       mine.inReach.every((s) => World.nodeHolder(mine.w, s) === mine.me),
+       `${mine.inReach.filter((s) => World.nodeHolder(mine.w, s) !== mine.me).length} of ` +
+       `${mine.inReach.length} springs are not his`);
+    ok('...so the order has nothing whatever to be about',
+       !mine.inReach.some((s) => World.foe(mine.w, mine.me, World.nodeHolder(mine.w, s))));
+    const at = drive(mine, AI.make('benedict', Object.assign({}, C.MINOR)));
+    ok('an order with no ground left to take does not become "stand still"', !!at,
+       at ? `rally ${Math.round(at.x)},${Math.round(at.y)}` : 'no rally — the order struck his standards');
+  }
+}
+
 /* ---------------- A THRONE LEFT ALONE MENDS ITSELF ----------------
  * Reported from play: a castle knocked to a sliver stayed there for the rest of the match.
  * Every other work already self-mends; the Seat never did, because it is the CITY record and

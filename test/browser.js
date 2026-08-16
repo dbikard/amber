@@ -5608,16 +5608,39 @@ async function match(browser, base, renderer) {
       document.getElementById('war-chip').click();
       await new Promise((r2) => requestAnimationFrame(r2));
       const rows = [...document.querySelectorAll('.cc-city')];
-      const before = { x: R.camX, y: R.camY };
+      /* THE CLAIM IS "THE CAMERA LANDS ON THAT COURT", NOT "THE CAMERA MOVED". Asserting a
+       * displacement made the test depend on where the previous sub-test happened to leave the
+       * view: it tapped a court on the MAP, and the day the roster's order shifted under it the
+       * row picked here was the court already under the camera — `moved: 0`, correct behaviour,
+       * red test. The row says which court it is (`data-ci`), so ask it. */
       const row = rows[rows.length - 1];
+      const ci = Number(row.dataset.ci);
+      const c = w.cities[ci];
+      /* ON SCREEN is the claim, and `Render.project` is the only thing that may answer it —
+       * a court near the country's rim cannot be CENTRED, because `clampCam` holds the view
+       * inside the land, so "the camera sits on its coordinates" is a claim the game does not
+       * make and should not be asked for (measured: 971 units short, and correct). */
+      const seen = () => { const p = R.project(c.x, c.y, 0);
+        return !!p && p.x > 0 && p.y > 0 && p.x < window.innerWidth && p.y < window.innerHeight; };
+      /* park the view far away first, so landing on the court cannot be a no-op */
+      R.lookAt(w.cities[0].x, w.cities[0].y);
+      await new Promise((r2) => requestAnimationFrame(r2));
+      const before = { x: R.camX, y: R.camY }, wasOn = seen();
       row.click();
       await new Promise((r2) => requestAnimationFrame(r2));
-      return { rows: rows.length, moved: Math.hypot(R.camX - before.x, R.camY - before.y),
+      return { rows: rows.length, ci, named: !isNaN(ci) && !!c, wasOn, nowOn: seen(),
+               was: Math.round(Math.hypot(before.x - c.x, before.y - c.y)),
+               at: Math.round(Math.hypot(R.camX - c.x, R.camY - c.y)),
                closed: document.getElementById('council').classList.contains('hidden') };
     });
     ok('a court you have seen joins the roster', jump.rows >= 2, JSON.stringify(jump));
+    ok('the rig is alive: the row names a court, and it was off screen before the tap',
+       jump.named && jump.was > 400 && !jump.wasOn, JSON.stringify(jump));
+    /* OFF SCREEN BEFORE, ON SCREEN AFTER — the whole claim, and all of it that the game
+     * promises. How far the camera CENTRE ends from the court is the clamp's business, not
+     * the row's (measured: 989 units, with the court plainly in view). */
     ok('...and tapping its row takes you there and closes the council',
-       jump.moved > 200 && jump.closed, JSON.stringify(jump));
+       jump.nowOn && jump.closed, JSON.stringify(jump));
 
     /* ---- EVERY ROW THAT SAYS "TAP" MUST DO SOMETHING WHEN TAPPED ----
      * `councilHandlers` delegated three of its four actions to `H` — a name that never

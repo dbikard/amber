@@ -595,10 +595,24 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   built on** — every spring past the opening one lies beyond the writ and `placementError` wants
   men standing on it — so the doctrine walks the company to the nearest unheld spring inside its
   own city's REACH (the only ground it may be ordered onto) and the crew then spends what the
-  march won. `freeSpring` is one answer used by both halves on purpose: the march that takes a
+  march won. `springTo` is one answer used by both halves on purpose: the march that takes a
   spring and the mason who builds on it must want the same one, or a lord ends a war with a full
   purse and no ground. `walls` was never dead — it has a works arm (towers on the court's rim,
   faced at the nearest rival court) and coming home is the right march for a defensive order.
+- **AND A SPRING A RIVAL HOLDS IS STILL A SPRING TO TAKE.** `gates` marched — at ground *nobody*
+  held, and nothing else — and returned `'home'` when it found none, which under the reach law
+  strikes every standard. So the same order was dead a second time, in the case that matters
+  most: a reach is fully spoken for far more often than it sounds — an INNER lord's is ringed by
+  courts that have been gating their own ground since genesis, and every lord's is by the second
+  half of a war. Measured: ten springs inside one lord's reach, six of them a rival's — the exact
+  ground the order is about — and not one rally in forty thinks. Reported from play as *"my inner
+  lord when asked to build gates never sent troops to explore and find springs"*. `springTo`
+  prefers free ground (walk on and build, against break-then-build) and falls to the nearest
+  spring held by somebody `World.foe` says he may strike; the WORKS arm still asks for a free one
+  only, because a crew cannot raise a Gate where another stands. And when there is genuinely
+  nothing to take **the order withdraws its claim rather than becoming "stand still"** — null,
+  not `'home'` — so the lord falls back to the doctrine he would have had without it. An order
+  that has run out of ground has nothing to say.
 - **AND HIS DEFAULT — no order at all — HAD THE SAME THREE HOLES, all reported from play.** The
   march asked only "is a court of another banner on my own border", so **an interior lord did
   nothing whatever**: conquer a cluster and every lord inside it is ringed by his own banner,
@@ -608,8 +622,8 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   while he stood in his yard. And he never marched to a spring, so **he could never build on
   one**, because `placementError` wants men standing on it. The default now reads: trouble
   anywhere in his country (`troubleAt` — the seat means come home, a work means go to the work)
-  → a rival court on his border → a free spring inside his reach (`freeSpring`, the same one
-  `gates` wants) → the neighbouring court of his banner that is pressed or exposed
+  → a rival court on his border → a spring inside his reach worth taking (`springTo`, the same
+  one `gates` wants) → the neighbouring court of his banner that is pressed or exposed
   (`reserveAt`) → nothing at all, which is the honest answer when every neighbour is as safe as
   he is. **A lord behind the lines is a reserve, not a statue.**
 - **EVERY SEAT IN A WAR IS AN HEIR, AND A MINOR LORD IS A WEAKER ONE.** A country used to run
