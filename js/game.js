@@ -385,6 +385,10 @@
      * underneath it. It returns to the MATCH and not to the menu: the war is still running
      * behind it, and a back press that walked out of the war because the player had the
      * council open would be the worst possible reading of the gesture. */
+    /* ...and the COURT opened from its map is one layer above the council, so it peels first.
+     * Without this a back press meant for the pop-up shut the whole panel and took the map
+     * with it, which is the gesture reading two steps at once. */
+    if (UI.courtPopOpen && UI.courtPopOpen()) { UI.courtPopClose(); armBack(); return; }
     if (UI.councilOpen && UI.councilOpen()) { UI.councilClose(); armBack(); return; }
     if (UI.sheetOpen()) { UI.closeSheet(); armBack(); return; }
     const halted = game.mode === 'guest' ? !!(snapCur && snapCur.paused) : !!(game.world && game.world.paused);
@@ -1036,10 +1040,13 @@
     cities.length = 0;
     for (const g of groups) for (let k = 0; k < g.cities.length; k++) {
       const c = g.cities[k];
-      c.terms = (k === 0 && g.t)
-        ? { idx: g.realm, name: g.t.name, state: g.t.state, act: g.t.act,
-            holds: g.n + (g.n === 1 ? ' city' : ' cities') }
-        : null;
+      /* THE TERMS RIDE ON EVERY COURT OF THE BANNER, and only the first DRAWS them. The roster
+       * wants one strip per banner; the court pop-up is opened from the MAP, where the court
+       * you tapped is whichever one you tapped, so it has to be able to offer terms from any of
+       * them. One field, two readers, and no second copy of "what are we to each other". */
+      c.terms = g.t ? { idx: g.realm, name: g.t.name, state: g.t.state, act: g.t.act,
+                        holds: g.n + (g.n === 1 ? ' city' : ' cities') } : null;
+      c.termsHere = k === 0 && !!g.t;
       cities.push(c);
     }
     /* ---- AND THE COUNTRY ITSELF, because a roster is a list and a war is a SHAPE ----
@@ -1263,15 +1270,24 @@
       else if (ev.e === 'razed') UI.banner(ours(ev.pi)
         ? 'You throw the city down — it will be nobody’s now'
         : seatName(ev.pi) + ' throws the city down', ours(ev.pi) ? '' : 'warn');
-      else if (ev.e === 'offer' && !ours(ev.pi)) UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
-      else if (ev.e === 'pact' && !ours(ev.pi)) {
-        /* a pact between two OTHER heirs is public and is the most important thing on the board
-         * for the seat left out of it, so it is named rather than skipped */
-        const third = ev.p !== game.viewer;
-        if (ev.on) UI.banner(third ? seatName(ev.pi) + ' and ' + seatName(ev.p) + ' come to terms'
-                                   : seatName(ev.pi) + ' agrees to terms', 'alert');
-        else UI.banner(third ? seatName(ev.pi) + ' breaks with ' + seatName(ev.p)
-                             : seatName(ev.pi) + ' BREAKS the truce!', 'warn');
+      /* ---- TERMS SPEAK ONLY WHEN THEY ARE YOURS ----
+       * A duel has one rival, so "somebody came to terms" could only ever be about you. A war
+       * seats sixteen and they treat with each other constantly: reported from play with a
+       * screenshot of the whole stack — three lines, `AVERNUS and KASHFA`, `AVERNUS and TIR-NA`,
+       * `AVERNUS and a City of Shadow`, none of them involving the player, and every one of them
+       * shoving out something that did. The stack holds three lines for 3.4 seconds each, so
+       * a country's diplomacy alone can fill it forever.
+       * It fails the banner rule's third test — would he act differently for knowing? — and it
+       * has a readout already: the council's roster names every banner and the terms it is
+       * under, live, for as long as it is true. So the ANSWER to "who is allied with whom" is a
+       * panel, and a banner is kept for the thing that is happening TO you.
+       * Both events, because both were open: `offer` is emitted whenever an offer fails to seal,
+       * including between two lords who have never heard of you. */
+      else if (ev.e === 'offer' && !ours(ev.pi) && ours(ev.p))
+        UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
+      else if (ev.e === 'pact' && !ours(ev.pi) && ours(ev.p)) {
+        if (ev.on) UI.banner(seatName(ev.pi) + ' agrees to terms', 'alert');
+        else UI.banner(seatName(ev.pi) + ' BREAKS the truce!', 'warn');
       }
       else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner('Chaos tears open a rift in the black road', 'chaos'); }
       else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');

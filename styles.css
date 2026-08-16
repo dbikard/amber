@@ -473,6 +473,28 @@ body {
 #council h2 { font-size: 22px; letter-spacing: 4px; color: #ffe9a8; margin-bottom: 12px; }
 #council-body { width: min(96vw, 560px); text-align: left; }
 #council .mbtn { margin: 16px 0 24px; }
+/* A COURT TAPPED ON THE MAP, over the council rather than instead of it — you were reading the
+   map, so the map is what you come back to. The veil is the dismiss target, which is why the
+   card stops the tap from reaching it. */
+.cp-veil {
+  position: fixed; inset: 0; z-index: 40; background: rgba(6, 4, 12, 0.72);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+  -webkit-tap-highlight-color: transparent;
+}
+.cp {
+  width: min(92vw, 420px); text-align: left;
+  background: #14101e; border: 1px solid #c9a44f66; border-radius: 10px;
+  padding: 14px 14px 10px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.66);
+}
+.cp.mine { border-color: #c9a44faa; background: #1b1610; }
+.cp-head { display: flex; align-items: center; gap: 10px; }
+.cp-say { font-size: 11px; color: #b8a878; letter-spacing: 1px; margin: 10px 0 0; }
+.cp-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.cp-acts .mbtn.small { margin: 0; font-size: 11px; padding: 6px 10px; min-width: 0; }
+.cp-acts .mbtn.sealed { border-color: #9fe6b0aa; color: #cfeed8; }
+.cp-acts .mbtn.asked { border-color: #ffe9a8cc; color: #ffe9a8; }
+.cp-acts .mbtn.offered { border-style: dashed; }
+.cp .cp-x { display: block; width: 100%; margin: 6px 0 0; font-size: 11px; padding: 7px 0; opacity: 0.75; }
 .cc-banner {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px;
   background: rgba(20, 16, 30, 0.5); border: 1px solid #c9a44f33;

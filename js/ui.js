@@ -343,6 +343,7 @@
    * it testable and what stops a second spelling of "whose" appearing in here. */
   UI.councilOpen = () => !$('council').classList.contains('hidden');
   UI.councilClose = function () {
+    UI.courtPopClose();   // it lives inside the panel; leaving it up would outlive its data
     $('council').classList.add('hidden');
     $('hud').classList.remove('hidden');
   };
@@ -420,14 +421,103 @@
         const d2 = (h.x - cx) * (h.x - cx) + (h.y - cy) * (h.y - cy);
         if (d2 < bd) { bd = d2; best = h; }
       }
-      if (best) { H2.onLook(best.idx); UI.councilClose(); }
+      if (best) UI.courtPop(best.idx, H2);
     });
     return wrap;
   }
 
+  /* ---------------- A COURT ON THE MAP OPENS THE COURT ----------------
+   * The map is where a war is actually read — sixteen courts on 8000x9600 cannot be found by
+   * dragging, and the roster is a column you scroll. Tapping a mark used to jump the camera and
+   * close the whole panel, which is the one thing you did NOT want if you were reading the map:
+   * you lost the map to find out what you had tapped. So a mark opens the court instead — who
+   * holds it, what it earns, what its lord is under orders to do, and every action its ROW would
+   * have offered, terms included.
+   * It is built from the same `d.cities` entry the row is, and every button calls the same
+   * handler, so the two ways into a city cannot drift apart — which is what the map's tap
+   * shared a handler for in the first place. `GO THERE` is the old behaviour, kept as the
+   * action it always was rather than as the only thing a tap can mean. */
+  let popData = null, popH = null;
+  UI.courtPopOpen = () => !!$('court-pop');
+  UI.courtPopClose = () => { const e = $('court-pop'); if (e) e.remove(); };
+  UI.courtPop = function (ci, H2) {
+    UI.courtPopClose();
+    const d = popData, c = d && d.cities.find((q) => q.idx === ci);
+    if (!c) return;
+    popH = H2 || popH;
+    const el = (tag, cls, txt) => {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (txt != null) e.textContent = txt;
+      return e;
+    };
+    const back = el('div', 'cp-veil');
+    const pop = el('div', 'cp' + (c.mine ? ' mine' : ''));
+    back.id = 'court-pop';
+    const head = el('div', 'cp-head');
+    const sw = el('i', 'cc-swatch');
+    sw.style.background = c.tint;
+    head.appendChild(sw);
+    const nm = el('div', 'cc-mid');
+    const t1 = el('div', 'cc-name');
+    t1.appendChild(el('b', null, c.name));
+    if (c.lord) t1.appendChild(el('span', 'cc-lord', c.lord));
+    nm.appendChild(t1);
+    if (c.sub) nm.appendChild(el('div', 'cc-sub', c.sub));
+    if (c.hp != null) {
+      const bar = el('div', 'cc-bar'), fill = el('i');
+      fill.style.width = Math.max(0, Math.min(100, c.hp * 100)) + '%';
+      fill.style.background = c.tint;
+      bar.appendChild(fill);
+      nm.appendChild(bar);
+    }
+    head.appendChild(nm);
+    pop.appendChild(head);
+    /* what this court is to your banner, said once, in words — the swatch is a colour and a
+     * colour is not an answer when sixteen banners are on the map */
+    if (c.terms) pop.appendChild(el('div', 'cp-say', c.terms.name + ' · ' + c.terms.holds +
+                                                     ' · ' + c.terms.state.toUpperCase()));
+    const acts = el('div', 'cp-acts');
+    const btn = (t, cls, fn) => {
+      const b = el('button', 'mbtn small' + (cls ? ' ' + cls : ''), t);
+      b.addEventListener('click', fn);
+      acts.appendChild(b);
+      return b;
+    };
+    btn('◎ GO THERE', '', () => { UI.courtPopClose(); popH.onLook(c.idx); UI.councilClose(); });
+    if (c.mine && !c.hand) {
+      btn('👑 COMMAND', '', () => { UI.courtPopClose(); popH.onTake(c.idx); UI.councilClose(); });
+      for (const o of c.orders)
+        btn(o.on ? '● ' + o.label : o.label, '', () => {
+          popH.onOrder(c.lordIdx, o.mode, o.target);
+          UI.council(popH.data(), popH);      // the roster behind it changes too
+          UI.courtPop(c.idx, popH);           // ...and the pop-up says the new order back
+        });
+    }
+    if (c.terms)
+      btn(c.terms.act, c.terms.state, () => {
+        popH.onTerms(c.terms.idx);
+        UI.council(popH.data(), popH);
+        UI.courtPop(c.idx, popH);
+      });
+    pop.appendChild(acts);
+    const close = el('button', 'mbtn small cp-x', 'CLOSE');
+    close.addEventListener('click', () => UI.courtPopClose());
+    pop.appendChild(close);
+    /* tapping the ground behind it dismisses — the phone idiom, and it must not fall through
+     * to the map underneath and open the next court */
+    back.addEventListener('click', (e) => { if (e.target === back) UI.courtPopClose(); });
+    back.appendChild(pop);
+    $('council').appendChild(back);
+  };
+
   UI.council = function (d, H2) {
     const body = $('council-body');
     body.innerHTML = '';
+    /* the court pop-up is opened from the MAP and rebuilt on every action, so it reads the
+     * roster's own data rather than keeping a copy that can go stale behind it */
+    popData = d; popH = H2;
+    UI.courtPopClose();
     const el = (tag, cls, txt) => {
       const e = document.createElement(tag);
       if (cls) e.className = cls;
@@ -506,7 +596,7 @@
       /* ...and the terms a RIVAL banner is under, in the same place, on the first of its courts.
        * The banner names itself here because the row above is a court: "KASHFA · 3 cities" is
        * the whole of what the terms list used to say. */
-      if (c.terms) {
+      if (c.termsHere) {
         const acts = el('div', 'cc-acts cc-terms ' + c.terms.state);
         acts.dataset.pi = c.terms.idx;   // which BANNER this offer is with — the label may repeat
         acts.appendChild(el('span', 'cc-with', c.terms.name + ' · ' + c.terms.holds));

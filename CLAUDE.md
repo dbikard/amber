@@ -367,6 +367,17 @@ end). Bare ground does nothing. A refusal leaves the work armed so another spot 
 The cards cannot say why a particular spot refuses them any more — the sheet no longer belongs
 to one — so they show cost and affordability only.
 
+**AND TERMS SPEAK ONLY WHEN THEY ARE YOURS.** A duel has one rival, so "somebody came to terms"
+could only ever be about the player. A war seats sixteen and they treat with each other
+constantly: reported from play with a photograph of the whole stack — three lines about one lord
+treating with three others, none of them the player, every one shoving out something that was.
+Both `pact` and `offer` are routed on `ours(ev.p)` now (the offer was made to your BANNER), not
+merely on `!ours(ev.pi)`; `offer` is emitted whenever an offer fails to seal, including between
+two lords who have never heard of you, so it was the wider hole of the two. It fails the third
+test below — would he act differently for knowing? — and the council's roster already names every
+banner and the terms it is under, live, for as long as it is true. The CHRONICLE still records
+third-party pacts (`record.js`), which is where a public fact you did not need shouted belongs.
+
 **A BANNER IS FOR A REFUSAL OR A SURPRISE, NEVER FOR AN ECHO.** The corner stack holds three
 lines for 3.4 seconds each, so every banner that says what the player has just done shoves out
 one that says what the *rival* is doing. Three tests, all of which have to pass: does it tell
@@ -863,6 +874,17 @@ it). Reported from play with a screenshot.
   phone for a picture that already exists. It is NOT the minimap and must not become it — the
   minimap answers "where am I, where is the fighting" every frame at a glance, and sixteen labels
   would destroy that.
+  **AND A COURT ON THE MAP OPENS THE COURT.** A tap on a mark used to jump the camera and close
+  the whole panel — the one thing you did not want if you were reading the map, since you lost
+  the map to find out what you had tapped. It opens a card OVER the council instead: who holds
+  it, what it earns, its throne, its standing order, and every action its row offers — GO THERE
+  (the old behaviour, kept as an action rather than as the only reading of a tap), COMMAND and
+  the five words for a court of your own, terms for a rival's. Built from the same `d.cities`
+  entry the row is and calling the same handlers, so the two ways into a city still cannot
+  drift. `c.terms` therefore rides on EVERY court of a banner and `c.termsHere` says which one
+  DRAWS the strip: the roster wants one per banner, the card must offer them from whichever
+  court you happened to tap. It peels before the council in `onPopState`, or one back press
+  would read two steps at once.
 - **BACK IS THE WAY OUT OF THE COUNCIL**, peeled FIRST in `onPopState` because it is a panel over
   everything including a sheet still open beneath it — and it returns to the MATCH, never the
   menu: the war is running behind it, and a back press that left the war because the council

@@ -5590,19 +5590,33 @@ async function match(browser, base, renderer) {
         clientX: b.left + (c.x / land.w) * b.width, clientY: b.top + (c.y / land.h) * b.height }));
       await new Promise((res) => setTimeout(res, 260));
       const mid = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
-      return { ground: !!window.UI.mapGround, aspect: +(b.width / b.height).toFixed(2),
-               want: +(land.w / land.h).toFixed(2),
-               closed: document.getElementById('council').classList.contains('hidden'),
-               moved: before && mid ? Math.round(Math.hypot(mid.x - before.x, mid.y - before.y)) : -1,
-               miss: mid ? Math.round(Math.hypot(mid.x - c.x, mid.y - c.y)) : -1,
-               court: [c.x | 0, c.y | 0] };
+      const pop = document.getElementById('court-pop');
+      const out = { ground: !!window.UI.mapGround, aspect: +(b.width / b.height).toFixed(2),
+                    want: +(land.w / land.h).toFixed(2),
+                    /* THE TAP OPENS THE COURT NOW rather than jumping and closing the panel:
+                     * you were reading the map, so the map is what you come back to. GO THERE
+                     * is the old behaviour, kept as an action — asserted here through the card,
+                     * so the jump itself is still covered by a test. */
+                    opened: !!pop,
+                    stillOpen: !document.getElementById('council').classList.contains('hidden'),
+                    court: [c.x | 0, c.y | 0] };
+      const go = pop && [...pop.querySelectorAll('.cp-acts .mbtn')].find((x) => /GO THERE/.test(x.textContent));
+      if (go) { go.click(); await new Promise((res) => setTimeout(res, 260)); }
+      const mid2 = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
+      out.closed = document.getElementById('council').classList.contains('hidden');
+      out.moved = before && mid2 ? Math.round(Math.hypot(mid2.x - before.x, mid2.y - before.y)) : -1;
+      out.miss = mid2 ? Math.round(Math.hypot(mid2.x - c.x, mid2.y - c.y)) : -1;
+      mid;   // the reading taken before GO THERE, kept so the rig reads in order
+      return out;
     });
     ok('the council carries a map of the country', !mp.err, mp.err || '');
     if (!mp.err) {
       ok('...drawn on the land itself', mp.ground);
       ok('...at the country\'s own aspect', Math.abs(mp.aspect - mp.want) < 0.05,
          `${mp.aspect} against ${mp.want}`);
-      ok('tapping a court on the map takes you to it', mp.miss >= 0 && mp.miss < 400,
+      ok('tapping a court on the map opens that court', mp.opened, JSON.stringify(mp));
+      ok('...over the council, which you were reading', mp.stillOpen, JSON.stringify(mp));
+      ok('...and its GO THERE takes you to it', mp.miss >= 0 && mp.miss < 400,
          `${mp.miss} units from ${mp.court}, camera moved ${mp.moved}`);
       ok('...and closes the council, exactly as its row does', mp.closed);
     }
@@ -5737,6 +5751,139 @@ async function match(browser, base, renderer) {
     if (acts.hadOrder) {
       ok('tapping a standing order records one', acts.orders > 0, `${acts.orders} orders on the helm`);
     } else ok('tapping a standing order records one (skipped)', true, 'no order buttons offered');
+
+    /* ---- TERMS SPEAK ONLY WHEN THEY ARE YOURS ----
+     * A duel has one rival, so "somebody came to terms" could only ever be about you. A war
+     * seats sixteen and they treat with each other constantly: reported from play with a
+     * screenshot of the whole banner stack — three lines about AVERNUS treating with three
+     * other lords, none of them the player, every one of them shoving out something that was.
+     * Driven through `routeEvents` by pushing the sim's own events onto the world, because the
+     * claim is about which events SPEAK and that decision lives nowhere else. `UI.banner` is
+     * spied rather than the DOM read, so a line that is drawn and instantly replaced still
+     * counts — three banners in one frame is exactly the failure. */
+    const said = await pg.evaluate(async () => {
+      const { Game, World, UI } = window, w = Game.game.world;
+      const me = World.realmOf(w, Game.game.viewer);
+      /* two banners that are not the player's, and one that is */
+      const others = [];
+      for (let i = 0; i < w.players.length && others.length < 2; i++)
+        if (World.realmOf(w, i) === i && i !== me) others.push(i);
+      /* THE WORLD IS HALTED FOR THIS. Without it the sim goes on emitting real diplomacy into
+       * the same frames — a rival accepting the offer the COMMAND test left standing landed an
+       * extra, perfectly correct line in the spy and read as a leak. `update()` returns early
+       * while paused, so nothing is emitted but what is pushed here. */
+      World.applyCommand(w, Game.game.viewer, { c: 'pause', on: true });
+      const real = UI.banner;
+      const log = [];
+      UI.banner = (t) => { log.push(t); };
+      const frame = () => new Promise((r2) => requestAnimationFrame(() => requestAnimationFrame(r2)));
+      const push = async (evs) => { log.length = 0; w.events.push(...evs); await frame(); return log.slice(); };
+      const third = await push([{ e: 'pact', pi: others[0], p: others[1], on: 1 },
+                                { e: 'pact', pi: others[0], p: others[1], on: 0 },
+                                { e: 'offer', pi: others[0], p: others[1] }]);
+      const mine = await push([{ e: 'pact', pi: others[0], p: me, on: 1 }]);
+      const broke = await push([{ e: 'pact', pi: others[0], p: me, on: 0 }]);
+      const asked = await push([{ e: 'offer', pi: others[0], p: me }]);
+      UI.banner = real;
+      World.applyCommand(w, Game.game.viewer, { c: 'pause', on: false });
+      return { others: others.length, third, mine, broke, asked };
+    });
+    /* ---- A COURT ON THE MAP OPENS THE COURT ----
+     * The map is where a war is read, and a tap on a mark used to jump the camera and close the
+     * whole panel — you lost the map to find out what you had tapped. It opens the court over
+     * the council now, with every action the ROW would have offered. Asserted on the SIM where
+     * an action has sim state (terms), and on the panel staying open, which is the whole point.
+     * The mark's position is computed the way `warMap` computes it rather than guessed. */
+    const pop = await pg.evaluate(async () => {
+      const { Game, World } = window, w = Game.game.world;
+      const open = async () => {
+        if (document.getElementById('council').classList.contains('hidden'))
+          document.getElementById('war-chip').click();
+        await new Promise((r2) => setTimeout(r2, 250));
+      };
+      await open();
+      const land = { w: w.nav.W * w.nav.cw, h: w.nav.H * w.nav.cw };
+      /* THE CANVAS IS RE-QUERIED EVERY TAP. Every action rebuilds the panel through
+       * `UI.council`, which empties the body — a canvas captured once is detached the moment
+       * terms are offered, its rect is all zeros, and every later tap silently misses. */
+      const tap = async (ci) => {
+        const c = w.cities[ci];
+        const cv = document.querySelector('.cc-map canvas');
+        if (!cv) return null;
+        const b = cv.getBoundingClientRect();
+        cv.dispatchEvent(new MouseEvent('click',
+          { clientX: b.left + (c.x / land.w) * b.width, clientY: b.top + (c.y / land.h) * b.height,
+            bubbles: true }));
+        await new Promise((r2) => setTimeout(r2, 200));
+        return document.getElementById('court-pop');
+      };
+      const me = World.realmOf(w, Game.game.viewer);
+      let rival = -1, own = -1;
+      for (let i = 0; i < w.cities.length; i++) {
+        const o = w.cities[i].owner;
+        if (o < 0) continue;
+        if (World.realmOf(w, o) === me) { if (own < 0) own = i; }
+        else if (rival < 0) rival = i;
+      }
+      const out = { rival, own };
+      const p1 = await tap(rival);
+      out.opened = !!p1;
+      out.councilStillOpen = !document.getElementById('council').classList.contains('hidden');
+      out.names = p1 ? p1.querySelector('.cp-head').textContent.indexOf(
+        w.map.sites[w.cities[rival].site].name || '') >= 0 : false;
+      const btn = (re) => { const e = document.getElementById('court-pop');
+        return e ? [...e.querySelectorAll('.cp-acts .mbtn')].find((x) => re.test(x.textContent)) : null; };
+      out.hasGo = !!btn(/GO THERE/);
+      /* TERMS FROM THE MAP, read off the world — a relabelled button proves nothing */
+      const t = btn(/TERMS/);
+      out.hasTerms = !!t;
+      out.before = (w.players[me].offers || []).filter(Boolean).length;
+      if (t) t.click();
+      await new Promise((r2) => setTimeout(r2, 250));
+      out.after = (w.players[me].offers || []).filter(Boolean).length;
+      out.stillUp = !!document.getElementById('court-pop');
+      out.relabelled = !!btn(/WITHDRAW/);
+      /* YOUR OWN COURT OFFERS COMMAND instead — the row's actions, in the row's place */
+      const e0 = document.getElementById('court-pop'); if (e0) e0.remove();
+      await open();
+      const p2 = await tap(own);
+      out.ownOpened = !!p2;
+      out.ownHasCommand = !!btn(/COMMAND/) || w.cities[own].owner === Game.game.handOf();
+      /* GO THERE is the old behaviour, kept as an action rather than as the only reading */
+      /* park the view elsewhere first, so landing on the court cannot be a no-op */
+      window.Render.lookAt(w.cities[0].x, w.cities[0].y);
+      await new Promise((r2) => requestAnimationFrame(r2));
+      const go = btn(/GO THERE/);
+      if (go) go.click();
+      await new Promise((r2) => requestAnimationFrame(r2));
+      out.wentThere = Math.hypot(window.Render.camX - w.cities[own].x,
+                                 window.Render.camY - w.cities[own].y) < 1200;
+      out.closedAfterGo = document.getElementById('council').classList.contains('hidden');
+      out.popGone = !document.getElementById('court-pop');
+      return out;
+    });
+    ok('the rig is alive: the map has a rival court and one of yours',
+       pop.rival >= 0 && pop.own >= 0, JSON.stringify({ rival: pop.rival, own: pop.own }));
+    ok('tapping a court on the map opens it', pop.opened && pop.names, JSON.stringify(pop));
+    ok('...WITHOUT closing the council you were reading', pop.councilStillOpen);
+    ok('...and offers terms from the map', pop.hasTerms && pop.after > pop.before,
+       `${pop.before} offers before, ${pop.after} after`);
+    ok('...staying open, saying the new state back', pop.stillUp && pop.relabelled,
+       JSON.stringify({ stillUp: pop.stillUp, relabelled: pop.relabelled }));
+    ok('a court of your own offers COMMAND instead', pop.ownOpened && pop.ownHasCommand,
+       JSON.stringify(pop));
+    ok('...and GO THERE still takes you there and closes the panel',
+       pop.wentThere && pop.closedAfterGo && pop.popGone, JSON.stringify(pop));
+
+    ok('the rig is alive: two banners that are not yours', said.others === 2);
+    ok('terms between two other banners say nothing at all', said.third.length === 0,
+       said.third.join(' | ') || 'silent');
+    ok('...but a banner coming to terms with YOU speaks', said.mine.length === 1,
+       said.mine.join(' | ') || 'silent');
+    ok('...and one breaking with you speaks', said.broke.length === 1,
+       said.broke.join(' | ') || 'silent');
+    ok('...and one asking you for terms speaks', said.asked.length === 1,
+       said.asked.join(' | ') || 'silent');
 
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
