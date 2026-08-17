@@ -81,11 +81,15 @@ touches no balance surface.
       HEIR footing; 22ms at nine minutes; worst 96ms) against a 33ms frame, before rendering —
       measured 2026-08-17 after equal economies put more men on the map. Profiled: `update`'s
       own per-unit loop 31%, `acquire` 16%, `jostle` 6%, `castFrom` 5%, GC 4%, `pactOn` 2.7%
-      (asked by `foe` for every candidate of every man). Cheapest first: memoise `foe` for the
-      length of one tick INSIDE `update` (built on first ask, dropped at the end and where the
-      oath moves allegiance mid-tick — a draft was written and reverted unverified; the referee
-      is a country trace hashed man for man against the same tree with the memo off), then the
-      `acquire` early reject, then the BIN item below.
+      (asked by `foe` for every candidate of every man). TWO CUTS MEASURED AND REJECTED
+      (2026-08-17, A/B on the same box, twice each, both traces identical to HEAD): a per-tick
+      `foe` memo inside `update` is neutral (17.8 against 17.75ms — the 2.7% is the calls that
+      DO reach `pactOn`, and the memo's own build costs about what it saves); a squared
+      pre-reject before `foe` in `acquire` is WORSE by ~2ms — most men in a man's nine cells
+      are his own company and `foe(a, a)` was already the cheapest test there is, so the
+      distance was added for every friendly neighbour. The cost is in `update`'s own per-unit
+      body and in `acquire`'s `seen()` (a `rockBetween` raycast per improving candidate) — that
+      is where to look next, with a profile, not a guess; then the BIN item below.
 - [ ] **The unit `BIN` is a duel number, and `acquire` pays for it.** With the works binned, the
       sim over a country is 20.13ms/tick at 1111 men — half what it was, and still the biggest
       thing in the frame. Profiled, what is left is `acquire` and its call site: **~40% of the
