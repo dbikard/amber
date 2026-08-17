@@ -87,9 +87,15 @@ touches no balance surface.
       DO reach `pactOn`, and the memo's own build costs about what it saves); a squared
       pre-reject before `foe` in `acquire` is WORSE by ~2ms — most men in a man's nine cells
       are his own company and `foe(a, a)` was already the cheapest test there is, so the
-      distance was added for every friendly neighbour. The cost is in `update`'s own per-unit
-      body and in `acquire`'s `seen()` (a `rockBetween` raycast per improving candidate) — that
-      is where to look next, with a profile, not a guess; then the BIN item below.
+      distance was added for every friendly neighbour. THREE CUTS THAT PAID, each with traces
+      identical to HEAD (two seeded countries man for man, twelve seeded duels) and A/B'd twice
+      on the same box: the unit bins keyed by owner within a cell so `acquire` skips whole owners
+      and never walks its own men (18.3 → 16.4ms); `acquire`'s stone pass through the works
+      bins in the full walk's own order (→ 13.4); `worksNear` memoised per (cell, reach) for the
+      tick (→ 12.25). Line-level profile is the instrument (`positionTicks`; V8 inlines
+      `acquire` into `update`, so it reads as update's own line). What is left is diffuse —
+      `jostle` 3%, `castFrom` 2.7%, `project` 2.4%, `markSeen` 1.9% — and the BIN item below,
+      which reorders and is a referee change.
 - [ ] **The unit `BIN` is a duel number, and `acquire` pays for it.** With the works binned, the
       sim over a country is 20.13ms/tick at 1111 men — half what it was, and still the biggest
       thing in the frame. Profiled, what is left is `acquire` and its call site: **~40% of the
