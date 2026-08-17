@@ -118,7 +118,11 @@
     if (Render.clearSeatFalls) Render.clearSeatFalls();
     game.world = realm.world;
     game.bot = null;   // a war has a ROSTER (`game.bots`), never a single driver
-    game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
+    /* EVERY SEAT, THE PLAYER'S OWN INCLUDED. Seat 0's driver steps only while the player's hand
+     * is on another court (see the sim loop): there is nothing special about the starting
+     * city, and while you command KASHFA your home court is run by an inner lord like any
+     * other, not left to muster and stand. */
+    game.bots = game.world.players.map((_, i) => warBot(game.world, i));
     game.names = game.world.players.map((_, i) => warName(game.world, i));
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
@@ -173,8 +177,20 @@
      * court is usually another lord's — so it is aimed at the viewer's banner rather than at
      * whoever happens to be nearest. Without that an easy footing stops the whole country
      * making war on itself, which is a duller war and not an easier one. */
-    const foot = Object.assign({ holdOn: World.realmOf(world, game.viewer) },
-                               C.DIFFICULTY[UI.difficulty()] || {});
+    const holdOn = World.realmOf(world, game.viewer);
+    /* ---- A LORD OF THE PLAYER'S OWN BANNER PLAYS AT HEIR, WHATEVER THE FOOTING ----
+     * The footing says how hard the OPPOSITION plays. A lord sworn to the player — and the
+     * player's own home court while his hand is on another — is not the opposition, he is an
+     * officer, and dealing him the footing's flaws (or `CONST.MINOR`'s on top) meant that at
+     * SQUIRE the courts you had won hoarded, forgot their halls and dribbled men: the handicap
+     * meant to make an enemy beatable, applied to your own men. The designer's rule (2026-08-17):
+     * every inner lord plays at HEIR. `hold` is moot for him (it is a promise about his own
+     * banner's ground); it is left in so `holdOn` composes the same way everywhere. */
+    if (World.realmOf(world, pi) === holdOn)
+      /* ...and he neither treats nor walks: terms and the Pattern are the human's decisions,
+       * and the home court's driver would otherwise be the banner's founder in the sim's eyes */
+      return Object.assign({ holdOn, noTerms: true, noWalk: true }, C.DIFFICULTY.heir);
+    const foot = Object.assign({ holdOn }, C.DIFFICULTY[UI.difficulty()] || {});
     if ((world.heirs || []).indexOf(pi) >= 0) return Object.assign({}, foot);
     const m = C.MINOR, lapses = Object.assign({}, foot.lapses || {});
     for (const k of Object.keys(m.lapses || {}))
@@ -254,7 +270,7 @@
        * `?reach=` boot exists so a country can be watched through the real renderer, so it
        * seats the country exactly as a war does — contenders and minor lords — rather than the
        * marchers it was given before heirs could speak in a war at all. */
-      game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
+      game.bots = game.world.players.map((_, i) => warBot(game.world, i));
       game.bot = null;
     } else game.bot = AI.make(kind, opts);
     /* A CHAPTER MAY STILL STARVE ITS RIVAL. `opts.eco` is a SCRIPTING seam and not a footing:
@@ -334,7 +350,11 @@
         game.run = REALM.run(savedRealm);
         game.world = savedRealm.world;
         /* the seats nobody human took are played exactly as a solo war's are */
-        game.bots = game.world.players.map((_, i) => (i >= n ? warBot(game.world, i) : null));
+        /* the guests' seats have no driver (a human holds each); the HOST's own seat has one,
+         * skipped while his hand is on it, so his home court is run when he commands another.
+         * (A guest who takes command of a vassal leaves his own seat unrun — the host does not
+         * know a guest's hand; written down in TODO rather than guessed.) */
+        game.bots = game.world.players.map((_, i) => (i >= n || i === 0 ? warBot(game.world, i) : null));
       } else {
         /* a guest builds the same country from the seed alone — geometry, never history */
         game.world = null;
@@ -1371,8 +1391,10 @@
            * there is no second, thinner steward brain to be worse than a rival's. */
           if (game.bots) {
             const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || null;
-            const driving = game.war ? hand() : -1;
-            for (let bi = 1; bi < game.bots.length; bi++)
+            /* the hand is the one seat no driver steps: the taps ARE its orders. On a board
+             * (`?reach=` with no war) seat 0 is the player and has no driver to skip. */
+            const driving = game.war ? hand() : 0;
+            for (let bi = 0; bi < game.bots.length; bi++)
               if (game.bots[bi] && bi !== driving) game.bots[bi].step(game.world, bi,
                 (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT,
                 orders ? orders[bi] : null);
@@ -1415,6 +1437,12 @@
       }
       const view = hostView();
       const evs = game.world.events.splice(0);
+      /* A LORD WHO SWEARS IS DEALT HIS NEW FOOTING ON THE OATH. `warFooting` reads allegiance,
+       * and a bot is made once — so a court taken into the player's banner would keep the
+       * opposition's flaws until the war was put down and picked up again. The seat's brain is
+       * re-made where the sim says the oath happened; nothing else about him changes. */
+      if (game.war && game.bots) for (const ev of evs)
+        if (ev.e === 'taken' && ev.lord != null && game.bots[ev.lord]) game.bots[ev.lord] = warBot(game.world, ev.lord);
       /* the chronicle sees the WORLD here, not the view — a record you read afterwards has no
        * business being fogged, and the sim is right there */
       if (!game.over) { Rec.sample(Rec.fromWorld(game.world)); Rec.note(evs, game.world); }

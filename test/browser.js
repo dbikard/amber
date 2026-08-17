@@ -4779,7 +4779,10 @@ async function match(browser, base, renderer) {
     ok('the card is one tap into a war', boot.war && boot.seats >= 8, JSON.stringify(boot));
     ok("...playing by the war's rules", boot.reach === 1 && boot.onePattern === 1,
        JSON.stringify(boot));
-    ok('...with a lord on every other seat', boot.bots === boot.seats - 1, String(boot.bots));
+    /* EVERY seat, the player's own included: seat 0's driver is skipped while the hand is on it
+     * and runs the home court while the player commands another — nothing is special about the
+     * starting city */
+    ok('...with a lord on every seat, your own included', boot.bots === boot.seats, `${boot.bots} of ${boot.seats}`);
     /* the reach speaks in the real UI path */
     const orders = await pg.evaluate(() => {
       const W = window.World, w = window.Game.game.world;
@@ -5052,8 +5055,8 @@ async function match(browser, base, renderer) {
     });
     ok('the rig boots into a country', boot.seats === boot.want,
        `${boot.seats} seats, want ${boot.want}`);
-    ok('...with the war\'s rules and an heir on every other seat',
-       boot.reach === 1 && boot.bots === boot.seats - 1, JSON.stringify(boot));
+    ok('...with the war\'s rules and an heir on every seat',
+       boot.reach === 1 && boot.bots === boot.seats, JSON.stringify(boot));
     ok('...every city reaching and every company born to its own',
        boot.cities && boot.cos, JSON.stringify(boot));
     /* a half-minute of the war through the real loop, and the reach refuses what it should */
@@ -5760,6 +5763,29 @@ async function match(browser, base, renderer) {
     if (acts.hadCommand) {
       ok('tapping COMMAND takes command of that court',
          acts.handAfter !== acts.handBefore, `hand ${acts.handBefore} -> ${acts.handAfter}`);
+      /* ---- NOTHING IS SPECIAL ABOUT THE STARTING CITY ----
+       * With the hand on another court, the home court is run by an inner lord (its driver
+       * steps every tick) and the court under the hand is not driven at all: the taps are its
+       * orders. Counted on the drivers' own `step`, which the sim loop calls thirty times a
+       * second, so a quiet lord who happens to issue nothing cannot read as an undriven one. */
+      const drove = await pg.evaluate(async () => {
+        const g = window.Game.game, hand = g.handOf();
+        const spy = (b) => { if (!b) return null; const real = b.step; let n = 0;
+          b.step = function () { n++; return real.apply(this, arguments); }; return () => { b.step = real; return n; }; };
+        const s0 = spy(g.bots[0]), sh = spy(g.bots[hand]);
+        await new Promise((r2) => setTimeout(r2, 700));
+        return { hasBot0: !!g.bots[0], hasBotHand: !!g.bots[hand], steps0: s0 ? s0() : -1, stepsHand: sh ? sh() : -1, hand,
+                 foot0: g.bots[0] ? { hold: g.bots[0].hold, lapses: g.bots[0].lapses } : null };
+      });
+      ok('while your hand is on another court, your home court is run by an inner lord',
+         drove.hasBot0 && drove.steps0 > 5, JSON.stringify(drove));
+      ok('...and the court under your hand is driven by nobody but you',
+         drove.hasBotHand && drove.stepsHand === 0, JSON.stringify(drove));
+      /* AND HE PLAYS AT HEIR whatever the footing (the designer's rule for inner lords) */
+      const heir = await pg.evaluate(() => window.CONST.DIFFICULTY.heir);
+      ok('...and plays at HEIR, whatever footing the opposition was dealt',
+         drove.foot0 && JSON.stringify(drove.foot0.lapses) === JSON.stringify(heir.lapses),
+         JSON.stringify(drove.foot0));
     } else ok('tapping COMMAND takes command of that court (skipped)', true, 'no sworn court on the roster');
     if (acts.hadOrder) {
       ok('tapping a standing order records one', acts.orders > 0, `${acts.orders} orders on the helm`);

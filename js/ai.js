@@ -1005,6 +1005,12 @@
       (v.world.cities || []).some((c) => c && c.owner >= 0 && heldOff(v, c.owner) &&
         d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat);
     const noWalk = !!opts.noWalk;  // a chapter that is not about the Pattern shuts that road
+    /* AN OFFICER DOES NOT TREAT FOR HIS LIEGE. `noTerms` is dealt to every bot of the PLAYER's
+     * banner in a war (game.js warFooting) — the home court's driver while the hand is on
+     * another court is the banner's FOUNDER as far as the sim can tell, and without this its
+     * doctrine made and unmade the player's terms (measured: an offer the player had standing
+     * withdrawn within a think). Terms, like the walk, are the human's decision. */
+    const noTerms = !!opts.noTerms;
     /* ---- A LESSER HEIR DECIDES WORSE; HE IS NOT POORER ----
      * The footing's LAPSES (CONST.DIFFICULTY, composed for a minor lord in game.js) are the
      * whole of the handicap now that the purse is everyone's own. Each is a named mistake at
@@ -1080,7 +1086,7 @@
        * a vassal running benedict's doctrine issued 429 pact commands in forty seconds and left
        * the player holding thirteen standing offers he had never made. Terms are the banner's
        * business, and the banner is its founder. */
-      if (world.rules && world.rules.truce && P.pact && global.World.realmOf(world, me) === me) {
+      if (world.rules && world.rules.truce && P.pact && !noTerms && global.World.realmOf(world, me) === me) {
         for (const s of v.seats) {
           /* AND NO HEIR KEEPS TERMS WITH A MAN ON THE LINES. This is not a doctrine, it is the
            * same rule that makes a walk public in the first place: a walk cannot be called off,

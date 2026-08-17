@@ -600,6 +600,19 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   lord's WRIT at a vassal's court. `Render.hand` tells the renderer the same thing — the writ
   outline, the reach ring, the armed halo, the minimap pennants and "did I tap my own men"
   answer for the hand; the veil, the camera and the colours answer for the viewer.
+- **NOTHING IS SPECIAL ABOUT THE STARTING CITY.** Every seat in a war has a driver
+  (`game.bots[i]` for all `i`, seat 0 included), and the sim loop skips exactly one — the HAND
+  (`game.handOf()`). So while the player commands another court his home court is run by an
+  inner lord like any other, and the court under his hand is driven by nobody but his taps. On
+  a LAN table the host's own seat has a driver too; a guest's seat has none (a human holds it),
+  which leaves a guest's own court unrun while he commands a vassal — the host does not know a
+  guest's hand (TODO). Held by the browser suite on the drivers' own `step` counts.
+- **A LORD OF THE PLAYER'S BANNER PLAYS AT HEIR, WHATEVER THE FOOTING** (`warFooting`). The
+  footing says how hard the OPPOSITION plays; a sworn lord — and the home court while the hand
+  is elsewhere — is an officer, and dealing him the footing's flaws (or `CONST.MINOR` on top)
+  meant the courts you had won hoarded and dribbled men at SQUIRE. Re-dealt on the oath: the
+  frame loop re-makes a lord's bot when the sim's `taken` event names him. Open (LORDS_PLAN.md):
+  whether an officer should keep HEIR's `aim`/`trickle` flaws at all.
 - **AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING** — an order the council row asserts
   is standing must change something. **`gates` is a MARCH, because a spring is taken before it is
   built on** (`placementError` wants men standing on it): the doctrine walks the company to the

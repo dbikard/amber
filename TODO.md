@@ -14,6 +14,14 @@ touches no balance surface.
 
 ## From play — bugs with a witness
 
+- [ ] **A LAN guest who takes command of a vassal leaves his own seat unrun.** The host's own
+      seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
+      holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
+      (`{t:'hand', as}`) so the host can drive the guest's home court while he commands another.
+- [ ] **The lords: stances, HEIR vassals, mutual aid — see `LORDS_PLAN.md`.** §3.2 shipped
+      (every lord of the player's banner plays at HEIR; seat 0 is driven when the hand is
+      elsewhere); §3.1 stances and §3.3 mutual aid are proposed, with four open questions.
+
 - [ ] **A resumed war can lose its ground texture.** Reported from play with a screenshot: the
       props, works, labels, roads and reach rings all draw, and the LAND under them is black.
       Not the veil — a shrouded world drains the props too, and they are at full colour — so it
