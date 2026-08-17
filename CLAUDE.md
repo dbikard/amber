@@ -622,14 +622,26 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   walk is the endgame begun and a beginner who stepped on under a thirteen-minute hold would win
   uncontested (GAME_VISION pillar 4) — and it is exempt from the minor lord's turning-away in
   `warOrders` (`cmd.walk`), or thirteen seats of sixteen would answer a walk with a spring.
-- **AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING** — an order the council row asserts
-  is standing must change something. **`gates` is a MARCH, because a spring is taken before it is
-  built on** (`placementError` wants men standing on it): the doctrine walks the company to the
-  nearest unheld spring inside its own city's REACH and the crew then spends what the march won.
-  `springTo` is one answer used by both halves on purpose — the march and the mason must want the
-  same spring, or a lord ends a war with a full purse and no ground. `walls` has a works arm
-  (towers on the court's rim, faced at the nearest rival court) and coming home is the right
-  march for a defensive order. (→ LEDGER: AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING)
+- **A LORD OF YOUR BANNER PLAYS UNDER A STANCE, AND EVERY STANCE HAS TO MEAN SOMETHING**
+  (`LORDS_PLAN.md` §3.1; ai.js `stanceOf`/`STANCE_OF`, game.js `ORDERS`). Three stances — a
+  way of PLAYING, not a destination: WARDEN keeps and fortifies the court (standards struck,
+  towers on the vantages), STEWARD grows the country (the errand takes the springs in reach —
+  `springTo`, the same answer the crew's Gate want uses, so the march and the mason want the same
+  spring — and never a court), MARSHAL is an army for the banner (the pressed court of the banner
+  first, the liege's own war body afield next, home between). ⚔ <court> and SUPPORT <court> are
+  TARGETS over a stance, and ⚔ is the one way a vassal ever attacks a court. The old five words
+  are read as stances (`hold`/`walls` → warden, `gates` → steward) so a saved helm keeps its
+  meaning. **A lord given no stance takes one from his geography** — a rival court on his border
+  makes him a warden, an interior court a steward — and the council row says "by default", so it
+  is never a secret and can be overruled. **A PRESSED COURT OF THE BANNER DRAWS ITS NEIGHBOURS**
+  (§3.3, `pressedCourt`): for every lord of the banner whose reach covers it, whatever his stance,
+  the liege's court first — unless his own court is the one pressed. **TO ARMS** (game.js
+  `onToArms`/`liftArms`) is the one banner-wide order: every lord in reach of the court under
+  your hand is set to SUPPORT it, timed (`until`, `arms`, `was`), and the frame loop lifts it
+  when the court has been quiet `TO_ARMS.quiet` seconds or the span is out, giving each lord his
+  stance back. A timed order past its hour is no order (`stanceOf`). Bounded by the reach law
+  like every order: a lord two hops from a siege cannot help, and the alarm says how many could.
+  (→ LEDGER: AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING)
 - **AND A SPRING A RIVAL HOLDS IS STILL A SPRING TO TAKE.** A reach is fully spoken for far more
   often than it sounds. `springTo` prefers free ground (walk on and build) and falls to the
   nearest spring held by somebody `World.foe` says he may strike; the WORKS arm still asks for a

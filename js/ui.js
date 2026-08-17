@@ -519,6 +519,15 @@
     top.appendChild(line('crews idle', d.free + ' of ' + d.crews));
     top.appendChild(line('men afield', String(d.men)));
     body.appendChild(top);
+    /* TO ARMS — the one banner-wide order: every lord of yours in reach of your court marches
+     * to it, for as long as it is pressed and no longer (game.js liftArms). Offered only where
+     * a standing order can be honoured — the host's — like the stances on the rows. */
+    if (H2.onToArms && d.cities.some((c) => c.mine && !c.hand && c.orders && c.orders.length)) {
+      const arms = el('button', 'mbtn cc-arms', '⚔ TO ARMS — every lord in reach, to your court');
+      arms.id = 'cc-to-arms';
+      arms.addEventListener('click', () => { H2.onToArms(); UI.council(popH.data(), popH); });
+      body.appendChild(arms);
+    }
     if (d.pattern) body.appendChild(el('div', 'cc-note', d.pattern));
 
     /* ---- THE COUNTRY, DRAWN ----
@@ -1403,12 +1412,13 @@
 
         const lbl = document.createElement('div');
         lbl.className = 'sheet-blurb';
-        const sayOrder = (o) => !o ? 'its lord keeps his own counsel — give him an order'
+        const STANCE = { hold: 'warden', walls: 'warden', gates: 'steward', warden: 'warden', steward: 'steward', marshal: 'marshal' };
+        const sayOrder = (o) => !o ? 'no stance given — his geography decides: a warden on the frontier, a steward inside'
           : o.mode === 'attack' ? 'ordered: march on ' + ((war.nbrs.find((n) => n.idx === o.target) || {}).name || 'a neighbour')
-          : o.mode === 'support' ? 'ordered: support ' + ((war.own.find((n) => n.idx === o.target) || {}).name || 'a city')
-          : o.mode === 'gates' ? 'ordered: raise Shadow Gates'
-          : o.mode === 'walls' ? 'ordered: fortify the court'
-          : 'ordered: hold the city';
+          : o.mode === 'support' ? (o.arms ? 'TO ARMS: ' : 'ordered: support ') + ((war.own.find((n) => n.idx === o.target) || {}).name || 'a city')
+          : STANCE[o.mode] === 'steward' ? 'stance: STEWARD — grows the country, takes the springs in reach'
+          : STANCE[o.mode] === 'marshal' ? 'stance: MARSHAL — an army for your banner, goes where it fights'
+          : 'stance: WARDEN — holds and fortifies the court';
         lbl.textContent = '⚑ ' + sayOrder(war.steward);
         el.appendChild(lbl);
 
@@ -1424,9 +1434,9 @@
         /* the order is given to the LORD, not to the ground: he is the one who carries it out,
          * and a court that changes hands must not inherit the last man's instructions */
         const set = (mode, target) => () => { H.onSteward(war.lord, mode, target); UI.closeSheet(); };
-        btn('HOLD', set('hold'));
-        btn('GATES', set('gates'));
-        btn('WALL UP', set('walls'));
+        btn('WARDEN', set('warden'));
+        btn('STEWARD', set('steward'));
+        btn('MARSHAL', set('marshal'));
         el.appendChild(row);
         /* the orders that need a NAME get one row each — a picker inside a picker on a phone
          * is a maze, and there are only ever a handful of neighbours */

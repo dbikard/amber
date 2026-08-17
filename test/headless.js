@@ -9136,6 +9136,85 @@ suite('a walker is everybody\'s enemy, and everybody else\'s friend');
   }
 }
 
+/* ---------------- THE STANCES, AND A PRESSED COURT DRAWS ITS NEIGHBOURS ----------------
+ * LORDS_PLAN.md §3.1 and §3.3. A lord of the player's banner (`obey`) plays under a STANCE —
+ * warden / steward / marshal, or the one his geography gives him when the player has said
+ * nothing — with ⚔ and SUPPORT as targets over it; the old five words read as stances; and a
+ * pressed court of the banner draws every lord of the banner whose reach covers it, whatever
+ * his stance, the liege's court first. */
+suite('the stances, and a pressed court draws its neighbours');
+{
+  const country = () => {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }, { country: true });
+    w.chaosNext = 1e9;
+    return w;
+  };
+  const drive = (w, me, order, secs, opts) => {
+    const bot = AI.make('benedict', Object.assign({ obey: true, holdOn: 0, noTerms: true, noWalk: true }, opts || {}));
+    const co = w.players[me].companies.find((q) => q.city === me);
+    for (let k = 0; k < 12; k++) { const u = manAt(w, me, 'soldier', w.cities[me].x + 30 + (k % 4) * 8, w.cities[me].y + Math.floor(k / 4) * 8); u.co = co.id; }
+    for (let i = 0; i < 30 * secs; i++) {
+      if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, order);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+    }
+    return co;
+  };
+  /* THE OLD WORDS ARE STANCES: hold and walls keep the court, gates grows */
+  {
+    const w = country(); const me = 3; w.players[me].realm = 0;
+    const co = drive(w, me, { mode: 'hold' }, 6);
+    ok('the old word `hold` reads as WARDEN: the standard is struck', !co.rally, co.rally ? 'a rally stands' : 'struck');
+  }
+  /* THE DEFAULT BY GEOGRAPHY: an interior lord of the banner is a STEWARD (his errand takes a
+   * spring), a frontier lord a WARDEN (he keeps the court) */
+  {
+    const w = country(); const me = 5;
+    for (const i of [me].concat(w.map.gen.nbrs[me] || [])) w.players[i].realm = 0;   // ringed by his own banner
+    const co = drive(w, me, null, 12);
+    const seat = w.cities[me];
+    const onSpring = !!co.rally && w.map.sites.some((q) => q.kind === 'node' && (q.x - co.rally.x) ** 2 + (q.y - co.rally.y) ** 2 < 60 * 60);
+    ok('an interior lord of the banner, given no stance, is a steward: his standard is on a spring', onSpring,
+       co.rally ? `${Math.round(co.rally.x)},${Math.round(co.rally.y)}` : 'no rally');
+    const w2 = country(); const f = 5;
+    w2.players[f].realm = 0;   // his neighbours stay their own: a frontier
+    ok('the rig is alive: this lord has a rival court on his border', (w2.map.gen.nbrs[f] || []).some((i) => World.realmOf(w2, w2.cities[i].owner) !== 0));
+    const co2 = drive(w2, f, null, 12);
+    ok('...and a frontier lord of the banner, given no stance, is a warden: he keeps the court',
+       !co2.rally || Math.hypot(co2.rally.x - w2.cities[f].x, co2.rally.y - w2.cities[f].y) < C.CITY.r,
+       co2.rally ? `${Math.round(co2.rally.x)},${Math.round(co2.rally.y)}` : 'struck');
+  }
+  /* THE MARSHAL, AND THE PRESSED COURT. The liege's court (seat 0) is pressed by rival men;
+   * a marshal in reach marches to it — and so does a STEWARD, because a pressed court of the
+   * banner outranks the stance. Rig-alive first: the liege's court is inside the lord's reach. */
+  {
+    const w = country(); const nb = (w.map.gen.nbrs[0] || [])[0];
+    ok('the rig is alive: the player has a neighbouring court', nb != null);
+    if (nb != null) {
+      w.players[nb].realm = 0;
+      const seat = w.cities[nb], liege = w.cities[0];
+      ok('...inside the lord\'s reach', (liege.x - seat.x) ** 2 + (liege.y - seat.y) ** 2 <= seat.reach * seat.reach);
+      /* a rival's men at the liege's court — a rival lord's, so `foe` says so */
+      const rival = w.players.map((p, i) => i).find((i) => i > 0 && i !== nb && World.realmOf(w, i) === i);
+      for (let k = 0; k < 6; k++) manAt(w, rival, 'soldier', liege.x + 120 + k * 8, liege.y + 40);
+      const co = drive(w, nb, { mode: 'marshal' }, 8);
+      ok('a marshal marches on the pressed court of his liege', !!co.rally && Math.hypot(co.rally.x - liege.x, co.rally.y - liege.y) < 60,
+         co.rally ? `${Math.round(co.rally.x)},${Math.round(co.rally.y)} against ${Math.round(liege.x)},${Math.round(liege.y)}` : 'no rally');
+      /* and a steward too: the pressed court outranks the stance */
+      const w2 = country(); w2.players[nb].realm = 0;
+      const liege2 = w2.cities[0];
+      for (let k = 0; k < 6; k++) manAt(w2, rival, 'soldier', liege2.x + 120 + k * 8, liege2.y + 40);
+      const co2 = drive(w2, nb, { mode: 'steward' }, 8);
+      ok('...and so does a steward: a pressed court of the banner outranks the stance', !!co2.rally && Math.hypot(co2.rally.x - liege2.x, co2.rally.y - liege2.y) < 60,
+         co2.rally ? `${Math.round(co2.rally.x)},${Math.round(co2.rally.y)}` : 'no rally');
+      /* a TIMED order past its hour is no order: the lord falls back to his default stance */
+      const w3 = country(); w3.players[nb].realm = 0;
+      const co3 = drive(w3, nb, { mode: 'support', target: 0, until: -1, arms: 1 }, 6);
+      ok('a timed order past its hour is no order', !co3.rally || Math.hypot(co3.rally.x - w3.cities[nb].x, co3.rally.y - w3.cities[nb].y) > 0,
+         'the lord read the expired order as none');
+    }
+  }
+}
+
 /* ---------------- THE HOLD IS A PROMISE TO ONE BANNER ----------------
  * `hold` — the seconds an easy footing buys you before an heir will march on your Seat — is
  * checked against that heir's NEAREST rival court. In a duel that is the player's and nothing

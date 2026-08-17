@@ -518,6 +518,8 @@ body {
 .cc-stat b { font-size: 17px; color: #ffe9a8; }
 .cc-stat span { font-size: 10px; letter-spacing: 1px; color: #8d8478; text-transform: uppercase; }
 .cc-note { font-size: 12px; font-style: italic; color: #9cc8ff; margin: 4px 2px 0; }
+.cc-arms { display: block; width: 100%; margin: 8px 0 4px; padding: 10px; font-weight: 700; letter-spacing: 0.04em;
+           background: linear-gradient(#5a1a1a, #3a1010); border-color: #ff8a96aa; color: #ffe9a8; }
 .cc-head {
   font-size: 11px; letter-spacing: 3px; color: #c9a44f; font-weight: normal;
   margin: 18px 0 6px; border-bottom: 1px solid #c9a44f33; padding-bottom: 4px;

@@ -7,8 +7,9 @@
 > lords in place of the five words, and mutual aid. The designer's answers (2026-08-17) are
 > folded in: **an inner lord is as strong as a minor lord and no stronger** (the footing plus
 > `CONST.MINOR`, never HEIR), **and never takes the initiative against a court** — a vassal
-> attacks only where the player's ⚔ order sends him. §3.2 and the no-initiative rule are
-> built; the stances and mutual aid are not.
+> attacks only where the player's ⚔ order sends him. §3.1 (three stances, the default by
+> geography), §3.2 and §3.3 (a pressed court draws its neighbours; TO ARMS until clear with a
+> ceiling) are BUILT (2026-08-17); what remains open is §4.
 
 ## 1. How the bots work today
 
@@ -80,7 +81,7 @@ Open — the design gaps the proposal answers:
 
 ## 3. The proposal
 
-### 3.1 Stances — named doctrines for a sworn lord
+### 3.1 Stances — named doctrines for a sworn lord — SHIPPED (2026-08-17)
 
 Replace HOLD / GATES / WALL UP with three STANCES, in the game's voice, each a way of PLAYING
 rather than a destination. A stance biases the same brain at the same seam (`warOrders` +
@@ -123,7 +124,7 @@ turned — he attacks only where the player's ⚔ order sends him. Two caveats, 
   gains a driver; the oath happens in `holdCities` — game.js must re-make the bot when a court
   swears, or the lord keeps MINOR until the war is put down and picked up).
 
-### 3.3 Mutual aid
+### 3.3 Mutual aid — SHIPPED (2026-08-17; TO ARMS lifts at 20 s quiet or 3 minutes)
 
 - **A pressed court of the banner is answered by every lord of the banner whose reach covers
   it** — not only when he is idle (today's `reserveAt`), but outranking his stance's own

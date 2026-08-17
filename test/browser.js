@@ -5900,10 +5900,31 @@ async function match(browser, base, renderer) {
       out.handAfter = g.handOf();
       /* A STANDING ORDER: it lives on the helm, so read it there */
       await open();
-      const ord = [...document.querySelectorAll('.cc-acts .mbtn')].find((b) => /HOLD/.test(b.textContent));
+      /* the orders are STANCES now — warden / steward / marshal — over which ⚔ and support are targets */
+      const ord = [...document.querySelectorAll('.cc-acts .mbtn')].find((b) => /WARDEN/.test(b.textContent));
       out.hadOrder = !!ord;
+      out.stances = [...document.querySelectorAll('.cc-acts .mbtn')].map((b) => b.textContent).filter((t2) => /WARDEN|STEWARD|MARSHAL/.test(t2)).length;
       if (ord) { ord.click(); await new Promise((r2) => setTimeout(r2, 250)); }
       out.orders = g.realm && g.realm.helm ? Object.keys(g.realm.helm.orders).length : -1;
+      out.stanceSet = g.realm && g.realm.helm ? Object.values(g.realm.helm.orders).some((o) => o.mode === 'warden') : false;
+      /* TO ARMS: the banner-wide order — every lord of yours in reach of your court is set to
+       * SUPPORT it, timed (`arms`, `until`), and the alarm lifts when its span is out */
+      /* a lord IN REACH of the court under the hand, so the alarm has somebody to call: the
+       * hand's neighbour swears (connectivity is a placement law, so a neighbour is in reach) */
+      const hnow = g.handOf(), nb0 = ((w.map.gen.nbrs && w.map.gen.nbrs[hnow]) || []).find((i) => i !== g.viewer && i !== hnow);
+      if (nb0 != null) w.players[nb0].realm = W.realmOf(w, g.viewer);
+      await open();
+      const arms = document.getElementById('cc-to-arms');
+      out.hadArms = !!arms;
+      if (arms) { arms.click(); await new Promise((r2) => setTimeout(r2, 250)); }
+      const helm = g.realm && g.realm.helm ? g.realm.helm.orders : {};
+      out.armsSet = Object.values(helm).filter((o) => o.arms && o.mode === 'support' && o.until > 0).length;
+      /* run the alarm's span out by hand and let the frame loop lift it (it asks once a second) */
+      for (const k of Object.keys(helm)) if (helm[k].arms) helm[k].until = -1;
+      await new Promise((r2) => setTimeout(r2, 1400));
+      const helm2 = g.realm && g.realm.helm ? g.realm.helm.orders : {};
+      out.armsLeft = Object.values(helm2).filter((o) => o.arms).length;
+      out.wardenBack = Object.values(helm2).some((o) => o.mode === 'warden');
       return out;
     });
     ok('the rig is alive: the council offered a terms row', acts.hadTermsRow);
@@ -5945,6 +5966,13 @@ async function match(browser, base, renderer) {
     } else ok('tapping COMMAND takes command of that court (skipped)', true, 'no sworn court on the roster');
     if (acts.hadOrder) {
       ok('tapping a standing order records one', acts.orders > 0, `${acts.orders} orders on the helm`);
+      ok('...the three stances are offered, and the tap set WARDEN', acts.stances >= 3 && acts.stanceSet, `${acts.stances} stance buttons`);
+      ok('TO ARMS is offered on the council', acts.hadArms);
+      if (acts.hadArms) {
+        ok('...and sets a timed SUPPORT on every lord of yours in reach', acts.armsSet > 0, `${acts.armsSet} lords`);
+        ok('...which the frame loop lifts when its span is out, giving the stance back',
+           acts.armsLeft === 0 && acts.wardenBack, `${acts.armsLeft} still under arms, warden back: ${acts.wardenBack}`);
+      }
     } else ok('tapping a standing order records one (skipped)', true, 'no order buttons offered');
 
     /* ---- TERMS SPEAK ONLY WHEN THEY ARE YOURS ----

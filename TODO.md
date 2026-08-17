@@ -24,9 +24,10 @@ touches no balance surface.
 - [ ] **`game.armedFlag` survives `startSP`**, so the first tap of a new match on the same page
       is a rally if a company was armed in the previous one. Found by the livery suite, which
       clears it as the other suites do; clear it where a match starts.
-- [ ] **The lords: stances, HEIR vassals, mutual aid — see `LORDS_PLAN.md`.** §3.2 shipped
-      (every lord of the player's banner plays at HEIR; seat 0 is driven when the hand is
-      elsewhere); §3.1 stances and §3.3 mutual aid are proposed, with four open questions.
+- [ ] **The lords — see `LORDS_PLAN.md`.** Stances (warden / steward / marshal, the default by
+      geography), vassals as minor lords with no initiative, a pressed court drawing its
+      neighbours and TO ARMS all shipped 2026-08-17. Open: a stance for UNSWORN lords by
+      geography, and judging the whole thing by hand in a war.
 
 - [ ] **A resumed war can lose its ground texture.** Reported from play with a screenshot: the
       props, works, labels, roads and reach rings all draw, and the LAND under them is black.

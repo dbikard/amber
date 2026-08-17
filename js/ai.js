@@ -202,13 +202,69 @@
    * `gates` wants the spring the MARCH was sent to take; `walls` wants a tower on the court's
    * own vantages, which is what "wall up" means in works. `hold`, `attack` and `support` are
    * orders about where the army stands and have nothing to add here. */
-  const ordered = (world, me, order) => {
-    if (!order || !world.rules || !world.rules.reach) return null;
-    if (order.mode === 'gates') {
+  /* ---------------- STANCES ----------------
+   * The player's instruction to a lord of his banner is a STANCE — a way of playing — and,
+   * over it, a TARGET when he wants a court marched on or stood by. Three stances, in the
+   * game's voice (LORDS_PLAN.md):
+   *   WARDEN  — hold the court and fortify it: standards struck, towers on the vantages, and
+   *             the walls his own doctrine raises when pressed.
+   *   STEWARD — grow the country: take the springs inside reach and Gate them, defend the
+   *             works; never a court.
+   *   MARSHAL — an army for the banner: go where the banner fights — a pressed court of the
+   *             banner (the liege's first), else the liege's own war body when it is afield —
+   *             and muster at home between.
+   * The five words the council used to offer are read as stances so a saved helm keeps its
+   * meaning: `hold` and `walls` were both "keep the court" — WARDEN; `gates` — STEWARD.
+   * `attack`/`support` stay as they were: a target over whatever stance he keeps.
+   * A DEFAULT STANCE BY GEOGRAPHY when the player has given none and the lord is his (`obey`):
+   * a court with a rival court on its border is a WARDEN, an interior court a STEWARD. Said on
+   * the council row as "by default", so it can be overruled and is never a secret.
+   * A TIMED order (`until`, the council's TO ARMS) is no order once its hour is past. */
+  const STANCE_OF = { hold: 'warden', walls: 'warden', gates: 'steward',
+                      warden: 'warden', steward: 'steward', marshal: 'marshal',
+                      attack: 'attack', support: 'support' };
+  const frontier = (world, me) => {
+    const W = global.World, nb = (world.map.gen && world.map.gen.nbrs && world.map.gen.nbrs[me]) || [];
+    return nb.some((i) => { const c = world.cities && world.cities[i];
+      return c && !c.razed && (c.owner < 0 || W.realmOf(world, c.owner) !== W.realmOf(world, me)); });
+  };
+  const stanceOf = (world, me, order, st) => {
+    if (order && order.until != null && world.t >= order.until) order = null;
+    if (order && STANCE_OF[order.mode]) return { mode: STANCE_OF[order.mode], target: order.target, given: true };
+    if (st && st.obey) return { mode: frontier(world, me) ? 'warden' : 'steward', given: false };
+    return null;
+  };
+  /* WHERE THE BANNER FIGHTS, for a Marshal — and for every lord of the banner, because a
+   * pressed court of the banner draws its neighbours whatever their stance (§3.3): the court of
+   * the banner under the most pressure inside my reach, the liege's own court first. `pressed`
+   * is today's test — rival men within 650 of it. Null when nothing of the banner is pressed. */
+  const pressedCourt = (world, me) => {
+    const W = global.World, seat = W.seatOf(world, me);
+    if (!seat) return null;
+    const mine = W.realmOf(world, me), rr = seat.reach ? seat.reach * seat.reach : Infinity;
+    let best = null, bs = -1;
+    for (let i = 0; i < (world.cities || []).length; i++) {
+      const c = world.cities[i];
+      if (!c || c.razed || c.owner < 0 || i === me || W.realmOf(world, c.owner) !== mine) continue;
+      if (d2(c.x, c.y, seat.x, seat.y) > rr) continue;
+      let n = 0;
+      for (const u of world.units) if (u.hp > 0 && u.owner >= 0 && W.foe(world, me, u.owner) &&
+                                       d2(u.x, u.y, c.x, c.y) < 650 * 650) n++;
+      if (!n) continue;
+      const score = n + (c.owner === mine ? 1000 : 0);   // the liege's court outranks any other
+      if (score > bs) { bs = score; best = c; }
+    }
+    return best;
+  };
+  const ordered = (world, me, order, st) => {
+    if (!world.rules || !world.rules.reach) return null;
+    const stance = stanceOf(world, me, order, st);
+    if (!stance) return null;
+    if (stance.mode === 'steward') {
       const s = springTo(world, me, global.World.seatOf(world, me), true);
       return s ? [{ bt: 'gate', pick: () => s }] : null;
     }
-    if (order.mode === 'walls') return [wantWatch(2)];
+    if (stance.mode === 'warden') return [wantWatch(2)];
     return null;
   };
 
@@ -847,9 +903,12 @@
      * underneath, which is the whole meaning of "a bias on the same brain, not a second brain".
      * `hold`, `walls` and an unpressed `support` are all "keep your own court", which under the
      * reach law is a struck standard and nothing else. */
-    const mode = order && order.mode;
+    /* the STANCE this lord plays under — the given order read as one, or the default his
+     * geography gives a lord of the player's banner; null for a lord under nobody's word */
+    const stance = stanceOf(world, me, order, st);
+    const mode = stance && stance.mode;
     const orderAim = () => {
-      const t = order && order.target != null ? world.cities[order.target] : null;
+      const t = stance && stance.target != null ? world.cities[stance.target] : null;
       if (mode === 'attack') return t || null;
       if (mode === 'support') {
         if (!t) return null;
@@ -857,7 +916,23 @@
           W.foe(world, me, u.owner) && d2(u.x, u.y, t.x, t.y) < 650 * 650);
         return pressed ? t : 'home';
       }
-      if (mode === 'gates') {
+      if (mode === 'marshal') {
+        /* an army for the banner: the pressed court first, else the liege's war body afield */
+        const pc = pressedCourt(world, me);
+        if (pc) return pc;
+        const liege = W.realmOf(world, me), lp = world.players[liege];
+        if (lp && liege !== me) {
+          let body = null, n = 0;
+          for (const co of lp.companies || []) {
+            if (!co.rally) continue;
+            const men = world.units.filter((u) => u.hp > 0 && u.owner === liege && u.co === co.id).length;
+            if (men > n) { n = men; body = co; }
+          }
+          if (body && n >= 4) return { x: body.rally.x, y: body.rally.y };
+        }
+        return 'home';
+      }
+      if (mode === 'steward') {
         /* THE SPRING TO GO AND TAKE inside his own court's reach — the same one `springTo`
          * hands the works arm (`ordered`), because the march that wins the ground and the crew
          * that spends on it must want the same spring.
@@ -868,7 +943,7 @@
          * order that has run out of ground should leave the doctrine it is biasing alone. */
         return springTo(world, me, W.seatOf(world, me), false);
       }
-      if (mode === 'hold' || mode === 'walls') return 'home';
+      if (mode === 'warden') return 'home';
       return null;
     };
     const cityOfCo = (co) => (co && co.city != null ? world.cities[co.city] : null) ||
@@ -890,7 +965,18 @@
       if (!cmd) return issue(cmd);
       if (cmd.c === 'banner') {
         const cos = world.players[me].companies || [];
-        const told = mode ? orderAim() : null;
+        let told = mode ? orderAim() : null;
+        /* ---- A PRESSED COURT OF THE BANNER DRAWS ITS NEIGHBOURS ----
+         * For every lord of the player's banner (`obey`), whatever his stance: a court of the
+         * banner under attack inside his reach outranks the stance's own business — unless his
+         * OWN court is the one under attack, which `troubleAt` answers below. The liege's court
+         * comes first. This is the mutual aid of LORDS_PLAN.md §3.3, and it is bounded by the
+         * reach law like every order he can give: a lord two hops from a siege cannot help. */
+        if (st && st.obey && mode !== 'attack' && st.v) {
+          const seat = W.seatOf(world, me);
+          const own = seat && troubleAt(st.v, seat) === seat;
+          if (!own) { const pc = pressedCourt(world, me); if (pc) told = pc; }
+        }
         /* the Recall, and every order that means "keep your own court": standards struck */
         if (told === 'home' || (cmd.site === -1 && cmd.x == null && !told)) {
           if (st) st.aim = null;
@@ -1431,7 +1517,7 @@
        * a Gate on ground another Gate is standing on, and the moment the march brings that one
        * down the spring is free and this picks it up. `springTo` is the same answer both halves
        * ask, which is what keeps the column and the mason wanting the same ground. */
-      const led = ordered(world, me, order);
+      const led = ordered(world, me, order, warSt);
       /* ---- A LORD WHO CANNOT AFFORD HIS OWN PLANS STOPS BUYING MEN ----
        * The muster valve (`{c:'muster'}`) was a player-only control: no doctrine had ever
        * touched it, so a lord whose halls drank everything he earned went on buying soldiers

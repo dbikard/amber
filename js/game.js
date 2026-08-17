@@ -224,6 +224,34 @@
     const k = warKind(pi);
     return k.charAt(0).toUpperCase() + k.slice(1).toUpperCase();
   }
+  /* TO ARMS is lifted by the world, not by the player: when the court it was called for has
+   * been quiet for TO_ARMS.quiet seconds, or its span is out, every lord under it goes back to
+   * the stance he had (kept in `was`) and the alarm says so once. Asked every tick; the first
+   * line answers in O(orders) while nothing is under arms. */
+  function liftArms(w, helm) {
+    let target = null;
+    for (const k of Object.keys(helm.orders)) { const o = helm.orders[k]; if (o && o.arms) { target = o.target; break; } }
+    if (target == null) { game.armsQuiet = null; return; }
+    const tc = w.cities[target];
+    const pressed = !!tc && tc.owner >= 0 && w.units.some((u) => u.hp > 0 && u.owner >= 0 &&
+      World.foe(w, tc.owner, u.owner) && (u.x - tc.x) ** 2 + (u.y - tc.y) ** 2 < 650 * 650);
+    if (pressed) game.armsQuiet = null; else if (game.armsQuiet == null) game.armsQuiet = w.t;
+    const quiet = game.armsQuiet != null && w.t - game.armsQuiet >= TO_ARMS.quiet;
+    let lifted = 0;
+    for (const k of Object.keys(helm.orders)) {
+      const o = helm.orders[k];
+      if (!o || !o.arms) continue;
+      if (!quiet && w.t < o.until) continue;
+      if (o.was) helm.orders[k] = o.was; else delete helm.orders[k];
+      lifted++;
+    }
+    if (lifted) {
+      game.armsQuiet = null;
+      REALM.save(game.realm);
+      UI.banner(quiet ? 'The alarm is lifted — the court is quiet, the lords return to their stances'
+                      : 'The alarm has run its span — the lords return to their stances', 'alert');
+    }
+  }
   function saveWar() {
     if (!game.war || !game.realm) return;
     REALM.save(game.realm);
@@ -891,8 +919,26 @@
     const held = view.cities.filter((c) => c.owner >= 0 && World.realmOf(view, c.owner) === me).length;
     return { held, all: view.cities.filter((c) => !c.razed).length, wants: warWants(view) };
   }
-  const ORDERS = [{ mode: 'hold', label: 'HOLD' }, { mode: 'gates', label: 'GATES' },
-                  { mode: 'walls', label: 'WALL UP' }];
+  /* THE STANCES a lord of your banner may be given (LORDS_PLAN.md §3.1): a way of PLAYING,
+   * over which ⚔ <court> and SUPPORT <court> are targets. The old five words are read as
+   * stances by ai.js (`STANCE_OF`), so a saved helm keeps its meaning. */
+  const ORDERS = [{ mode: 'warden', label: 'WARDEN' }, { mode: 'steward', label: 'STEWARD' },
+                  { mode: 'marshal', label: 'MARSHAL' }];
+  const STANCE_WORD = { hold: 'warden', walls: 'warden', gates: 'steward', warden: 'warden',
+                        steward: 'steward', marshal: 'marshal' };
+  /* what a lord with no order does — the default stance ai.js gives him by geography, said on
+   * the row as "by default" so it is never a secret; a court with a rival court on its border
+   * is a warden, an interior court a steward */
+  function defaultStance(view, ci) {
+    const nb = (view.map.gen && view.map.gen.nbrs && view.map.gen.nbrs[ci]) || [];
+    const me = World.realmOf(view, game.viewer);
+    return nb.some((i) => { const c = view.cities[i]; return c && !c.razed &&
+      (c.owner < 0 || World.realmOf(view, c.owner) !== me); }) ? 'warden' : 'steward';
+  }
+  /* TO ARMS: every lord of the banner in reach of the target is set to SUPPORT it, timed —
+   * lifted when the target has been quiet for `quiet` seconds or after `span`, whichever first
+   * (the designer's call: until clear, with a ceiling), and the frame loop keeps the promise. */
+  const TO_ARMS = { span: 180, quiet: 20 };
   function councilData() {
     const view = warView();
     if (!view || !view.cities) return null;
@@ -944,10 +990,12 @@
           /* the court your own hand is on needs no order: your taps ARE the order, and telling
            * a player his own capital has "no standing order" is telling him off for playing */
           if (c.owner !== hand()) {
-            sub.push(!o ? 'no standing order'
-              : o.mode === 'attack' ? 'ordered against ' + ((view.cities[o.target] && view.map.sites[view.cities[o.target].site].name) || 'a court')
-              : o.mode === 'support' ? 'ordered to support ' + ((view.cities[o.target] && view.map.sites[view.cities[o.target].site].name) || 'a court')
-              : 'ordered to ' + o.mode);
+            const live = o && (o.until == null || (view.t || 0) < o.until) ? o : null;
+            const cn = (i) => (view.cities[i] && view.map.sites[view.cities[i].site].name) || 'a court';
+            sub.push(!live ? defaultStance(view, ci) + ' by default'
+              : live.mode === 'attack' ? 'ordered against ' + cn(live.target)
+              : live.mode === 'support' ? (live.arms ? 'TO ARMS — ' : 'ordered to support ') + cn(live.target)
+              : (STANCE_WORD[live.mode] || live.mode));
           }
         } else {
           /* A COURT DOES NOT NEED TO SAY ITS OWN NAME BACK. In a country a lord is NAMED for his
@@ -979,7 +1027,7 @@
          * still carry him to the court and still hand him the command of it; they simply do
          * not offer what only a host can honour. */
         orders: game.realm
-          ? ORDERS.map((o) => ({ ...o, on: orders[lordIdx] && orders[lordIdx].mode === o.mode })).concat(nbrs)
+          ? ORDERS.map((o) => ({ ...o, on: !!orders[lordIdx] && STANCE_WORD[orders[lordIdx].mode] === o.mode })).concat(nbrs)
           : []
       });
     }
@@ -1435,6 +1483,10 @@
            * often is the one nobody's code sees: the OS swipe. An 80KB stringify twice a
            * minute is nothing. */
           if (game.war && game.realm && game.world.tick % 900 === 0) REALM.save(game.realm);
+          /* every tick: it returns on the first line while nothing is under arms, and a page on
+           * a slow renderer may see a dozen ticks a second — a once-a-second cadence measured
+           * as an alarm that never lifted inside a test's patience */
+          if (game.war && game.realm && game.realm.helm) liftArms(game.world, game.realm.helm);
         }
       }
       const view = hostView();
@@ -1836,6 +1888,7 @@
       const same = was && was.mode === mode && (target == null || was.target === target);
       H.onSteward(lord, same ? null : mode, target);
     },
+    onToArms: () => H.onToArms && H.onToArms(),
     onTerms: (pi) => H.onTerms(pi)
   };
 
@@ -2412,6 +2465,33 @@
         if (!mode) delete helm.orders[lord];
         else helm.orders[lord] = Object.assign({ mode }, target != null ? { target } : null);
         REALM.save(game.realm);
+      },
+      /* TO ARMS — the banner-wide order the five words never had: every lord of your banner
+       * whose reach covers your court (or the court under your hand) is set to SUPPORT it,
+       * timed; the frame loop lifts it when the court has been quiet for TO_ARMS.quiet
+       * seconds or after TO_ARMS.span. It overwrites a standing stance for that long and no
+       * longer: the stance is the player's word, the alarm is a moment. */
+      onToArms: () => {
+        if (!game.realm || !game.world) return;
+        const w = game.world, helm = game.realm.helm || (game.realm.helm = { orders: {}, hand: 0 });
+        const target = hand();
+        const tc = w.cities[target];
+        if (!tc) return;
+        const me = World.realmOf(w, game.viewer);
+        let n = 0;
+        for (let i = 0; i < w.players.length; i++) {
+          if (i === target || World.realmOf(w, i) !== me) continue;
+          const c = w.cities[i];
+          if (!c || c.owner !== i || !c.reach) continue;
+          if ((c.x - tc.x) ** 2 + (c.y - tc.y) ** 2 > c.reach * c.reach) continue;   // the reach law
+          helm.orders[i] = { mode: 'support', target, until: w.t + TO_ARMS.span, arms: 1,
+                             was: helm.orders[i] && !helm.orders[i].arms ? helm.orders[i] : null };
+          n++;
+        }
+        game.armsQuiet = null;
+        REALM.save(game.realm);
+        UI.banner(n ? 'TO ARMS — ' + n + (n === 1 ? ' lord marches' : ' lords march') + ' to ' + (w.map.sites[tc.site].name || 'your court')
+                    : 'No lord of your banner can reach your court', n ? 'alert' : 'warn');
       },
       /* ⚑ the door to the council, and the four things it can do from a row */
       onCouncil: () => {
