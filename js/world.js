@@ -1244,19 +1244,32 @@
     const wb = world.wbins;
     if (!wb) return out;
     const gx = (x / WBIN) | 0, gy = (y / WBIN) | 0, reach = Math.max(1, Math.ceil(radius / WBIN));
+    /* MEMOISED PER (CELL, REACH) FOR THE TICK. Asked per man per tick by `stand` and
+     * `steerClear` and per retargeting man by `acquire`, and a company of sixty standing in one
+     * cell asked the same nine-to-forty-nine cells sixty times over: profiled at 6% of a
+     * country's tick after the two passes above it. The memo is cleared in `rebinWorks`, so it
+     * never outlives the bins; and because it CAN outlive a work razed mid-tick, the readers
+     * check `gone` themselves rather than trusting this list to have. */
+    const key = (gy * 100003 + gx) * 8 + reach;
+    const memo = world._wnMemo || (world._wnMemo = new Map());
+    const hit = memo.get(key);
+    if (hit) return hit;
+    const list = [];
     for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
       const cell = wb.get((gy + dy) * 100003 + (gx + dx));
       if (!cell) continue;
-      for (let i = 0; i < cell.length; i++) if (!cell[i].gone) out.push(cell[i]);
+      for (let i = 0; i < cell.length; i++) if (!cell[i].gone) list.push(cell[i]);
     }
-    if (out.length > 1) out.sort(byOrd);
-    return out;
+    if (list.length > 1) list.sort(byOrd);
+    memo.set(key, list);
+    return list;
   }
   const byOrd = (a, b) => a._ord - b._ord;
   const acquireSkip = [];   // per-player skips, one array reused by every acquire in a tick
   function rebinWorks(world) {
     const wb = world.wbins || (world.wbins = new Map());
     wb.clear();
+    if (world._wnMemo) world._wnMemo.clear();   // the tick's worksNear memo dies with the bins
     /* the RUNS, which the bins never hold (a run is `shove`'s business), kept in the full
      * walk's order for `acquire`'s stone pass — every run, shell, standing or breached */
     const runs = world.runs || (world.runs = []);
@@ -1295,6 +1308,7 @@
     for (let n = 0; n < near.length; n++) {
       {
         const b = near[n];
+        if (b.gone) continue;   // razed mid-tick: the memo may still list it — see worksNear
         const dx = u.x - b.x, dy = u.y - b.y, dd = dx * dx + dy * dy;
         if (dd >= p2) continue;
         const L = Math.sqrt(dd);
@@ -1422,6 +1436,7 @@
     for (let n = 0; n < near.length; n++) {
       {
         const b = near[n];
+        if (b.gone) continue;                          // razed mid-tick — see worksNear
         if (b.raise > 0) continue;                     // a shell bars nothing
         const rx = b.x - u.x, ry = b.y - u.y;
         const d = Math.sqrt(rx * rx + ry * ry);
@@ -3533,7 +3548,7 @@
     const near = worksNear(world, u.x, u.y, radius);
     for (let i = 0; i < near.length; i++) {
       const b = near[i], ci = (b._ord / 1e6) | 0;
-      if (skip[ci]) continue;
+      if (skip[ci] || b.gone) continue;
       /* a shooter looks past every work but the Shrine — see the note above the loop */
       if (menOnly && b.bt !== 'shrine') continue;
       const d = Math.sqrt(d2(u.x, u.y, b.x, b.y));
