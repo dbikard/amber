@@ -22,6 +22,10 @@ no bundler. WebGL is a hard requirement, stated plainly at boot (`js/render_sele
   a reach), which kept its structure-independent parts. Read for the staging discipline.
 - **DESIGN_PRINCIPLES.md** — pillars + the sim-based balance methodology.
 - **TODO.md** — phases and current state.
+- **LEDGER.md** — the EVIDENCE behind the rules in this file: every measurement, report from
+  play, rejected alternative and war story, under the same headings as this file, in the same
+  order. A `(→ LEDGER: heading)` pointer here means the numbers live there. Consult it before
+  re-deciding anything a rule says was measured; it is not loaded into every session.
 
 ## Architecture — headless-first (non-negotiable)
 
@@ -178,96 +182,63 @@ progress. AI reads only what a human could see (see `AI.view()`).
   by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
   the same problem. Wait on a condition (`until`) rather than a fixed sleep.
 - There is ONE renderer. A second, Pixi-based one was kept for years as a "fallback for
-  devices without WebGL"; Pixi has been WebGL-only since v7, so it was never a fallback and
-  died on a black screen when it was called on. WebGL is now a stated requirement, said
-  plainly at boot. `runRenderer` still buffers its own rows/timings, which is what a second
-  renderer or viewport size would need to run alongside.
+  devices without WebGL"; Pixi has been WebGL-only since v7, so it was never a fallback.
+  WebGL is a stated requirement, said plainly at boot. `runRenderer` still buffers its own
+  rows/timings, which is what a second renderer or viewport size would need to run alongside.
+  (→ LEDGER: There is ONE renderer)
 - **THE VEIL IS SAMPLED IN THE MATERIALS, not drawn on a canvas** (`R.shaderFog`, on).
   `fogPatch(mat[, slope])` injects into every material in `worldG`: the eased mask rides up as
   a small texture (one texel per fog cell, R = sight, G = ever-seen) and each fragment reads it
-  by its own world XZ. There is no projection to disagree about, which is what the 2D pass
-  could never fix — it drew a WORLD-space field as SCREEN-space polygons and every veil defect
-  of 2026 lived in that gap. Fog is DRAINED of colour, not tinted, and the three states are
-  ONE CHAIN (shroud → fog as memory arrives, fog → the land as sight does), so there is no
-  seam and no rim to draw. The 2D path is kept and still works — `Render.shaderFog = false`
-  — and two suites still measure it, so it cannot rot silently.
+  by its own world XZ — no projection to disagree about, which the 2D pass (a WORLD-space field
+  drawn as SCREEN-space polygons) could never fix. Fog is DRAINED of colour, not tinted, and the
+  three states are ONE CHAIN (shroud → fog as memory arrives, fog → the land as sight does), so
+  there is no seam and no rim to draw. The 2D path is kept (`Render.shaderFog = false`) and two
+  suites still measure it, so it cannot rot silently.
   **The hazard is the other side of the same coin: it veils only what it was handed.** Three
-  ways to lose it, all of which have actually happened:
-  (1) a new mesh created without `fogPatch` — the writ was an unpatched `LineBasicMaterial`
-  and read as the writ and the sight disagreeing about where the ground was;
-  (2) `material.clone()` — `onBeforeCompile` is a PROTOTYPE method and an assigned one is not
-  in the whitelist `Material.copy()` walks, so a clone falls back to the no-op. Ghosts,
-  scaffolding and a toppling tower all clone, and all three escaped;
-  (3) a second arm of the patch without a `customProgramCacheKey` — Three keys a patched
-  program on `onBeforeCompile.toString()`, identical for both arms when the difference is a
-  closed-over variable, so every patched material shares one program.
+  ways to lose it, all of which have actually happened: (1) a new mesh created without
+  `fogPatch`; (2) `material.clone()` — `onBeforeCompile` is a PROTOTYPE method, not in the
+  whitelist `Material.copy()` walks, so a clone falls back to the no-op; (3) a second arm of the
+  patch without a `customProgramCacheKey` — Three keys a patched program on
+  `onBeforeCompile.toString()`, so every patched material shares one program.
   `R.debugUnpatched()` walks `worldG` and names what escapes; "nothing in the world escapes
   the veil" asserts it is empty. The only things allowed out are meshes named `affordance` —
   the selection ring and the armed-company halo — which answer the PLAYER, not the land.
+  (→ LEDGER: THE VEIL IS SAMPLED IN THE MATERIALS)
 - **THE GROUND YOU STAND ON IS THE GROUND YOU SEE.** `R.groundH` is where EVERYTHING is put —
-  every man, every work, every pool, every ring, and the painterly detail tiles a country is
-  painted with — so it must answer for the surface actually DRAWN. For years it sampled the raw
-  elevation field while the ground mesh is a `PlaneGeometry` capped at 180 segments; measured by
-  raycasting the real geometry, up to 8.75 units of disagreement on a board and 21.5 on a
-  country. A board hid it because nothing stands between the eye and the ground there. A country
-  has the detail tiles — the same field sampled FINER, so they rose off the base by exactly that
-  error and were lifted 3.0 units clear to stop it poking through, which then swallowed every
-  spring's pool (water sits 1.5 up), every site ring and the feet of the props. `groundH`
-  interpolates the drawn mesh's own lattice with its own triangulation now (Three splits each
-  quad on the diagonal from `(ix, iz+1)` to `(ix+1, iz)` — verified by raycast, 0.0002 error
-  against 2.35 for the bilinear it used to do), so a tile lands exactly ON the base. **The lesson
-  is the general one: a second code path for the big case is where the two grounds diverged, and
-  the fix was to make them one surface rather than to tune the gap.** Three browser tests hold
-  it — the raycast, a tile's vertices, and a country's spring having its pool.
-
+  every man, work, pool, ring, and the painterly detail tiles — so it must answer for the surface
+  actually DRAWN, never the raw elevation field: it interpolates the drawn mesh's own lattice
+  with its own triangulation (Three splits each quad on the diagonal from `(ix, iz+1)` to
+  `(ix+1, iz)` — verified by raycast). **A second code path for the big case is where the two
+  grounds diverged, and the fix was to make them one surface rather than to tune the gap.**
+  Three browser tests hold it — the raycast, a tile's vertices, a country's spring having its
+  pool. (→ LEDGER: THE GROUND YOU STAND ON IS THE GROUND YOU SEE)
 - **THE CAMERA CANNOT BE AIMED AT A WORLD THE RENDERER HAS NOT BEEN GIVEN.** `clampCam` holds
-  the view inside `mapW`/`mapH`, and those are learned in `buildWorld` — which runs on the first
-  FRAME, after game.js has already called `homeCamera()`. So every opening aim was clamped into
-  the extents of the PREVIOUS world. Board to board that is invisible (same rectangle); walking
-  into a country it strands you, and it stranded the HOST too: measured, a court at (7670, 9030)
-  on 8000×9600 opened looking at (1950, 2446) — the middle of a 2000×2400 board, 7,330 units
-  from the host's court and 8,721 from a guest's. `R.lookAt` remembers the aim and `buildWorld`
-  replays it once the extents are real (re-applying the zoom first, since the zoom floor scales
-  with the land too), then clears it, so a later drag or a council row is never undone.
-
+  the view inside `mapW`/`mapH`, learned in `buildWorld` on the first FRAME — after game.js has
+  called `homeCamera()`, so an opening aim is clamped into the PREVIOUS world's extents.
+  `R.lookAt` remembers the aim and `buildWorld` replays it once the extents are real (zoom
+  first, since the zoom floor scales with the land), then clears it, so a later drag or a council
+  row is never undone. (→ LEDGER: THE CAMERA CANNOT BE AIMED AT A WORLD)
 - **A MEMORY OF THE LAND IS CUT TO THE LAND.** `World.newSeenMask()` with no dimensions is a
-  BOARD — right for a duel, and the guest's war mask asked for exactly that. On a country the
-  grid covered its top-left sixteenth, `markSeen` OR-ed a country-sized live mask into it index
-  for index across two different strides (silently dropping the overflow off the end of a typed
-  array), and the veil's own view window — clamped to that grid — could not reach the ground the
-  camera was over, so every cell in sight stayed SHROUD. That is the black world a LAN guest at
-  a war table was photographed looking at. The call site takes `refWorld.mapW/mapH` now, and
+  BOARD; on a country that is a shroud everywhere. The call site takes `refWorld.mapW/mapH`, and
   `markSeen` maps by CELL when the strides differ rather than corrupting silently. Same shape as
   the two notes above: **a second code path for the big case, silently sized for the small one.**
-
-- **WATER IS ONE BODY, AND ITS DEPTH IS ITS WIDTH.** The bake painted a radial gradient PER
-  WATER CELL onto the finished land, so the alphas compounded where discs overlapped and a
-  one-cell river came out as a chain of beads with a bright core in every cell — and the pass
-  ran AFTER the blur that softens everything else, so a hard saturated cutout sat on a
-  painterly landscape. Reported from play as "that river looks very weird". The cells go into
-  their own layer at full alpha (a shape has no alpha to compound), the layer is blurred — which
-  is what turns a run of squares into a channel with banks — and it is composited ONCE. Depth
-  falls out of the same mask blurred harder: a lake keeps its alpha in the middle and a
-  one-cell river blurs away, so the deep colour only reaches broad water, with no rule about
-  which is which. Measured down a channel's centreline: the step between neighbouring cell
-  centres was 14.9 of 255 and is 1.0. **No blur may reach past `pad`** — a tile is painted with
-  `cw*2` of ground beyond its edge and cropped back, and that is the whole reason two neighbours
-  meet on identical pixels; the blur is clamped to what the pad can support and a suite bakes
-  two overlapping windows and compares the strip they share.
-
-- **`node test/run.js` runs the two suites AT ONCE** — they contend for nothing (pure Node vs
-  Chromium on its own ephemeral port), so the wall clock was simply the sum of them. Each
-  child's output is buffered and printed whole as it finishes, because two `report()` tallies
-  interleaved is neither. `--serial` puts it back. Two traps were found doing this and both are
-  general: **a suite that skips itself is claiming something, and the claim has to be checked**
-  — `browser.js` skipped with "no Chromium" on a box with a perfectly good one, because
-  Playwright resolves a headless launch to `chromium_headless_shell-<rev>` pinned to the
-  library's revision, so the whole browser half reported green by reporting nothing; it tries
-  three ways now and the skip line names every one that failed. And **`process.exit` truncates a
-  piped stdout**: both suites ended with `process.exit(report(...))`, which was harmless while
-  they wrote to a terminal and silently ate the tally the moment the runner captured them.
-  `process.exitCode` and let the process end.
-
+  (→ LEDGER: A MEMORY OF THE LAND IS CUT TO THE LAND)
+- **WATER IS ONE BODY, AND ITS DEPTH IS ITS WIDTH.** Water cells go into their own layer at full
+  alpha, the layer is blurred (a run of squares becomes a channel with banks) and composited ONCE
+  — never a gradient per cell onto the finished land, whose alphas compound. Depth is the same
+  mask blurred harder: a lake keeps its alpha in the middle, a one-cell river blurs away, no rule
+  about which is which. **No blur may reach past `pad`** — a tile is painted with `cw*2` beyond
+  its edge and cropped back, which is why two neighbours meet on identical pixels; the blur is
+  clamped to what the pad supports and a suite bakes two overlapping windows and compares the
+  strip they share. (→ LEDGER: WATER IS ONE BODY, AND ITS DEPTH IS ITS WIDTH)
+- **`node test/run.js` runs the two suites AT ONCE** — they contend for nothing; each child's
+  output is buffered and printed whole, because two `report()` tallies interleaved is neither;
+  `--serial` puts it back. Two general traps: **a suite that skips itself is claiming something,
+  and the claim has to be checked** — `browser.js` tries three ways to launch Chromium and the
+  skip line names every one that failed (Playwright resolves a headless launch to
+  `chromium_headless_shell-<rev>`, so a "no Chromium" skip on a box with one reported green by
+  reporting nothing); and **`process.exit` truncates a piped stdout**: set `process.exitCode`
+  and let the process end. (→ LEDGER: `node test/run.js` runs the two suites AT ONCE)
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page for input, camera, the writ, HUD layering, the back
@@ -286,86 +257,65 @@ standard and turns the army home. The AI still uses it as its general muster, wh
 removing it outright would mean rewriting every heir's doctrine.
 Tapping your own troops arms their company (`Render.hitUnit`, tight 24 reach on purpose).
 
-**A CITY CIRCLE IS NOT A SPECIAL CASE, AND A STANDARD GOES WHERE YOU POINT.** `hitSite` judged
-a FLAG tap against `CITY.r + 20` and everything else against the site's own ground — a circle
-2.7× the radius, so an order planted anywhere inside a city circle silently relocated itself to
-the middle of the court. Reported from play as tapping in a city circle behaving differently. A
-rule that moves your order without saying so is worse than no rule, and the naming it bought fed
-a banner that no longer exists (a rally is silent). One radius rule, both callers, no `forFlag`.
+**A CITY CIRCLE IS NOT A SPECIAL CASE, AND A STANDARD GOES WHERE YOU POINT.** `hitSite` judges
+every tap against the site's own ground: one radius rule, both callers, no `forFlag`. A rule
+that moves your order without saying so is worse than no rule.
+(→ LEDGER: A CITY CIRCLE IS NOT A SPECIAL CASE)
 
 **SAY IT TWICE AND IT IS MEANT LITERALLY.** An ordinary rally is a SUGGESTION the acquire loop
-overrides constantly — right for the ordinary case, and exactly what makes a deliberate order
-impossible to give. A second tap on the order just given sets `hard` on it: the company acquires
-NOTHING (a forced march, so an engaged man breaks off and goes) or nothing but the work the tap
-named (`tpi`/`tid` → `co.mark`, vetted at the sim's door so a guest cannot ask for a work it may
-not strike). Measured on one world with only the bit changed: an ordinary order stalls at the
-enemy line having dealt 1,071 damage and lands nobody; the forced one reaches 440 further, four
-of eight arrive, and it deals 27.
+overrides constantly. A second tap on the order just given sets `hard` on it: the company
+acquires NOTHING (a forced march, so an engaged man breaks off and goes) or nothing but the work
+the tap named (`tpi`/`tid` → `co.mark`, vetted at the sim's door so a guest cannot ask for a
+work it may not strike).
 **IT MUST LAPSE, AND IT LAPSES TWO WAYS** — `HARD.span` is the ceiling (an order to ignore the
 enemy forever is how a company walks into a mill), and arriving is the ordinary ending, folded
-in `bearers` because that pass already knows which man carries each company's colours. `hardOn`
-counts the live ones so `acquire` — 94% of a busy tick — skips the whole question with one
-integer test in every match that never gives one, and it is incremented in exactly one place and
+in `bearers`. `hardOn` counts the live ones so `acquire` skips the whole question with one
+integer test in every match that never gives one; it is incremented in exactly one place and
 decremented in exactly one.
-**THE SECOND TAP UPGRADES; THE FIRST NEVER WAITS.** A double-tap window on the first tap would
-put that delay on every order in the game to buy a gesture used occasionally. And there is no
-banner: the standard on the ground grows a SECOND pennant for as long as the order stands, which
-is the rule ("say it for as long as it is true") and is why hardness is part of the flag pool's
-KEY — a marker built for an ordinary rally must not survive the order being repeated.
+**THE SECOND TAP UPGRADES; THE FIRST NEVER WAITS.** No double-tap window on the first tap — it
+would delay every order in the game for a gesture used occasionally. No banner: the standard on
+the ground grows a SECOND pennant for as long as the order stands ("say it for as long as it is
+true"), which is why hardness is part of the flag pool's KEY.
+(→ LEDGER: SAY IT TWICE AND IT IS MEANT LITERALLY)
 
-**A WORK UNDER THE FINGER ALWAYS WINS.** Men were asked first once, so a company standing on a
-hall made that hall unopenable; then the NEARER of the two answered, which is better and still
-not right — a work is a fixed point the size of a fingertip, and men are many, they move, and
-they gather exactly where the works are, so a hall with its own company mustered round it had a
-ring of men nearer to almost every part of it than its own centre was. Reported from play as
-buildings being very hard to select. **The tie is broken by what a miss COSTS, not by which is
-nearer**: the sheet is the only way to reach a work at all — no upgrade, no fork, no mend, no
-way even to see what it is — while a company also has the flag tray, which names every one of
-them and is always on screen. So a work hit at all answers and men answer on the ground around
-it, which is the same rule `hitBuilding` already used one level down for a bastion against the
-curtain it stands in. One code path, so every mode is held to it.
-**And `hitBuilding` asks for the HAND'S works**, not the viewer's. It was the one place in the
-renderer that asked the viewer for something belonging to the hand, so while driving a sworn
-lord every tap on his works returned an id his liege did not own and fell through to bare
-ground — a conquered court whose halls could not be opened at all.
+**A WORK UNDER THE FINGER ALWAYS WINS.** **The tie is broken by what a miss COSTS, not by which
+is nearer**: the sheet is the only way to reach a work at all, while a company also has the flag
+tray, always on screen. So a work hit at all answers and men answer on the ground around it —
+the rule `hitBuilding` already used for a bastion against its curtain. One code path, so every
+mode is held to it. **And `hitBuilding` asks for the HAND'S works**, not the viewer's, or a
+sworn lord's halls cannot be opened while driving him.
+(→ LEDGER: A WORK UNDER THE FINGER ALWAYS WINS)
 
 **A COMPANY'S COLOURS ARE CARRIED BY A MAN.** `World.bearers` names one per company each tick:
 the senior man (lowest id) who is out in the open — a man shut in a tower is passed over while
 anyone else stands, since the renderer does not draw him. Lowest id is arithmetic, so every
 machine at a LAN table flies the standard over the same soldier without a byte agreeing it, and
 when he falls the next man has it on the SAME tick. `co.bearer` rides the wire for the owner
-only, like the rest of a company. It is a picture, not a rule: a bearer fights and dies like
-anyone and losing him costs nothing — making the flag worth killing would have to go to the
-referee first. The tray shows the armed company's ROSTER beside its chip (icons straight off
-`CONST.UNITS[k].icon`, so a new kind needs no code), and the minimap carries one pennant per
-company at its bearer, which is the only thing on that map that says where your army is.
+only. It is a picture, not a rule: a bearer fights and dies like anyone and losing him costs
+nothing — making the flag worth killing would have to go to the referee first. The tray shows
+the armed company's ROSTER beside its chip (icons off `CONST.UNITS[k].icon`, so a new kind needs
+no code), and the minimap carries one pennant per company at its bearer.
 A work's group is cached by a key that must carry **everything drawn into it** — the branch, the
 level, the garrison, the damage, a wall's ends and breach, *and the company whose standard it
-flies*. The company was the one thing missing, so `{c:'assign'}` moved a hall and its flag went
-on flying the old colours until something else rebuilt the group.
+flies* (once missing, so `{c:'assign'}` left a moved hall flying the old colours).
 
 **A MIXED COMPANY IS TWO LINES, AND THE SHOOTERS ARE THE BACK ONE.** `CONST.UNITS[k].shoots` is
-DERIVED from reach (`range >= CONST.LINE_REACH`), so nothing names a kind and a new one lands on
-the right side by having a reach — an Engine and a Bombard belong at the back for all that they
-shoot stone, and a Ram at 26 belongs at the front for all that he crawls. `musterAll` deals the
-two lines separately (each dense, neither holing the other), and a body holding both is two
-discs: the fighting men on the flag, the shooters set back by the depth of both plus a berth.
-The bearing is the way the body is MARCHING, remembered in `world._face` for as long as the
-order stands — recomputed at rest it would swing the back line round the flag the instant the
-last man stopped. A body of one kind is one disc on the flag exactly as it always was.
+DERIVED from reach (`range >= CONST.LINE_REACH`), so nothing names a kind — an Engine and a
+Bombard belong at the back for all that they shoot stone, a Ram at 26 at the front for all that
+he crawls. `musterAll` deals the two lines separately (each dense, neither holing the other),
+and a body holding both is two discs: the
+fighting men on the flag, the shooters set back by the depth of both plus a berth. The bearing is
+the way the body is MARCHING, remembered in `world._face` while the order stands — recomputed at
+rest it would swing the back line round the flag. A body of one kind is one disc on the flag.
 
-**AND THE PACING IS ASKED LOCALLY — that is the whole difficulty of the rule.** A place at the
-back is not enough: the column steers at the ORDER, so a 50-speed archer walked straight through
-a 44-speed shieldwall and the company met the enemy shooters-first. But the obvious cure — hold
-every shooter behind his company's average — is wrong in a game where a hall NEVER STOPS
-MUSTERING: ten recruits who left the yard a minute after the column is ten men a thousand units
-back dragging that average with them, and the archers already at the front stop dead waiting for
-men they will not meet. So a shooter looks at the fighting men of his own company standing near
-HIM (`CROWD.lead`) and keeps `want` — the formation's own depth — behind the most advanced of
-them, at full stride when further back and easing to nothing as he draws level. The standoff must
-be that depth and not a berth, or the shooters park on the ground the line still has to cross and
-the march ends with the fighting men shoving through their own archers. Re-asked on the
-`RETARGET` stagger, the COLUMN only: a shooter kiting a foe moves at his own legs.
+**AND THE PACING IS ASKED LOCALLY — that is the whole difficulty of the rule.** The column
+steers at the ORDER, so faster shooters walk through the line. Do NOT hold every shooter behind
+his company's average: a hall NEVER STOPS MUSTERING, so late recruits drag the average and the
+archers at the front stop dead. A shooter looks at the fighting men of his own company near HIM
+(`CROWD.lead`) and keeps `want` — the formation's own depth, not a berth, or the shooters park
+on ground the line must cross — behind the most advanced, at full stride when further back and
+easing to nothing as he draws level. Re-asked on the `RETARGET` stagger, the COLUMN only: a
+shooter kiting a foe moves at his own legs. (→ LEDGER: AND THE PACING IS ASKED LOCALLY)
 
 Building is CHOOSE-THEN-PLACE: the 🔨 BUILD button opens the sheet, a card arms
 `game.placing`, and the next tap on the map places it (a wall takes two — anchor, then far
@@ -373,28 +323,19 @@ end). Bare ground does nothing. A refusal leaves the work armed so another spot 
 The cards cannot say why a particular spot refuses them any more — the sheet no longer belongs
 to one — so they show cost and affordability only.
 
-**AND TERMS SPEAK ONLY WHEN THEY ARE YOURS.** A duel has one rival, so "somebody came to terms"
-could only ever be about the player. A war seats sixteen and they treat with each other
-constantly: reported from play with a photograph of the whole stack — three lines about one lord
-treating with three others, none of them the player, every one shoving out something that was.
-Both `pact` and `offer` are routed on `ours(ev.p)` now (the offer was made to your BANNER), not
-merely on `!ours(ev.pi)`; `offer` is emitted whenever an offer fails to seal, including between
-two lords who have never heard of you, so it was the wider hole of the two. It fails the third
-test below — would he act differently for knowing? — and the council's roster already names every
-banner and the terms it is under, live, for as long as it is true. The CHRONICLE still records
-third-party pacts (`record.js`), which is where a public fact you did not need shouted belongs.
+**AND TERMS SPEAK ONLY WHEN THEY ARE YOURS.** Both `pact` and `offer` are routed on `ours(ev.p)`
+(the offer was made to your BANNER), not merely on `!ours(ev.pi)`; `offer` fires whenever an
+offer fails to seal, including between two lords who have never heard of you, so it was the
+wider hole. The council's roster already names every banner's terms, live; the CHRONICLE still
+records third-party pacts (`record.js`). (→ LEDGER: AND TERMS SPEAK ONLY WHEN THEY ARE YOURS)
 
 **A BANNER IS FOR A REFUSAL OR A SURPRISE, NEVER FOR AN ECHO.** The corner stack holds three
-lines for 3.4 seconds each, so every banner that says what the player has just done shoves out
-one that says what the *rival* is doing. Three tests, all of which have to pass: does it tell
-him something he did not just cause? is there no readout already saying it? and would he act
-differently for knowing? An order confirmed is none of the three — the armed ring, the lit BUILD
-button, the company chip and the essence rate each say their own thing for as long as it is
-true. So planting a standard, arming one, sounding the Recall, halting the muster and cancelling
-a placement are all SILENT; a refusal (`r.err`, in `issue`) always speaks, and so does anything
-a rival or Chaos did. The Recall made the case on its own: it clears every company's rally, so a
-four-company realm emitted four identical banners for one tap and the stack held nothing else.
-Orders are still in the chronicle (`record.js`) — that is where "what did I do" belongs.
+lines for 3.4 seconds each, so an echo shoves out what the *rival* is doing. Three tests, all
+of which have to pass: does it tell him something he did not just cause? is there no readout
+already saying it? would he act differently for knowing? So planting a standard, arming one,
+sounding the Recall, halting the muster and cancelling a placement are all SILENT; a refusal
+(`r.err`, in `issue`) always speaks, and so does anything a rival or Chaos did. Orders are in
+the chronicle (`record.js`). (→ LEDGER: A BANNER IS FOR A REFUSAL OR A SURPRISE)
 
 The mason readout must mirror `World.rising` EXACTLY: a crew is busy when `raise > 0` **or**
 `work > 0` (an upgrade or a mend). It once counted only `raise` and cheerfully reported a free
@@ -462,20 +403,14 @@ one answer to who a hall raises and how often; `def.spawns` is only ever its lev
 A hall that forks clamps `b.paid` — a part-paid dear recruit becoming a cheap one would hand out
 several men at once. `br` never rides the wire to a rival (`net.js`), so a fork stays private.
 
-**A MAN ENGAGES WHAT HE CAN ACTUALLY HIT.** `acquire`'s radius is `max(aggro, range, ...)`, and
-`range` was missing from it. `aggro` is "how far will I go LOOKING for a fight" and is rightly
-the smaller number for anyone who must walk up to what he strikes — but for every unit bar one it
-is also the LARGER of the two, so the omission could not show. The Bombard is the exception on
-purpose: 365 reach against 240 aggro, sold on out-ranging every tower ever raised. It could not
-use a foot of it — and being a SHOOTER it is held in the back line by design, which parks it
-precisely in the band where it can see the throne and will not fire. Measured: a bombard 260 from
-a rival court, well inside its own reach, dealt ZERO in twenty seconds; the only way it ever
-fired on a Seat was to walk inside the Seat gun's range and die there. Reported from play as
-cannons staying idle instead of attacking the city tower. `node sim.js` before and after: mirrors
-and the skill gradient unchanged, the contested Pattern share 58% → 55% (target 50), the two
-roads 59/38 → 61/36 by force, and julian — the one heir whose doctrine always forks to `bombard`
-— went 10 wins to 12. Nothing names the Bombard: a longer-reaching kind added later lands on the
-right side of this by having a reach.
+**A MAN ENGAGES WHAT HE CAN ACTUALLY HIT.** `acquire`'s radius is `max(aggro, range, ...)` —
+`range` must be in it. `aggro` is "how far will I go LOOKING for a fight", rightly the smaller
+number for a man who walks up to what he strikes; for every unit bar one it is also the LARGER
+of the two, so the omission could not show. The Bombard is the exception on purpose: 365 reach
+against 240 aggro, and being a SHOOTER it is held in the back line — precisely the band where it
+sees the throne and, without `range` in the radius, does not fire. Nothing names the Bombard: a
+longer-reaching kind added later lands right by having a reach.
+(→ LEDGER: A MAN ENGAGES WHAT HE CAN ACTUALLY HIT)
 
 **Three flags on `CONST.UNITS` decide what a man is for.** `menOnly` — no target among works or
 Seats *at all*; `acquire` returns before it looks, so he walks past stone hunting men. Every
@@ -492,14 +427,13 @@ an objective, and predicate-driven hints — plus `OBJ` (`raise`, `hold`, `raze`
 It is **headless-safe on purpose**: an objective is a predicate over world state, and a
 predicate that cannot be run in Node cannot be tested.
 
-**THE SIM GREW NO THIRD WIN CONDITION.** `win` still has exactly two callers. What a chapter
-needed was not another rule inside `update` but a way to end a match from OUTSIDE, having
-watched the world game.js already holds — that is `World.declare(world, winner, reason)`:
-guarded (it cannot overrule a Seat that has already fallen) and emitting the same `win` event
-every other ending emits, so the end screen, the chronicle and the seat's collapse all behave
-exactly as they always did. The objective is POLLED once per simulated frame in game.js's own
-loop. Do not put triggers in `world.js`: the sim is headless-first, the netcode is
-host-authoritative, and a spec board cannot cross the wire (a guest rebuilds from the seed
+**THE SIM GREW NO THIRD WIN CONDITION.** `win` still has exactly two callers. A chapter ends a
+match from OUTSIDE, having watched the world game.js already holds — `World.declare(world,
+winner, reason)`: guarded (it cannot overrule a Seat that has already fallen) and emitting the
+same `win` event every other ending emits, so the end screen, the chronicle and the seat's
+collapse behave as they always did. The objective is POLLED once per simulated frame in
+game.js's own loop. Do not put triggers in `world.js`: the sim is headless-first, the netcode
+is host-authoritative, and a spec board cannot cross the wire (a guest rebuilds from the seed
 alone), so a scripted chapter is a single-player concern by construction.
 
 `CAMPAIGN.run(chapter, me)` is what game.js holds for the length of one: `tick` answers
@@ -512,11 +446,10 @@ Adding a chapter is a table entry: `{key, title, heir, seed, opts, brief, obj, w
 let him off the leash without taking the footing away. The chapter screen, the briefing, the
 lock, the progress and the end screen all follow from the table with no code.
 
-**A BANNER MUST SAY WHERE.** The `hurtcity` alert fired for ANY work of yours being scratched
-and cried "the enemy is inside your city!" about all of them — so a Gate four hundred out,
-gnawed by one fiend, read exactly like a column at the throne. It carries `bt` and `x`/`y`, and
-the banner names the WORK when the trouble is out in Shadow and keeps the old cry for something
-standing on the court (`CITY.r`).
+**A BANNER MUST SAY WHERE.** The `hurtcity` alert carries `bt` and `x`/`y`; the banner names
+the WORK when the trouble is out in Shadow and keeps the old cry ("the enemy is inside your
+city!") only for something standing on the court (`CITY.r`) — a Gate four hundred out gnawed by
+one fiend must not read like a column at the throne.
 
 **AND THE MINIMAP SHOWS WHERE THE FIGHTING IS.** A flashpoint is a PLACE, not an event
 (`R.debugFlash`): violence near an existing one bumps and moves it rather than making another,
@@ -529,16 +462,15 @@ questions a glance at a minimap asks.
 
 ## The Reach War (the fourth mode)
 
-**THE COUNTRY IS ONE WORLD.** The region-graph realm (a country as a grid of little boards,
-entered one at a time — see git history and REALM_PLAN.md §9-10 for its record) is gone: what
-made a single big map unaffordable was the flow field, a Dijkstra dead linear in area, and the
-REACH is what tamed it. Every city owns a disc (`world.cities[].reach`); a company belongs to a
-city (`co.city`) and may be ordered only inside that city's reach (`rules.reach` — refusals
-speak: 'reach', 'city'); and every flow field is FENCED by the owning city's disc (nav.js
-`bound`), so a field costs what a field costs on today's board however large the land grows
-(measured: 5.5ms fenced vs 70ms open over a country). To strike a city two hops away you must
-first hold the one between — the affordability rule IS the strategic rule. ORDERS are bounded;
-violence is not: standing, pursuit and combat cross the rim freely.
+**THE COUNTRY IS ONE WORLD.** The region-graph realm (a country as a grid of little boards —
+see git history and REALM_PLAN.md §9-10) is gone: what made a single big map unaffordable was
+the flow field, a Dijkstra dead linear in area, and the REACH is what tamed it. Every city owns
+a disc (`world.cities[].reach`); a company belongs to a city (`co.city`) and may be ordered only
+inside that city's reach (`rules.reach` — refusals speak: 'reach', 'city'); and every flow field
+is FENCED by the owning city's disc (nav.js `bound`), so a field costs what a field costs on
+today's board however large the land grows. To strike a city two hops away you must first hold
+the one between — the affordability rule IS the strategic rule. ORDERS are bounded; violence is
+not: standing, pursuit and combat cross the rim freely. (→ LEDGER: THE COUNTRY IS ONE WORLD)
 
 `WG.buildCountry` grows the land (CONST.REACHWAR: 8000×9600, 16 cities; connectivity is a
 PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an already-placed reach);
@@ -569,12 +501,10 @@ is slower on a country, so a walk begun three reaches away is not a win nobody c
 
 ### A CONQUEST TAKES AN OATH, NOT A DEED
 
-**`players[i]` IS THE LORD OF `cities[i]`, PERMANENTLY, AND A CITY IS THE ECONOMIC UNIT.** That
-was always half-true — a country builds one player per city, each with its own purse, Gates,
-halls, crews and companies — and conquest DISSOLVED it: `city.owner` moved to the taker, the
-beaten lord kept a treasury he could no longer spend, and his works stood inert in the taker's
-new court forever, refusing the taker's own masons the ground. What a conquest won was a name
-on a map with no economy under it.
+**`players[i]` IS THE LORD OF `cities[i]`, PERMANENTLY, AND A CITY IS THE ECONOMIC UNIT.** A
+country builds one player per city, each with its own purse, Gates, halls, crews and companies;
+conquest must not dissolve that (moving `city.owner` left a beaten lord with a treasury he could
+not spend and his works inert in the taker's court). (→ LEDGER: A CONQUEST TAKES AN OATH)
 
 What changes hands is **allegiance**. `pl.realm` names the banner a lord answers to (his own
 index at genesis, so a board is today's game to the byte); `holdCities` gives a taken court back
@@ -587,112 +517,75 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   `realmCities` are the three answers, and nothing spells them itself.
 - **The two scales must not be confused.** `citiesOf(w, pi)` is HIS city — one, or none while
   his court lies yielded — and drives his writ, his gun, his companies. `realmCities(w, pi)` is
-  his BANNER'S, and drives the lord brake, the HUD's count, and winning and losing. The
+  his BANNER'S, and drives the HUD's count, and winning and losing. The
   46-owner-comparison hazard in the CLAUDE.md note above is now a THREE-way question: "my
   realm's" (sight, hostility, terms), "my city's" (purse, crews, writ, formations, wall gates,
   muster cap), and "may I strike this".
 - **A realm SHARES ITS SIGHT and nothing else.** `visionSources` unions the banner's sources and
-  `refreshVision` casts ONE mask per realm and shares the object (sixteen boards of cells cast
-  four times over for four identical answers was the alternative). Memory (`seen`, `explored`,
+  `refreshVision` casts ONE mask per realm and shares the object. Memory (`seen`, `explored`,
   `ghosts`) stays each lord's own and converges, because it rides the wire and the save per seat.
+  (→ LEDGER: A realm SHARES ITS SIGHT)
 - **Terms are sworn between banners.** `pactOn` and the `{c:'pact'}` command both normalise to
   the realm's founder, so a vassal cannot keep a private peace with the army besieging his liege.
 - **A war can be LOST** (`REALM.run.tick`: your banner holds no city) **and WON by absorption**
   (`holdCities`: one banner left holding ground → `win(..., 'castle')`, only where `endOnSeat`
   is off, so toppling still owns that rule everywhere else).
-- **WHAT YOU BREAK AND HOLD, YOU KEEP.** There was a lord brake — one city by right and one more
-  per LORD, a lord won only from a contender — so a court you had broken, stood in and held for
-  its full twenty seconds could refuse you outright. Gone on the designer's call, and with it
-  `pl.lords`, `CONST.REALM.lords0`, the `refused` event and its banner. The brake on a conquest
-  is the army it takes to break a Seat and the twenty uncontested seconds in the court.
-- **EVERY COURT IS NAMED, AND A LORD IS NOT HIS CITY.** A country drew court names from a bag
-  without replacement and the bag held twelve against sixteen cities, so three came out as "a
-  City of Shadow" — not a name but the absence of one, which read as duplicated rows on the
-  council's roster and made every banner quoting one ambiguous. `REACHWAR.names` is twenty now
-  (add a city, add a name) and the fallback is a NUMBERED shadow, so a bag that runs short again
-  is visible instead of collapsing several courts onto one name.
-  **And a CONTENDER is named for himself.** Every seat was named after its court, so the two
-  rivals who can actually win the war were indistinguishable from the thirteen lords who cannot.
-  `warName` answers it: seat 0 is the player, a minor lord IS his city and keeps its name, and a
-  contender wears the name of the doctrine he is actually running (`warKind`), so the name can
-  never disagree with the brain in the seat. A CITY is still named as a city everywhere a city is
+- **WHAT YOU BREAK AND HOLD, YOU KEEP.** The lord brake is gone on the designer's call, and with
+  it `pl.lords`, `CONST.REALM.lords0`, the `refused` event and its banner. The brake on a
+  conquest is the army it takes to break a Seat and the twenty uncontested seconds in the court.
+  (→ LEDGER: WHAT YOU BREAK AND HOLD, YOU KEEP)
+- **EVERY COURT IS NAMED, AND A LORD IS NOT HIS CITY.** `REACHWAR.names` is twenty (add a city,
+  add a name) and the fallback is a NUMBERED shadow, so a bag that runs short is visible instead
+  of collapsing several courts onto one name. **And a CONTENDER is named for himself.** `warName`
+  answers it: seat 0 is the player, a minor lord IS his city and keeps its name, and a contender
+  wears the name of the doctrine he is actually running (`warKind`), so the name can never
+  disagree with the brain in the seat. A CITY is still named as a city everywhere a city is
   meant — the attack-order labels, the neighbour lists, the map.
-- **AND A MINOR LORD HOLDS GROUND; HE DOES NOT CONQUER.** Every seat runs an heir's doctrine and
-  an heir's whole game is to find the nearest rival court and take it — which on the two
-  contenders is the war, and on the other thirteen was fifteen little empires trying to eat each
-  other. `warOrders` turns a minor lord's war body away from a rival COURT and onto the nearest
-  spring worth taking (`springTo`), so he still expands, still answers trouble, still defends —
-  and an explicit `attack`/`support` from his LIEGE is exempt, because the player's order
-  outranks his doctrine. Measured over six simulated minutes of a sixteen-seat country: 276 war
-  bodies aimed at a rival court, every one turned. Beware the obvious metric — "men standing
-  inside a rival court's radius" does NOT measure this, because a rival's own writ spring sits
-  inside that radius and taking it is exactly what the lord is supposed to do instead.
+  (→ LEDGER: EVERY COURT IS NAMED, AND A LORD IS NOT HIS CITY)
+- **AND A MINOR LORD HOLDS GROUND; HE DOES NOT CONQUER.** An heir's whole game is to take the
+  nearest rival court — on the thirteen non-contenders that was fifteen little empires eating
+  each other. `warOrders` turns a minor lord's war body away from a rival COURT and onto the
+  nearest spring worth taking (`springTo`), so he still expands, answers trouble and defends; an
+  explicit `attack`/`support` from his LIEGE is exempt, because the player's order outranks his
+  doctrine. (→ LEDGER: AND A MINOR LORD HOLDS GROUND; HE DOES NOT CONQUER)
 - **A HOSTILE IS SOMEBODY I MAY STRIKE, AND `World.foe` IS THE ONE SPELLING.** `AI.view`'s
-  `visHostiles` asked `owner !== me`, which is a different question and gets two answers wrong in
-  a war. A PACT PARTNER's men counted as hostiles, so an heir at terms with the player read his
-  army as a threat, came home against it, drew a Trump against it and called the JEWEL down on
-  it — reported from play in exactly those words. The damage was always refused at `hurt`'s door,
-  so it did nothing but spend the Jewel and put a storm over the player's men, which from his
-  chair is an ally attacking him. And a SWORN LORD's men are `owner !== me` too, so a liege read
-  his own vassal's army as an enemy massing on his border. The sim stays permissive on purpose —
-  a human may want to storm ground beside a partner to catch Chaos in it — because what was
-  wrong was the CHOICE. Proven a no-op for the referee rather than assumed: `RULES.truce` is 0
-  in a skirmish, so `foe` is always true there, and twelve seeded duels play out identical to the
-  essence.
+  `visHostiles` asks `World.foe`, never `owner !== me` — that gets a PACT PARTNER's men and a
+  SWORN LORD's men both wrong. The sim stays permissive on purpose (a human may storm ground
+  beside a partner to catch Chaos in it); what was wrong was the CHOICE. A no-op for the
+  referee: `RULES.truce` is 0 in a skirmish, so `foe` is always true there.
+  (→ LEDGER: A HOSTILE IS SOMEBODY I MAY STRIKE)
 - **EVERYONE AT THE TABLE EARNS BY THE SAME ECONOMY.** The designer's rule (2026-08-17): no
   footing and no seat carries an income handicap; a lesser heir DECIDES WORSE (see "the footing
-  scales the whole country" below and `CONST.DIFFICULTY`). The rule was forced by a report from
-  play — a hand-played inner lord with a negative economy who could never afford a Gate, whose
-  number named the cause exactly: `2.5 (BASE_INCOME) x 0.52 (SQUIRE) x 0.62 (MINOR) = 0.806`, the
-  "+0.8/s" on his screen — and by the death spiral the same arithmetic made permanent for every
-  bot: a lord whose Gates the black road ate could not afford another at 0.8/s and sat idle for
-  the rest of the war. Measured gone: strip every Gate off a MINOR lord and he has one back in
-  68s and five by minute six, where the same lord on the old 0.3 purse had one after 119s.
-  `players[].eco` still exists in the sim, for a scripted CHAPTER only (`opts.eco`, a story's
-  feeble tutorial rival); nothing else writes it below 1.
-- **AND A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN.** The muster valve was a player-only
-  control — no doctrine had ever issued `{c:'muster'}` — so a lord whose halls drank everything he
-  earned never saved the 400 for the Gate that would have paid for them. Diagnosed by the player
-  himself. WAR ONLY (`rules.reach`), like `warOrders`: the duel economy is tuned against a referee
-  and this answers a country, where a lord's income is a fraction of a duel's and a hall costs the
-  same. It asks for a STATE and only when that state differs, and the test is the WANT rather than
-  the wallet — he shuts it only with something he means to build and cannot, and opens it the
-  moment he can pay. Measured over six simulated minutes, before and after: purse under 50 in 38%
-  of samples then 19%, median purse 31 then 80, Gates 19 then 21 at SQUIRE; 40% then 29% and
-  Gates 33 then 40 at HEIR. At PRINCE, where lords were least starved, it is a wash (41 Gates
-  then 37) — written down rather than hidden. **And it is judged on what his halls WOULD drink
-  (`musterCap`), never on the live `drainRate`**: written against the latter it flapped —
-  thirteen toggles in thirty seconds — because a shut muster drains nothing, so the same lord read
-  as solvent on the next think, opened, drained, and shut again. The rig that holds it asserts the
-  lord is actually in the red, because at its first setting he was a tenth in the black and the
-  suite sat red through a whole handoff.
-- **A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS** (`World.fallen`). Reported from
-  play: a Seat yields, the claimant stands his twenty seconds in the court, and his men spend them
-  knocking down the halls and Gates he is about to inherit — a conquest that pays for itself in
-  the spoils it destroys. Measured: 2,781 stone and three works of six, gone in eighteen seconds.
-  The sim already half-said this (a broken court's halls muster nobody — `occupied` — because a
-  city with no throne pays no muster); this finishes the sentence. Its works are **nobody's
-  target** (guarded in `acquire` AND at `hurtBuilding`'s door, so a splash pass added later cannot
-  forget) and **its towers do not fire** — without that second half the claimant would be
-  forbidden to strike the stone while the stone went on striking him, which is not a mercy but a
-  one-sided fight. His MEN fight on: what is decided is the court, not the man. `players[i]` is
+  scales the whole country" below and `CONST.DIFFICULTY`) — an income handicap made every death
+  spiral permanent. `players[].eco` still exists in the sim, for a scripted CHAPTER only
+  (`opts.eco`, a story's feeble tutorial rival); nothing else writes it below 1.
+  (→ LEDGER: EVERYONE AT THE TABLE EARNS BY THE SAME ECONOMY)
+- **AND A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN.** A doctrine issues `{c:'muster'}`
+  so a lord whose halls drink everything he earns can save for the Gate. WAR ONLY
+  (`rules.reach`), like `warOrders`: the duel economy is tuned against a referee. It asks for a
+  STATE and only when that state differs, and the test is the WANT rather than the wallet — he
+  shuts it only with something he means to build and cannot, and opens it the moment he can pay.
+  **Judged on what his halls WOULD drink (`musterCap`), never on the live `drainRate`**, which
+  flaps: a shut muster drains nothing, so he reads solvent, opens, drains, shuts. The rig that
+  holds it asserts the lord is actually in the red.
+  (→ LEDGER: AND A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN)
+- **A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS** (`World.fallen`), or the
+  claimant's men spend the twenty seconds knocking down the halls and Gates he is about to
+  inherit. Its works are **nobody's target** (guarded in `acquire` AND at `hurtBuilding`'s door,
+  so a splash pass added later cannot forget) and **its towers do not fire** — without that
+  second half the claimant would be forbidden to strike the stone while the stone went on
+  striking him. His MEN fight on: what is decided is the court, not the man. `players[i]` is
   the lord of `cities[i]` permanently, so the test is one array read; and it cannot touch a duel
   by construction, because a Seat only yields under `rules.occupy`.
+  (→ LEDGER: A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS)
 - **AND AN ORDER BIASES THE CREW, NOT ONLY THE COLUMN.** `warOrders` rewrites where the war BODY
-  goes and nothing else, so an heir told to go and get gates marched — and his mason, who had
-  never heard the order, went on wanting whatever his personality wanted. Reported from play as
-  an inner lord sending troops to springs and never building on them, with a hundred men parked
-  on one. The cause is `wantGates`: it picks from `nodes.own` (the 3 springs nearest his seat)
-  and `nodes.mid` (4-7), capped at one or two, and filtered to springs NOBODY holds — so for an
-  inner lord in a developed country every one of those is already gated, every gate mission
-  returns null, and he wants no Gate anywhere however many his army is standing on. `ordered()`
-  prepends the order's own want to `P.missions(v)`, recomputed every think, so as soon as one
-  spring is taken the next free one inside his reach is wanted — which a fixed `slice(0, 2)`
-  cannot say. FREE only there, though the march will happily go and take a rival's: a crew cannot
-  raise a Gate where another stands, and the moment the march brings it down the spring is free.
-  `walls` gets the works arm it never had for an heir (`wantWatch`). Measured on a country where
-  every bucket spring was already gated: 1 Gate → 2 with both free reach springs untouched, and
-  1 → 4 with the order heard.
+  goes and nothing else; the mason must hear the order too. `wantGates` picks from `nodes.own`
+  and `nodes.mid`, capped, filtered to springs NOBODY holds — null for an inner lord in a
+  developed country. `ordered()` prepends the order's own want to `P.missions(v)`, recomputed
+  every think, so as soon as one spring is taken the next free one inside his reach is wanted.
+  FREE only there, though the march will happily go and take a rival's: a crew cannot raise a
+  Gate where another stands. `walls` gets the works arm it never had for an heir (`wantWatch`).
+  (→ LEDGER: AND AN ORDER BIASES THE CREW, NOT ONLY THE COLUMN)
 - **A HALL MAY ONLY FLY A STANDARD OF ITS OWN CITY** (`joinCo`). A company may only be ORDERED
   inside its city's disc, so a hall raised in a court you have just taken under a standard of
   your home city musters men no order of yours can reach. Asked at the sim's door, so a guest's
@@ -707,200 +600,136 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   lord's WRIT at a vassal's court. `Render.hand` tells the renderer the same thing — the writ
   outline, the reach ring, the armed halo, the minimap pennants and "did I tap my own men"
   answer for the hand; the veil, the camera and the colours answer for the viewer.
-- **AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING.** `gates` fell in with `hold` in a
-  branch whose whole body was `home()`, so it was accepted, written into the helm and printed
-  back in the council row as "ordered to gates" while changing nothing — the dead-button failure
-  the end screen already taught once, and worse here because the row asserts the order stands.
-  Reported from play as *"the bot doesn't even explore to look for gates"*: he was not failing
-  to look, nothing ever sent him. **The order is a MARCH, because a spring is taken before it is
-  built on** — every spring past the opening one lies beyond the writ and `placementError` wants
-  men standing on it — so the doctrine walks the company to the nearest unheld spring inside its
-  own city's REACH (the only ground it may be ordered onto) and the crew then spends what the
-  march won. `springTo` is one answer used by both halves on purpose: the march that takes a
-  spring and the mason who builds on it must want the same one, or a lord ends a war with a full
-  purse and no ground. `walls` was never dead — it has a works arm (towers on the court's rim,
-  faced at the nearest rival court) and coming home is the right march for a defensive order.
-- **AND A SPRING A RIVAL HOLDS IS STILL A SPRING TO TAKE.** `gates` marched — at ground *nobody*
-  held, and nothing else — and returned `'home'` when it found none, which under the reach law
-  strikes every standard. So the same order was dead a second time, in the case that matters
-  most: a reach is fully spoken for far more often than it sounds — an INNER lord's is ringed by
-  courts that have been gating their own ground since genesis, and every lord's is by the second
-  half of a war. Measured: ten springs inside one lord's reach, six of them a rival's — the exact
-  ground the order is about — and not one rally in forty thinks. Reported from play as *"my inner
-  lord when asked to build gates never sent troops to explore and find springs"*. `springTo`
-  prefers free ground (walk on and build, against break-then-build) and falls to the nearest
-  spring held by somebody `World.foe` says he may strike; the WORKS arm still asks for a free one
-  only, because a crew cannot raise a Gate where another stands. And when there is genuinely
-  nothing to take **the order withdraws its claim rather than becoming "stand still"** — null,
-  not `'home'` — so the lord falls back to the doctrine he would have had without it. An order
-  that has run out of ground has nothing to say.
-- **AND HIS DEFAULT — no order at all — HAD THE SAME THREE HOLES, all reported from play.** The
-  march asked only "is a court of another banner on my own border", so **an interior lord did
-  nothing whatever**: conquer a cluster and every lord inside it is ringed by his own banner,
-  finds no target, and stands at home for the rest of the war while his halls muster (measured:
-  14 men in his company, ZERO commands in eighty thinks). "Trouble at home" was hostiles within
-  500 of his SEAT, so **Chaos could gnaw an outlying Gate** — the thing his economy rests on —
-  while he stood in his yard. And he never marched to a spring, so **he could never build on
-  one**, because `placementError` wants men standing on it. The default lives in `warOrders`
-  now (every seat is an heir, and this is the one seam): with no standing order, trouble at an
-  outlying work of his (`troubleAt`) sends the war body to the WORK — a minor lord always, a
-  contender only when his own doctrine had him standing at home, because an assault is not
-  turned back for one fiend at a Gate — and when nothing of his is touched and the doctrine
-  would keep him in the yard, he goes to the neighbouring court of his banner that is pressed
-  or exposed (`reserveAt`). The spring inside his reach is the heir's own errand, and the
-  turning-away from a rival court is the "minor lord does not conquer" clause beside it.
-  **A lord behind the lines is a reserve, not a statue.**
-- **EVERY SEAT IN A WAR IS AN HEIR, AND A MINOR LORD IS A WEAKER ONE.** A country used to run
-  one 181-line baseline (`BASELINES.lord`) on all sixteen seats, whose whole vocabulary was
-  rally/build/walk — no upgrade, no fork, no power, no mend, and only ever `companies[0]` —
-  while five heirs with years of doctrine sat unused. The cause was ONE WORD: an heir moves its
-  army with `{c:'banner'}`, and under the reach law there is no one banner an army answers
-  (`standingOrder` falls back to a company's own city), so an heir in a country was MUTE rather
-  than wrong. So the word is translated and the doctrine is not rewritten: **`warOrders`** (ai.js)
-  wraps `issue` for every bot under `rules.reach` — a banner becomes a rally for each of his
-  companies at that point, the Recall (`site: -1`) strikes every standard, and any rally is
-  CLAMPED into its company's city disc. Clamped, not refused: the sim refuses a human's order
-  past the rim on purpose, and a bot with nobody to tell wants the honest reading of the same
-  intent, *march as far toward it as I may*. Off entirely without `rules.reach`, so a board and
-  `node sim.js` see the caller's own `issue` byte for byte.
+- **AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING** — an order the council row asserts
+  is standing must change something. **`gates` is a MARCH, because a spring is taken before it is
+  built on** (`placementError` wants men standing on it): the doctrine walks the company to the
+  nearest unheld spring inside its own city's REACH and the crew then spends what the march won.
+  `springTo` is one answer used by both halves on purpose — the march and the mason must want the
+  same spring, or a lord ends a war with a full purse and no ground. `walls` has a works arm
+  (towers on the court's rim, faced at the nearest rival court) and coming home is the right
+  march for a defensive order. (→ LEDGER: AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING)
+- **AND A SPRING A RIVAL HOLDS IS STILL A SPRING TO TAKE.** A reach is fully spoken for far more
+  often than it sounds. `springTo` prefers free ground (walk on and build) and falls to the
+  nearest spring held by somebody `World.foe` says he may strike; the WORKS arm still asks for a
+  free one only, because a crew cannot raise a Gate where another stands. When there is nothing
+  to take **the order withdraws its claim rather than becoming "stand still"** — null, not
+  `'home'`, which under the reach law strikes every standard — so the lord falls back to the
+  doctrine he would have had without it. (→ LEDGER: AND A SPRING A RIVAL HOLDS)
+- **AND HIS DEFAULT — no order at all — HAD THE SAME THREE HOLES, all reported from play** (an
+  interior lord stood at home all war; **Chaos could gnaw an outlying Gate**; **he could never
+  build on one**). The default lives in `warOrders` (every seat is an heir, and this is the one
+  seam): with no standing order, trouble at an outlying work of his (`troubleAt`) sends the war
+  body to the WORK — a minor lord always, a contender only when his own doctrine had him standing
+  at home, because an assault is not turned back for one fiend at a Gate — and when nothing of
+  his is touched and the doctrine would keep him in the yard, he goes to the neighbouring court
+  of his banner that is pressed or exposed (`reserveAt`). The spring inside his reach is the
+  heir's own errand, and the turning-away from a rival court is the "minor lord does not conquer"
+  clause beside it. **A lord behind the lines is a reserve, not a statue.**
+  (→ LEDGER: AND HIS DEFAULT)
+- **EVERY SEAT IN A WAR IS AN HEIR, AND A MINOR LORD IS A WEAKER ONE.** An heir moves its army
+  with `{c:'banner'}`, and under the reach law there is no one banner an army answers
+  (`standingOrder` falls back to a company's own city), so an heir in a country was MUTE. The
+  word is translated and the doctrine is not rewritten: **`warOrders`** (ai.js) wraps `issue`
+  for every bot under `rules.reach` — a banner becomes a rally for each of his companies at that
+  point, the Recall (`site: -1`) strikes every standard, and any rally is CLAMPED into its
+  company's city disc. Clamped, not refused: the sim refuses a human's order past the rim on
+  purpose, and a bot with nobody to tell wants *march as far toward it as I may*. Off entirely
+  without `rules.reach`, so a board and `node sim.js` see the caller's own `issue` byte for byte.
   **The liege's five words are applied at the SAME seam**, because an heir has no `custom` and
-  would otherwise have read none of them — the dead-button failure twice over. `attack`/pressed
-  `support`/`gates` replace the war body's destination; `hold`, `walls` and an unpressed
-  `support` strike the standards, which under the reach law is what "keep your own court" means.
-  Everything else the heir does — its economy, its works, its powers, its errand company taking
-  ground — runs untouched underneath, which is what "a bias on the same brain" means.
-  **`warBot(world, pi)`** in game.js seats it, and **the footing scales the whole country**. The
-  picker says "how hard the heirs play" and a war did not read it: a contender got `{}` — no
-  handicap at all, which is harder than PRINCE — and every other lord a fixed `CONST.MINOR`, so
-  SQUIRE and PRINCE dealt the same opposition. Worse, `startRealm` stamped the chosen footing
-  into the CHRONICLE, so a war's record named a setting nothing in it had read — the dead-control
-  failure landing on the one instrument used to diagnose reports from play. `warFooting` is now
-  the one answer: a contender plays at the player's footing, a minor lord at that footing made
-  worse by `CONST.MINOR`, composed per field by what each field IS — `slow` MULTIPLIES (a
-  think-interval multiplier), `noise` and each LAPSE take the WORSE of the two (the same penalty
-  said twice, and stacking double-charges one axis), `hold` is the footing's own.
-  **A FOOTING IS A QUALITY OF MIND, NOT A PURSE.** It carried an income fraction (`eco`) once,
-  dealt onto `players[].eco` by a `warPurses` pass wherever a seat gained a driver; the designer
-  retired it — everyone earns by the same economy, and difficulty is decision quality. Each rung
-  now carries LAPSES (`CONST.DIFFICULTY[..].lapses`), named flaws wired at the exact decision
-  points in ai.js `decide`: `gates` (overlooks expansion — his own errands and the spring under his
-  feet, never a liege's order), `up` (forgets the upgrade scan, levels and forks alike), `aim`
-  (a NEW order sends the army somewhere known and wrong, and it sticks for half a minute — never
-  while his Seat is threatened, never onto a rival's court, so it is no way round `hold`),
-  `trickle` (the COMMIT floor falls toward a handful, so assaults arrive in dribs), `siege`
-  (marches on the Seat with nothing that breaks stone and never raises the Works answer), `hoard`
-  (reads his own purse at 1/(1+hoard), so every purchase waits for a multiple of its price).
-  `gates`/`up`/`siege` are SPELLS — a flaw rolled fresh every think was measured to be almost no
-  flaw, because missions and errands are sticky, so a spell holds `SPELL` seconds and the entry
-  chance is derived so the table's number is the long-run FRACTION of the match spent lapsed.
-  **Every roll draws from the bot's RNG only when the flaw is set**, so an heir made with no
-  footing — which is every heir `node sim.js` seats — plays byte-identical to before: held by a
-  suite that plays twelve seeded duels both ways and hashes the traces. PRINCE has no lapses.
-  **AND `hold` IS A PROMISE TO ONE BANNER.** It is checked against the heir's NEAREST rival court,
-  which in a duel is the player's and nothing else; a war seats sixteen, so for most lords that
-  is another bot — and ungated, an easy footing stopped **the whole country making war on itself**
-  for thirteen minutes, which is a duller war rather than an easier one. `opts.holdOn` (the
-  viewer's banner, seat 0 by default, so a duel is identical to the byte) gates both places `hold`
-  is read: the banner march and the answer to a rival's walk. Measured at SQUIRE with the gate:
-  lord-in-a-rival-court samples 3 → 20 → 5 over the first six minutes and two or three thrones
-  under the hammer, all of which would be zero without it. The promise to the player is kept in
-  the only sense the sim can keep it — `CASTLE_ZONE` makes any man within 46 of a throne strike
-  it, so a lord fighting over a spring beside your court scratches it whatever his orders say.
-  The temperament is chosen by SEAT so a court always fields the same character on every machine
-  and across a save without a byte of state saying so. Measured over six simulated minutes on two
-  seeds, lords against heirs: Gates standing 16/17 → 44/55 (sixteen is exactly the opening one
-  apiece — the lords expanded ZERO), springs held 16/17 → 44/55, works 51/48 → 144/189, men
-  236/187 → 697/802. Cost 0.96 → 2.3ms a frame for the whole country, well inside the budget.
-  **The `lord` baseline is DELETED** (2026-08-17): the five words had two implementations and
-  drifted once ("a spring a rival holds" had to be fixed in both), so its default was ported into
-  `warOrders` and its five suites now drive an heir, which is what the game seats.
+  would otherwise have read none of them. `attack`/pressed `support`/`gates` replace the war
+  body's destination; `hold`, `walls` and an unpressed `support` strike the standards, which
+  under the reach law is what "keep your own court" means. Everything else the heir does runs
+  untouched underneath — "a bias on the same brain".
+  **`warBot(world, pi)`** in game.js seats it, and **the footing scales the whole country**: the
+  picker says "how hard the heirs play" and a war must read it, and never stamp into the
+  CHRONICLE a footing nothing read. `warFooting` is the one answer: a contender plays at the
+  player's footing, a minor lord at that footing made worse by `CONST.MINOR`, composed per field
+  by what each field IS — `slow` MULTIPLIES (a think-interval multiplier), `noise` and each LAPSE
+  take the WORSE of the two (stacking double-charges one axis), `hold` is the footing's own.
+  **A FOOTING IS A QUALITY OF MIND, NOT A PURSE.** The income fraction (`eco`, dealt by
+  `warPurses`) is retired — difficulty is decision quality. Each rung carries LAPSES
+  (`CONST.DIFFICULTY[..].lapses`), named flaws wired at the exact decision points in ai.js
+  `decide`: `gates` (overlooks expansion — his own errands and the spring under his feet, never a
+  liege's order), `up` (forgets the upgrade scan, levels and forks alike), `aim` (a NEW order
+  sends the army somewhere known and wrong, and it sticks for half a minute — never while his
+  Seat is threatened, never onto a rival's court, so it is no way round `hold`), `trickle` (the
+  COMMIT floor falls toward a handful, so assaults arrive in dribs), `siege` (marches on the Seat
+  with nothing that breaks stone and never raises the Works answer), `hoard` (reads his own purse
+  at 1/(1+hoard), so every purchase waits for a multiple of its price). `gates`/`up`/`siege` are
+  SPELLS — a flaw rolled fresh every think is almost no flaw, because missions and errands are
+  sticky — holding `SPELL` seconds, with the entry chance derived so the table's number is the
+  long-run FRACTION of the match spent lapsed. **Every roll draws from the bot's RNG only when
+  the flaw is set**, so an heir made with no footing — every heir `node sim.js` seats — plays
+  byte-identical to before: held by a suite that plays twelve seeded duels both ways and hashes
+  the traces. PRINCE has no lapses.
+  **AND `hold` IS A PROMISE TO ONE BANNER.** It is checked against the heir's NEAREST rival
+  court — the player's in a duel, mostly another bot in a war — and ungated, an easy footing
+  stops **the whole country making war on itself**, a duller war rather than an easier one.
+  `opts.holdOn` (the viewer's banner, seat 0 by default, so a duel is identical to the byte)
+  gates both places `hold` is read: the banner march and the answer to a rival's walk.
+  `CASTLE_ZONE` still makes any man within 46 of a throne strike it, so a lord fighting over a
+  spring beside your court scratches it whatever his orders say. The temperament is chosen by
+  SEAT so a court fields the same character on every machine and across a save without a byte
+  of state saying so. **The `lord` baseline is DELETED** (2026-08-17): two implementations of
+  the five words drifted once, so its default was ported into `warOrders` and its suites drive
+  an heir, which is what the game seats.
+  (→ LEDGER: EVERY SEAT IN A WAR IS AN HEIR, AND A MINOR LORD IS A WEAKER ONE)
 - **A COUNTRY PAYS FOR ITS OWN PATHFINDING.** `NAV.cacheMax` (48) and `NAV.perTick` (1) are
-  DUEL numbers — two seats, a handful of goals — and a country is sixteen economies. Its measured
-  working set is 74 flow fields, which sat just above the ceiling: the cache filled, dropped
-  EVERYTHING and rebuilt it, over and over. Measured over twenty simulated seconds, 1,098 field
-  requests DEFERRED and 41 rebuilt — the ration saturated on essentially every tick, and a
-  deferred field is a man steering straight at his goal instead of down a field, all over the
-  country. That is what the lag was. Given room (`world.navCache` 96, `world.navRation` 4, both
-  per-WORLD so a board is untouched to the byte): 0 deferred, 15 builds, and the sim got FASTER,
-  3.05 → 2.29ms a frame, because it stopped rebuilding what it had just thrown away.
-  **The reads were never the problem and a proximity scheme would not have helped**: 92,793
-  reads against 15 builds in that window, 6,186 to one. A read is a Map lookup and a bilinear
-  blend; the cost is the Dijkstra, and builds are per distinct GOAL — which is already
-  essentially one per company (74 fields, 41 ordered companies). The lever for fewer fields is
-  fewer distinct goals, which is exactly what one doorway per wall run did (29 fields thrashing
-  → 3), never fewer readers. **What IS wasted is size**: a bounded field is fenced to a city's
-  disc but allocates the whole grid — 750KB, of which the disc is 21%. Sparse-to-the-bound is a
-  4.7x memory cut with no behaviour change, and is written down rather than done.
-- **AND THE STONE NEAR A MAN IS BINNED TOO.** `rebin` was written so that "what is near me" is a
-  look at nine cells instead of a walk of the whole board — and it binned only the MEN. `stand`
-  (via `project`) and `steerClear` each walked every building of every player, **per man, per
-  tick**. Invisible on a board (two seats, thirty works); profiled sixteen minutes into a country
-  it was 27% of the tick between them, with the whole sim at **40.45ms against a 33ms frame** at
-  1111 men — superlinear, because both terms grow (men x5.7 → cost x14.7). That is the reported
-  lag. `world.wbins` is rebuilt once a tick in `rebin` (O(works), so staleness is impossible to
-  observe rather than merely unlikely) and `worksNear` answers from it: **20.13ms at the same
-  point, halved everywhere.**
-  Three things the fix turns on, and each was found by measuring rather than reasoning:
-  (1) **the ORDER is part of the answer** — `stand` projects a man off each work in turn and
-  MUTATES him as it goes, so `_ord` records the position the full walk gave each work and the
-  candidates are sorted back into it;
-  (2) **the query must cover where he ENDS, not where he began** — hence `pad * 3`, which is
-  three times the measured worst case (at most ONE work ever projects a man in a pass; largest
-  displacement 24.16 units over four sim-minutes) and free, because at `WBIN` 96 it is the same
-  3x3 of cells `pad` alone would look at;
-  (3) **a work thrown down MID-tick** is spliced from `pl.buildings`, which the array notices
-  instantly and a bin cannot — so `hurtBuilding` stamps `b.gone` and `worksNear` skips it. This
-  was the ONLY real difference between the two passes, it first showed at t=120.2s as one soldier
-  1.45 units adrift, and nothing but a lockstep comparison would ever have found it.
-  **The control ships with the code**: `World.slowWorks` is the full walk in its original order,
-  so the suite plays the same seeded country BOTH WAYS and compares man for man every tick — a
-  faster pass that plays a different game is not an optimisation. What is left on top is
-  `acquire` and its call site (~40% together); see TODO.md — the unit `BIN` is 280, which scans
-  7x the area an aggro radius needs, but changing it reorders `forNear` and therefore tie-breaks,
-  so it is a referee change and not a free one.
-- **A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT.** Two links in one chain, both
-  reported from play as the previous game's end screen appearing instead of a new war. `done` was
-  written only where `run.tick` answers — but a war ends through the SIM as often as through its
-  run (a throne down, `holdCities` finding one banner left), and neither asks `tick`; it is set
-  at `endMatch` now, the door every ending passes through. And `done` was never written to the
-  RECORD nor read back out of one, so `REALM.load` always returned a war that looked undecided
-  and the menu's "a decided war is not resumed" check could not fire once in the game's life.
+  DUEL numbers; a country's working set sits above them, so the cache filled, dropped EVERYTHING
+  and rebuilt it, and a deferred field is a man steering straight at his goal. A country gets
+  `world.navCache` 96 and `world.navRation` 4, both per-WORLD so a board is untouched to the
+  byte. **The reads were never the problem and a proximity scheme would not have helped**: the
+  cost is the Dijkstra, per distinct GOAL — essentially one per ordered company — so the lever
+  is fewer distinct goals (one doorway per wall run), never fewer readers. **What IS wasted is
+  size**: a bounded field is fenced to a disc but allocates the whole grid; sparse-to-the-bound
+  is written down rather than done. (→ LEDGER: A COUNTRY PAYS FOR ITS OWN PATHFINDING)
+- **AND THE STONE NEAR A MAN IS BINNED TOO.** `rebin` binned only the MEN while `stand` (via
+  `project`) and `steerClear` walked every building of every player **per man, per tick** —
+  the reported lag on a country. `world.wbins` is rebuilt once a tick in `rebin` (O(works), so
+  staleness is impossible to observe) and `worksNear` answers from it. Three things the fix
+  turns on, each found by measuring: (1) **the ORDER is part of the answer** — `stand` MUTATES
+  the man as it projects him off each work, so `_ord` records the full walk's position and the
+  candidates are sorted back into it; (2) **the query must cover where he ENDS, not where he
+  began** — hence `pad * 3`, free at `WBIN` 96 (the same 3x3 of cells); (3) **a work thrown down
+  MID-tick** is spliced from `pl.buildings` and a bin cannot notice — `hurtBuilding` stamps
+  `b.gone` and `worksNear` skips it. **The control ships with the code**: `World.slowWorks` is
+  the full walk in its original order, and the suite plays the same seeded country BOTH WAYS and
+  compares man for man every tick — a faster pass that plays a different game is not an
+  optimisation. What is left is `acquire`; see TODO.md — the unit `BIN` is 280, 7x the area an
+  aggro radius needs, but changing it reorders `forNear` and therefore tie-breaks, so it is a
+  referee change and not a free one. (→ LEDGER: AND THE STONE NEAR A MAN IS BINNED TOO)
+- **A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT.** A war ends through the SIM as
+  often as through its run and neither asks `run.tick`, so `done` is set at `endMatch`, the door
+  every ending passes through; and it is written to the RECORD and read back by `REALM.load`,
+  or the menu's "a decided war is not resumed" check never fires.
+  (→ LEDGER: A DECIDED WAR IS REMEMBERED AS DECIDED)
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.
-- **A LAN TABLE HAS TWO BEGINNINGS, and the button says which.** One BEGIN used to mean a plain
-  board or the whole table dealt into the host's war depending on whether a war happened to be
-  saved — the same button, two games, nothing on screen saying which. `lan-start` deals a board;
-  `lan-start-war` appears only when there is an undecided war and deals the table into it. And
-  every `Net.send` in the deal is guarded: one channel throwing used to take the whole handler
-  down, which looks exactly like a BEGIN that is not wired up.
-- **A GUEST IS IN THE WAR TOO, and `game.war` is the CLIENT'S word for it.** It was set inside
-  the HOST arm of `startMP` only, so on a guest every reader answered "an ordinary match": no ⚑
-  chip, no council, and therefore — on 8000×9600, where a court cannot be found by dragging —
-  no way to reach anything he owned. The two things that really are the host's alone are
-  `game.realm` and `game.run`, and every writer of state guards on **those** (`saveWar`, the
-  `REALM.save` ticks, `onSteward`), never on `game.war`. The helm goes the same way: which court
-  the player is hand-playing is a choice about whose taps these are, so it rides the realm when
-  there is one to save it in and lives on `game.helm` when there is not. A guest may take
-  command of a sworn lord (`issue` already carries `as`) but is offered no STANDING ORDER — the
-  doctrines are stepped on the host, so an order set on a guest would sit in a helm nothing ever
-  reads, which is the dead-button failure the end screen already taught once.
-- **THE COUNCIL ASKS THE VIEW, NEVER THE WORLD.** It read `players[viewer].explored` — a field
-  of the world that never crosses the wire — so a guest's council knew of no court he had found
-  and offered terms to nobody, while a host's listed them all. `view.sites` is the same
-  memory-filtered list both views already carry (live if seen, `live:false` if remembered,
-  absent if neither), written once for the host's screen and the wire alike; crews come off
-  `World.masons(view, pi)` for the same reason. A fog rule must not be able to land on one of
-  these screens and miss the other.
+- **A LAN TABLE HAS TWO BEGINNINGS, and the button says which.** `lan-start` deals a board;
+  `lan-start-war` appears only when there is an undecided war and deals the table into it. Every
+  `Net.send` in the deal is guarded: one channel throwing takes the whole handler down, which
+  looks exactly like a BEGIN that is not wired up. (→ LEDGER: A LAN TABLE HAS TWO BEGINNINGS)
+- **A GUEST IS IN THE WAR TOO, and `game.war` is the CLIENT'S word for it.** Set on host AND
+  guest, or a guest gets no ⚑ chip, no council, and no way to reach anything he owns. The two
+  things that really are the host's alone are `game.realm` and `game.run`, and every writer of
+  state guards on **those** (`saveWar`, the `REALM.save` ticks, `onSteward`), never on
+  `game.war`. The helm rides the realm when there is one to save it in and lives on `game.helm`
+  when there is not. A guest may take command of a sworn lord (`issue` carries `as`) but is
+  offered no STANDING ORDER — doctrines are stepped on the host, so it would sit in a helm
+  nothing reads, the dead-button failure. (→ LEDGER: A GUEST IS IN THE WAR TOO)
+- **THE COUNCIL ASKS THE VIEW, NEVER THE WORLD.** `players[viewer].explored` never crosses the
+  wire. `view.sites` is the memory-filtered list both views already carry (live if seen,
+  `live:false` if remembered, absent if neither), written once for the host's screen and the
+  wire alike; crews come off `World.masons(view, pi)` for the same reason. A fog rule must not
+  be able to land on one of these screens and miss the other.
+  (→ LEDGER: THE COUNCIL ASKS THE VIEW, NEVER THE WORLD)
 
 ### WHEN THE TABLE BREAKS UP
 
-**A CHANNEL CLOSING SAYS NOTHING ABOUT WHY, AND A KILLED APP SAYS NOTHING AT ALL.** An heir
-walking out and a phone in a tunnel arrived as the same `onclose`; a killed app, a flat battery
-or a dropped Wi-Fi arrived as *nothing*, because `dc.onclose` never fires for those. There was
-no staleness check anywhere — `snapAt` was read only for the interpolation alpha — so a guest
-went on drawing the last snapshot forever, men sliding to the ends of their velocities, taps
-going into a channel nobody was listening on.
+**A CHANNEL CLOSING SAYS NOTHING ABOUT WHY, AND A KILLED APP SAYS NOTHING AT ALL.** A killed
+app, a flat battery or a dropped Wi-Fi arrive as *nothing* — `dc.onclose` never fires — so a
+staleness check is required. (→ LEDGER: WHEN THE TABLE BREAKS UP)
 
 - **Leaving says so**: `Net.bye` sends `{t:'bye'}` to every peer before `Net.close`, each send
   guarded on its own so one dead channel cannot swallow the other goodbyes. It is the only
@@ -909,17 +738,14 @@ going into a channel nobody was listening on.
   match, because a host who backgrounds his phone may come back; `dead` 10s → the table ends.
   A snapshot landing clears both, so a bad moment on the Wi-Fi costs nothing.
 - **HOST MIGRATION IS OFF THE TABLE, and that is an answer rather than a gap.** Only the host
-  holds a world; a guest holds fog-filtered snapshots of it, so there is nothing on his phone to
-  continue from, and handing the match on would mean shipping a whole world over a link that has
-  just proved unreliable. `endTable` ends it cleanly, keeps the chronicle, and — in a war — says
-  the country is the host's save, because dropping a guest at a menu offering a brand new war
-  reads as the whole evening being gone.
-- **A DESERTED SEAT IS PLAYED BY SOMEBODY** (`adoptSeat`). The host used to play on against a
-  statue: the departed heir's cities kept earning and his men held whatever ground they were
-  last ordered to, forever. `game.bots[i]` is null on every seat a HUMAN holds, so filling in
-  the departed index is the same statement a war already makes about the seats nobody claimed —
-  the lord's doctrine in a war, an heir on a board. One banner, not two: "the link is severed"
-  and "a shadow of him fights on" are one piece of news.
+  holds a world; a guest holds fog-filtered snapshots, so there is nothing on his phone to
+  continue from. `endTable` ends it cleanly, keeps the chronicle, and — in a war — says the
+  country is the host's save.
+- **A DESERTED SEAT IS PLAYED BY SOMEBODY** (`adoptSeat`), never a statue. `game.bots[i]` is
+  null on every seat a HUMAN holds, so filling in the departed index is the same statement a war
+  already makes about the seats nobody claimed — the lord's doctrine in a war, an heir on a
+  board. One banner, not two: "the link is severed" and "a shadow of him fights on" are one
+  piece of news.
 - **The host's back press asks once**, and only his, and only with somebody seated. Back is free
   and instant everywhere else and must stay so, which rules out a modal; the phone's own idiom
   is the answer, where the first press says what the second will do.
@@ -927,120 +753,211 @@ going into a channel nobody was listening on.
 ### ⚑ THE WAR COUNCIL, AND WHAT THE MAP STOPPED SAYING
 
 **A WAR'S STATE IS A PLACE YOU GO, NOT A CORNER OF THE MAP.** A duel's HUD held nine things and
-a war added more: the two-line war line was left-anchored to `min(58vw, 300px)` and the terms
-tray was right-anchored and as wide as its text, so on a 420-wide phone they collided by ~60px
-— and a fourth banner would have run the chips into the minimap (measured: chips ended 6px above
-it). Reported from play with a screenshot.
+a war's additions collided on a phone. (→ LEDGER: A WAR'S STATE IS A PLACE YOU GO)
 
-- **`#war-chip`** stands alone on the right rail: `⚑ held/all` — the whole of what the war line
-  said, in four characters — and a DOT that appears only when something is waiting on you (a
-  rival asking terms, a court of yours hurt, a yielded court nobody holds, a sworn lord with no
-  order). Three chips permanently reading "at war — tap to offer" was an ECHO, which the banner
-  rule forbids; the dot is the same information said only when it is news.
+- **`#war-chip`** stands alone on the right rail: `⚑ held/all` and a DOT that appears only when
+  something is waiting on you (a rival asking terms, a court of yours hurt, a yielded court
+  nobody holds, a sworn lord with no order). A chip permanently reading "at war — tap to offer"
+  is an ECHO, which the banner rule forbids.
 - **`#council`** is the Muster Roll's shape (a panel over everything, packed from the top, one
   way out at the end of the scroll) but it returns to the MATCH and the war keeps running. It
   carries the banner's totals, a row per court — colour, lord, its OWN income and men, its
-  standing order, its throne — and a row per rival banner for terms. **A row is the way to a
-  city**: on 8000×9600 you cannot find a court by dragging, which is why take-command was
-  effectively unreachable.
-- **A COURT IS PUBLIC, AND THE COUNCIL MAY NOT INVENT A FOG THE SIM DOES NOT HAVE.** `world.cities`
-  carries where every court stands and WHOSE it is, to every seat, on the host's view and the
-  wire alike — in a country "whose is that" IS the map. The council nonetheless hid every row
-  behind having laid eyes on the site. On a board that is invisible; on 8000x9600 it was the
-  whole feature: measured two minutes into a war, fifteen standing banners all holding ground and
-  terms offered to NONE of them, because the heir had seen one court of sixteen and might never
-  see another. Reported from play as the council showing no enemies. What stays fogged is where
-  the ARMIES are. The fifteen-identical-rows noise it was meant to prevent is a PRESENTATION
-  problem: terms sort by what is waiting on you (asking → at terms → your offer standing → the
-  rest by how much of the country they hold), never by withholding what the sim publishes.
-- **ONE ROSTER, AND TERMS ARE AN ACTION UNDER A COURT.** THE COURTS and TERMS were two lists
-  about the same banners — a rival named once with its holdings and its state, then again by
-  every court it holds. Reported from play as redundant. **Grouping the courts under banner
-  header rows was tried first and measured: it reads better and does not CONDENSE** — sixteen
-  headers plus sixteen courts is 32 rows against the 31 it replaced, because at genesis every
-  banner holds exactly one court. So terms go where every other action on this panel already
-  lives: an inline `cc-acts` strip under the row, exactly as COMMAND and the standing orders do
-  for a court of your own, and there is no TERMS heading at all. It is drawn under a banner's
-  FIRST court and no others — terms are sworn between BANNERS, so five identical buttons under
-  five courts would be the same redundancy one level down — which is why `cities` is ordered so
-  a banner's courts are adjacent. The strip carries `data-pi` because its LABEL may repeat: a
-  country names courts from its seed and several fall back to "a City of Shadow", which a test
-  comparing labels read as a duplicate that was not there. And a rival court's sub-line no longer
-  says its own name back at you (a lord is NAMED for his city, so the row read "KASHFA —
-  KASHFA's"); it says whose banner he answers to, when it is not his own.
+  standing order, its throne — and terms per rival banner. **A row is the way to a city**: on
+  8000×9600 you cannot find a court by dragging.
+- **A COURT IS PUBLIC, AND THE COUNCIL MAY NOT INVENT A FOG THE SIM DOES NOT HAVE.**
+  `world.cities` carries where every court stands and WHOSE it is, to every seat — in a country
+  "whose is that" IS the map — so no row hides behind having laid eyes on the site. What stays
+  fogged is where the ARMIES are. Noise is a PRESENTATION problem: terms sort by what is waiting
+  on you (asking → at terms → your offer standing → the rest by how much of the country they
+  hold), never by withholding what the sim publishes. (→ LEDGER: A COURT IS PUBLIC)
+- **ONE ROSTER, AND TERMS ARE AN ACTION UNDER A COURT.** Terms are an inline `cc-acts` strip
+  under the row, exactly as COMMAND and the standing orders are for a court of your own; there
+  is no TERMS heading (banner header rows were tried and do not condense). Drawn under a
+  banner's FIRST court only — terms are sworn between BANNERS — which is why `cities` is ordered
+  so a banner's courts are adjacent. The strip carries `data-pi` because its LABEL may repeat.
+  A rival court's sub-line says whose banner he answers to, when it is not his own, never its
+  own name back at you. (→ LEDGER: ONE ROSTER, AND TERMS ARE AN ACTION UNDER A COURT)
 - **The masons moved to the purse.** They are the same question — what can I spend — and the top
   of the screen had no room left.
-- **THE COUNTRY IS DRAWN, because a roster is a list and a war is a SHAPE.** Sixteen courts on
-  8000x9600 cannot be found by dragging or held in the head from a column of names, so the
-  council opens on a MAP: the land, a mark per court in its BANNER's colour, its name, and its
-  reach as a faint disc — which is the war's real geometry, since the reach law decides where an
-  army may be sent at all. Ownership is LIVE, on the owner's call, because it is what the sim
-  publishes; a remembered one would put the map and the row beside it at odds over the same
-  court. It is built from the same `view.cities` the rows are, and a tap on a court goes through
-  the SAME handler as its row — one way to reach a city, not two that drift. The ground is
-  `Render.groundImage()`, the canvas the 3D ground is already textured with, handed over rather
-  than baked again: a country's base is 2237x2684 and a second one is twenty-odd megabytes on a
-  phone for a picture that already exists. It is NOT the minimap and must not become it — the
-  minimap answers "where am I, where is the fighting" every frame at a glance, and sixteen labels
-  would destroy that.
-  **AND A COURT ON THE MAP OPENS THE COURT.** A tap on a mark used to jump the camera and close
-  the whole panel — the one thing you did not want if you were reading the map, since you lost
-  the map to find out what you had tapped. It opens a card OVER the council instead: who holds
-  it, what it earns, its throne, its standing order, and every action its row offers — GO THERE
-  (the old behaviour, kept as an action rather than as the only reading of a tap), COMMAND and
-  the five words for a court of your own, terms for a rival's. Built from the same `d.cities`
-  entry the row is and calling the same handlers, so the two ways into a city still cannot
-  drift. `c.terms` therefore rides on EVERY court of a banner and `c.termsHere` says which one
-  DRAWS the strip: the roster wants one per banner, the card must offer them from whichever
-  court you happened to tap. It peels before the council in `onPopState`, or one back press
-  would read two steps at once.
+- **THE COUNTRY IS DRAWN, because a roster is a list and a war is a SHAPE.** The council opens
+  on a MAP: the land, a mark per court in its BANNER's colour, its name, and its reach as a
+  faint disc — the war's real geometry. Ownership is LIVE, on the owner's call, because it is
+  what the sim publishes. Built from the same `view.cities` the rows are, and a tap on a court
+  goes through the SAME handler as its row — one way to reach a city, not two that drift. The
+  ground is `Render.groundImage()`, handed over rather than baked again. It is NOT the minimap
+  and must not become it. **AND A COURT ON THE MAP OPENS THE COURT.** A tap on a mark opens a
+  card OVER the council (never jump the camera and close the panel): who holds it, what it
+  earns, its throne, its standing order, and every action its row offers — GO THERE (kept as an
+  action), COMMAND and the five words for a court of your own, terms for a rival's — built from
+  the same `d.cities` entry as the row and calling the same handlers. `c.terms` rides on EVERY
+  court of a banner and `c.termsHere` says which one DRAWS the strip. It peels before the
+  council in `onPopState`, or one back press would read two steps at once.
+  (→ LEDGER: THE COUNTRY IS DRAWN)
 - **BACK IS THE WAY OUT OF THE COUNCIL**, peeled FIRST in `onPopState` because it is a panel over
   everything including a sheet still open beneath it — and it returns to the MATCH, never the
-  menu: the war is running behind it, and a back press that left the war because the council
-  happened to be open is the worst reading of the gesture.
+  menu: the war is running behind it.
 - **The right rail is a STACK and the chip is its top item.** `#walkers` is anchored at the same
   place, so `UI.warChip` measures the chip and pushes the board below it; without that the two
-  sit on each other the moment anybody steps onto the Pattern, which is this same bug one
-  element along.
+  sit on each other the moment anybody steps onto the Pattern.
 
 ### THE MAP SAYS WHOSE
 
-**"MINE" IS ASKED EVERY FRAME, AND IT IS THE BANNER'S.** `g.own` was `pi === viewer`, decided
-once in `buildCity` and never revisited — the same assumption `redressCities` exists to undo,
-left standing one level down. So every work in a conquered court stayed dressed as an enemy's
-for the rest of the war: the dark foe pad, no selection highlight, and — reported from play —
-**no company standard at all**, because the pennant hangs behind that test. The halls went on
-mustering into the company they were assigned and the men came out under its colours while the
-hall over them flew nothing. `mineOf(view, viewer, pi)` is the one answer (realm, with the seat
-rule as the fallback for a view that carries no realms), it is asked in the works loop each
-frame, and **it is part of the work group's cache key** — a group built before the oath must not
-survive it, exactly as a level or a breach must not.
+**"MINE" IS ASKED EVERY FRAME, AND IT IS THE BANNER'S.** `g.own` decided once in `buildCity` as
+`pi === viewer` is the assumption `redressCities` exists to undo, left standing one level down
+— it dressed every work in a conquered court as an enemy's, with **no company standard at all**.
+`mineOf(view, viewer, pi)` is the one answer (realm, with the seat rule as the fallback for a
+view that carries no realms), asked in the works loop each frame, and **it is part of the work
+group's cache key** — a group built before the oath must not survive it, exactly as a level or
+a breach must not. (→ LEDGER: "MINE" IS ASKED EVERY FRAME)
 
 **A THRONE LEFT ALONE MENDS ITSELF** (`seatMend`, beside `seatFire`). Every other work already
-self-mends (`STRUCT_REGEN` after `STRUCT_REGEN_WAIT`); the Seat never did, for the same reason
-it needed a gunnery pass of its own — it is the CITY record, not one of `pl.buildings`, so every
-loop that mends stone walked past it, and nothing in the game could raise its hit points at all.
-One early raid nobody could answer halved a heir's last line permanently. The WAIT is the shared
-one, so "has this been hit lately" has a single spelling; only the RATE is the Seat's own
-(`maxHp / CITY.mend`, a whole throne in five minutes) because 2 hp/s would take twenty-one on a
-ten-minute median. **A yielded throne is not mended, it is TAKEN** — healing one off the floor
-would quietly repeal `occupy`, so it stops at zero and `holdCities` owns everything below. It
-says nothing: the castle bar is already on screen saying it for as long as it is true. Measured
-before and after with `node sim.js`: every score and both road targets unchanged, castle-decided
-matches a little longer (6.7→7.0m, 9.4→10.2m), which is the change doing what it says.
+self-mends (`STRUCT_REGEN` after `STRUCT_REGEN_WAIT`); the Seat is the CITY record, not one of
+`pl.buildings`, so every loop that mends stone walks past it and it needs a pass of its own.
+The WAIT is the shared one, so "has this been hit lately" has a single spelling; only the RATE
+is the Seat's own (`maxHp / CITY.mend`, a whole throne in five minutes). **A yielded throne is
+not mended, it is TAKEN** — healing one off the floor would quietly repeal `occupy`, so it stops
+at zero and `holdCities` owns everything below. It says nothing: the castle bar already says it.
+(→ LEDGER: A THRONE LEFT ALONE MENDS ITSELF)
 
-Four seat colours answer a table of four. A war seats sixteen, so from the fifth lord on every
-banner came out the same crimson — an ally at terms, an unaligned neutral and the army marching
-on you were one colour, and a court that swore looked no different the tick after. Colour is by
-**banner**: `CONST.REALM_TINT` gives you gold and each contending heir (`world.heirs`) a colour
-of its own for the whole war, `CONST.NEUTRAL_TINT` is every lord sworn to nobody, Chaos is green.
+Four seat colours answer a table of four; a war seats sixteen. Colour is by **banner**:
+`CONST.REALM_TINT` gives you gold and each contending heir (`world.heirs`) a colour of its own
+for the whole war, `CONST.NEUTRAL_TINT` is every lord sworn to nobody, Chaos is green.
 `Render.tintOf` is the one answer and `UI.seatColor` asks IT rather than spelling a second
 palette. Four sites keyed on the seat an heir was BORN to are keyed on the holder now: the Seat's
 tower re-dresses when a court changes hands (`redressCities`), the ground bake repaints
 (`Terrain.courtOwn`; the cheap base is redone and the painterly tiles near the court dropped),
-the minimap mark follows, and the castle bar — which used to hang over the born city while
-drawing the hp of the seat its heir currently ruled FROM, two different cities — belongs to the
-city and reads its own `hp`.
+the minimap mark follows, and the castle bar belongs to the city and reads its own `hp`.
+(→ LEDGER: THE MAP SAYS WHOSE — colours)
+
+## The Curtain Wall
+
+**A work with a LENGTH** (only the Curtain Wall today): `span:[min]` in the table makes it a
+two-tap placement. It is stored by its MIDPOINT with `x2`/`y2` as the far end, so every
+point-shaped consumer — fog, minimap, ghosts, the snapshot — keeps working; anything that
+needs the run uses `World.wallEnds` / the `segD2` family. `placementError` only judges the
+first tap; `World.wallError` judges the run. `world.walls` is the standing list, rebuilt by
+`noteWalls` whenever one rises or falls, and `world.anyWall` is what keeps a match without
+walls from paying for the crossing tests at all.
+**There is no longest run** — only how many mason CREWS you can put on one. `WALL.unit` is
+the length one crew covers, so a run's crews, cost, hit points and upgrade price all
+multiply together (`b.crews`), `rising()` counts crews rather than works, and
+`World.wallReach` is the longest run a heir could start right now. A run past it is
+`'crews'`, which is a different refusal from `'busy'` and has a different fix.
+**Manning is a ROSTER, not a distance — and STONE IS FOR SHOOTERS.** `postWalls` runs once a
+tick, before anything moves: every man whose ORDER (company rally, else banner) is within
+`WALL.man*1.5` of one of his own runs is posted to it. The roster is sorted **shooters first,
+then by id**, and only a unit the table marks `mans` (archer, sorcerer) may take one of the
+`len/WALL.berth` berths — `u.man` is the wall he holds a place on. Everyone else still gets a
+`post` and stations at the FOOT in rows, in cover, which is where a Shieldwall belongs.
+**THE PARAPET IS CAPPED AND THE FOOT IS NOT.** The roster is re-dealt every tick, shooters
+first, so a berth freed by a death is taken by the next archer on the SAME tick — the queue is
+the dealing, not a rule of its own. The ranks behind are unbounded (wrapping at `WALL.rows`
+dealt men places somebody was already standing in). A man's FINAL APPROACH is judged on his own
+station unless he is climbing — near the RUN is right for a man walking a parapet to his berth
+and wrong for a reserve ranked far behind it. Only berthed men shoot over and are exposed. It
+reads the order rather than `u.goal` because goals are assigned in the march loop, which runs
+after it. (→ LEDGER: THE PARAPET IS CAPPED AND THE FOOT IS NOT)
+**AND A BERTH IS AN ERRAND UNTIL HE IS STANDING IN IT.** `postWalls` deals `u.post` + `u.berth`
++ `u.toBerth`; `u.man` is set by `postAll` from where he actually IS: `atWall` (within
+`NAV.arrive` of his station, or of any run of his own curtain) is the final approach, `WALL.step`
+of his station is arrival. Every rule that matters keeps reading `u.man` — the cover in `hurt`,
+`WALL.over` reach, the wire, the renderer's lift. Being NAMED to a berth must not be the whole
+of manning (men "teleporting" to a wall). It is the tower's `tow`/`in` split, done for stone.
+Four things had to be true before a man could walk there at all: (1) **he steers at the run's
+GATEWAY, not at his berth** — a field is cached by its goal CELL and a berth per man mints a
+goal per berth and thrashes the cache; (2) **the last stretch is `stand` alone, never
+`project`** — as the tower branch does, so a man can walk into a bastion inside a curtain's
+slab; he is not walking THROUGH the stone, he is climbing onto it; (3) **the parapet's line
+clears `shove`'s band** (`PARAPET` = `thick + 8` against a pin at `thick + 6`), or an arrived
+man is re-projected every tick; (4) **the final approach is out of the crowd** — cohesion is
+what stops a man LEAVING one. (→ LEDGER: AND A BERTH IS AN ERRAND UNTIL HE IS STANDING IN IT)
+**AND A GARRISON DOES NOT GIVE CHASE.** A man with a berth walks to his place and shoots
+whatever comes into it (a foe just out of range must not drag him off his own wall); he also
+keeps walking WHILE he shoots, because a roster that moves with the fighting is useless if
+being in range stops a man answering it. (→ LEDGER: AND A GARRISON DOES NOT GIVE CHASE)
+**A CURTAIN GATHERS TO THE FIGHTING, AND SPLITS FOR TWO.** Every enemy within `WALL.alarm` is
+projected onto the curtain and the projections are CLUSTERED (`WALL.alarms`, `alarmSpan`) — one
+alarm per body of attackers, anchored on the STONE and not on the enemy, so a Bombard shelling
+from beyond anyone's reach counts. `postWalls` sorts the PLACES by distance to the nearest
+alarm rather than moving men. One alarm would answer a feint perfectly, which is why there is
+more than one. `world._alarms` is kept for the tests, because "did not gather" and "gathered to
+the wrong place" look identical from outside. (→ LEDGER: A CURTAIN GATHERS TO THE FIGHTING)
+**AND THE PARAPET IS HALF A SHIELD.** `WALL.cover` multiplies every blow that lands on a man
+carrying `u.man`, in `hurt()` — the same door the tower's immunity and the chains' amplifier
+use, so a splash pass or a new weapon added later cannot forget to ask. That does mean the
+Jewel's storm is halved on a parapet too, the honest reading of cover; the alternative is a
+list of exceptions at six call sites. Note when testing that the geometry around a run is NOT
+a controlled comparison; the suite plays the same seeded world twice and varies only the
+constant. (→ LEDGER: AND THE PARAPET IS HALF A SHIELD)
+**AND CONTIGUOUS RUNS ARE ONE CURTAIN.** `noteWalls` unions runs of one owner whose ends fall
+within `WALL.join` of each other (measured end-to-segment, so a broadside junction joins too)
+and stamps `w.curtain`, named by the LOWEST run id so every machine at a LAN table groups the
+same stone without a byte about it. `postWalls` rosters by curtain and deals places ROUND-ROBIN
+across its runs and their bastions — dealing one run out before the next packs the men into the
+first run and leaves every tower past them empty. The reserve spreads the same way.
+(→ LEDGER: AND CONTIGUOUS RUNS ARE ONE CURTAIN)
+**A TOWER IS A ROOM, AND THE STONE IS THE SHIELD.** `TOWER.berths` shooters whose order falls
+near one of their own finished towers go INSIDE it, carry `u.tow` (NOT `u.man` — the renderer
+and `station()` read that as "the wall he holds"), and throw `TOWER.over`. While `u.tow` is set
+`hurt()` refuses every blow — guarded there so a splash pass added later cannot forget —
+`acquire` skips him as a target, and the renderer does not draw him at all. The only way to the
+men is to bring the tower down, and `hurtBuilding` spills them out **on that tick**, where it
+stood, with the hp they went in with; a man left carrying `tow` for a tower that no longer
+exists is a man nothing can hurt. The garrison shoots as well as the tower. The tower wears one
+shield on its crown per man, keyed into the model as `+n` — the *only* sign ten archers are in
+there.
+**A bastion is part of its run.** A tower with `onWall` is not `postTowers`' business: it is a
+place on that curtain, and `postWalls` deals the roster round the parapet and every tower in
+the run together. `postAll` clears `man`/`tow` once and runs the two passes in order — each
+used to clear `tow` at its own start, so whichever ran second wiped the other's answer.
+**A CURTAIN HAS ONE SHELTERED FACE, AND IT IS THE POLYLINE'S.** Facing each run at the Seat
+independently flips the sheltered side past a right angle of bend. `noteWalls` puts each
+curtain's runs in ORDER along the wall, turns them to point the same way down it, and takes the
+same HAND for every normal — all left or all right — with the hand settled at the run nearest
+the Seat; curvature cannot touch that. (Chaining by "agree with your neighbour's NORMAL" is
+wrong for a zigzag — measured making things worse.) `w.norm` is the sim's copy and `b.face`
+(+1/-1 against the run's own perpendicular) is stamped on the WORK so it rides the wire: the
+renderer cannot re-derive a chain it only holds part of. `faceOf` is the one place the question
+is answered. **And a man walking to a place on it may cross the run he is CLIMBING ONTO and
+nothing else of his own** (`ownStoneClear`), and he walks in at a DOORSTEP one row inside the
+gateway rather than at the gateway itself — aimed at the gateway, a hole in his own nav layer,
+the field routes a garrison out one gate and back in the next on a dogleg.
+(→ LEDGER: A CURTAIN HAS ONE SHELTERED FACE)
+**A run's sheltered face is a guess the heir may overrule.** `{c:'flip', id, on}` sets `b.flip`
+and `station` (and the renderer's parapet facing) negate the normal, per run, at the point of
+use. It asks for a STATE, not a toggle, takes no crew and no stone, and may be given while the
+masons are still on the run.
+**A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
+punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
+**AND THE DOOR DECIDES WHO PASSES.** Coming from OUTSIDE an heir's own troops always pass;
+going from INSIDE the door is shut to a man POSTED to that wall, and open to everyone else. One
+test does both, because a posted man's station is always on the sheltered side: inside he
+steers on a second layer where his own gateways are stone, outside on the ordinary one; no
+direction is modelled anywhere. `masksFor` keeps TWO layers per heir — not one per company —
+and `NAV.steer`/`fieldFor` take a `shut` flag that is part of the field-cache key. It is
+switched on **the side he is standing on** (`curtainSide`), never on whether the field can reach
+him (keyed on reachability a doorway fills with men jittering — measured worse than open gates,
+twice). A man standing IN a doorway has no field on the shut layer: he is told to step off the
+threshold along the sheltered face. (→ LEDGER: AND THE DOOR DECIDES WHO PASSES)
+**A breach is a ruin, but a SHELL is not.** Only a run that actually stood is breached; one
+knocked over while `raise > 0` is razed like any other work — nothing stood, so there is
+nothing to mend. A work under construction is attackable exactly like a finished one: `acquire`
+aims at the nearest point of a rising RUN (not its midpoint), and the raise ADDS its share of
+`b.maxHp` rather than setting hp from the card, so damage done to a shell stays done. `b.breach`
+keeps the record on the board, out of `world.walls`, and `{c:'fix'}` puts it back for a crew and
+half the stone. A mend takes a crew (`b.fixing`); a LEVEL does not — see the note on the `up`
+command. Rubble keeps `WALL.rubble` of its stone so a stray blow cannot sweep the record away,
+does NOT regenerate (masons only), and can be knocked down for good to free the ground.
+(→ LEDGER: A breach is a ruin, but a SHELL is not)
+**A tower does not shoot through stone, not even its own** — build it INTO the run (`onWall`)
+and it shoots over that wall like a man on the parapet; behind the wall it covers the ground
+behind the wall. `clearOfWorks` takes the owner so a tower may stand on its own curtain.
+**The Seat is the exception, and the hardest gun on the board.** `seatFire` is its own pass —
+the Seat is not in `pl.buildings`, it is the city site with its hp in `pl.castleHp`, so its
+cooldown lives in `pl.seatCd`. `CONST.SEAT_GUN` is DERIVED from the two Watchtower branches at
+their top level added together (retune a branch, retune the Seat), and it alone is **not
+stopped by stone**: the Seat stands where worldgen put it forever, so if stone could shade it
+the cheapest work in the game would switch the throne's guns off from outside their reach.
 
 ## Common Tasks
 
@@ -1058,180 +975,18 @@ city and reads its own `hp`.
   the price, the command and the Muster Roll all follow from the table with no code.
 - **Add an heir**: personality entry in `ai.js` HEIRS block (including a `branch` doctrine per
   forking building) + menu entry in `ui.js`.
-- **A work with a LENGTH** (only the Curtain Wall today): `span:[min]` in the table makes it a
-  two-tap placement. It is stored by its MIDPOINT with `x2`/`y2` as the far end, so every
-  point-shaped consumer — fog, minimap, ghosts, the snapshot — keeps working; anything that
-  needs the run uses `World.wallEnds` / the `segD2` family. `placementError` only judges the
-  first tap; `World.wallError` judges the run. `world.walls` is the standing list, rebuilt by
-  `noteWalls` whenever one rises or falls, and `world.anyWall` is what keeps a match without
-  walls from paying for the crossing tests at all.
-  **There is no longest run** — only how many mason CREWS you can put on one. `WALL.unit` is
-  the length one crew covers, so a run's crews, cost, hit points and upgrade price all
-  multiply together (`b.crews`), `rising()` counts crews rather than works, and
-  `World.wallReach` is the longest run a heir could start right now. A run past it is
-  `'crews'`, which is a different refusal from `'busy'` and has a different fix.
-  **Manning is a ROSTER, not a distance — and STONE IS FOR SHOOTERS.** `postWalls` runs once a
-  tick, before anything moves: every man whose ORDER (company rally, else banner) is within
-  `WALL.man*1.5` of one of his own runs is posted to it. The roster is sorted **shooters first,
-  then by id**, and only a unit the table marks `mans` (archer, sorcerer) may take one of the
-  `len/WALL.berth` berths — `u.man` is the wall he holds a place on. Everyone else still gets a
-  `post` and stations at the FOOT in rows, in cover, which is where a Shieldwall belongs.
-  **THE PARAPET IS CAPPED AND THE FOOT IS NOT.** The roster is re-dealt every tick, shooters
-  first, so a berth freed by a death is taken by the next archer on the SAME tick and he walks
-  up — the queue is the dealing, not a rule of its own. The ranks behind used to wrap at
-  `WALL.rows`, which meant a curtain held `berths * 4` men and dealt every one after that a
-  place somebody was already standing in (measured: 21 overlapping pairs of 60 men on one run);
-  they are unbounded now. And a man's FINAL APPROACH is judged on his own station unless he is
-  climbing — near the RUN is the right question for a man walking a parapet to his berth and
-  the wrong one for a reserve whose rank is a hundred and thirty behind it, who otherwise
-  beelines away from the wall, stops being "at" it, is handed back to the field, is steered at
-  the doorstep beside it and comes back (173 transits became 1,418, by 31 men). A
-  swordsman on a parapet was only ever a man in the open holding a berth an archer needed. Only
-  berthed men shoot over and are exposed. It reads the order rather than `u.goal` because goals
-  are assigned in the march loop, which runs after it.
-  **AND A BERTH IS AN ERRAND UNTIL HE IS STANDING IN IT.** `postWalls` deals `u.post` + `u.berth`
-  + `u.toBerth` — which run, which place, and that it is a place on the stone. `u.man` is set by
-  `postAll`, from where he actually IS: `atWall` (within `NAV.arrive` of his station, or of any
-  run of his own curtain) is the final approach, `WALL.step` of his station is arrival. Every
-  rule that matters keeps reading `u.man` and so silently gains the right meaning — the cover in
-  `hurt`, `WALL.over` reach, the wire, the renderer's lift. Being NAMED to a berth used to be the
-  whole of manning: measured on the old rule, **thirteen of twenty-four men were on the stone one
-  second after the order, still 279 units away from it**. Reported from play as men teleporting
-  to a wall. It is the tower's `tow`/`in` split, done for stone, and for the same reason.
-  Four things had to be true before a man could walk there at all, each measured:
-  (1) **he steers at the run's GATEWAY, not at his berth** — a flow field is cached by its goal
-  CELL and the cache evicts by dropping every field it holds, so a berth per man mints a goal
-  cell per berth: 29 fields held and thrashing, against 3 with one door per run. The tower has
-  always done this;
-  (2) **the last stretch is `stand` alone, never `project`** — as the tower branch does, which is
-  why a man can walk into a bastion standing inside a curtain's 19-unit slab. It is also how he
-  crosses to the sheltered face: he is not walking THROUGH the stone, he is climbing onto it;
-  (3) **the parapet's line clears `shove`'s band** (`PARAPET` = `thick + 8` against a pin at
-  `thick + 6`), or an arrived man is re-projected every tick;
-  (4) **the final approach is out of the crowd** — cohesion is what stops a man LEAVING one, and
-  a man dealt a berth 200 along his own wall gained one unit in eight seconds against a 50/s
-  stride until it was lifted.
-  **AND A GARRISON DOES NOT GIVE CHASE.** An archer sees 150 and throws 105, so a foe just out of
-  range dragged him off his own wall to close the difference — six men pinned dead at a junction,
-  their walk cancelled tick for tick by a chase after a man they could not have hit. A man with a
-  berth walks to his place and shoots whatever comes into it; he also keeps walking WHILE he
-  shoots, because a roster that moves with the fighting is useless if being in range stops a man
-  answering it.
-  **A CURTAIN GATHERS TO THE FIGHTING, AND SPLITS FOR TWO.** Every enemy within `WALL.alarm` is
-  projected onto the curtain and the projections are CLUSTERED (`WALL.alarms`, `alarmSpan`) — one
-  alarm per body of attackers, anchored on the STONE and not on the enemy, so a Bombard shelling
-  from beyond anyone's reach counts. `postWalls` sorts the PLACES by distance to the nearest
-  alarm rather than moving men: the roster is dealt fresh every tick, so the same stable line of
-  men lands on different stone and walks there. One alarm would answer a feint perfectly — hit
-  one end, watch the wall run to it, walk in at the other — which is why there is more than one.
-  Measured on a three-run curtain with twelve men: at rest 4/4/4, one assault 12 of 12, two
-  assaults 6 and 6. `world._alarms` is kept for the tests, because "the wall did not gather" and
-  "the wall gathered to the wrong place" look identical from outside.
-  **AND THE PARAPET IS HALF A SHIELD.** `WALL.cover` multiplies every blow that lands on a man
-  carrying `u.man`, in `hurt()` — the same door the tower's immunity and the chains' amplifier
-  use, so a splash pass or a new weapon added later cannot forget to ask. That does mean the
-  Jewel's storm is halved on a parapet too, which is the honest reading of cover; the
-  alternative is a list of exceptions kept at six call sites, which is what the guard exists to
-  avoid. Without it a berth bought reach and nothing else, and holding a curtain was strictly
-  worse for the man than standing in the field beside it. Note when testing this that the
-  geometry around a run is NOT a controlled comparison — a berthed archer beside one in the
-  open took exactly half with the cover switched OFF, because one of his two attackers could
-  not land a shot. The suite plays the same seeded world twice and varies only the constant.
-  **AND CONTIGUOUS RUNS ARE ONE CURTAIN.** There is no longest run, so a long wall is drawn as
-  several — and the roster is dealt round ALL of them. `noteWalls` unions runs of one owner
-  whose ends fall within `WALL.join` of each other (measured end-to-segment, so a broadside
-  junction joins too) and stamps `w.curtain`, named by the LOWEST run id so every machine at a
-  LAN table groups the same stone without a byte about it. `postWalls` then rosters by curtain
-  and deals places ROUND-ROBIN across its runs and their bastions — the order of that list is
-  the order the wall fills in, and dealing one run out before starting the next is what packed
-  forty men into the first two hundred feet of a board-long wall and left every tower past them
-  empty. The reserve spreads the same way. Reported from play with a picture.
-  **A TOWER IS A ROOM, AND THE STONE IS THE SHIELD.** `TOWER.berths` shooters whose order falls
-  near one of their own finished towers go INSIDE it, carry `u.tow` (NOT `u.man` — the renderer
-  and `station()` read that as "the wall he holds"), and throw `TOWER.over`. While `u.tow` is set
-  `hurt()` refuses every blow — guarded there rather than at each place that deals damage, so a
-  splash pass added later cannot forget — `acquire` skips him as a target, and the renderer does
-  not draw him at all. The only way to the men is to bring the tower down, and `hurtBuilding`
-  spills them out **on that tick**, where it stood, with the hp they went in with; a man left
-  carrying `tow` for a tower that no longer exists is a man nothing can hurt. The tower's own
-  gunnery is unaffected: the garrison shoots as well as the tower. The tower does not change
-  shape for it — it wears one shield on its crown per man, keyed into the model as `+n`, and
-  since the men are invisible that badge is the *only* sign ten archers are in there.
-  **A bastion is part of its run.** A tower with `onWall` is not `postTowers`' business: it is a
-  place on that curtain, and `postWalls` deals the roster round the parapet and every tower in
-  the run together, so holding a wall fills its bastions too. `postAll` clears `man`/`tow` once
-  and runs the two passes in order — they each used to clear `tow` at their own start, so
-  whichever ran second wiped the other's answer.
-  **A CURTAIN HAS ONE SHELTERED FACE, AND IT IS THE POLYLINE'S.** `station` used to face each
-  run at the owner's Seat independently, which is invisible on a straight wall and wrong on
-  every other: past a right angle of bend the direction home swings across the run's own
-  perpendicular and the sheltered side flips halfway along the stone. `noteWalls` now puts each
-  curtain's runs in ORDER along the wall, turns them to point the same way down it, and takes
-  the same HAND for every normal — all left or all right — with the hand settled at the run
-  nearest the Seat. Curvature cannot touch that: it is a property of the traversal, not of any
-  pair of bearings. (Chaining by "agree with your neighbour's NORMAL" is the obvious rule and is
-  wrong for a zigzag, where neighbours differ by more than a right angle — it was measured
-  making things worse.) `w.norm` is the sim's copy and `b.face` (+1/-1
-  against the run's own perpendicular) is stamped on the WORK so it rides the wire: the renderer
-  draws the parapet and swings the gates from it and cannot re-derive a chain it only holds part
-  of. `faceOf` is the one place the question is answered. **And a man walking to a place on it
-  may cross the run he is CLIMBING ONTO and nothing else of his own** (`ownStoneClear`), and he
-  walks in at a DOORSTEP one row inside the gateway rather than at the gateway itself — aimed
-  at the gateway, which is a hole in his own nav layer, the field cheerfully routes a garrison
-  out one gate and back in the next, because on a dogleg that is the short way.
-  **A run's sheltered face is a guess the heir may overrule.** `{c:'flip'}` negates it, per run,
-  at the point of use — the chain has no opinion about a run its heir has turned about. `{c:'flip', id, on}` sets `b.flip` and `station` (and the renderer's
-  parapet facing) negate the normal. It asks for a STATE, not a toggle, takes no crew and no
-  stone, and may be given while the masons are still on the run.
-  **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
-  punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
-  **AND THE DOOR DECIDES WHO PASSES.** Coming from OUTSIDE an heir's own troops always pass;
-  going from INSIDE the door is shut to a man POSTED to that wall, and open to everyone else.
-  One test does both, because a posted man's station is always on the sheltered side: inside he
-  steers on a second layer where his own gateways are stone, outside on the ordinary one, and no
-  direction is modelled anywhere. `masksFor` keeps TWO layers per heir — not one per company: it
-  depends on the owner and one bit, so all his men share them — and `NAV.steer`/`fieldFor` take
-  a `shut` flag that is part of the field-cache key. It is switched on **the side he is standing
-  on** (`curtainSide`), never on whether the field can reach him: keyed on reachability a man
-  falls back to the open layer, strides, and is turned round, and a doorway fills with men
-  jittering — measured worse than leaving the gates open, twice. A man standing IN a doorway is
-  in masonry on the shut layer and has no field: he is told to step off the threshold along the
-  sheltered face, which is the only useful thing to say to him. Without this a garrison
-  reshuffling on a zigzag went out one gateway and in the next — 4,222 transits in a hundred
-  seconds, against 173 now.
-  **A breach is a ruin, but a SHELL is not.** Only a run that actually stood is breached; one
-  knocked over while `raise > 0` is razed like any other work — nothing stood, so there is
-  nothing to mend, and `fix` for half the stone would have been cheaper than finishing it.
-  A work under construction is attackable exactly like a finished one: `acquire` aims at the
-  nearest point of a rising RUN (not its midpoint, which put most of a long shell out of
-  reach), and the raise ADDS its share of `b.maxHp` rather than setting hp from the card, so
-  damage done to a shell stays done and a run bought by the foot finishes on all its stone.
-  `b.breach` keeps the record on the board, out of `world.walls`, and
-  `{c:'fix'}` puts it back for a crew and half the stone. A mend takes a crew (`b.fixing`); a
-  LEVEL does not — see the note on the `up` command. Rubble keeps `WALL.rubble` of its stone so
-  a stray blow cannot sweep the record away, does NOT regenerate (masons only), and can be
-  knocked down for good to free the ground.
-  **A tower does not shoot through stone, not even its own** — build it INTO the run (`onWall`)
-  and it shoots over that wall like a man on the parapet; behind the wall it covers the ground
-  behind the wall. `clearOfWorks` takes the owner so a tower may stand on its own curtain.
-  **The Seat is the exception, and the hardest gun on the board.** `seatFire` is its own pass —
-  the Seat is not in `pl.buildings`, it is the city site with its hp in `pl.castleHp`, so its
-  cooldown has nowhere to live but `pl.seatCd`. `CONST.SEAT_GUN` is DERIVED from the two
-  Watchtower branches at their top level added together (retune a branch, retune the Seat), and
-  it alone is **not stopped by stone**: a Watchtower shut in by a curtain can be rebuilt on the
-  curtain, the Seat stands where worldgen put it forever, so if stone could shade it the cheapest
-  work in the game would switch the throne's guns off from outside their reach.
+- **A work with a LENGTH**, manning, towers, gates, breaches, the Seat gun: see "The Curtain
+  Wall" above.
 - **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
 - **The Muster Roll is a GRID, and a man belongs to one place in it.** Small cards — emblem,
   name, what raises him, price, three numbers — under the hall that musters him, and the
   remainder (`Champion`, `Fiend`) under one last section computed as *what no hall raised*, so
   a new kind lands in exactly one of them. A tap opens a large card that spans the grid with
   the turning figure, the prose and every field the table carries; the FIGURE belongs to that
-  one card, so `Render.rollStart` is handed one berth or none (it used to turn eighteen men at
-  once, on a phone). It reads `CONST` and nothing else: `rollStat` drives the tag line off a
-  unit def's OWN KEYS, so a mechanic the sim gains is never silently missing and one it drops
-  stops being advertised. Nothing here names a building — which work raises a man comes off the
-  card's `data-bt`.
+  one card, so `Render.rollStart` is handed one berth or none. It reads `CONST` and nothing
+  else: `rollStat` drives the tag line off a unit def's OWN KEYS, so a mechanic the sim gains is
+  never silently missing and one it drops stops being advertised. Nothing here names a building
+  — which work raises a man comes off the card's `data-bt`. (→ LEDGER: The Muster Roll is a GRID)
 - **A report from play**: ask for the chronicle. The end screen (and the menu, after an
   abandoned match) copies a whole match — seed, footing, a table every 20s, every order given,
   the moments — as text. `node sim.js` plays bots and cannot see what a human's match felt

@@ -258,20 +258,26 @@ suite('a field bounded by a reach');
   const uf = nav.fields.get(0 * 1e7 + g2);
   ok('...beside the unbounded field for the same goal', !!uf && uf !== bf);
   if (bf && uf) {
-    ok('outside the disc the field is Infinity', bf[cellOf(1420, 1980)] === Infinity);
-    ok('...and inside it is not', isFinite(bf[cellOf(600, 500)]));
+    /* a field is read through NAV.fieldAt — it is SPARSE to its bound (a window over the disc)
+     * and reads as Infinity outside it, exactly as the search left it */
+    const F = NAV.fieldAt, N = nav.W * nav.H;
+    ok('outside the disc the field is Infinity', F(bf, cellOf(1420, 1980)) === Infinity);
+    ok('...and inside it is not', isFinite(F(bf, cellOf(600, 500))));
+    ok('a bounded field is allocated to its window and not the grid', bf.d.length < N * 0.5,
+       `${bf.d.length} cells held against ${N} on the grid`);
+    ok('...and an unbounded one is the whole grid', uf.d.length === N);
     /* the disc in cells is the whole capacity claim: π·r²/cw², give or take the rim */
     let finite = 0;
-    for (let i = 0; i < bf.length; i++) if (isFinite(bf[i])) finite++;
+    for (let i = 0; i < N; i++) if (isFinite(F(bf, i))) finite++;
     const capacity = Math.PI * bound.r2 / (C.NAV.cell * C.NAV.cell);
     ok('a bounded field touches the disc and nothing more', finite <= capacity * 1.05,
        `${finite} finite cells against a disc of ${Math.round(capacity)}`);
     /* where the shortest way never leaves the disc the two fields agree exactly; a fenced
      * search can never find a SHORTER way than an unfenced one anywhere */
-    eq('beside the goal the bound changes nothing', bf[cellOf(720, 620)], uf[cellOf(720, 620)]);
+    eq('beside the goal the bound changes nothing', F(bf, cellOf(720, 620)), F(uf, cellOf(720, 620)));
     let never = true;
-    for (let i = 0; i < bf.length && never; i++)
-      if (isFinite(bf[i]) && bf[i] < uf[i] - 1e-6) never = false;
+    for (let i = 0; i < N && never; i++)
+      if (isFinite(F(bf, i)) && F(bf, i) < F(uf, i) - 1e-6) never = false;
     ok('a fenced search never beats an open one', never);
   }
 
@@ -7328,7 +7334,7 @@ suite('a company belongs to a city');
      'keys: ' + Array.from(w.nav.fields.keys()).slice(0, 8).join(','));
   if (fenced) {
     ok('...and is a wall of Infinity past the rim',
-       fenced[NAV.cellOf(w.nav, 1420, 1980)] === Infinity);
+       NAV.fieldAt(fenced, NAV.cellOf(w.nav, 1420, 1980)) === Infinity);
   }
 
   /* the banner is the Recall and nothing else */

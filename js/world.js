@@ -2424,29 +2424,13 @@
     return up ? up[level - 1] : Infinity;   // no table = this work does not upgrade
   }
 
-  function applyCommand(world, pi, cmd) {
-    if (world.winner !== null) return { ok: false, err: 'over' };
-    const pl = world.players[pi];
-    if (!pl) return { ok: false, err: 'player' };
+  /* ---------------- the commands ----------------
+   * One handler per verb, keyed by `cmd.c`, each `(world, pi, pl, cmd) -> {ok[, err]}`. The
+   * gates that stand in FRONT of every verb — the match is over, the seat exists, the halt —
+   * are in `applyCommand` itself; a handler is only ever reached through them. */
+  const COMMANDS = {
 
-    /* ---------------- the halt ----------------
-     * ANYONE AT THE TABLE MAY CALL ONE, AND ANYONE MAY LIFT IT. A halt is host-authoritative
-     * like everything else — it is world state, so it rides the snapshot and every seat sees
-     * the same thing — and it stops the world rather than merely hiding it: no clock, no
-     * muster, no Chaos, and NO ORDERS. A pause you can build through is not a pause, it is a
-     * planning phase, and in a duel it would be a way to buy thinking time the other heir
-     * does not get. Lifting it is left open to everyone on purpose: whoever called the halt
-     * may be the one who walked away from the phone. */
-    if (cmd.c === 'pause') {
-      const on = !!cmd.on;
-      if (on === !!world.paused) return { ok: true };
-      world.paused = on ? { by: pi, at: world.t } : null;
-      emit(world, { e: 'pause', on, pi });
-      return { ok: true };
-    }
-    if (world.paused) return { ok: false, err: 'paused' };
-
-    if (cmd.c === 'build') {
+    build(world, pi, pl, cmd) {
       const def = C.BUILDINGS[cmd.bt];
       let x = +cmd.x, y = +cmd.y;
       if (!def || !isFinite(x) || !isFinite(y)) return { ok: false, err: 'type' };
@@ -2518,8 +2502,8 @@
       if (x2 != null && !b.raise) { world.navVersion++; noteWalls(world); }
       emit(world, { e: 'build', pi, id: b.id, bt: cmd.bt, x, y, x2, y2, co: b.co });
       return { ok: true };
-    }
-    if (cmd.c === 'up') {
+    },
+    up(world, pi, pl, cmd) {
       const s = bldOf(world, pi, cmd.id);
       if (!s) return { ok: false, err: 'id' };
       if (s.raise > 0) return { ok: false, err: 'raising' };
@@ -2565,12 +2549,12 @@
       }
       emit(world, { e: 'up', pi, id: s.id, level: s.level, br: s.br || null, x: s.x, y: s.y });
       return { ok: true };
-    }
+    },
     /* ---------------- mend a breach ----------------
      * A crew, a while, and half what the run cost to raise. It is not standing again until
      * they are finished — a wall you are repairing shelters nobody, which is what makes
      * mending one under fire a real decision rather than a button. */
-    if (cmd.c === 'fix') {
+    fix(world, pi, pl, cmd) {
       const s2 = bldOf(world, pi, cmd.id);
       if (!s2) return { ok: false, err: 'id' };
       if (!s2.breach) return { ok: false, err: 'whole' };
@@ -2592,7 +2576,7 @@
       s2.fixCrews = crews;
       emit(world, { e: 'mending', pi, id: s2.id, x: s2.x, y: s2.y });
       return { ok: true };
-    }
+    },
     /* TURN A RUN ABOUT. `station` works out which face of a curtain is the sheltered one from
      * where the owner's Seat lies. For the curtain you draw across the approach to your own
      * Seat that is exactly right, and it is right for nothing else: a run thrown up around a
@@ -2615,7 +2599,7 @@
      * somebody, and a betrayal you can see coming is not one.
      * A seat that is OUT keeps whatever offers it had — it has no men to honour them with, and
      * clearing them would make an elimination a diplomatic event. */
-    if (cmd.c === 'pact') {
+    pact(world, pi, pl, cmd) {
       if (!world.rules.truce) return { ok: false, err: 'nopact' };
       /* TERMS ARE SWORN BETWEEN BANNERS, and normalised HERE so no caller has to know it: a
        * sworn lord asking for peace is his LIEGE asking, and peace with a sworn lord is peace
@@ -2643,14 +2627,14 @@
         emit(world, { e: 'offer', pi: me, p });
       }
       return { ok: true };
-    }
+    },
     /* ---------------- throw a city down ----------------
      * The other half of taking one, and the half that gives "the cost is ground" its edge:
      * losing a city you can win back is one thing, losing one that no longer exists is another,
      * and it is a decision your enemy made about you. Only a court you are standing in and that
      * nobody holds — you cannot raze a city out from under its owner, you have to break it
      * first, which is the whole of the difference between a raid and a conquest. */
-    if (cmd.c === 'raze') {
+    raze(world, pi, pl, cmd) {
       if (!world.rules.occupy) return { ok: false, err: 'noraze' };
       const city = world.cities.find((c2) => c2.id === cmd.id);
       if (!city) return { ok: false, err: 'id' };
@@ -2662,15 +2646,15 @@
       city.razed = 1; city.hold = null; city.yield = null; city.hp = 0;
       emit(world, { e: 'razed', pi, id: city.id, x: city.x, y: city.y });
       return { ok: true };
-    }
-    if (cmd.c === 'flip') {
+    },
+    flip(world, pi, pl, cmd) {
       const s3 = bldOf(world, pi, cmd.id);
       if (!s3) return { ok: false, err: 'id' };
       if (!isWall(s3)) return { ok: false, err: 'nowall' };
       const on = cmd.on === undefined ? !s3.flip : !!cmd.on;
       if (on) s3.flip = 1; else delete s3.flip;
       return { ok: true };
-    }
+    },
     /* A WALK IS A COMMITMENT, AND A COMMITMENT YOU CAN PUT DOWN IS A CONVENIENCE. Stepping off
      * used to be a free order, so the Shrine was a tap: open it when the treasury is fat, shut
      * it the moment the muster wants the money, and pay nothing for the flirtation but the
@@ -2679,14 +2663,14 @@
      * paid for as long as it takes. That is what makes setting foot on it a decision.
      * Note it refuses rather than silently ignoring: the seat that gave the order is owed the
      * reason, and 'committed' is a different answer from 'shrine'. */
-    if (cmd.c === 'walk') {
+    walk(world, pi, pl, cmd) {
       if (!pl.buildings.some((b) => b.bt === 'shrine')) return { ok: false, err: 'shrine' };
       if (pl.walking && !cmd.on) return { ok: false, err: 'committed' };
       pl.walking = !!cmd.on;
       if (pl.walking && !pl.revealed) { pl.revealed = true; emit(world, { e: 'walk', pi }); }
       return { ok: true };
-    }
-    if (cmd.c === 'muster') {
+    },
+    muster(world, pi, pl, cmd) {
       /* A COMPANY MAY GO QUIET WITHOUT THE REALM GOING QUIET. The valve was the Seat's alone,
        * so hoarding for a Gate meant stopping every hall you own — including the one holding
        * the line. Named with a company it silences that standard's halls and no others; named
@@ -2703,8 +2687,8 @@
       pl.musterPaused = !!cmd.pause;
       emit(world, { e: 'muster', pi, pause: pl.musterPaused });
       return { ok: true };
-    }
-    if (cmd.c === 'rally') {
+    },
+    rally(world, pi, pl, cmd) {
       /* a COMPANY's standard, not a building's: every hall mustering into it answers at once */
       const co = coOf(world, pi, cmd.co);
       if (!co) return { ok: false, err: 'co' };
@@ -2737,8 +2721,8 @@
       }
       emit(world, { e: 'rally', pi, co: co.id, site: p.site, x: p.x, y: p.y });
       return { ok: true };
-    }
-    if (cmd.c === 'assign') {
+    },
+    assign(world, pi, pl, cmd) {
       /* move a hall between companies, or on to a new one of its own. There is nowhere to
        * move it OUT to: a hall without a standard would be a hall you cannot give orders to. */
       const b = bldOf(world, pi, cmd.id);
@@ -2763,8 +2747,8 @@
       }
       emit(world, { e: 'assign', pi, id: b.id, co: b.co });
       return { ok: true };
-    }
-    if (cmd.c === 'banner') {
+    },
+    banner(world, pi, pl, cmd) {
       /* under `rules.reach` the gold banner is THE RECALL and nothing else. There is no one
        * point a country-wide army can answer, so the banner keeps exactly its second half —
        * every standard struck, every company home to its own city — and sets no aim. */
@@ -2788,8 +2772,8 @@
         if (co.rally) { co.rally = null; emit(world, { e: 'rally', pi, co: co.id, site: -1 }); }
       emit(world, { e: 'banner', pi, site: p.site, x: p.x, y: p.y });
       return { ok: true };
-    }
-    if (cmd.c === 'power') {
+    },
+    power(world, pi, pl, cmd) {
       const def = C.POWERS[cmd.k];
       if (!def) return { ok: false, err: 'power' };
       if (pl.powers[cmd.k] > 0) return { ok: false, err: 'cd' };
@@ -2822,7 +2806,31 @@
         return { ok: true };
       }
     }
-    return { ok: false, err: 'cmd' };
+  };
+
+  function applyCommand(world, pi, cmd) {
+    if (world.winner !== null) return { ok: false, err: 'over' };
+    const pl = world.players[pi];
+    if (!pl) return { ok: false, err: 'player' };
+
+    /* ---------------- the halt ----------------
+     * ANYONE AT THE TABLE MAY CALL ONE, AND ANYONE MAY LIFT IT. A halt is host-authoritative
+     * like everything else — it is world state, so it rides the snapshot and every seat sees
+     * the same thing — and it stops the world rather than merely hiding it: no clock, no
+     * muster, no Chaos, and NO ORDERS. A pause you can build through is not a pause, it is a
+     * planning phase, and in a duel it would be a way to buy thinking time the other heir
+     * does not get. Lifting it is left open to everyone on purpose: whoever called the halt
+     * may be the one who walked away from the phone. */
+    if (cmd.c === 'pause') {
+      const on = !!cmd.on;
+      if (on === !!world.paused) return { ok: true };
+      world.paused = on ? { by: pi, at: world.t } : null;
+      emit(world, { e: 'pause', on, pi });
+      return { ok: true };
+    }
+    if (world.paused) return { ok: false, err: 'paused' };
+    const run = COMMANDS[cmd.c];
+    return run ? run(world, pi, pl, cmd) : { ok: false, err: 'cmd' };
   }
 
   /* ---------------- companies ---------------- */

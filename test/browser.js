@@ -1518,7 +1518,8 @@ async function match(browser, base, renderer) {
       await pg.evaluate(() => { window.__said = []; window.__realBanner = window.UI.banner;
                                 window.UI.banner = (t) => window.__said.push(t); });
       await pg.mouse.click(anchorBad.at.sx, anchorBad.at.sy);
-      await pg.waitForTimeout(220);
+      /* wait on the CONDITION, not a sleep — 220ms read as a flake under a loaded box */
+      await pg.waitForFunction(() => window.__said.length > 0, null, { timeout: 1500 }).catch(() => {});
       anchorBad.afterBad = await pg.evaluate(() => {
         const g = window.Game.game;
         const out = { span: !!g.span, placing: !!g.placing, said: window.__said.slice() };

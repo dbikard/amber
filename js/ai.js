@@ -145,7 +145,9 @@
       offers: world.players.map((q, pi) => pi !== me && !!(q.offers && q.offers[me])),
       mine: world.players.map((q, pi) => !!(pl.offers && pl.offers[pi])),
       castle: world.players.map((q, pi) => (World.seatOf(world, pi) || {}).hp || 0),
-      powers: pl.powers, banner: pl.banner ? pl.banner.site : -1
+      powers: pl.powers, banner: pl.banner ? pl.banner.site : -1,
+      /* is my champion on the board — his own, so no fog question arises */
+      champion: !!(pl.championId != null && world.units.some((u) => u.id === pl.championId && u.hp > 0))
     };
   }
 
@@ -1070,9 +1072,15 @@
         }
       }
 
-      /* powers */
-      if (v.powers.storm <= 0) { const p = P.storm(v); if (p) issue({ c: 'power', k: 'storm', x: p.x, y: p.y }); }
-      if (v.powers.trump <= 0 && P.trump(v)) issue({ c: 'power', k: 'trump' });
+      /* powers — asked only when the sim would not refuse them for the purse or a living
+       * champion (measured: 166 'essence' and 24 'alive' refusals in one eleven-minute match,
+       * every one a no-op the referee had to log; a refused order changes nothing, so this
+       * cannot move the sim, it only stops asking questions whose answer is known) */
+      if (v.powers.storm <= 0 && v.essence >= C.POWERS.storm.cost) {
+        const p = P.storm(v); if (p) issue({ c: 'power', k: 'storm', x: p.x, y: p.y });
+      }
+      if (v.powers.trump <= 0 && v.essence >= C.POWERS.trump.cost && !v.champion && P.trump(v))
+        issue({ c: 'power', k: 'trump' });
 
       /* the walk */
       /* The hour grows late. The Pattern is the game's absolute clock, and it only ticks if

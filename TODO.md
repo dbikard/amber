@@ -79,20 +79,11 @@ touches no balance surface.
       full 176 matches before and after and keep DESIGN_PRINCIPLES.md green.
       (An alternative with no reordering at all: keep `BIN` and give `acquire` an early reject
       on squared distance before it does any real work — cheaper, smaller win, no referee.)
-- [ ] **Make a fenced flow field sparse to its bound.** A field is a `Float32Array` over the
-      WHOLE nav grid — 750KB on a country — and a bounded one only ever fills the cells inside
-      its city's reach: measured, **21% of the grid**. So a country's 74-field working set holds
-      ~55MB where ~12MB would do. The Dijkstra already visits only the disc, so this is
-      allocation and indexing, not search: give the field an origin and a stride of its own and
-      map (gx,gy) into it, returning "unreachable" outside. It would also make a bigger cache
-      ceiling cheap, which is the knob that fixed the war's stutter. `[SAFE]` — no rule changes,
-      and the suite's steering tests are the referee.
-      (Asked and answered while measuring this: a scheme where a company shares ONE field and
-      men orient by PROXIMITY to each other does not help. Reads are 92,793 against 15 builds,
-      6,186 to one — the cost is the Dijkstra, and builds are per distinct GOAL, already
-      essentially one per company. It would also strand followers behind terrain their leader
-      rounded, and collide with `shove`/cohesion, which is local-proximity behaviour already.)
-
+- [x] Fenced flow fields are sparse to their bound (2026-08-17): a field is a window over its
+      disc, `NAV.fieldAt` is the one way to read a cell, the Dijkstra heap grows instead of
+      silently overflowing, and every man's position every second over three minutes of two
+      seeded countries hashes identical before and after. 80 resident fields: 14.6MB against
+      61.4MB, 4.2x.
 - [ ] **Detail tiles cost 91-199ms each, one per frame.** After a pan the ground is the cheap
       base until they arrive — and the base is 0.28 px per world unit against a tile's 1.1, so
       an untiled patch is a 3.9x magnification whose cliff colouring reads as hard dark wedges.
@@ -286,14 +277,11 @@ them; re-measure before re-deciding.
 
 ### From a repo audit (2026-08-17) — verified against the source, act in this order
 
-- [ ] **CLAUDE.md is a 25k-token preamble** (1,200 lines, 17.5k words; the Reach War section
-      alone is 490 lines and the wall bullet 160) and roughly half of it is measurement prose
-      arguing for rules already stated in bold. Split it: CLAUDE.md keeps every bold heading,
-      the rule sentence and the file/function pointer (target under 500 lines); the "measured …"
-      and "reported from play …" bodies (29 and 18 of them) move to a `LEDGER.md` keyed by the
-      same headings, in order, dated. Keep one clause of WHY per rule and a `→ LEDGER` pointer
-      so a rule never loses its reason. Fold the wall bullet out of *Common Tasks* into its
-      own H2 — it is a subsystem, not a task.
+- [x] CLAUDE.md split (2026-08-17): the rules stay (993 lines, from 1,238), the measurement
+      prose moved to `LEDGER.md` (572 lines) under the same headings with `(→ LEDGER: …)`
+      pointers, and the wall bullet is its own H2. A harder pass toward ~550 lines would have
+      to drop rule sentences — the biggest remaining blocks are "EVERY SEAT IN A WAR IS AN
+      HEIR" (~50 lines, nearly all rule) and the wall section (~127).
 - [x] Stale claims in CLAUDE.md fixed (2026-08-17): thirteen commands, seven rules (+ `walkMul`
       in the war's list), the hook stamps index.html + sw.js only, the Reach War intro no
       longer claims a lord brake or the `lord` baseline, and the sheet asks `World.forkAt`.
@@ -319,8 +307,8 @@ them; re-measure before re-deciding.
       players' pass, Chaos, storms, the parapet roster, the march, the crowd — but written
       down nowhere as an order. Extract `stepUnit`/`stepBuilding` and state the order in one
       place. Behaviour-neutral, so the suite is the referee.
-- [ ] **`applyCommand` is eleven `if (cmd.c === …)` branches in a flat chain.** A handler
-      table is a cheap, safe refactor; the pause gate and the winner gate stay in front of it.
+- [x] `applyCommand` is a handler table (2026-08-17): `COMMANDS[cmd.c](world, pi, pl, cmd)`,
+      the winner, seat and halt gates in front of it; twelve seeded duels trace identical.
 - [ ] **`spawnUnit` still carries the dead two-lane rule.** With no spawn point given the
       y-offset is `owner === 0 ? -60 : 60` (world.js ~1443) — "toward the other end of the
       lane", on a board that has not had ends since v0.8, and wrong for seats 1-3 in a

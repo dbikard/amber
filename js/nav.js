@@ -197,16 +197,60 @@
    * bounded). Cells outside the disc stay Infinity, which is the same answer as "walled off"
    * and every caller already handles. No bound is today's search exactly. */
   const SQ2 = Math.SQRT2;
+  /* ---- A FIELD IS SPARSE TO ITS BOUND ----
+   * A fenced field only ever fills the cells inside its city's disc — measured, 21% of a
+   * country's grid — and used to allocate the whole grid anyway: 750KB a field, ~55MB for a
+   * country's 74-field working set where ~12MB would do. So a field is a WINDOW: `{x0, y0, w,
+   * h, d}` with `d` a Float32Array over the window alone, and everything outside it reads as
+   * Infinity, which is exactly what the Dijkstra would have written there. One representation
+   * for both — an unbounded field is the window that happens to be the whole grid — so there is
+   * no second code path for the big case, and `NAV.fieldAt(f, i)` is the one way to read a cell
+   * (`steer` and the suites both go through it). The Dijkstra visits the same cells in the same
+   * order and writes the same numbers, so the fields are identical to the digit — held by
+   * hashing every man's position every second over three simulated minutes of two seeded
+   * countries, before and after. Measured on one of them: 80 fields resident, 14.6MB held
+   * against 61.4MB, 4.2x. The heap is sized to the window too. */
+  function windowOf(nav, bound) {
+    const W = nav.W, H = nav.H;
+    if (!bound) return { x0: 0, y0: 0, w: W, h: H };
+    const cw = nav.cw, r = Math.sqrt(bound.r2);
+    const x0 = Math.max(0, Math.floor((bound.x - r) / cw) - 1), y0 = Math.max(0, Math.floor((bound.y - r) / cw) - 1);
+    const x1 = Math.min(W - 1, Math.ceil((bound.x + r) / cw) + 1), y1 = Math.min(H - 1, Math.ceil((bound.y + r) / cw) + 1);
+    return { x0, y0, w: Math.max(0, x1 - x0 + 1), h: Math.max(0, y1 - y0 + 1) };
+  }
+  /* the value of grid cell `i` in field `f`: Infinity outside the window, as the search left it */
+  NAV.fieldAt = function (f, i) {
+    const W = f.W, cx = i % W, cy = (i - cx) / W;
+    const lx = cx - f.x0, ly = cy - f.y0;
+    if (lx < 0 || ly < 0 || lx >= f.w || ly >= f.h) return Infinity;
+    return f.d[ly * f.w + lx];
+  };
   function buildField(nav, world, owner, goal, shut, bound) {
-    const W = nav.W, H = nav.H, n = W * H, cost = nav.cost, mask = maskOf(nav, world, owner, shut);
+    const W = nav.W, H = nav.H, cost = nav.cost, mask = maskOf(nav, world, owner, shut);
     const elev = nav.elev;
     const bx = bound ? bound.x : 0, by = bound ? bound.y : 0, br2 = bound ? bound.r2 : 0;
     const cw = nav.cw;
+    const win = windowOf(nav, bound), fw = win.w, fx0 = win.x0, fy0 = win.y0;
+    const n = win.w * win.h;
     const dist = new Float32Array(n).fill(Infinity);
-    /* binary heap of cell indices keyed by tentative distance */
-    const hi = new Int32Array(n + 1), hd = new Float32Array(n + 1);
+    /* grid cell -> window cell; the goal may lie outside the window (a bound that does not
+     * contain its own goal), which the old full-grid field answered with a field of Infinity
+     * everywhere but the goal, and this answers with an empty window */
+    const wi = (gi) => { const cx = gi % W, cy = (gi - cx) / W, lx = cx - fx0, ly = cy - fy0;
+      return lx < 0 || ly < 0 || lx >= fw || ly >= win.h ? -1 : ly * fw + lx; };
+    const field = { W, x0: fx0, y0: fy0, w: fw, h: win.h, d: dist };
+    const gw = wi(goal);
+    if (gw < 0) return field;
+    /* binary heap of GRID cell indices keyed by tentative distance. It GROWS: with lazy
+     * deletion a cell can sit in the heap more than once, and a typed-array write past the end
+     * is a silent no-op — a fixed heap that overflowed would corrupt the field without a word */
+    let hi = new Int32Array(n + 1), hd = new Float32Array(n + 1);
     let hn = 0;
     const push = (i, d) => {
+      if (hn + 1 >= hi.length) {
+        const hi2 = new Int32Array(hi.length * 2), hd2 = new Float32Array(hd.length * 2);
+        hi2.set(hi); hd2.set(hd); hi = hi2; hd = hd2;
+      }
       let k = ++hn; hi[k] = i; hd[k] = d;
       while (k > 1) { const p = k >> 1; if (hd[p] <= hd[k]) break;
         const ti = hi[p], td = hd[p]; hi[p] = hi[k]; hd[p] = hd[k]; hi[k] = ti; hd[k] = td; k = p; }
@@ -224,9 +268,9 @@
       }
       return top;
     };
-    dist[goal] = 0; push(goal, 0);
+    dist[gw] = 0; push(goal, 0);
     while (hn > 0) {
-      const cur = pop(), cd = dist[cur];
+      const cur = pop(), cd = dist[wi(cur)];
       const cx = cur % W, cy = (cur - cx) / W;
       for (let dy = -1; dy <= 1; dy++) {
         const ny = cy + dy;
@@ -246,11 +290,12 @@
           }
           const climb = Math.max(0, elev[ni] - elev[cur]) * C.NAV.slope;
           const nd = cd + (cc + climb) * (dx && dy ? SQ2 : 1);
-          if (nd < dist[ni]) { dist[ni] = nd; push(ni, nd); }
+          const wn = wi(ni);
+          if (wn >= 0 && nd < dist[wn]) { dist[wn] = nd; push(ni, nd); }
         }
       }
     }
-    return dist;
+    return field;
   }
 
   /* HOW MANY FIELDS WERE ACTUALLY BUILT, and how many reads found one waiting. A field build is
@@ -316,10 +361,9 @@
      * down a field, all over the country. That is what a war felt like.
      * With room for the working set: 0 deferred, 15 builds, and the sim got FASTER (3.05 ->
      * 2.29ms a frame) because it stopped rebuilding what it had just thrown away.
-     * A field is a Float32Array over the whole grid — 768KB on a country — so this is a real
-     * memory decision and not a free one; the ceiling is per-world so a duel keeps its 48 and
-     * pays nothing. Making the fields sparse to the bound they are fenced by would make the
-     * whole question cheap, and is written down rather than done here. */
+     * A field used to be a Float32Array over the whole grid — 768KB on a country — which made
+     * this a real memory decision; it is sparse to its bound now (see `windowOf`), so a fenced
+     * field is a fifth of that and the ceiling is cheap. Still per-world, so a duel keeps its 48. */
     const cap = world.navCache != null ? world.navCache : C.NAV.cacheMax;
     if (nav.fields.size >= cap) nav.fields.clear();
     const built = buildField(nav, world, owner, goal, shut, bound);
@@ -351,9 +395,10 @@
      * straight meanwhile, which is what he does past the end of any field. */
     if (!f) return null;
     /* the descent direction OF one cell: centre toward its best neighbour's centre */
+    const at = NAV.fieldAt;
     const dirOf = (ci) => {
       const cx = ci % W, cy = (ci - cx) / W;
-      let bd = f[ci], bi = -1;
+      let bd = at(f, ci), bi = -1;
       for (let dy = -1; dy <= 1; dy++) {
         const ny = cy + dy;
         if (ny < 0 || ny >= H) continue;
@@ -361,8 +406,8 @@
           if (!dx && !dy) continue;
           const nx = cx + dx;
           if (nx < 0 || nx >= W) continue;
-          const ni = ny * W + nx;
-          if (f[ni] < bd) { bd = f[ni]; bi = ni; }
+          const ni = ny * W + nx, fv = at(f, ni);
+          if (fv < bd) { bd = fv; bi = ni; }
         }
       }
       if (bi < 0) return null;
@@ -375,7 +420,7 @@
      * ground still gets the single-cell answer that walks him out */
     const own = dirOf(here);
     if (!own) return null;
-    if (f[here] === Infinity) return own;
+    if (at(f, here) === Infinity) return own;
     /* blend the four samples around him, skipping cells the field never reached */
     const fx = x / cw - 0.5, fy = y / cw - 0.5;
     const cx0 = Math.floor(fx), cy0 = Math.floor(fy);
@@ -385,7 +430,7 @@
       const cx = cx0 + i, cy = cy0 + j;
       if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue;
       const ci = cy * W + cx;
-      if (f[ci] === Infinity) continue;
+      if (at(f, ci) === Infinity) continue;
       const w = (i ? tx : 1 - tx) * (j ? ty : 1 - ty);
       if (w < 1e-6) continue;
       const dir = ci === here ? own : dirOf(ci);
