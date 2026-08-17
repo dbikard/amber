@@ -1253,15 +1253,20 @@
     return out;
   }
   const byOrd = (a, b) => a._ord - b._ord;
+  const acquireSkip = [];   // per-player skips, one array reused by every acquire in a tick
   function rebinWorks(world) {
     const wb = world.wbins || (world.wbins = new Map());
     wb.clear();
+    /* the RUNS, which the bins never hold (a run is `shove`'s business), kept in the full
+     * walk's order for `acquire`'s stone pass — every run, shell, standing or breached */
+    const runs = world.runs || (world.runs = []);
+    runs.length = 0;
     for (let q = 0; q < world.players.length; q++) {
       const bs = world.players[q].buildings;
       for (let i = 0; i < bs.length; i++) {
         const b = bs[i];
-        if (b.x2 != null) continue;              // a run is `shove`'s business, never either caller's
         b._ord = q * 1e6 + i;
+        if (b.x2 != null) { runs.push(b); continue; }   // a run is `shove`'s business, never either caller's
         const k = ((b.y / WBIN) | 0) * 100003 + ((b.x / WBIN) | 0);
         const cell = wb.get(k);
         if (cell) cell.push(b); else wb.set(k, [b]);
@@ -3512,33 +3517,45 @@
      * reach the man. What a shooter aims at here is not the stone, it is the WALKER standing in
      * the lines — which is why this one work, and no other, is a target for him. */
     const menOnly = !!C.UNITS[u.kind].menOnly;
+    /* THE STONE NEAR HIM, THROUGH THE WORKS BINS — not a walk of every building of every foe,
+     * which on a country is a few hundred works per retargeting man and was 3% of the tick.
+     * `worksNear` hands back the point works in the FULL WALK'S OWN ORDER (`_ord`, player then
+     * index) so a tie at equal distance falls the same way it always did; the runs, which the
+     * bins never hold, come from `world.runs` in that same order. Per-player skips are asked
+     * once each rather than once per work. */
+    const skip = acquireSkip; skip.length = 0;
     for (let ci = 0; ci < world.players.length; ci++) {
-      if (!foe(world, u.owner, ci)) continue;
       const tp = world.players[ci];
-      if (tp.out) continue;
       /* his court has fallen and is not yet sworn: the fighting there is decided, and what is
        * left is who stands in it — see `fallen`. Reported as troops razing the spoils. */
-      if (fallen(world, ci)) continue;
-      for (const b of tp.buildings) {
-        /* a shooter looks past every work but the Shrine — see the note above the loop */
-        if (menOnly && b.bt !== 'shrine') continue;
-        /* the stone you strike is the span in front of you, not the middle of the run — and
-         * that is true of a run the masons are still on. Judged by its MIDPOINT, a curtain
-         * going up was untouchable along nearly its whole length: a man standing at the end
-         * of a long shell measured half a run away from it, found nothing in reach and stood
-         * there while it finished. A work is a work from the moment it is paid for. */
-        const w = isWall(b), aim = w ? segNear(b, u.x, u.y) : b;
-        const d = w ? Math.sqrt(segD2(b, u.x, u.y)) : Math.sqrt(d2(u.x, u.y, b.x, b.y));
-        /* YOU STRIKE THE STONE WHEN THERE IS NOTHING ALIVE TO STRIKE. A curtain is always
-         * the nearest thing to a man standing at it, so judging walls by distance like any
-         * other work meant an assault hacked at the masonry while the parapet above shot
-         * down at it untouched — the exact opposite of the bargain. Walls are held back and
-         * weighed only if nothing else was found, scaffolding with the rest: a shell is worth
-         * knocking over, but never while a living man is in reach. */
-        if (w) { if (d < bestD && seen(aim.x, aim.y, ci, b)) stone.push([d, ci, b.id, aim.x, aim.y]); continue; }
-        if (d < bestD && seen(aim.x, aim.y, ci))
-          consider(d, { pi: ci, id: b.id }, 'work', aim.x, aim.y);
-      }
+      skip.push(!foe(world, u.owner, ci) || tp.out || fallen(world, ci));
+    }
+    const near = worksNear(world, u.x, u.y, radius);
+    for (let i = 0; i < near.length; i++) {
+      const b = near[i], ci = (b._ord / 1e6) | 0;
+      if (skip[ci]) continue;
+      /* a shooter looks past every work but the Shrine — see the note above the loop */
+      if (menOnly && b.bt !== 'shrine') continue;
+      const d = Math.sqrt(d2(u.x, u.y, b.x, b.y));
+      if (d < bestD && seen(b.x, b.y, ci)) consider(d, { pi: ci, id: b.id }, 'work', b.x, b.y);
+    }
+    /* the stone you strike is the span in front of you, not the middle of the run — and that
+     * is true of a run the masons are still on. Judged by its MIDPOINT, a curtain going up was
+     * untouchable along nearly its whole length: a man standing at the end of a long shell
+     * measured half a run away from it, found nothing in reach and stood there while it
+     * finished. A work is a work from the moment it is paid for.
+     * YOU STRIKE THE STONE WHEN THERE IS NOTHING ALIVE TO STRIKE. A curtain is always the
+     * nearest thing to a man standing at it, so judging walls by distance like any other work
+     * meant an assault hacked at the masonry while the parapet above shot down at it untouched
+     * — the exact opposite of the bargain. Walls are held back and weighed only if nothing else
+     * was found, scaffolding with the rest: a shell is worth knocking over, but never while a
+     * living man is in reach. */
+    if (!menOnly && world.runs) for (let i = 0; i < world.runs.length; i++) {
+      const b = world.runs[i], ci = (b._ord / 1e6) | 0;
+      if (skip[ci] || b.gone) continue;
+      const aim = segNear(b, u.x, u.y);
+      const d = Math.sqrt(segD2(b, u.x, u.y));
+      if (d < bestD && seen(aim.x, aim.y, ci, b)) stone.push([d, ci, b.id, aim.x, aim.y]);
     }
     /* ---- AND A SEAT IS STONE LIKE ANY OTHER ----
      * The Shrine exception is the SHRINE, not "any work that matters": a shooter at a rival's
