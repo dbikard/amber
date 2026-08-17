@@ -18,6 +18,12 @@ touches no balance surface.
       seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
       holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
       (`{t:'hand', as}`) so the host can drive the guest's home court while he commands another.
+- [ ] **The council rows and the court card could carry each court's livery swatch**
+      (`R.liveryCanvas` is ready for it) — the men and the Seat's flag say which court now
+      (CLAUDE.md "AND THE MEN SAY WHICH COURT"); the roster does not yet.
+- [ ] **`game.armedFlag` survives `startSP`**, so the first tap of a new match on the same page
+      is a rally if a company was armed in the previous one. Found by the livery suite, which
+      clears it as the other suites do; clear it where a match starts.
 - [ ] **The lords: stances, HEIR vassals, mutual aid — see `LORDS_PLAN.md`.** §3.2 shipped
       (every lord of the player's banner plays at HEIR; seat 0 is driven when the hand is
       elsewhere); §3.1 stances and §3.3 mutual aid are proposed, with four open questions.
@@ -71,6 +77,15 @@ touches no balance surface.
       rather than vanish. `[REF]` — anything that makes a misplaced work cheap changes how
       freely the heirs build.
 
+- [ ] **A country at six minutes costs 18.5ms a tick in the sim alone** (1,096 men, seed 17,
+      HEIR footing; 22ms at nine minutes; worst 96ms) against a 33ms frame, before rendering —
+      measured 2026-08-17 after equal economies put more men on the map. Profiled: `update`'s
+      own per-unit loop 31%, `acquire` 16%, `jostle` 6%, `castFrom` 5%, GC 4%, `pactOn` 2.7%
+      (asked by `foe` for every candidate of every man). Cheapest first: memoise `foe` for the
+      length of one tick INSIDE `update` (built on first ask, dropped at the end and where the
+      oath moves allegiance mid-tick — a draft was written and reverted unverified; the referee
+      is a country trace hashed man for man against the same tree with the memo off), then the
+      `acquire` early reject, then the BIN item below.
 - [ ] **The unit `BIN` is a duel number, and `acquire` pays for it.** With the works binned, the
       sim over a country is 20.13ms/tick at 1111 men — half what it was, and still the biggest
       thing in the frame. Profiled, what is left is `acquire` and its call site: **~40% of the

@@ -607,12 +607,21 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   a LAN table the host's own seat has a driver too; a guest's seat has none (a human holds it),
   which leaves a guest's own court unrun while he commands a vassal — the host does not know a
   guest's hand (TODO). Held by the browser suite on the drivers' own `step` counts.
-- **A LORD OF THE PLAYER'S BANNER PLAYS AT HEIR, WHATEVER THE FOOTING** (`warFooting`). The
-  footing says how hard the OPPOSITION plays; a sworn lord — and the home court while the hand
-  is elsewhere — is an officer, and dealing him the footing's flaws (or `CONST.MINOR` on top)
-  meant the courts you had won hoarded and dribbled men at SQUIRE. Re-dealt on the oath: the
-  frame loop re-makes a lord's bot when the sim's `taken` event names him. Open (LORDS_PLAN.md):
-  whether an officer should keep HEIR's `aim`/`trickle` flaws at all.
+- **A LORD OF THE PLAYER'S BANNER IS A MINOR LORD, NO STRONGER, AND TAKES NO INITIATIVE**
+  (`warFooting`, the designer's rule). He plays at the footing plus `CONST.MINOR` exactly as an
+  unsworn lord does — seat 0 included while the hand is elsewhere, though it was born a
+  contender — so the vassals are never strong enough that the player has nothing to do; he
+  neither treats nor walks (`noTerms`, `noWalk`: the human's decisions; a walk from a court a
+  vassal holds means taking COMMAND of it); and `obey` turns his war body away from every rival
+  court as a minor lord's is turned — the player's ⚔ order is the one way a vassal attacks.
+  Re-dealt on the oath: the frame loop re-makes a lord's bot when the sim's `taken` event names
+  him. The rest of the lords' design is proposed in `LORDS_PLAN.md`.
+- **A WALKER IS EVERYBODY'S ENEMY, AND EVERYBODY ELSE'S FRIEND.** While anyone is on the lines,
+  every founder who is not walking offers terms to every other who is not (the coalition) and
+  none to the walker; the answer to a walk (`WALK_ANSWER`) is NOT held off by the footing — a
+  walk is the endgame begun and a beginner who stepped on under a thirteen-minute hold would win
+  uncontested (GAME_VISION pillar 4) — and it is exempt from the minor lord's turning-away in
+  `warOrders` (`cmd.walk`), or thirteen seats of sixteen would answer a walk with a spring.
 - **AND EVERY ONE OF THE FIVE WORDS HAS TO MEAN SOMETHING** — an order the council row asserts
   is standing must change something. **`gates` is a MARCH, because a spring is taken before it is
   built on** (`placementError` wants men standing on it): the doctrine walks the company to the

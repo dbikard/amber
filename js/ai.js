@@ -907,7 +907,13 @@
          * taking instead: he still expands, still answers trouble, still defends, and still
          * marches wherever his LIEGE points him — an explicit `attack` or `support` is the
          * player's order and outranks his doctrine, which is why `told` is exempt. */
-        if (at && !told && (world.heirs || []).indexOf(me) < 0) {
+        /* ...AND NEITHER DOES A LORD OF THE PLAYER'S BANNER (`obey`), the player's home court
+         * under a driver included: an inner lord who took courts on his own would leave the
+         * player nothing to do (the designer's rule). The player's ⚔ order (`told`) is the one
+         * way a vassal attacks. The ANSWER TO A WALK is exempt from the turning for everyone —
+         * a walker's court is the war's business, and turning a lord away from it onto a spring
+         * is how a walk goes unanswered by thirteen seats of sixteen. */
+        if (at && !told && !cmd.walk && ((world.heirs || []).indexOf(me) < 0 || (st && st.obey))) {
           const court = (world.cities || []).some((c) => c && !c.razed && c.owner >= 0 &&
             W.foe(world, me, c.owner) && d2(at.x, at.y, c.x, c.y) < C.CITY.r * C.CITY.r);
           if (court) {
@@ -1059,7 +1065,7 @@
      * strikes the standards and sets no aim, so `v.banner` stays null forever and an heir's own
      * "have I already said this?" check can never latch. Without this the heir re-issues its
      * banner EVERY think and each one fans out to a rally per company. */
-    const warSt = { aim: null };
+    const warSt = { aim: null, obey: !!opts.obey };
 
     function decide(world, me, issue, order) {
       const v = view(world, me);
@@ -1087,13 +1093,22 @@
        * the player holding thirteen standing offers he had never made. Terms are the banner's
        * business, and the banner is its founder. */
       if (world.rules && world.rules.truce && P.pact && !noTerms && global.World.realmOf(world, me) === me) {
+        /* A WALKER IS EVERYBODY'S ENEMY, AND EVERYBODY ELSE'S FRIEND. A walk cannot be called
+         * off and it wins without ever coming near you, so the moment anyone is on the lines the
+         * war has one front: every founder who is not walking offers terms to every other who is
+         * not — the coalition — and none to the walker. Above every doctrine, because it IS the
+         * war's clock and no personality gets to be foolish enough to fight its neighbours while
+         * a third man walks. When the walk ends the doctrines have their offers back. */
+        const walkers = v.walkers;
+        const coalition = walkers.length > 0 && !v.walking;
         for (const s of v.seats) {
           /* AND NO HEIR KEEPS TERMS WITH A MAN ON THE LINES. This is not a doctrine, it is the
            * same rule that makes a walk public in the first place: a walk cannot be called off,
            * every heir walks at one rate, and the only answer to one is an army at his Shrine.
            * A pact with a walker is therefore a loss agreed to in advance, and no personality
            * gets to be foolish enough to sign it. Above every doctrine, so none can forget. */
-          const want = !v.walkers.some((q) => q.pi === s) && !!P.pact(v, s);
+          const isWalker = walkers.some((q) => q.pi === s);
+          const want = !isWalker && (coalition || !!P.pact(v, s));
           if (want !== v.mine[s]) issue({ c: 'pact', p: s, on: want });
         }
       }
@@ -1508,8 +1523,11 @@
        * the opening minutes, and that has to include the minutes you spend walking. */
       const race = v.walkers.filter((q) => q.x != null && q.pattern >= WALK_ANSWER)
                             .sort((a, b) => b.pattern - a.pattern)[0] || null;
-      const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY &&
-                     !heldOff(v, race.pi) ? race : null;
+      /* NOT HELD OFF. The hold is a promise about the opening minutes; a walk is the endgame
+       * begun, and a beginner who steps on under a thirteen-minute hold would win uncontested.
+       * GAME_VISION pillar 4: the walk is a declaration that forces the defender to attack. So
+       * whoever walks — the player included — is answered by everyone who can reach his Shrine. */
+      const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY ? race : null;
       /* ...AND THE OTHER HALF OF IT: A WALKER GUARDS HIS OWN SHRINE. The answer above was
        * measured on its own first, and it was too good: the banner reached the burning Shrine
        * on 95% of samples against 62% before it, and brand — the one heir whose plan is dig,
@@ -1538,7 +1556,9 @@
       if (aim) {
         if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80) {
           aimed = { x: aim.x, y: aim.y };
-          issue({ c: 'banner', x: aim.x, y: aim.y });
+          /* `walk` marks the answer to a walk, so warOrders knows not to turn a minor lord away
+           * from the walker's court — the sim ignores the field */
+          issue({ c: 'banner', x: aim.x, y: aim.y, walk: answer ? 1 : 0 });
         }
       } else {
         aimed = null;

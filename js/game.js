@@ -178,20 +178,21 @@
      * whoever happens to be nearest. Without that an easy footing stops the whole country
      * making war on itself, which is a duller war and not an easier one. */
     const holdOn = World.realmOf(world, game.viewer);
-    /* ---- A LORD OF THE PLAYER'S OWN BANNER PLAYS AT HEIR, WHATEVER THE FOOTING ----
-     * The footing says how hard the OPPOSITION plays. A lord sworn to the player — and the
-     * player's own home court while his hand is on another — is not the opposition, he is an
-     * officer, and dealing him the footing's flaws (or `CONST.MINOR`'s on top) meant that at
-     * SQUIRE the courts you had won hoarded, forgot their halls and dribbled men: the handicap
-     * meant to make an enemy beatable, applied to your own men. The designer's rule (2026-08-17):
-     * every inner lord plays at HEIR. `hold` is moot for him (it is a promise about his own
-     * banner's ground); it is left in so `holdOn` composes the same way everywhere. */
-    if (World.realmOf(world, pi) === holdOn)
-      /* ...and he neither treats nor walks: terms and the Pattern are the human's decisions,
-       * and the home court's driver would otherwise be the banner's founder in the sim's eyes */
-      return Object.assign({ holdOn, noTerms: true, noWalk: true }, C.DIFFICULTY.heir);
+    /* ---- A LORD OF THE PLAYER'S OWN BANNER IS A MINOR LORD, WHATEVER HIS BIRTH ----
+     * He was dealt HEIR for one commit (an officer, not the opposition), and the designer ruled
+     * the other way: an inner lord must never be strong enough that the player has nothing to
+     * do. So he plays exactly as an unsworn minor lord does — the footing plus CONST.MINOR —
+     * seat 0 included while the hand is on another court, though seat 0 is a contender by
+     * birth. `hold` is moot for him (a promise about his own banner's ground); it is left in so
+     * `holdOn` composes the same way everywhere. */
     const foot = Object.assign({ holdOn }, C.DIFFICULTY[UI.difficulty()] || {});
-    if ((world.heirs || []).indexOf(pi) >= 0) return Object.assign({}, foot);
+    const mine = World.realmOf(world, pi) === holdOn;
+    /* the designer's rule (2026-08-17): an inner lord is AS STRONG AS A MINOR LORD AND NO
+     * STRONGER — the footing plus CONST.MINOR, exactly as an unsworn lord — never the
+     * contender's footing (seat 0 is a contender by birth) and never better; and he neither
+     * treats nor walks (the human's decisions) nor takes a court on his own initiative (`obey`,
+     * read by warOrders): a vassal attacks only where the player's order sends him. */
+    if ((world.heirs || []).indexOf(pi) >= 0 && !mine) return Object.assign({}, foot);
     const m = C.MINOR, lapses = Object.assign({}, foot.lapses || {});
     for (const k of Object.keys(m.lapses || {}))
       lapses[k] = Math.max(lapses[k] || 0, m.lapses[k]);
@@ -199,7 +200,7 @@
       slow: (foot.slow || 1) * m.slow,
       noise: Math.max(foot.noise || 0, m.noise),
       lapses
-    });
+    }, mine ? { noTerms: true, noWalk: true, obey: true } : {});
   }
   function warKind(pi) {
     const kinds = Object.keys(AI.HEIRS);
@@ -231,6 +232,7 @@
   function startSP(kind, opts, chapter) {
     const isCampaign = !!chapter;
     game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
+    game.armedFlag = null;   // a company armed in the last match is not an order in this one
     /* the chapter's runner holds the objective's own state for the length of the match, and
      * nothing else in the game knows it exists */
     game.chapter = chapter && chapter.obj ? chapter : null;
@@ -1686,8 +1688,13 @@
     if (twice && Date.now() - twice.at < DOUBLE.ms &&
         Math.hypot(x - twice.sx, y - twice.sy) < DOUBLE.px) {
       const foeW = Render.hitFoeWork ? Render.hitFoeWork(x, y, view, game.viewer) : null;
+      /* ...or a rival's COURT: the second tap names the throne (`tcity`), so the forced order is
+       * a siege and not a column standing under the tower striking nothing until the span lapses */
+      const foeC = !foeW && Render.hitFoeCity ? Render.hitFoeCity(x, y, view, game.viewer) : -1;
       issue(Object.assign({ c: 'rally', co: twice.co, hard: 1 },
-                          foeW ? { x: foeW.x, y: foeW.y, tpi: foeW.pi, tid: foeW.id } : twice.where));
+                          foeW ? { x: foeW.x, y: foeW.y, tpi: foeW.pi, tid: foeW.id }
+                          : foeC >= 0 ? { x: view.cities[foeC].x, y: view.cities[foeC].y, tcity: foeC }
+                          : twice.where));
       twice = null;
       return;
     }

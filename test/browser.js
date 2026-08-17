@@ -5931,11 +5931,17 @@ async function match(browser, base, renderer) {
          drove.hasBot0 && drove.steps0 > 5, JSON.stringify(drove));
       ok('...and the court under your hand is driven by nobody but you',
          drove.hasBotHand && drove.stepsHand === 0, JSON.stringify(drove));
-      /* AND HE PLAYS AT HEIR whatever the footing (the designer's rule for inner lords) */
-      const heir = await pg.evaluate(() => window.CONST.DIFFICULTY.heir);
-      ok('...and plays at HEIR, whatever footing the opposition was dealt',
-         drove.foot0 && JSON.stringify(drove.foot0.lapses) === JSON.stringify(heir.lapses),
-         JSON.stringify(drove.foot0));
+      /* AND HE IS A MINOR LORD, NO STRONGER (the designer's rule): the footing plus CONST.MINOR,
+       * though seat 0 is a contender by birth — and he neither treats, walks nor takes courts */
+      const want = await pg.evaluate(() => {
+        const C = window.CONST, f = C.DIFFICULTY[window.UI.difficulty()], m = C.MINOR;
+        const l = Object.assign({}, f.lapses || {});
+        for (const k of Object.keys(m.lapses || {})) l[k] = Math.max(l[k] || 0, m.lapses[k]);
+        return l;
+      });
+      ok('...and plays as a minor lord, no stronger, though seat 0 was born a contender',
+         drove.foot0 && JSON.stringify(drove.foot0.lapses) === JSON.stringify(want),
+         JSON.stringify(drove.foot0) + ' want ' + JSON.stringify(want));
     } else ok('tapping COMMAND takes command of that court (skipped)', true, 'no sworn court on the roster');
     if (acts.hadOrder) {
       ok('tapping a standing order records one', acts.orders > 0, `${acts.orders} orders on the helm`);

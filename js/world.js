@@ -589,7 +589,13 @@
     if (!co.hard) return;
     if (world.t >= co.hard || !bearer) { clearHard(world, co); return; }
     if (co.mark) {
-      /* the work it named is down, or was taken, or its owner has fallen: the order is done */
+      /* the work it named is down, or was taken, or its owner has fallen: the order is done.
+       * A COURT it named is done when it yields, is razed or stops being a foe's. */
+      if (co.mark.city != null) {
+        const c = world.cities && world.cities[co.mark.city];
+        if (!c || c.razed || c.owner < 0 || c.hp <= 0 || !foe(world, co._pi, c.owner)) clearHard(world, co);
+        return;
+      }
       const tp = world.players[co.mark.pi];
       if (!tp || tp.out || !foe(world, co._pi, co.mark.pi) ||
           !tp.buildings.some((b) => b.id === co.mark.id)) clearHard(world, co);
@@ -2718,6 +2724,15 @@
         const tp = cmd.tpi != null ? world.players[cmd.tpi] : null;
         if (tp && !tp.out && foe(world, pi, cmd.tpi) &&
             tp.buildings.some((b) => b.id === cmd.tid)) co.mark = { pi: cmd.tpi, id: cmd.tid };
+        /* ...OR A COURT. A second tap on a rival's city is the most natural "take THAT" in the
+         * game, and it used to be a forced march with no mark at all — the Seat is not a work —
+         * so the company stood under the throne striking nothing for the whole HARD span.
+         * Reported from play as troops massing against a city tower and not attacking. `tcity`
+         * names the court; vetted here like a work, so a guest cannot name one he may not
+         * strike (a yielded court is nobody's to besiege — it is taken by standing in it). */
+        const tc = cmd.tcity != null && world.cities ? world.cities[cmd.tcity] : null;
+        if (tc && !tc.razed && tc.owner >= 0 && tc.hp > 0 && foe(world, pi, tc.owner) &&
+            !(world.players[tc.owner] && world.players[tc.owner].out)) co.mark = { city: cmd.tcity };
       }
       emit(world, { e: 'rally', pi, co: co.id, site: p.site, x: p.x, y: p.y });
       return { ok: true };
@@ -3415,6 +3430,13 @@
         u._t = null;
         if (!co.mark) return null;
         if (C.UNITS[u.kind].menOnly) return null;
+        /* the court he was told to break: the throne, and nothing else, as `acquire` offers it */
+        if (co.mark.city != null) {
+          const c = world.cities && world.cities[co.mark.city];
+          if (!c || c.owner < 0 || c.hp <= 0) return null;
+          const dc = Math.sqrt(d2(u.x, u.y, c.x, c.y));
+          return dc <= C.CITY.r + radius ? { t: { pi: c.owner, city: c }, kind: 'tower', d: dc, x: c.x, y: c.y } : null;
+        }
         const tp = world.players[co.mark.pi];
         const b = tp && tp.buildings.find((q) => q.id === co.mark.id);
         if (!b) return null;

@@ -1334,6 +1334,19 @@
    * the other question, and it can only ever return something the veil has already handed over,
    * because it walks the VIEW. Ghosts are deliberately not offered: an order to bring down a
    * work you merely remember is an order to walk to where it used to be. */
+  /* A RIVAL'S COURT UNDER THE FINGER — for the forced order that names one. The city index, or
+   * -1; judged on the court's own ground (`CITY.r`), the one radius rule every court tap uses. */
+  R.hitFoeCity = function (px, py, view, viewer) {
+    if (!view || !view.cities) return -1;
+    const w2 = R.toWorld(px, py);
+    for (let i = 0; i < view.cities.length; i++) {
+      const c = view.cities[i];
+      if (!c || c.razed || c.owner < 0) continue;
+      if (global.World && global.World.realmOf(view, c.owner) === global.World.realmOf(view, viewer)) continue;
+      if ((w2.x - c.x) * (w2.x - c.x) + (w2.y - c.y) * (w2.y - c.y) < C.CITY.r * C.CITY.r) return i;
+    }
+    return -1;
+  };
   R.hitFoeWork = function (px, py, view, viewer) {
     if (!view || !view.players) return null;
     const w2 = R.toWorld(px, py);

@@ -4,8 +4,11 @@
 > (warFooting / warBot / the council) and `js/world.js` (the pact command). §1 states how the
 > bots work today, exactly; §2 lists what the review found (two defects were fixed on the
 > spot, in `e91852f`); §3 is the proposal the designer asked for — named STANCES for sworn
-> lords in place of the five words, every sworn lord at HEIR, and mutual aid. Nothing in §3 is
-> built.
+> lords in place of the five words, and mutual aid. The designer's answers (2026-08-17) are
+> folded in: **an inner lord is as strong as a minor lord and no stronger** (the footing plus
+> `CONST.MINOR`, never HEIR), **and never takes the initiative against a court** — a vassal
+> attacks only where the player's ⚔ order sends him. §3.2 and the no-initiative rule are
+> built; the stances and mutual aid are not.
 
 ## 1. How the bots work today
 
@@ -79,7 +82,7 @@ Open — the design gaps the proposal answers:
 
 ### 3.1 Stances — named doctrines for a sworn lord
 
-Replace HOLD / GATES / WALL UP with four STANCES, in the game's voice, each a way of PLAYING
+Replace HOLD / GATES / WALL UP with three STANCES, in the game's voice, each a way of PLAYING
 rather than a destination. A stance biases the same brain at the same seam (`warOrders` +
 `ordered()`): the war body's destination, the crew's wants, and a few knobs of the doctrine.
 
@@ -88,11 +91,12 @@ rather than a destination. A stance biases the same brain at the same seam (`war
 | **WARDEN** | Hold the court and fortify it. | Standards struck; the body stands at the court, and on the frontier face of it. | Towers on the court's vantages faced at the nearest rival court, a curtain across the approach when pressed (`spanFor`), archers once stone stands, mends every breach. | Marches on a rival court or takes ground beyond his writ. |
 | **STEWARD** | Grow the country. | The errand company takes springs inside reach (free first, a rival's after — `springTo`); the body defends his works (`troubleAt`) and otherwise holds. | Gates on every spring held, halls levelled and forked, a Works only if breakers are wanted; the muster valve keeps the purse for stone. | Attacks a court. |
 | **MARSHAL** | Field an army for the banner. | Follows the BANNER's war: to the liege's armed company or war body when it fights, to any court of the banner that is pressed (the liege's first), else home mustering. | Halls first, forked to fighting men; a Works when the liege's target has stone. | Expands beyond his writ (that is a Steward's job). |
-| **MARCHER** | Push the frontier. | The nearest rival court on his border, when his column is a column (the contender's own assault clause, `strike`, un-turned); a rival's springs on the way. | Halls and a Works; walls only when pressed. | Sits idle while a rival court is on his border. |
 
 The two TARGETED orders stay, layered over a stance: **⚔ <court>** (march there, whatever the
-stance) and **SUPPORT <court>** (stand there while it is pressed). "How he plays" and "where he
-goes now" are two questions; the old five words conflated them.
+stance — the ONE way a vassal ever attacks a court) and **SUPPORT <court>** (stand there while
+it is pressed). "How he plays" and "where he goes now" are two questions; the old five words
+conflated them. There is no Marcher stance on purpose: an inner lord who took courts on his own
+would leave the player nothing to do, and the designer ruled it out.
 
 **A default stance chosen by geography, shown on the council** so it can be overruled: a court
 with a rival court on its border is a WARDEN; an interior court is a STEWARD; when the banner
@@ -100,16 +104,16 @@ is at war (the liege's court or army under attack) interior courts within reach 
 act as MARSHALS until it is over. That replaces "no order" — the council row would read
 "Warden (by default)" rather than "no standing order", which is what the ⚑ dot nags about.
 
-### 3.2 Every sworn lord plays at HEIR — SHIPPED (2026-08-17, with the seat-0 driver)
+### 3.2 An inner lord is as strong as a minor lord and no stronger — SHIPPED (2026-08-17)
 
 `warFooting`: a lord of the player's BANNER (`realmOf(pi) === realmOf(viewer)`, seat 0
-included while the hand is elsewhere) gets `C.DIFFICULTY.heir` — slow 1.2, noise 0.15, HEIR's
-lapses — whatever the player's footing, and never `CONST.MINOR`; re-dealt on the oath.
-Contenders keep the player's footing; unsworn minor lords keep the footing plus MINOR (they are
-the opposition, and the ladder measured them). A lord of the player's banner also gets `noTerms`
-and `noWalk`: terms and the Pattern are the human's decisions — a walk from a court a vassal
-holds means taking COMMAND of it, which the council should say when AMBER is the banner's.
-Two caveats still to decide:
+included while the hand is elsewhere) gets the footing plus `CONST.MINOR`, exactly as an
+unsworn minor lord does — never the contender's footing (seat 0 is a contender by birth) and
+never HEIR: the designer's rule is that the vassals must never be strong enough that the player
+has nothing to do. Re-dealt on the oath. He also gets `noTerms`, `noWalk` and `obey`: terms and
+the Pattern are the human's decisions (a walk from a court a vassal holds means taking COMMAND
+of it), and `obey` turns his war body away from every rival court exactly as a minor lord's is
+turned — he attacks only where the player's ⚔ order sends him. Two caveats, now moot:
 - HEIR's table has `aim: 0.2` and `trickle: 0.5` — a vassal who wanders 20% of the time and
   attacks in dribs is a poor officer. Recommendation: a sworn lord takes HEIR's `slow`, `noise`,
   `gates`, `up` and `hoard`, but `aim` and `trickle` OFF — an officer under orders keeps his
@@ -162,10 +166,9 @@ this runs without `rules.reach`.
 
 ## 4. Open questions for the designer
 
-1. HEIR's `aim`/`trickle` on vassals — off, or on as the footing says?
-2. Should an UNSWORN minor lord get a stance of his own by geography (a frontier lord as a
+Answered 2026-08-17: vassals keep the minor lord's flaws (as strong as a minor lord, no
+stronger); a vassal never takes a court on his own initiative (no Marcher stance; ⚔ is the one
+way). Still open:
+1. Should an UNSWORN minor lord get a stance of his own by geography (a frontier lord as a
    Warden, an interior one as a Steward), or keep today's "expand, do not conquer"?
-3. TO ARMS: two minutes, or until the threat clears?
-4. Does a Marcher take COURTS on the player's behalf (a conquest is an oath to the player's
-   banner), or only springs? The former makes the war winnable by proxy — which the reach law
-   already allows for the player himself.
+2. TO ARMS: two minutes, or until the threat clears?

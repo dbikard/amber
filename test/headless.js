@@ -9052,6 +9052,90 @@ suite('only the banner\'s founder treats');
   ok('the rig is alive: the same lord under his own banner does treat', pacts2 > 0, `${pacts2} pact commands`);
 }
 
+/* ---------------- A SECOND TAP ON A RIVAL'S COURT NAMES THE THRONE ----------------
+ * A forced order (`hard`) acquires nothing but the work it named — and the Seat is not a work,
+ * so a double tap on a rival's court was a forced march with no mark: the company stood under
+ * the throne striking nothing for the whole HARD span. Reported from play as troops massing
+ * against a city tower and not attacking for a while. `tcity` names the court. */
+suite('a second tap on a rival\'s court names the throne');
+{
+  const rig = (mark) => {
+    const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+    const en = World.seatOf(w, 1), hp0 = en.hp;
+    /* the rival's court is empty of works, so nothing but the throne is there to acquire — the
+     * question is whether the throne is struck at all under the forced order */
+    w.players[1].buildings.length = 0;
+    const co = w.players[0].companies[0];
+    /* men BEYOND the arrival radius, so the order does not fold the moment it is given */
+    for (let k = 0; k < 12; k++) { const u = manAt(w, 0, 'soldier', en.x + 260 + (k % 4) * 10, en.y + Math.floor(k / 4) * 10); u.co = co.id; }
+    const cmd = Object.assign({ c: 'rally', co: co.id, hard: 1, x: en.x, y: en.y }, mark);
+    const r = World.applyCommand(w, 0, cmd);
+    let first = null;
+    for (let i = 0; i < 30 * 20; i++) { World.update(w, C.SIM_DT); w.events.length = 0;
+      if (first == null && en.hp < hp0) first = w.t; }
+    return { ok: r.ok, hurt: hp0 - en.hp, first, mark: co.mark };
+  };
+  const plain = rig({}), named = rig({ tcity: 1 });
+  ok('the rig is alive: both orders are taken, and only one carries a mark', plain.ok && named.ok && !plain.mark && !!named.mark,
+     JSON.stringify({ plain: plain.mark, named: named.mark }));
+  ok('a forced order that names the court strikes the throne', named.hurt > 0, `${Math.round(named.hurt)} damage in twenty seconds`);
+  ok('...and sooner than a forced march with no mark, which must first arrive and lapse',
+     named.first != null && (plain.first == null || named.first < plain.first), `first blow at ${named.first} against ${plain.first}`);
+  ok('...the mark being the court', !!(named.mark && named.mark.city === 1), JSON.stringify(named.mark));
+  /* vetted at the door: your own court is not a court you may name */
+  const own = rig({ tcity: 0 });
+  ok('your own court cannot be named', !own.mark, JSON.stringify(own.mark));
+}
+
+/* ---------------- A WALKER IS EVERYBODY'S ENEMY, AND EVERYBODY ELSE'S FRIEND ----------------
+ * The designer's rule: someone walking the Pattern pushes the others to ally against him and
+ * attack to stop the walk. Two halves: the founders who are not walking offer terms to each
+ * other and none to the walker; and the answer to a walk is not held off by the footing. */
+suite('a walker is everybody\'s enemy, and everybody else\'s friend');
+{
+  /* THE COALITION, on a country at terms: seat 3 walks (a Shrine and the flag), and every
+   * other founder ends up offering terms to every other founder — and to seat 3, none */
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }, { country: true });
+  w.chaosNext = 1e9;
+  const walker = 3, seat = World.seatOf(w, walker), def = C.BUILDINGS.shrine;
+  w.players[walker].buildings.push({ id: w.nextId++, bt: 'shrine', level: 1, x: seat.x + 120, y: seat.y, cd: 0,
+    raise: 0, raiseFor: 0, hp: def.hp, maxHp: def.hp, lastHurt: -99, node: -1, co: 0 });
+  w.players[walker].walking = true; w.players[walker].pattern = 20; w.players[walker].essence = 9000;
+  const kinds = Object.keys(AI.HEIRS);
+  const bots = w.players.map((p, i) => (i === 0 || i === walker ? null : AI.make(kinds[i % kinds.length], {})));
+  for (let i = 0; i < 30 * 30; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    for (let bi = 1; bi < bots.length; bi++) if (bots[bi]) bots[bi].step(w, bi, (cmd) => World.applyCommand(w, bi, cmd), C.SIM_DT, null);
+  }
+  ok('the rig is alive: the walker is on the lines and public', World.walkers(w).some((q) => q.pi === walker));
+  const founders = w.players.map((p, i) => i).filter((i) => i > 0 && i !== walker && World.realmOf(w, i) === i);
+  let toEach = 0, pairs = 0, toWalker = 0;
+  for (const a of founders) for (const b of founders) if (a !== b) { pairs++; if (w.players[a].offers && w.players[a].offers[b]) toEach++; }
+  for (const a of founders) if (w.players[a].offers && w.players[a].offers[walker]) toWalker++;
+  ok('every founder who is not walking offers terms to every other', toEach === pairs, `${toEach} of ${pairs} offers standing`);
+  eq('...and none to the walker', toWalker, 0);
+  /* THE ANSWER IS NOT HELD OFF: a SQUIRE-footed heir marches on a walker's Shrine inside the hour */
+  {
+    const w2 = World.createWorld(1000, 2); w2.chaosNext = 1e9;
+    const sh = C.BUILDINGS.shrine, s0 = World.seatOf(w2, 0);
+    w2.players[0].buildings.push({ id: w2.nextId++, bt: 'shrine', level: 1, x: s0.x + 90, y: s0.y + 60, cd: 0,
+      raise: 0, raiseFor: 0, hp: sh.hp, maxHp: sh.hp, lastHurt: -99, node: -1, co: 0 });
+    w2.players[0].walking = true; w2.players[0].pattern = 20; w2.players[0].essence = 9000;
+    w2.players[1].explored[w2.map.cities[0]] = 1;
+    for (let k = 0; k < 10; k++) manAt(w2, 1, 'soldier', World.seatOf(w2, 1).x + 40 + k * 8, World.seatOf(w2, 1).y);
+    const bot = AI.make('benedict', Object.assign({}, C.DIFFICULTY.squire));
+    let atShrine = false;
+    const shr = w2.players[0].buildings.find((b) => b.bt === 'shrine');
+    for (let i = 0; i < 30 * 40 && !atShrine; i++) {
+      World.update(w2, C.SIM_DT); w2.events.length = 0;
+      bot.step(w2, 1, (cmd) => { const r = World.applyCommand(w2, 1, cmd);
+        if (r.ok && cmd.c === 'banner' && cmd.x != null && Math.hypot(cmd.x - shr.x, cmd.y - shr.y) < 60) atShrine = true; return r; }, C.SIM_DT, null);
+    }
+    ok('the rig is alive: the footing would hold him off for thirteen minutes', C.DIFFICULTY.squire.hold > 300);
+    ok('a SQUIRE-footed heir still marches on a walker\'s Shrine at once', atShrine);
+  }
+}
+
 /* ---------------- THE HOLD IS A PROMISE TO ONE BANNER ----------------
  * `hold` — the seconds an easy footing buys you before an heir will march on your Seat — is
  * checked against that heir's NEAREST rival court. In a duel that is the player's and nothing
