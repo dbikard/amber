@@ -2974,7 +2974,10 @@
     const u = {
       id: world.nextId++, owner, kind,
       x: (atX != null ? atX : home.x) + world.rng.range(-26, 26),
-      y: (atY != null ? atY : home.y + (owner === 0 ? -60 : 60)) + world.rng.range(-16, 16),
+      /* with no spot given (the Trump's champion) he appears on the Seat's side that faces the
+       * middle of the board — the old `owner === 0 ? -60 : 60` was "toward the other end of the
+       * lane", on a board that has had no lanes since v0.8 and wrong for seats 1-3 of four */
+      y: (atY != null ? atY : home.y + (home.y < world.mapH / 2 ? 60 : -60)) + world.rng.range(-16, 16),
       /* he carries no place in the line: a place is dealt to him every tick from his RANK
        * among the men standing at the same flag — see musterAll and bodyPlace */
       rank: 0,

@@ -9021,6 +9021,37 @@ suite('a lesser heir decides worse, he is not poorer');
   }
 }
 
+/* ---------------- ONLY THE BANNER'S FOUNDER TREATS ----------------
+ * `{c:'pact'}` is normalised to the founder's offers by the sim (a vassal cannot keep a private
+ * peace), which meant a SWORN lord's own terms doctrine was making his LIEGE'S terms — and,
+ * reading his own never-written `offers` back, re-making them every think. Measured: a vassal
+ * running benedict's doctrine issued 429 pact commands in forty seconds and left the player
+ * holding thirteen standing offers he had never made. */
+suite('only the banner\'s founder treats');
+{
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }, { country: true });
+  w.chaosNext = 1e9;
+  const me = 3; w.players[me].realm = 0;
+  const bot = AI.make('benedict', {});
+  let pacts = 0;
+  for (let i = 0; i < 30 * 40; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, me, (cmd) => { if (cmd.c === 'pact') pacts++; return World.applyCommand(w, me, cmd); }, C.SIM_DT, null);
+  }
+  eq('a sworn lord issues no terms at all', pacts, 0);
+  eq('...and his liege holds no offer he did not make', Object.keys(w.players[0].offers || {}).filter((k) => w.players[0].offers[k]).length, 0);
+  /* the control: the same doctrine as a banner's FOUNDER still treats */
+  const w2 = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }, { country: true });
+  w2.chaosNext = 1e9;
+  const bot2 = AI.make('benedict', {});
+  let pacts2 = 0;
+  for (let i = 0; i < 30 * 40; i++) {
+    World.update(w2, C.SIM_DT); w2.events.length = 0;
+    bot2.step(w2, me, (cmd) => { if (cmd.c === 'pact') pacts2++; return World.applyCommand(w2, me, cmd); }, C.SIM_DT, null);
+  }
+  ok('the rig is alive: the same lord under his own banner does treat', pacts2 > 0, `${pacts2} pact commands`);
+}
+
 /* ---------------- THE HOLD IS A PROMISE TO ONE BANNER ----------------
  * `hold` — the seconds an easy footing buys you before an heir will march on your Seat — is
  * checked against that heir's NEAREST rival court. In a duel that is the player's and nothing

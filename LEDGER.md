@@ -570,3 +570,25 @@ damage done to a shell.
 
 `Render.rollStart` used to turn eighteen men at once, on a phone; the figure belongs to one
 open card, so it is handed one berth or none.
+
+## The heirs' doctrine — refereed changes (2026-08-17)
+
+### The recall for one fiend, and the assault's hysteresis
+
+`homeThreat` was `threats >= 3 || atGate > 0`: a single hostile inside 116 of the throne,
+Chaos included, recalled the whole army — measured earlier, benedict's banner sat on its own
+Seat 51% of samples. It is `threats >= 3 || atGate >= 3 || rivalsAtGate > 0` now: a fiend at the
+gate is the Seat gun's business (the hardest gun on the board, and a throne mends itself), a
+rival's man there is a column's first man. And `ready` remembers: an assault sets out at the
+COMMIT floor and goes on down to two thirds of it, so a column that took losses on the road
+finishes the road instead of turning round at one man under the floor and back at the next
+recruit. Bundled with the Trump's champion appearing on the Seat's side that faces the middle
+of the board rather than "toward the other end of the lane".
+
+`node sim.js` before → after, same seed: mirrors benedict 10-8 → 7-12, bleys 15-4 → 11-7 (n=20;
+both within noise of even, and bleys moved toward it); gradient benedict/random 20-0 → 18-0 with
+2 timeouts (n=40 on both trees: 37-1 with 2 timeouts against 37-2 with 1 — seed noise, not a
+stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pattern share 55% →
+67% (target 50, tolerate 25-75 — nearer the lip than before, and the thing to re-read on the
+next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
+`corwin, julian, bleys, brand, benedict`.

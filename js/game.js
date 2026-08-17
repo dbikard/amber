@@ -21,9 +21,12 @@
    * at all. Re-read after the doctrine work of v0.9.44: the Warden fell to the bottom and the
    * Master of Arms rose to the top, which is what happens when a walk is answered — julian is
    * the heir who walks LAST, and the last walker in a field that now marches on Shrines is the
-   * one who never gets there. Pasted from the run, not adjusted by hand. */
-  const LADDER = ['julian', 'corwin', 'brand', 'bleys', 'benedict'];
-  const firstName = (kind) => AI.HEIRS[kind].title.split(',')[0].split(' ')[0];
+   * one who never gets there. Pasted from the run, not adjusted by hand. Re-pasted 2026-08-17
+   * after the recall and hysteresis changes (six games a matchup: it tells corwin from
+   * benedict and little between). It orders the skirmish rivals list (ui.js); the campaign
+   * itself is CHAPTERS now (campaign.js), and the rung counter that used to walk this list is
+   * gone with them. */
+  const LADDER = ['corwin', 'julian', 'bleys', 'brand', 'benedict'];
 
   const game = {
     mode: null, world: null, viewer: 0, bot: null,
@@ -61,8 +64,6 @@
   let twice = null;   // { co, where, sx, sy, at }
 
   /* ---------------- campaign ladder ---------------- */
-  const rung = () => Math.min(+localStorage.getItem('amber_rung') || 0, LADDER.length);
-  const done = () => rung() >= LADDER.length;
   /* THE BUTTON NAMES THE CHAPTER, not the heir. A rung had nothing to say about itself except
    * whom you would face; a chapter has a title and an objective, and the whole point of the
    * change is that the two are not the same question. */
@@ -640,11 +641,6 @@
     } else if (game.chapter) {
       game.endNext = 'TRY THE CHAPTER AGAIN';
       game.endNextKey = game.chapter.key;
-    } else if (game.mode === 'sp' && game.campaign && won && rung() < LADDER.length) {
-      localStorage.setItem('amber_rung', String(rung() + 1));
-      /* the last rung is not the end of the button: walking again starts the succession over */
-      game.endNext = done() ? 'WALK IT AGAIN — FACE ' + firstName(LADDER[0]).toUpperCase()
-                            : 'FACE ' + firstName(LADDER[rung()]).toUpperCase();
     }
     endScreen();
   }
@@ -2402,10 +2398,7 @@
             startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0));
             return;
           }
-          if (game.campaign) {
-            if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
-            startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
-          } else if (game.bot) startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
+          if (game.bot) startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
           else toMenu();   // a `?reach=` country: there is no rival to rematch, the roster was the country
         } else if (game.mode === 'host') rematch();
         else if (game.mode === 'guest') callAgain();

@@ -196,25 +196,8 @@ them; re-measure before re-deciding.
       the content tables, with the claims measured over real headless matches (seeds 1000-1005).
       Ordered by impact over effort; `[REF]` needs `node sim.js` before and after, `[SAFE]` does
       not touch a balance surface.
-      1. **The wall is priced wrong and the misprice eats the plan.** `[REF]` `spanFor` sizes a
-         run at up to `WALL.unit * 2` — two crews, 220 — but the affordability test compares
-         against `BUILDINGS.wall.cost`, 110. So `saving` is never set, the order goes out, it is
-         refused for essence, the plan `break`s on it anyway, and because `saving` is false the
-         upgrade scan then spends the treasury below the wall price again. Measured, benedict
-         seed 1000: **18 wall orders, 17 refused, every one a 300-length run tested against a
-         one-crew price** — for minutes at a time, blocking everything behind it in the plan.
-         Have `spanFor` return the run's real price, clamp the candidate length to the purse,
-         and set `saving` when even the shortest legal run is unaffordable. This is why the
-         curtain work has no referee signal: the two heirs who ask for walls mostly fail to get
-         them.
-      2. **Nobody marches on a walker's Shrine.** `[REF]` `v.walkers` carries every walker's
-         **Shrine coordinates**, and it is read at exactly one place — to refuse a race already
-         lost. Three of five heirs have no response to a rival's walk whatsoever; the two that
-         do send the army at his *Seat*. A Shrine is one of the few works `menOnly` shooters may
-         attack, so the `breakers >= 3` gate in `strike` is precisely backwards here. Two
-         mechanical cautions when wiring it: a banner by coordinate needs its own memo (the
-         current one compares site ids and would re-issue every think), and **every `banner`
-         clears every company's rally**.
+      1. [x] The wall misprice — `spanFor` sizes the run to the purse (see its note in ai.js).
+      2. [x] Marching on a walker's Shrine — "the answer to a walk is an army at the Shrine".
       3. **The shooter deadlock.** `[REF]` `strike` refuses to march without three breakers, and
          julian's own doctrine forks every hall to archers once two towers stand — which its
          plan guarantees by minute three. Measured: julian ending a match with **74 archers and
@@ -228,27 +211,21 @@ them; re-measure before re-deciding.
          Spires and can raise a Works, but its `upPref` is `['tower','gate','barracks']`, so
          **brand's Spires and Works never fork** and it fields Sorcerers and Engines all match.
          The Warden branch is reachable by benedict alone, and only under two threats.
-      5. **`homeThreat` recalls the whole army for one fiend.** `[REF]` `atGate > 0` is a single
-         hostile within 116 of the Seat — Chaos included, though `rivals` exists for exactly
-         that distinction. Measured: benedict's banner sat on its own Seat **51% of samples**.
-         Recall a *company* rather than the banner, and only turn the banner home at `atGate >= 3`
-         or a falling Seat.
-      6. **The assault has no hysteresis.** `[REF]` `ready` is a flat `army >= 22` re-read every
-         think; a marching column that dips to 21 turns around. Start at 22, continue at ~13,
-         and remember which it is doing.
-      7. **The errand company is chosen by accident and does not stay.** `[SAFE]` It is
-         `cos[cos.length - 1]` — the youngest standard. Measured: seed 1000 that was the Spire's
-         company, **7 Binders, every one `menOnly`**, sent to take springs they cannot hold;
-         seed 1004 it was the Siege Works' company with **zero men in it**. And it leaves the
-         moment the Gate finishes, because `nodeHolder` answers the instant the raise completes
-         — so **nothing garrisons a taken spring, ever**. Pick by content, cache the choice, and
-         hold the rally until the ground is quiet.
-      8. **The Jewel is spent on the weather.** `[SAFE]` Both storm clusters include Chaos
-         fiends, and neither cast checks the purse: **166 `power:essence` refusals and 24
-         `power:alive` refusals in one 11-minute match.** Three lines.
-      9. **Walls are one-shot and face the wrong way.** `[SAFE]` No heir has ever issued
-         `{c:'fix'}` — a breach is never mended — or `{c:'flip'}`, though `spanFor` already has
-         the perpendicular in hand at build time and a flip costs nothing and takes no crew.
+      5. [x] `homeThreat` no longer recalls the whole army for one fiend (2026-08-17): three
+         hostiles at the gate or any RIVAL's man there; a fiend is the Seat gun's business.
+      6. [x] The assault has hysteresis (2026-08-17): sets out at the COMMIT floor and goes on
+         down to two thirds of it. Refereed together with 5 and the spawn offset — `node sim.js`
+         before/after: mirrors 50/75% → 35/55% (n=20, both within noise of even), gradient
+         100/90/90 → 90/95/100, contested Pattern share 55% → 67% (target 50, tolerate 25-75 —
+         nearer the lip, watch it), greedy convergence median 25.3m → 14.3m; benedict vs random
+         at n=40 unchanged (37-1/2 timeouts against 37-2/1).
+      7. [x] The errand company is chosen by content and cached ("the errand gets a company
+         of its own", ai.js).
+      8. [x] The Jewel and the Trump are asked for only when the purse and a living champion
+         would not refuse them (2026-08-17); whether Chaos should be storm bait at all is a
+         doctrine question left open.
+      9. [x] A breach is mended ("a breach is mended, not mourned", ai.js); `flip` is still
+         never issued by an heir.
       10. **Half the springs are invisible.** `[REF]` `v.nodes.enemy` — the far seven of
           fourteen — is referenced nowhere in the file. Measured finished Gates per match: 1.2
           to 4.6 of 14.
@@ -309,10 +286,8 @@ them; re-measure before re-deciding.
       place. Behaviour-neutral, so the suite is the referee.
 - [x] `applyCommand` is a handler table (2026-08-17): `COMMANDS[cmd.c](world, pi, pl, cmd)`,
       the winner, seat and halt gates in front of it; twelve seeded duels trace identical.
-- [ ] **`spawnUnit` still carries the dead two-lane rule.** With no spawn point given the
-      y-offset is `owner === 0 ? -60 : 60` (world.js ~1443) — "toward the other end of the
-      lane", on a board that has not had ends since v0.8, and wrong for seats 1-3 in a
-      free-for-all. Behavioural fix: `node sim.js` referees it.
+- [x] `spawnUnit`'s two-lane offset is gone (2026-08-17): the Trump's champion appears on the
+      Seat's side that faces the middle of the board. Refereed with the batch below.
 - [x] The module list is one list (2026-08-17): a suite reads index.html's script tags and
       holds sw.js `CORE`, sim.js's requires, this suite's requires and every `js/*.js` on disk
       against it, and checks the version stamp on both files the hook writes.

@@ -98,13 +98,17 @@
      * match and the heir never attacked at all. */
     const gateR = C.CASTLE_ZONE + 70;
     const atGate = visHostiles.filter((u) => d2(u.x, u.y, myCity.x, myCity.y) < gateR * gateR).length;
+    /* ...and how many of them are a RIVAL's men rather than the weather — one fiend at the gate
+     * is the Seat gun's business, one soldier is a column's first man */
+    const rivalsAtGate = visHostiles.filter((u) => u.owner !== C.CHAOS_ID &&
+      d2(u.x, u.y, myCity.x, myCity.y) < gateR * gateR).length;
     const mySprings = pl.buildings.filter((b) => b.node >= 0).length;
     return {
       t: world.t, me, pl, world, have, free, raising,
       essence: pl.essence, myCastle: (World.seatOf(world, me) || {}).hp || 0,
       enemyCastle: (World.seatOf(world, enIdx) || {}).hp || 0,
       myCity, enCity, myUnits, army: myUnits.length,
-      visHostiles, threats, push, enemyArmy, mySprings, atGate,
+      visHostiles, threats, push, enemyArmy, mySprings, atGate, rivalsAtGate,
       /* WHO CAN ACTUALLY BREAK A SEAT. Shooters have no target among works at all, so a host
        * of archers, sorcerers, wardens and binders can march to a rival's gate and stand there
        * for the rest of the match. An heir has to know the difference between an army and an
@@ -991,6 +995,15 @@
      * walk cannot come to different conclusions about the same promise */
     const heldOff = (v, pi) => hold > 0 && v.t < hold && pi != null &&
                                global.World.realmOf(v.world, pi) === holdOn;
+    /* ...and the GROUND that promise covers: the writ round a held-off banner's court, not the
+     * throne's own site. A spring to take, a frontier to scout or an errand's rally there is
+     * an army in the player's court whatever it was pointed at — measured the moment lords
+     * stopped being recalled home by one fiend at their gate: one lord's errand company sat on
+     * a free spring 278 from the player's throne for most of five minutes, and the samples of
+     * lord-men at the player's court went from a quarter of the country's to twice it. */
+    const heldGround = (v, x, y) => hold > 0 && v.t < hold &&
+      (v.world.cities || []).some((c) => c && c.owner >= 0 && heldOff(v, c.owner) &&
+        d2(x, y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat);
     const noWalk = !!opts.noWalk;  // a chapter that is not about the Pattern shuts that road
     /* ---- A LESSER HEIR DECIDES WORSE; HE IS NOT POORER ----
      * The footing's LAPSES (CONST.DIFFICULTY, composed for a minor lord in game.js) are the
@@ -1028,6 +1041,7 @@
       return false;
     };
     const commit = Math.max(4, Math.round(COMMIT * (1 - Math.min(0.9, L.trickle || 0))));
+    let marching = false;  // is the assault under way — see `ready`, which has hysteresis
     let stray = null;      // {site, until} — an `aim` lapse: the army sent somewhere known and wrong
     let lastWant = null;   // where the doctrine last meant the banner, to notice a NEW order
     let timer = interval * 0.5, rng = null;
@@ -1060,7 +1074,13 @@
        * The heirs read only what a human at their seat reads: a sealed pact (public), an offer
        * made TO them (theirs), castle hit points (public) and who is on the lines (public,
        * pillar 3). Nothing here reaches past the veil — see DESIGN_PRINCIPLES, "AI plays fair". */
-      if (world.rules && world.rules.truce && P.pact) {
+      /* ...AND ONLY THE BANNER'S FOUNDER TREATS. `{c:'pact'}` is normalised to the founder's
+       * offers by the sim, so a SWORN lord's doctrine was making and unmaking his LIEGE'S terms
+       * — and, reading his own never-written `offers` back, re-making them every think: measured,
+       * a vassal running benedict's doctrine issued 429 pact commands in forty seconds and left
+       * the player holding thirteen standing offers he had never made. Terms are the banner's
+       * business, and the banner is its founder. */
+      if (world.rules && world.rules.truce && P.pact && global.World.realmOf(world, me) === me) {
         for (const s of v.seats) {
           /* AND NO HEIR KEEPS TERMS WITH A MAN ON THE LINES. This is not a doctrine, it is the
            * same rule that makes a walk public in the first place: a walk cannot be called off,
@@ -1296,8 +1316,14 @@
       }
 
       /* expansion missions: pick one, march the banner there, build on arrival */
-      /* one hand on your own door outranks any errand and any assault */
-      const homeThreat = v.threats.length >= 3 || v.atGate > 0;
+      /* one hand on your own door outranks any errand and any assault.
+       * NOT FOR ONE FIEND. `atGate > 0` recalled the whole army for a single hostile inside 116
+       * of the throne, Chaos included — measured, benedict's banner sat on its own Seat 51% of
+       * samples — and the black road sends a fiend or two to every gate all match. The Seat has
+       * a gun of its own (`seatFire`, the hardest on the board) and mends itself, so a fiend at
+       * the gate is the Seat's business; a RIVAL's man there is a column's first man and is
+       * answered at once, as are three of anything. */
+      const homeThreat = v.threats.length >= 3 || v.atGate >= 3 || v.rivalsAtGate > 0;
       if (mission) {
         const s = world.map.sites[mission.site];
         const done = !s || (mission.bt === 'gate' ? held(v, s) : worksNear(v, s.x, s.y, mission.bt, 130));
@@ -1340,8 +1366,13 @@
        * neither ever moves and the mirror runs to the clock — the bleys mirror went from
        * ending at 8 minutes to timing out in half its games. A column big enough to be worth
        * marching is the whole rule; whether it wins is what the fight is for. */
-      const ready = v.army >= commit;
+      /* AND IT REMEMBERS WHICH IT IS DOING. A flat floor re-read every think meant a marching
+       * column that dipped to one man under it turned round, and turned back the moment a
+       * recruit left the yard — hysteresis: the assault SETS OUT at the floor and goes on down to
+       * two thirds of it, so a column that has taken losses on the road finishes the road. */
+      const ready = v.army >= (marching ? Math.max(4, Math.round(commit * 2 / 3)) : commit);
       const striking = !homeThreat && wantsWar && ready;
+      marching = striking;
       /* THE SEARCH OUTRANKS THE ERRAND, because it is the war's first move. Every doctrine
        * already says "go and look" — that is what `seek` is — and not one of them had ever
        * ordered it, for exactly the reason the assault never fired: the errand owned the
@@ -1412,6 +1443,7 @@
         const own = lazyGates ? P.missions(v).filter((w) => !C.BUILDINGS[w.bt].claim) : P.missions(v);
         for (const w of (led ? led.concat(own) : own)) {
           const site = w.pick(v);
+          if (site && heldGround(v, site.x, site.y)) continue;   // the hold covers the writ, see heldGround
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
         }
       }
@@ -1437,6 +1469,17 @@
        * hour the footing promised you. It is the same square of ground either way; whether he
        * has been told what is on it is not the player's problem. */
       if (want === v.enCityId && heldOff(v, v.enIdx)) want = v.myCity.id;
+      /* ...AND THE GROUND IS THE WRIT, NOT THE THRONE'S OWN SITE. A frontier to scout or a
+       * spring to take can lie inside the held banner's own claim, two hundred from his throne
+       * — an army there IS the march the footing promised would not come, whatever site it was
+       * pointed at. Measured the moment lords stopped being recalled home by one fiend at their
+       * gate: lord-in-a-rival-court samples at the player's court went from a quarter of the
+       * country's to twice it. So any want that lands inside `CLAIM.seat` of a court whose
+       * banner he is holding off is home instead. */
+      if (want >= 0 && want !== v.myCity.id) {
+        const ws = world.map.sites[want];
+        if (ws && heldGround(v, ws.x, ws.y)) want = v.myCity.id;
+      }
       /* ---------------- THE ANSWER TO A WALK IS AN ARMY AT THE SHRINE ----------------
        * The heirs already REFUSE a race they have lost — every walker moves at the same rate,
        * so whoever stepped on first arrives first, and a hopeless walk is five and a half
@@ -1584,7 +1627,7 @@
         if (errand) {
           const reach = nearestOf(v, v.nodes.own.concat(v.nodes.mid));
           const spring = homeThreat ? null
-            : reach.filter((s) => !held(v, s))[0] ||
+            : reach.filter((s) => !held(v, s) && !heldGround(v, s.x, s.y))[0] ||
               reach.filter((s) => global.World.nodeHolder(v.world, s) === v.me)[0] || null;
           const wantAt = spring ? spring.id : -1;
           const at = errand.rally && errand.rally.site != null ? errand.rally.site : -1;
@@ -1670,7 +1713,7 @@
        * dead control (a picker that reaches nobody) is something a test can see */
       lapses: L, hold,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
-                stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k]; },
+                marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for
        * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord
        * goes on running his own city, his own purse and his own muster exactly as he did
