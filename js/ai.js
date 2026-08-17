@@ -770,198 +770,6 @@
         }
       }
     },
-    /* THE LORD — the marcher grown a spine. Still a Reach-War creature and nothing else: he
-     * speaks only under `rules.reach`, so no skirmish board or balance run can ever hear him,
-     * and still only orders that work under the reach law — rallies, works probed before they
-     * are asked for, and the walk. Four sentences, in the order a lord says them: trouble at
-     * his own court calls the company home; otherwise the marcher's march; a comfortable
-     * purse raises ground; and AMBER held is the throne reached for — the Shrine and the walk
-     * are what give the war a clock. */
-    lord: {
-      title: 'A Marcher Lord', interval: 2.0, noise: 0,
-      /* `order` is his LIEGE'S standing instruction, and it exists because the player's own
-       * sworn lords run on exactly this doctrine — see AI.make's `step`. Five words, and each
-       * of them only redirects the march; nothing here reaches past what the lord can see, and
-       * with no order (a lord sworn to nobody, or one left to his own judgement) every branch
-       * falls through to the doctrine he has always had. Trouble at his own court outranks all
-       * five: a lord who marched out while his own city burned would not be worth swearing. */
-      custom: (v, issue, rng, order) => {
-        if (!v.world.rules.reach) return;   // a lord has nothing to say to an ordinary board
-        const w = v.world, W = global.World;
-        const seat = W.seatOf(w, v.me);
-        const seatIdx = w.cities.indexOf(seat);
-        if (seatIdx < 0) return;
-        const mode = (order && order.mode) || null;
-        const otherRealm = (c2) => c2 && c2.owner >= 0 &&
-          W.realmOf(w, c2.owner) !== W.realmOf(w, v.me);
-        const co = v.pl.companies[0];
-        if (co) {
-          const men = v.myUnits.filter((u) => u.co === co.id).length;
-          const rallyAt = (p) => {
-            if (!co.rally || Math.hypot(co.rally.x - p.x, co.rally.y - p.y) > 40)
-              issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
-          };
-          const home = () => { if (co.rally) issue({ c: 'rally', co: co.id }); };
-          /* HOLD: hostiles at the court outrank any march. Striking the rally is the whole
-           * order — under the reach law a company with no rally holds at its own city — and
-           * it is struck once, not re-struck every think. */
-          const trouble = troubleAt(v, seat);
-          if (trouble === seat) {
-            home();
-          } else if (trouble) {
-            /* something of his is being pulled down out in the country — go and stop it */
-            rallyAt(trouble);
-          } else if (mode === 'hold' || mode === 'walls') {
-            /* two orders about his own ground: the company keeps the court. WALL UP also has a
-             * works arm below — towers on the rim, faced at the nearest rival court — so it is
-             * an order about what he BUILDS as well as where he stands. */
-            home();
-          } else if (mode === 'gates' && springTo(w, v.me, seat, false)) {
-            /* ---- GO AND TAKE THE SPRINGS ----
-             * This order used to fall in with `hold` and strike the rally, which is why it did
-             * nothing: reported from play as *"asked to build gates the bot doesn't even
-             * explore to look for gates."* He was not failing to look — nothing ever sent him.
-             * A Gate needs a free spring, and every spring past the opening one is BEYOND the
-             * writ, so it must be TAKEN: `placementError` wants his men standing on it. The
-             * march is therefore the whole order, and the works arm below merely spends what
-             * the march has won.
-             * Bounded by the CITY'S REACH, because that is the only ground he may be ordered
-             * onto (`rules.reach`) — a rally past the rim is refused, and a refusal re-issued
-             * every think is a lord shouting at a wall.
-             * A SPRING A RIVAL HOLDS IS ONE TO TAKE (`springTo`), and WHEN HIS REACH HOLDS
-             * nothing to take at all the branch is not entered — he falls through to his own
-             * march below rather than striking his standards. An order that has run out of
-             * ground has nothing to say, and the honest answer to that is the doctrine he
-             * would have had without it. */
-            const s = springTo(w, v.me, seat, false);
-            if (s && men >= 4) rallyAt(s);
-            else if (men < 2) home();         // nobody left to take it
-          } else if (mode === 'attack' && w.cities[order.target]) {
-            /* MARCHED ON A NAMED COURT, and re-pointed as the company refills — a liege who
-             * has to re-issue the order every time a company is spent is a liege doing the
-             * lord's job for him. */
-            if (men >= 6) rallyAt(w.cities[order.target]); else if (men < 3) home();
-          } else if (mode === 'support' && w.cities[order.target]) {
-            /* HOME UNTIL HIS NEIGHBOUR IS PRESSED. The one order that is about somebody
-             * else's city, and the reason a realm is worth more than the sum of its courts. */
-            const t2 = w.cities[order.target];
-            const pressed = w.units.some((u) => u.hp > 0 && W.foe(w, v.me, u.owner) &&
-                                                d2(u.x, u.y, t2.x, t2.y) < 650 * 650);
-            if (pressed && men >= 5) rallyAt(t2); else if (!pressed) home();
-          } else {
-            /* MARCH: the marcher's sentence — a full company on the nearest neighbouring
-             * court that is not of our BANNER, a spent one home. A lord who kept marching on
-             * his liege's cities because they were not literally his own was the first thing
-             * swearing broke. EXCEPT WHEN SOMEBODY IS ON THE
-             * PATTERN: a walker's city within reach outranks every other target, because a
-             * country that did not rise against the usurper would hand him the throne — a
-             * walk begun far away must be answerable by the LAND between, not only by the
-             * player. The walk is public (World.walkers), so a lord reads exactly what a
-             * human at the table reads. */
-            const nbrs = (w.map.gen.nbrs && w.map.gen.nbrs[seatIdx]) || [];
-            const walking = new Set(W.walkers(w)
-              .filter((q) => W.realmOf(w, q.pi) !== W.realmOf(w, v.me)).map((q) => q.pi));
-            let tgt = null, bd = Infinity;
-            for (const i of nbrs) {
-              const o = w.cities[i];
-              if (!otherRealm(o)) continue;
-              const d = d2(o.x, o.y, seat.x, seat.y) - (walking.has(o.owner) ? 1e12 : 0);
-              if (d < bd) { bd = d; tgt = o; }
-            }
-            if (tgt && men >= 8) rallyAt(tgt);
-            /* NOTHING OF ANOTHER BANNER ON HIS OWN BORDER — so he is behind the lines, and a
-             * lord behind the lines reinforces the court that needs him rather than standing
-             * at his own with a growing army. See reserveAt. */
-            else if (!tgt && men >= 8) {
-              /* NOTHING OF ANOTHER BANNER ON HIS OWN BORDER, so he is behind the lines. There
-               * are two useful things a lord back there can do and they go in this order.
-               * FIRST, TAKE A SPRING. Every spring past his opening one lies beyond the writ
-               * and `placementError` wants men standing on it, so a lord who never marches to
-               * one can never build on one — which is why an unordered lord expanded exactly
-               * never, and why "they don't explore to look for shadow gates" is a doctrine gap
-               * and not a bad heuristic. It is the same march the `gates` order gives, wanting
-               * the same spring (`freeSpring`), so an order merely makes deliberate what a lord
-               * behind the lines does anyway.
-               * THEN REINFORCE: with no ground of his own left to take, the court next door
-               * that is pressed or exposed is where his army is worth something. */
-              const spring = freeSpring(v, seat);
-              const help = spring || reserveAt(v, seat, seatIdx);
-              if (help) rallyAt(help); else if (co.rally) home();
-            } else if (men < 4 && co.rally) home();
-          }
-        }
-        /* Does any city he holds carry the Pattern? Public knowledge — the country is
-         * generated on every machine and AMBER is named on the map. */
-        const pat = w.map.gen.pattern;
-        const amber = pat != null && w.cities[pat] && w.cities[pat].owner === v.me
-          ? w.cities[pat] : null;
-        /* WORKS: one order per think, dearest wish first, every spot probed before it is
-         * asked for (see spotAt's note — probe where the work will stand, or not at all). */
-        if (v.free > 0) {
-          /* WALL UP: the one order that changes what he BUILDS rather than where he marches —
-           * towers on the court's rim, faced at the nearest court of another banner. A true
-           * curtain is `spanFor`'s business and spanFor anchors on the seat; this is the
-           * honest version of the order, said here rather than promised and not delivered. */
-          if (mode === 'walls' && v.essence > 500) {
-            const towers = v.pl.buildings.filter((b2) => b2.bt === 'tower' &&
-              d2(b2.x, b2.y, seat.x, seat.y) < 420 * 420).length;
-            if (towers < 3) {
-              let fc = null, fd = Infinity;
-              for (const c2 of w.cities) {
-                if (!otherRealm(c2)) continue;
-                const d = d2(c2.x, c2.y, seat.x, seat.y);
-                if (d < fd) { fd = d; fc = c2; }
-              }
-              const a2 = fc ? Math.atan2(fc.y - seat.y, fc.x - seat.x)
-                            : Math.atan2(w.mapH / 2 - seat.y, w.mapW / 2 - seat.x);
-              const at = sweep(v, 'tower', seat.x, seat.y, a2 + (towers - 1) * 0.5, 205, 25, 2);
-              if (at) { issue({ c: 'build', x: at.x, y: at.y, bt: 'tower' }); return; }
-            }
-          }
-          if (amber && !v.have.shrine && v.essence > 800) {
-            /* THE SHRINE. The court itself first — that is where the one Pattern lies — but
-             * the writ runs from his SEAT and his Gates (inClaim), not from every city he
-             * holds, so a lord whose seat is not AMBER cannot yet build at that court. His
-             * own writ still satisfies the reach rule (a work inside an OWNED city's reach),
-             * so the clock starts either way. */
-            const spot = sweep(v, 'shrine', amber.x, amber.y,
-                               Math.atan2(seat.y - amber.y, seat.x - amber.x), 100, 40, 6)
-                      || spotFor(v, 'shrine');
-            if (spot) issue({ c: 'build', x: spot.x, y: spot.y, bt: 'shrine' });
-          } else if (v.essence > 400) {
-            /* A GATE on a free spring the rules will take — placementError answers reach,
-             * writ and presence in one word, so a spring his men happen to hold counts.
-             * THE ONE HIS MEN WERE SENT TO IS TRIED FIRST. Under a `gates` order the march
-             * above picks a spring and walks the company onto it; taking the first legal
-             * spring in `map.sites` order instead would spend the crew on whichever one his
-             * writ already covered and leave the company standing on ground he never built,
-             * which is the order half-obeyed and looks from outside exactly like the order
-             * being ignored. Everything else falls through to the old sweep unchanged. */
-            let spot = null;
-            const want = mode === 'gates' ? freeSpring(v, seat) : null;
-            if (want && !W.placementError(w, v.me, want.x, want.y, 'gate')) spot = want;
-            if (!spot) for (const s of w.map.sites)
-              if (s.kind === 'node' && W.nodeHolder(w, s) === -1 &&
-                  !W.placementError(w, v.me, s.x, s.y, 'gate')) { spot = s; break; }
-            if (spot) issue({ c: 'build', x: spot.x, y: spot.y, bt: 'gate' });
-            /* else a SECOND HALL, at arm's length toward the middle of the country — where
-             * the war is — swept a few angles round like every heir's works are. It musters
-             * into the MAIN company: the doctrine only ever speaks to companies[0], so a hall
-             * flying its own standard would raise men no order of his can reach. */
-            else if ((v.have.barracks || 0) < 2) {
-              const at = sweep(v, 'barracks', seat.x, seat.y,
-                               Math.atan2(w.mapH / 2 - seat.y, w.mapW / 2 - seat.x), 200, 30, 2);
-              if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks', co: co && co.id });
-            }
-          }
-        }
-        /* THE WALK — only ever from AMBER's lord, once the Shrine stands and the purse can
-         * carry the drain. This is the war's clock: a walk cannot be called off, so it is
-         * issued once and never re-issued at a walker. */
-        if (amber && v.have.shrine && !v.walking && v.essence > 600)
-          issue({ c: 'walk', on: true });
-      }
-    },
     random: {
       title: 'A Shadow-ghost', interval: 2.0, noise: 0,
       custom: (v, issue, rng) => {
@@ -1022,10 +830,11 @@
     if (!world.rules || !world.rules.reach) return issue;
     const W = global.World;
     /* ---- AND THE LIEGE'S STANDING ORDER IS A BIAS ON THE SAME BRAIN ----
-     * The five words are implemented in the LORD baseline's `custom`, and an heir has no
+     * The five words were first implemented in a `lord` baseline's `custom`, and an heir has no
      * `custom` — so the moment heirs took the war's seats, every order the council can give
      * would have gone silently unread. That is the dead-button failure twice over, and worse
-     * than before, because the council row asserts the order is standing.
+     * than before, because the council row asserts the order is standing. (The baseline is
+     * deleted now: two implementations of one rule had already drifted once.)
      * They are applied HERE, at the same seam that translates the banner, because that is what
      * an order actually is: a claim on where the WAR BODY goes. Everything else the heir does —
      * its economy, its works, its powers, its errand company taking ground — goes on untouched
@@ -1044,8 +853,8 @@
       }
       if (mode === 'gates') {
         /* THE SPRING TO GO AND TAKE inside his own court's reach — the same one `springTo`
-         * hands the lord baseline and the works arm, because the march that wins the ground and
-         * the crew that spends on it must want the same spring.
+         * hands the works arm (`ordered`), because the march that wins the ground and the crew
+         * that spends on it must want the same spring.
          * NULL, NOT 'home', WHEN HIS REACH HOLDS NOTHING TO TAKE. This returned `'home'`, which
          * under the reach law means "strike every standard": an order to go and get gates read
          * as an order to stand in the yard, and said so to nobody. Null is a claim withdrawn —
@@ -1103,6 +912,32 @@
                    return { ok: true }; }
           }
         }
+        /* ---- A LORD BEHIND THE LINES IS A RESERVE, NOT A STATUE ----
+         * The lord baseline's default — what he did with NO standing order — had three holes,
+         * all reported from play, and every seat runs an heir now, so the answers live here at
+         * the one seam. `st.v` is the view this think was decided on (decide hands it over):
+         * (1) TROUBLE ANYWHERE IN HIS COUNTRY. "Trouble at home" was hostiles near the SEAT, so
+         *     Chaos could gnaw an outlying Gate — the thing his economy rests on — while he stood
+         *     in his yard. A work of his under attack sends the war body to the WORK. A minor
+         *     lord always answers it; a contender only when his own doctrine had him standing at
+         *     home, because an assault is not turned back for one fiend at a Gate.
+         * (2) THE NEIGHBOUR OF HIS BANNER WHO IS PRESSED OR EXPOSED. An interior lord — every
+         *     court round him his own banner's — found no target and stood at home for the rest
+         *     of the war (measured: fourteen men, zero commands in eighty thinks). When the
+         *     doctrine's aim is his own court and nothing of his is touched, he goes to the
+         *     neighbouring court of his banner that most needs him, and stands there.
+         * Both are reach-bounded like every order he can give. */
+        if (!told && st && st.v) {
+          const seat = W.seatOf(world, me);
+          const home = !at || (seat && d2(at.x, at.y, seat.x, seat.y) < C.CITY.r * C.CITY.r);
+          const minor = (world.heirs || []).indexOf(me) < 0;
+          const trouble = seat ? troubleAt(st.v, seat) : null;
+          if (trouble && trouble !== seat && (minor || home)) at = { x: trouble.x, y: trouble.y };
+          else if (!trouble && home && seat) {
+            const r = reserveAt(st.v, seat, me);
+            if (r) at = { x: r.x, y: r.y };
+          }
+        }
         if (!at) return { ok: true };
         /* ---- THE SAME ORDER TWICE IS NOISE, AND HERE IT WAS RUINOUS ----
          * Under `rules.reach` the sim's banner handler strikes the standards and sets NO aim,
@@ -1113,8 +948,8 @@
          * saturated on essentially every tick, which means men steering blind at the goal
          * instead of down a field, all over the country. That is the lag.
          * So the aim is remembered on the bot and the fan-out is skipped while it has not
-         * moved. 40 units is the sim's own threshold for "this is the same order" (see the
-         * lord's `rallyAt`), so the two agree about what repeating an order means. */
+         * moved. 40 units is the sim's own threshold for "this is the same order", so the
+         * bot and the sim agree about what repeating an order means. */
         if (st && st.aim && d2(st.aim.x, st.aim.y, at.x, at.y) < 40 * 40) return { ok: true };
         if (st) st.aim = { x: at.x, y: at.y };
         let last = { ok: true };
@@ -1206,6 +1041,7 @@
 
     function decide(world, me, issue, order) {
       const v = view(world, me);
+      warSt.v = v;   // the view this think is decided on, for warOrders' default (see there)
       if (P.custom) { P.custom(v, issue, rng, order); return; }
       if (noise > 0 && rng.chance(noise)) return;
       /* the lapses this think is played under — see the note at `L` in make() */

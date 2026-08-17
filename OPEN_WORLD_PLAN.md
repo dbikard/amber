@@ -4,8 +4,11 @@ The plan for replacing the site-graph board with a continuous map: free movement
 terrain, free placement inside claimed ground, essence nodes worth fighting for, walls built
 piece by piece, and defence trees that fork.
 
-This document is the target. `GAME_VISION.md` describes the game as it ships today; entries
-migrate from here to there as each stage lands.
+> **THIS IS A RECORD, NOT A PLAN.** Every stage below shipped, and some were reshaped after
+> (walls became one work with a length; the region realm it fed became the Reach War). It is
+> kept for the reasoning — why each stage was done the way it was — and nothing in it should
+> be read as what stands today: `CLAUDE.md` states that, `GAME_VISION.md` describes the game
+> as it ships, `TODO.md` is what is left.
 
 ---
 

@@ -8,7 +8,8 @@
 > map needed and this plan solved with regions instead. The reach turned out to be the
 > better spelling: the border became a rule of play rather than a seam. `js/country.js`,
 > enter/compact/march and the map screen are gone (this file and git history are their
-> record); the lord brake, `onePattern`, the save idiom and the run shape were ported. See
+> record); `onePattern`, the save idiom and the run shape were ported, and the lord brake was
+> ported and then removed on the designer's call (what you break and hold, you keep). See
 > CLAUDE.md "The Reach War" for what stands now, and `proto/reach/` for the rig that
 > decided it.
 

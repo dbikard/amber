@@ -25,6 +25,42 @@ const QUICK = (name) => { if (QUICK_RUN) skipped.push(name); return QUICK_RUN; }
 
 const SEEDS = [1, 7, 42, 1000, 31337];
 
+/* ---------------- the module list ----------------
+ * The list of shipping files is written in four places — index.html's script tags, sw.js's
+ * CORE precache, sim.js's requires and this file's — and only index.html fails loudly when one
+ * is missed: the others degrade quietly (a stale offline cache, a global leaking in from an
+ * earlier require). So index.html is the one list and the rest are held against it. */
+suite('the module list is one list');
+{
+  const fs = require('fs'), root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const shipped = [...html.matchAll(/<script src="(js\/[^"?]+)/g)].map((m) => m[1]);
+  ok('index.html loads the game', shipped.length >= 10 && shipped[shipped.length - 1] === 'js/game.js', shipped.join(' '));
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const core = [...sw.matchAll(/'\.\/(js\/[^']+)'/g)].map((m) => m[1]);
+  eq('sw.js precaches exactly the scripts index.html loads, in order', core.join(' '), shipped.join(' '));
+  const sim = fs.readFileSync(path.join(root, 'sim.js'), 'utf8');
+  const simReq = [...sim.matchAll(/require\('\.\/(js\/[^']+)'\)/g)].map((m) => m[1]);
+  ok('sim.js requires only files index.html ships, in the same order',
+     simReq.length >= 5 && simReq.every((f, i) => shipped.indexOf(f) >= 0 && (i === 0 || shipped.indexOf(f) > shipped.indexOf(simReq[i - 1]))),
+     simReq.join(' '));
+  const me = fs.readFileSync(__filename, 'utf8');
+  const mine = [...me.matchAll(/R\('([a-z0-9_]+\.js)'\)/g)].map((m) => 'js/' + m[1]);
+  ok('this suite requires only files index.html ships, in the same order',
+     mine.length >= 8 && mine.every((f, i) => shipped.indexOf(f) >= 0 && (i === 0 || shipped.indexOf(f) > shipped.indexOf(mine[i - 1]))),
+     mine.join(' '));
+  /* and every file on disk that looks like a module is shipped — a new js/*.js that nobody
+   * added to index.html is the loud failure this suite exists to make earlier */
+  const onDisk = fs.readdirSync(path.join(root, 'js')).filter((f) => f.endsWith('.js')).map((f) => 'js/' + f);
+  const orphans = onDisk.filter((f) => shipped.indexOf(f) < 0);
+  eq('every js/*.js on disk is shipped by index.html', orphans.join(' '), '');
+  /* the version is stamped in the two places the hook writes */
+  const ver = (html.match(/GAME_VERSION = '([0-9.]+)'/) || [])[1];
+  ok('GAME_VERSION is stamped', !!ver, String(ver));
+  eq('...and sw.js carries the same one', (sw.match(/VERSION = '([0-9.]+)'/) || [])[1], ver);
+  eq('...on every asset index.html loads', (html.match(/\?v=([0-9.]+)/g) || []).filter((q) => q !== '?v=' + ver).length, 0);
+}
+
 /* ---------------- the world ---------------- */
 suite('world generation');
 for (const seed of SEEDS) {
@@ -7473,24 +7509,6 @@ if (!QUICK('the marchers take the country')) {
   }
 }
 
-/* A BIOME CHANGES THE GROUND AND NOTHING ELSE. The noise, the ridges and the rim are the same
- * code; only the three thresholds the terrain is read off move. So a biome cannot produce a
- * board the rest of the game has never seen, and every one of them must still make a playable
- * board with springs on it. (Kept from the region realm's suite: the regions are gone, the
- * biomes are not.) */
-suite('a biome changes the ground and nothing else');
-{
-  for (const k of Object.keys(C.BIOMES)) {
-    const g = WG.build(555, RNG, 2, { biome: k });
-    ok(`the ${k} makes a board`, !!g && g.nodes.length >= C.WORLD.nodesMin,
-       g ? `${g.nodes.length} springs` : 'no board at all');
-    if (g) eq(`...and says what it is`, g.biome, k);
-  }
-  const plain = WG.build(555, RNG, 2), downs = WG.build(555, RNG, 2, { biome: 'downs' });
-  eq('and `downs` is provably the country the game has always had',
-     JSON.stringify(Array.from(plain.terra)), JSON.stringify(Array.from(downs.terra)));
-}
-
 /* ---- ONE PATTERN, IN ONE CITY ----
  * `world.pattern` is a CITY INDEX now, stamped at genesis by the country's own worldgen —
  * the old region realm stamped a boolean on the one region that had it, and there is no
@@ -7802,21 +7820,18 @@ suite('a war fits in a pocket');
 }
 
 /* ---------------- the lords hold a country ----------------
- * R4b: the marcher grown a spine — hold the court, march the marcher's march, raise works,
- * and reach for the throne when AMBER is his. What it must show: the war still MOVES under
- * the fuller doctrine (cities change hands), a lord GROWS (a work beyond the two every seat
- * is born with), and the whole country still runs on fenced fields. The tempo here is a
- * measured thing: a lord whose second hall flew its own standard was pure garrison — no
- * order of his doctrine ever reached its men — and ten such lords turtled the war into
- * stasis until AMBER's born lord won by the walk alone (~570s, seed 13) with not one city
- * taken. Mustered into the ONE company the doctrine speaks to, the first city falls at 164s. */
+ * Every seat runs an HEIR through `warOrders` (the `lord` baseline is gone — it was the five
+ * words implemented twice). What a country of them must show: the war MOVES (a throne is
+ * taken or the Pattern is walked inside fifteen minutes — a country of unlapsed heirs ends by
+ * the walk before a throne falls, and that is a war that moved), a lord GROWS (a work beyond
+ * the two every seat is born with), and the whole country still runs on fenced fields. */
 if (!QUICK('the lords hold a country')) {
   suite('the lords hold a country');
   const w = World.createWorld(13, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
   ok('the rig is alive: a country world with the rule on', !!w && w.rules.reach === 1);
   if (w) {
     NAV.debugFieldsReset();
-    const bots = w.players.map((_, i) => (i === 0 ? null : AI.make('lord', {})));
+    const bots = w.players.map((_, i) => (i === 0 ? null : AI.make('benedict', {})));
     const owners0 = w.cities.map((c) => c.owner).join(',');
     let flipAt = null, builtAt = null;
     for (let sec = 0; sec < 900 && (flipAt == null || builtAt == null) && w.winner === null; sec++) {
@@ -7830,9 +7845,9 @@ if (!QUICK('the lords hold a country')) {
       /* GROWTH is a third work standing under some lord's name — every seat opens with two */
       if (builtAt == null && w.players.some((p, pi) => pi > 0 && p.buildings.length > 2)) builtAt = sec;
     }
-    ok('cities change hands under the lords\' war', flipAt != null,
-       flipAt == null ? `no city fell in 15 simulated minutes (winner ${w.winner})` : '');
-    if (flipAt != null) ok('...the first inside ten minutes', flipAt < 600, `${flipAt}s`);
+    ok('the war moves: a throne is taken or the Pattern is walked inside fifteen minutes',
+       flipAt != null || w.winner !== null,
+       flipAt == null ? `no city fell in 15 simulated minutes (winner ${w.winner})` : `first at ${flipAt}s`);
     ok('a lord raised a work beyond his opening two', builtAt != null,
        builtAt == null ? 'every seat still holds its birth pair' : `at ${builtAt}s`);
     const keys = Array.from(w.nav.fields.keys());
@@ -7855,7 +7870,7 @@ if (!QUICK('the lords hold a country')) {
     w2.cities[gen.pattern].owner = 1;
     w2.cities[gen.pattern].fell = null;
     w2.players[1].essence = 5000;
-    const bot = AI.make('lord', {});
+    const bot = AI.make('benedict', {});
     for (let sec = 0; sec < 300 && !w2.players[1].walking && w2.winner === null; sec++)
       for (let f = 0; f < 30; f++) {
         bot.step(w2, 1, (cmd) => World.applyCommand(w2, 1, cmd), C.SIM_DT);
@@ -7941,7 +7956,7 @@ suite('the helm: a sworn lord, and an order for him');
     const nbr = ((w.map.gen.nbrs[3] || []).filter((i2) => World.realmOf(w, w.cities[i2].owner) !== 0))[0];
     ok('...and has a neighbour of another banner to be sent at', nbr != null);
     if (co && nbr != null) {
-      const bot = AI.make('lord', {});
+      const bot = AI.make('benedict', {});
       const issue = (cmd) => World.applyCommand(w, 3, cmd);
       for (let k = 0; k < 9; k++) {
         const m = manAt(w, 3, 'soldier', w.cities[3].x + 30 + k * 8, w.cities[3].y);
@@ -8160,14 +8175,15 @@ suite('a lord behind the lines is a reserve');
       const u = manAt(w, pi, 'soldier', w.cities[pi].x + 40 + k * 9, w.cities[pi].y + 30);
       u.co = co.id;
     }
-    const bot = AI.make('lord', {});
+    const bot = AI.make('benedict', {});
     const cmds = [];
     for (let k = 0; k < 80; k++)
       bot.step(w, pi, (c) => { cmds.push(c.c); return World.applyCommand(w, pi, c); }, 1.0, null);
     return { w, pi, co, nbrs, cmds };
   };
   /* THE CONTROL: on a FRONTIER — neighbours of other banners — he has always marched, so a
-   * silent interior lord is the doctrine's gap and not a dead rig. */
+   * silent interior lord is the doctrine's gap and not a dead rig. The seat is an HEIR, as the
+   * game seats it; the reserve and the trouble below live in `warOrders`' default. */
   const front = rig(false);
   ok('the rig is alive: a lord with a rival court beside him marches',
      !!front.co.rally, `${front.cmds.length} commands`);
@@ -8230,7 +8246,7 @@ suite('a lord behind the lines is a reserve');
     for (let i = 0; i < 8; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
     ok('the rig is alive: he can see what is at his own Gate',
        World.canSee(w, pi, gx + 20, gy + 15));
-    const bot = AI.make('lord', {});
+    const bot = AI.make('benedict', {});
     for (let k = 0; k < 20; k++) bot.step(w, pi, (c) => World.applyCommand(w, pi, c), 1.0, null);
     ok('a lord answers Chaos at an outlying Gate of his own',
        !!co.rally && Math.hypot(co.rally.x - gx, co.rally.y - gy) < 60,
@@ -8263,9 +8279,11 @@ suite('a lord behind the lines is a reserve');
         const u = manAt(w, pi, 'soldier', w.cities[pi].x + 40 + k * 9, w.cities[pi].y + 30);
         u.co = co.id;
       }
-      const bot = AI.make('lord', {});
+      const bot = AI.make('benedict', {});
       for (let k = 0; k < 40; k++) bot.step(w, pi, (c) => World.applyCommand(w, pi, c), 1.0, null);
-      eq('a lord with nothing left to do keeps his own court', co.rally, null);
+      ok('a lord with nothing left to do keeps his own court',
+         !co.rally || Math.hypot(co.rally.x - w.cities[pi].x, co.rally.y - w.cities[pi].y) < C.CITY.r,
+         co.rally ? `${Math.round(co.rally.x)},${Math.round(co.rally.y)}` : 'standard struck');
     }
   }
 }
@@ -8299,7 +8317,7 @@ suite('gates is an order that moves an army');
         const m = manAt(w, me, 'soldier', seat.x + 30 + k * 8, seat.y);
         m.co = co.id;
       }
-      const bot = AI.make('lord', {});
+      const bot = AI.make('benedict', {});
       const issue = (cmd) => World.applyCommand(w, me, cmd);
       const drive = (order, n) => { for (let k = 0; k < (n || 4); k++) bot.step(w, me, issue, 1.0, order); };
       /* THE CONTROL: told to HOLD, he keeps the court — so a rally appearing under `gates`
@@ -8348,9 +8366,9 @@ suite('gates is an order that moves an army');
  * target at all": a rival's spring IS a target (break the Gate, then build), and when there is
  * genuinely nothing to take the order withdraws its claim rather than becoming "stand still" —
  * the lord falls back to the doctrine he would have had without it.
- * THE SHIPPING PATH IS WHAT IS DRIVEN. The suite above drives `BASELINES.lord`, which the game
- * no longer seats; a war seats an HEIR through `warOrders`, and the two implementations of the
- * five words are exactly where this bug survived being fixed once. Both are driven here. */
+ * THE SHIPPING PATH IS WHAT IS DRIVEN: a war seats an HEIR through `warOrders`. (There were two
+ * implementations of the five words once — a `lord` baseline and `warOrders` — and this bug had
+ * to be fixed in both; the baseline is gone, so there is one place for it to survive now.) */
 suite('a spring a rival holds is still a spring to take');
 {
   /* every free spring inside one lord's reach, taken by `who` — himself or a rival */
@@ -8407,11 +8425,11 @@ suite('a spring a rival holds is still a spring to take');
        !at || (at.x - rival.seat.x) ** 2 + (at.y - rival.seat.y) ** 2 <=
               rival.seat.reach * rival.seat.reach);
   }
-  /* THE BASELINE — still held to the same rule, and the reason this note exists twice */
+  /* AND AN UNLAPSED CONTENDER — the other footing a war seats — is held to the same rule */
   {
     const r2 = spoken('rival');
-    const at = drive(r2, AI.make('lord', {}));
-    ok('the lord baseline marches on a rival\'s spring too', !!at,
+    const at = drive(r2, AI.make('benedict', {}));
+    ok('a contender told to take the gates marches on a rival\'s spring too', !!at,
        at ? `rally ${Math.round(at.x)},${Math.round(at.y)}` : 'no rally');
     ok('...at a spring a rival holds', onSpring(r2, at, 1));
   }

@@ -88,7 +88,6 @@
               deadFoe: 0, deadChaos: 0, sinceFoe: 0, sinceChaos: 0 };
     Rec.on = true;
   };
-  Rec.abandon = function () { Rec.on = false; };
   /* is there anything worth offering? A match walked out of after ten seconds is not. */
   Rec.recorded = function () { return !!head && rows.length > 2; };
 
@@ -293,7 +292,6 @@
     });
     /* it is the truth now, so the record stops calling itself partial */
     head.partial = false;
-    head.adopted = true;
     return true;
   };
 

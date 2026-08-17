@@ -1777,11 +1777,6 @@
         for (let i = 0; i < order.length; i++) {
           const o = order[i], l = leftOf(o);
           o.w.norm = { nx: l.nx * hand, ny: l.ny * hand };
-          /* WHERE THIS RUN COMES IN THE WALL. The traversal is built here anyway, and a garrison
-           * that must walk its own curtain without leaving cover needs to know which run is
-           * NEXT — see the march. Ordered by the walk, so it is the stone's own order and not
-           * an id order. */
-          o.w.seq = i;
         }
         /* a run the walk never reached — joined broadside, or through stone that has since
          * gone — keeps the old per-run answer rather than nothing at all */

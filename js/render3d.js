@@ -157,13 +157,11 @@
   const hurtMem = new Map();
   let siteObjs = new Map(), cityObjs = null, bannerG = null, stormState = [];
   let seatFalls = [];   // collapses in flight: { pi, t0 } — see R.seatFall
-  /* have I found THIS seat? one flag per seat now; `foeSeen` is the old two-player spelling */
-  const seatFound = (view, pi) => pi === curViewer ||
-    (view.seatSeen ? view.seatSeen[pi] !== false : view.foeSeen !== false);
+  /* have I found THIS seat? one flag per seat */
+  const seatFound = (view, pi) => pi === curViewer || !view.seatSeen || view.seatSeen[pi] !== false;
   const PENNANT = [0xe8ecff, 0x64d8d8, 0xc48eff, 0xff9ad8, 0x9adcff, 0xffc27a, 0xb0e8a0, 0xd8b0ff];
   let coFlags = new Map();
   let fx = [];
-  const dummy = () => new THREE.Object3D();
   const dum = typeof THREE !== 'undefined' ? new THREE.Object3D() : null;
   const colTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
   const penTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
@@ -283,8 +281,8 @@
   /* How high over the ground a work's bar rides. These are the heights the models above
    * actually reach, per level — the renderer is the only thing that knows them, and a single
    * flat number put the bar through the Spire's light and a storey over the Shrine. */
-  const TOPS = { gate: [46, 8], sgate: [46, 8], barracks: [48, 6], tower: [62, 9], watch: [62, 9],
-                 siege: [46, 5], spire: [70, 12], shrine: [22, 0], veiled: [30, 0], wall: [40, 4] };
+  const TOPS = { gate: [46, 8], barracks: [48, 6], tower: [62, 9],
+                 siege: [46, 5], spire: [70, 12], shrine: [22, 0], wall: [40, 4] };
   function barTop(b) {
     const t = TOPS[b.x2 != null ? 'wall' : b.bt] || [46, 6];
     return t[0] + (Math.max(1, Math.min(3, b.level || 1)) - 1) * t[1] + (b.onWall ? 27 : 0);
@@ -360,13 +358,12 @@
     const st = 0x8d8296, stD = 0x4a4258, stL = 0xcfc6d8, woodR = 0x6e4434;
     const gild = lv > 2 ? 0xe6c877 : 0xc9bfa0;   // the banding a raised work earns
     const p = [];
-    if (bt === 'gate' || bt === 'sgate') {
+    if (bt === 'gate') {
       /* a deeper draw is a taller arch, hung with more of the Shadow it is pulling up */
       const h = 34 + (lv - 1) * 7;
       p.push(part(cyl(5, 6.5, h, 6), st, -16, h / 2, 0));
       p.push(part(cyl(5, 6.5, h, 6), st, 16, h / 2, 0));
       p.push(part(box(44, 8, 9), stL, 0, h + 4, 0));
-      if (bt === 'sgate') { p.push(part(cyl(4, 5, 22, 5), stD, -30, 11, 10)); p.push(part(cyl(4, 5, 22, 5), stD, 30, 11, 10)); }
       if (lv > 1) p.push(part(box(48, 4, 13), gild, 0, h + 10, 0));       // a lintel course
       if (lv > 2) {
         p.push(part(cyl(3, 3.6, 20, 5), st, -26, 10, 0));                 // outer piers
@@ -414,7 +411,7 @@
         }
         p.push(part(box(16, 10, 9), woodR, 0, 5, 28));                     // the fletcher's shed
       }
-    } else if (bt === 'tower' || bt === 'watch') {
+    } else if (bt === 'tower') {
       /* a Watchtower GROWS with its level — the shaft lengthens and the crown widens, which
        * is what makes a level-3 gun read as one across the board */
       const sh = 44 + (lv - 1) * 9;
@@ -524,9 +521,6 @@
     } else if (bt === 'shrine') {
       p.push(part(cyl(24, 27, 6, 10), stD, 0, 3, 0));
       p.push(part(cyl(20, 22, 4, 10), st, 0, 8, 0));
-    } else if (bt === 'veiled') {
-      p.push(part(sph(16), 0x241a2e, 0, 9, 0));
-      p.push(part(sph(10), 0x18101f, 10, 6, 6));
     }
     /* a hurt work is scorched and shedding stone, and more of both as it goes — the fallen
      * courses lie at its foot, which is a change to the SILHOUETTE and so survives the zoom
@@ -1369,10 +1363,9 @@
       }
     }
   }
-  R.debugVeilPath = maskPath;
 
-  /* ---------------- EXPERIMENT: the veil sampled in the shader (TODO #61) ----------------
-   * Behind `R.shaderFog`, OFF by default, so the two can be judged from the same world.
+  /* ---------------- THE VEIL SAMPLED IN THE SHADER ----------------
+   * Behind `R.shaderFog`, ON — the 2D overlay is the fallback and two suites still measure it.
    * The overlay draws a WORLD-SPACE field as SCREEN-SPACE polygons and every artifact this
    * session chased came from that gap. Here the same eased field — the very arrays the
    * overlay bands — is uploaded as a small texture (one texel per fog cell, about 77x93) and
@@ -1583,10 +1576,6 @@
     mat.needsUpdate = true;
     return mat;
   }
-  R.fogPatch = fogPatch;
-  R.debugFogU = FOGU;   // so a rig can force the shader off and measure the raw scene
-  R.debugFogMats = () => [MAT, MATB, ground && ground.material, writG && writG.material].map((m) => m && ({
-    type: m.type, patched: !!m._fogPatched, vert: !!m.userData.fogVert, frag: !!m.userData.fogFrag }));
   /* THE ONE HAZARD OF PUTTING THE VEIL IN THE MATERIALS: it only veils the materials it was
    * given. The 2D canvas covered everything by construction; this covers what it is told to,
    * and anything added later without `fogPatch` shines at full strength across black shroud.
@@ -1651,7 +1640,6 @@
       ctx.fill();
     }
   }
-  R.debugVeilEase = (k) => veilT[k] || null;
   /* what a work is drawn as, and how it is drawn — the suite's way of asking whether two works
    * look the same without reaching into the scene graph */
   R.modelKey = modelKey;
@@ -1700,7 +1688,6 @@
   R.seatFall = function (pi) {
     if (!seatFalls.some((f) => f.pi === pi)) seatFalls.push({ pi, t0: performance.now() });
   };
-  R.seatFallDone = (pi) => !seatFalls.some((f) => f.pi === pi && performance.now() - f.t0 < 2600);
   /* A COLLAPSE BELONGS TO THE MATCH IT HAPPENED IN. `seatFalls` is module state and nothing
    * emptied it: it was spliced only when a seat had no tower at all, and starting another
    * match gives every seat a NEW tower, so the entry survived. Its t0 was then minutes old,

@@ -8,6 +8,6 @@ cur=$(grep -o "GAME_VERSION = '[0-9][0-9.]*'" index.html | grep -o '[0-9][0-9.]*
 [ -z "$cur" ] && exit 0
 maj=${cur%%.*}; rest=${cur#*.}; min=${rest%%.*}; pat=${rest#*.}
 next="$maj.$min.$((pat+1))"
-sed -i "s/$cur/$next/g" index.html sw.js manifest.json
-git add index.html sw.js manifest.json
+sed -i "s/$cur/$next/g" index.html sw.js
+git add index.html sw.js
 echo "amber: version $cur → $next"

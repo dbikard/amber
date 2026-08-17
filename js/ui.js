@@ -15,24 +15,6 @@
     sheet.addEventListener('click', (e) => {
       if (performance.now() - (sheet._openedAt || 0) < 320) { e.stopPropagation(); e.preventDefault(); }
     }, true);
-    /* the menu's fold-out panels close when you tap away from them, like the sheets do */
-    document.addEventListener('pointerdown', (e) => {
-      /* A MODAL ABOVE THE MENU IS NOT "AWAY". The QR scanner is a full-screen overlay and it
-       * lives OUTSIDE the fold-out, so steadying the phone against the glass — or tapping its
-       * own ✕ — read as a tap elsewhere on the menu and quietly shut the LAN panel underneath.
-       * The host came back from scanning the reply to a bare title screen, with the status
-       * line, the diagnostics and the BEGIN button all hidden behind a panel it had no reason
-       * to think had closed. Reported from play as "LAN is broken". */
-      if (e.target && e.target.closest && e.target.closest('#scanner, #record-box, #sheet, #roll')) return;
-      const closeIfAway = (panelId, btnId) => {
-        const panel = $(panelId), btn = $(btnId);
-        if (!panel || panel.classList.contains('hidden')) return;
-        if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
-        panel.classList.add('hidden');
-      };
-      /* NOTHING UNFOLDS ON THE MENU ANY MORE, so there is nothing left to close by tapping
-       * away — the rivals and the LAN table are screens with a way back, like the chapters. */
-    }, true);
     $('btn-campaign').addEventListener('click', () => H.onCampaign());
     $('btn-skirmish').addEventListener('click', () => UI.rivals());
     $('btn-lan').addEventListener('click', () => UI.lan());
@@ -1139,7 +1121,7 @@
   function branchStatLine(bt, key, level) {
     const b2 = (C.BUILDINGS[bt].branches || {})[key];
     if (!b2) return '';
-    const i = level - (C.BUILDINGS[bt].fork || 2);
+    const i = level - global.World.forkAt(bt);
     if (b2.dmg) {
       const dps = (b2.dmg[i] / b2.atk[i]).toFixed(1);
       return `<span class="c-rate wide">${b2.dmg[i]} dmg · ${dps}/s · ${b2.range[i]} range` +
@@ -1261,7 +1243,7 @@
     /* THE FORK: the upgrade that reaches it is a CHOICE, offered as a card per branch. Every
      * branching work takes this path now, and the Barracks offers three where the tower offers
      * two — the loop never counted them. */
-    const fork = C.BUILDINGS[s.bt].fork || 0;
+    const fork = global.World.forkAt(s.bt);
     const forking = !!d.branches && !s.br && s.level + 1 === fork;
     if (forking) {
       const hint = document.createElement('div');
@@ -1710,7 +1692,7 @@
    * is RE-RAISED around a branch at `fork`, so the base recruit lives at levels 1..fork-1 and a
    * branch's recruit at fork..MAX_LEVEL. Nothing here names a building or a branch. */
   const levelsFor = (bt, key) => {
-    const d = C.BUILDINGS[bt], fork = d.fork || C.MAX_LEVEL + 1, out = [];
+    const fork = global.World.forkAt(bt) || C.MAX_LEVEL + 1, out = [];
     const lo = key ? fork : 1, hi = key ? C.MAX_LEVEL : Math.min(C.MAX_LEVEL, fork - 1);
     for (let L = lo; L <= hi; L++) out.push(L);
     return out;
@@ -1718,7 +1700,7 @@
   /* what it costs to REACH a level: the work's own price at level 1, and the upgrade that
    * carries it from the level below at every level after */
   const priceTo = (bt, key, L) => (L === 1 ? C.BUILDINGS[bt].cost
-    : key && L === (C.BUILDINGS[bt].fork || 0) ? C.BUILDINGS[bt].branches[key].cost
+    : key && L === global.World.forkAt(bt) ? C.BUILDINGS[bt].branches[key].cost
     : global.World.upgradeCost(bt, L - 1, key || null));
   function levelTable(bt, key, kind) {
     const d = C.BUILDINGS[bt], b2 = key ? d.branches[key] : null, levels = levelsFor(bt, key);

@@ -15,5 +15,4 @@
     } catch (e) { ok = false; }
   }
   global.Render = ok ? global.Render3D : null;
-  global.RENDER_MODE = ok ? '3d' : 'none';
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -15,6 +15,8 @@ no bundler. WebGL is a hard requirement, stated plainly at boot (`js/render_sele
 ## Key Documents
 
 - **GAME_VISION.md** — concept, board, buildings/units/powers, AI heirs, fog, art direction.
+- **OPEN_WORLD_PLAN.md** — the RECORD of the open-world migration (site graph → free
+  movement, free placement, springs, walls, forks); all shipped.
 - **REALM_PLAN.md** — the RECORD of the fourth mode's two lives: the region-graph realm it
   describes shipped and was then superseded by the Reach War (one continuous land, cities with
   a reach), which kept its structure-independent parts. Read for the staging discipline.
@@ -66,11 +68,13 @@ in order.
   renderer mirrors nothing: its camera simply starts over its own Seat (`js/render3d.js`).
 - `world.events` is an append-only queue for the renderer/UI (shots, deaths, rifts, alerts);
   the sim never reads it. Consumers drain it each frame.
-- Eleven commands, all validated in `applyCommand(world, playerIdx, cmd)`. None carries a
+- Thirteen commands, all validated in `applyCommand(world, playerIdx, cmd)`. None carries a
   slot — a work is named by `id` and ground by `x`/`y`: `{c:'pause',on}`,
   `{c:'build',x,y,bt,co}` (a wall adds `x2,y2`), `{c:'up',id,br}` (`br` read at the fork level
   only), `{c:'fix',id}`, `{c:'flip',id,on}`, `{c:'walk',on}`, `{c:'muster',pause[,co]}`,
-  `{c:'rally',co,x,y}`, `{c:'assign',id,co}`, `{c:'banner',x,y}`, `{c:'power',k,x,y}`.
+  `{c:'rally',co,x,y}`, `{c:'assign',id,co}`, `{c:'banner',x,y}`, `{c:'power',k,x,y}`,
+  `{c:'pact',p,on}` (a standing offer of terms; war only) and `{c:'raze',id}` (throw down a
+  yielded court you are standing in; war only, and issued by nothing yet — see TODO).
 - **The halt** is world state (`world.paused = {by, at}`), not a session flag, so it is
   host-authoritative and rides the snapshot to every seat. `update()` returns early and
   `applyCommand` refuses everything but `{c:'pause',on}` — a pause you can build through is a
@@ -90,7 +94,8 @@ not by seat (`REALM_TINT`; see "The map says whose"). `Render.tintOf` is the one
 "whose colour is this" and the HUD asks it rather than keeping a palette of its own.
 
 **A MATCH CARRIES ITS RULES, AND `World.foe` IS THE ONLY SPELLING OF "MAY I STRIKE THIS".**
-`CONST.RULES` is the table of the few rules a MODE may change (`endOnSeat`, `occupy`, `truce`),
+`CONST.RULES` is the table of the rules a MODE may change (`endOnSeat`, `occupy`, `truce`,
+`hush`, `onePattern`, `reach`, `walkMul`),
 `createWorld(seed, players, spec, rules)` COPIES it onto `world.rules`, and the sim asks the
 world rather than a global — so two worlds in one process may disagree, which is what lets a
 region be a world. Every default is today's game, and a suite asserts it.
@@ -159,8 +164,9 @@ progress. AI reads only what a human could see (see `AI.view()`).
 - **Do not push after every commit.** Batch; push when the user asks.
 - Version in `index.html` as `GAME_VERSION` + `?v=X.Y.Z` cache-bust queries on all assets.
   `.githooks/pre-commit` (core.hooksPath) auto-bumps the PATCH version on shipping commits
-  and re-stamps index.html + sw.js + manifest.json — this is what triggers installed PWAs
-  to auto-update. For minor/major bumps sed all three yourself (hook still +1s patch after).
+  and re-stamps index.html + sw.js — this is what triggers installed PWAs to auto-update
+  (manifest.json carries no version; index.html cache-busts it by query). For minor/major
+  bumps sed both yourself (hook still +1s patch after).
   Skip with AMBER_NO_BUMP=1. sw.js precaches per-version; update flow lives in game.js setupPWA().
 - Balance changes: run `node sim.js` before and after; keep the targets in
   DESIGN_PRINCIPLES.md green. `node sim.js --a=brand --b=julian --n=40` for a matchup.
@@ -447,8 +453,9 @@ Warden's Art or the Binding, the Works into a Ram Shed or a Gun Pit. Per-branch 
 indexed by `level - fork`.
 
 **Nothing names a building.** `World.branchesOf(bt)`, `forkAt(bt)`, `branchOf(b)` and
-`mustersOf(b)` are the four answers, and the price, the `{c:'up'}` command, the sheet, the model
-key and the heirs all ask them — this was six hardcoded `bt === 'tower'` tests once, and
+`mustersOf(b)` are the four answers, and the price, the `{c:'up'}` command, the sheet (`forkAt`,
+not the table with a default of its own — it had `|| 2` against world.js's `|| 0`, two spellings
+of one rule), the model key and the heirs all ask them — this was six hardcoded `bt === 'tower'` tests once, and
 generalising it is what let three halls fork for the price of a table entry. `mustersOf` is the
 one answer to who a hall raises and how often; `def.spawns` is only ever its level-1 answer now.
 `cmd.br` is read at the fork level and nowhere else, which is what makes the choice permanent.
@@ -545,20 +552,20 @@ camera (one baked per frame, twelve resident, seams killed by pad-and-crop plus 
 seeding); the veil's per-frame CPU is windowed to the view. `realm.js` v2
 is only persistence + `REALM.run` (CAMPAIGN.run's shape; endings via `World.declare`): the save
 regenerates the country from its seed and writes down only what was DONE (~7-100KB under
-`amber_realm` v2; a v1 record loads as null and `REALM.lost` says so once). The lord brake lives
-IN the sim now (`holdCities` refuses the swear past `1 + pl.lords`; a lord is won only from a
-CONTENDER, `world.heirs`), as does the one Pattern (`placementError`: a Shrine only for AMBER's
-holder). Every lord — sworn or not — runs the `lord` baseline (ai.js), whose whole vocabulary is
-rallies plus a few probed works, and AMBER's holder builds the Shrine and walks, which is the
-war's clock. `?reach=SEED` dev-boots a country through the real renderer. A LAN table is
+`amber_realm` v2; a v1 record loads as null and `REALM.lost` says so once). The one Pattern
+lives in the sim (`placementError`: a Shrine only for AMBER's holder); there is no lord brake
+any more (see "what you break and hold, you keep" below). Every seat runs an HEIR's doctrine
+through `warOrders` (see "every seat in a war is an heir"), and AMBER's holder builds the Shrine
+and walks, which is the war's clock. `?reach=SEED` dev-boots a country through the real renderer. A LAN table is
 dealt INTO the host's war when one is open: the wire carries `{war: {seed}}` and nothing else
 of the country (a guest regenerates the ground from the seed; history rides the ordinary
 absolute snapshots), humans take the contender seats in join order, and the host's lords play
 the rest.
 
 **The rules of a war**, all of them off in every other mode: `reach`, `occupy` (a Seat yields
-and the ground must be taken), `endOnSeat: 0` (dispossession, not death), `truce`, and
-`onePattern` (a Shrine may rise only in the Pattern's city, held).
+and the ground must be taken), `endOnSeat: 0` (dispossession, not death), `truce`,
+`onePattern` (a Shrine may rise only in the Pattern's city, held), and `walkMul: 0.4` (the walk
+is slower on a country, so a walk begun three reaches away is not a win nobody can touch).
 
 ### A CONQUEST TAKES AN OATH, NOT A DEED
 
@@ -734,12 +741,15 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   14 men in his company, ZERO commands in eighty thinks). "Trouble at home" was hostiles within
   500 of his SEAT, so **Chaos could gnaw an outlying Gate** — the thing his economy rests on —
   while he stood in his yard. And he never marched to a spring, so **he could never build on
-  one**, because `placementError` wants men standing on it. The default now reads: trouble
-  anywhere in his country (`troubleAt` — the seat means come home, a work means go to the work)
-  → a rival court on his border → a spring inside his reach worth taking (`springTo`, the same
-  one `gates` wants) → the neighbouring court of his banner that is pressed or exposed
-  (`reserveAt`) → nothing at all, which is the honest answer when every neighbour is as safe as
-  he is. **A lord behind the lines is a reserve, not a statue.**
+  one**, because `placementError` wants men standing on it. The default lives in `warOrders`
+  now (every seat is an heir, and this is the one seam): with no standing order, trouble at an
+  outlying work of his (`troubleAt`) sends the war body to the WORK — a minor lord always, a
+  contender only when his own doctrine had him standing at home, because an assault is not
+  turned back for one fiend at a Gate — and when nothing of his is touched and the doctrine
+  would keep him in the yard, he goes to the neighbouring court of his banner that is pressed
+  or exposed (`reserveAt`). The spring inside his reach is the heir's own errand, and the
+  turning-away from a rival court is the "minor lord does not conquer" clause beside it.
+  **A lord behind the lines is a reserve, not a statue.**
 - **EVERY SEAT IN A WAR IS AN HEIR, AND A MINOR LORD IS A WEAKER ONE.** A country used to run
   one 181-line baseline (`BASELINES.lord`) on all sixteen seats, whose whole vocabulary was
   rally/build/walk — no upgrade, no fork, no power, no mend, and only ever `companies[0]` —
@@ -801,9 +811,9 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   seeds, lords against heirs: Gates standing 16/17 → 44/55 (sixteen is exactly the opening one
   apiece — the lords expanded ZERO), springs held 16/17 → 44/55, works 51/48 → 144/189, men
   236/187 → 697/802. Cost 0.96 → 2.3ms a frame for the whole country, well inside the budget.
-  **The `lord` baseline still exists and the game no longer seats it** — its four suites still
-  hold it — which means the five words now have TWO implementations and can drift. Deleting it
-  is the next step, not a decision anyone should defer twice.
+  **The `lord` baseline is DELETED** (2026-08-17): the five words had two implementations and
+  drifted once ("a spring a rival holds" had to be fixed in both), so its default was ported into
+  `warOrders` and its five suites now drive an heir, which is what the game seats.
 - **A COUNTRY PAYS FOR ITS OWN PATHFINDING.** `NAV.cacheMax` (48) and `NAV.perTick` (1) are
   DUEL numbers — two seats, a handful of goals — and a country is sixteen economies. Its measured
   working set is 74 flow fields, which sat just above the ceiling: the cache filled, dropped
@@ -1161,7 +1171,7 @@ city and reads its own `hp`.
   nearest the Seat. Curvature cannot touch that: it is a property of the traversal, not of any
   pair of bearings. (Chaining by "agree with your neighbour's NORMAL" is the obvious rule and is
   wrong for a zigzag, where neighbours differ by more than a right angle — it was measured
-  making things worse.) `w.norm` is the sim's copy, `w.seq` the order, and `b.face` (+1/-1
+  making things worse.) `w.norm` is the sim's copy and `b.face` (+1/-1
   against the run's own perpendicular) is stamped on the WORK so it rides the wire: the renderer
   draws the parapet and swings the gates from it and cannot re-derive a chain it only holds part
   of. `faceOf` is the one place the question is answered. **And a man walking to a place on it

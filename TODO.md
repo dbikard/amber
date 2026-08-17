@@ -42,18 +42,6 @@ touches no balance surface.
       are `trickle` (a duel finds the Seat late, when the army is already large) and `siege` (a
       no-op for any heir whose recruits already break stone). Never answer a weak rung with a
       purse: the economy is not a difficulty lever, on the designer's call.
-- [ ] **Delete the `lord` baseline, or give it a job.** The war seats heirs now (`warBot`), so
-      `BASELINES.lord` is unreachable from the shipped game and only five suites still exercise
-      it. That would be merely untidy except that the liege's five words — `hold`, `gates`,
-      `walls`, `attack`, `support` — are now implemented TWICE: once in `lord.custom`, where
-      nothing runs them, and once in `warOrders`, where everything does. Two spellings of one
-      rule is the drift hazard this codebase keeps warning about, and the unreachable copy is
-      the one a reader will find first. Either delete it and rewrite those suites against
-      heirs, or keep it deliberately as the weakest handicap preset and make `warOrders` the
-      single implementation both use. `[SAFE]` — it cannot touch a duel.
-      **The hazard is no longer hypothetical**: "a spring a rival holds is still a spring to
-      take" had to be fixed in both copies at once, and the only reason it was caught in both
-      is that the fix went through the shared `springTo`. The next one may not.
 - [ ] **Watch a country of heirs and judge it.** The retrofit is measured on ECONOMY (Gates,
       springs, works, men — all roughly tripled) and on cost (0.96 → 2.3ms a frame), not on
       whether the war is any GOOD to play against. Nobody has watched one yet. `?reach=SEED`
@@ -306,41 +294,25 @@ them; re-measure before re-deciding.
       same headings, in order, dated. Keep one clause of WHY per rule and a `→ LEDGER` pointer
       so a rule never loses its reason. Fold the wall bullet out of *Common Tasks* into its
       own H2 — it is a subsystem, not a task.
-- [ ] **Stale claims in CLAUDE.md**, each checked: "Eleven commands" — `applyCommand` has 13
-      (`pact`, `raze`); "the few rules (`endOnSeat`,`occupy`,`truce`)" — `CONST.RULES` has 7
-      (`hush`,`onePattern`,`reach`,`walkMul`) and the war's list omits `walkMul`; the hook
-      "re-stamps manifest.json" — manifest carries no version (its icons are stuck at
-      `?v=0.6.14`, the sed cannot match); the Reach War intro still says the lord brake "lives IN
-      the sim" and "every lord runs the `lord` baseline", both retracted further down;
-      `World.branchesOf/forkAt` "asked by the sheet" — ui.js reads the table itself with its own
-      `|| 2` default against world.js's `|| 0`, two spellings of one rule.
-- [ ] **GAME_VISION.md "The Long War"** is the region-graph design (a graph of regions, biomes,
-      lords as the brake, ~730-byte regions) — superseded twice. Rewrite as ten lines on the
-      Reach War pointing at CLAUDE.md; drop "the royal War Banner" (gone) and the
-      julian→bleys→brand→benedict ladder (chapters are julian, bleys, benedict, brand, bleys,
-      bleys, benedict); drop the four references to OPEN_WORLD_PLAN.md, or give that file
-      REALM_PLAN's "this is a RECORD" banner and list it in Key Documents. REALM_PLAN's own header
-      still says the lord brake "was ported" — one line.
-- [ ] **Dead code, by confidence.** (1) `BASELINES.lord` + `troubleAt`/`reserveAt` (ai.js) — see
-      the item above. (2) `CONST.REALM` and `CONST.COUNTRY` (const.js) — zero readers; realm.js
-      hardcodes its own heirs. (3) `CONST.BIOMES` / `G.biomeOf` / `opts.biome` — region-era,
-      test-only. (4) render3d.js `buildingModel` arms for `sgate`, `watch`, `veiled` (+
-      `TOPS.veiled`, `dummy`, the `foeSeen` fallback) — no such types exist. (5) ui.js's document
-      `pointerdown` capture listener whose body is a no-op guard. (6) `RENDER_MODE` in
-      render_select.js — written, never read. (7) `Rec.abandon`, `head.adopted`, `w.seq` —
-      written or exported, never read. (8) renderer debug hooks with no caller: `debugVeilPath`,
-      `fogPatch`, `debugFogU`, `debugFogMats`, `debugVeilEase`, `seatFallDone`; and the comment
-      calling `shaderFog` an experiment "OFF by default" while line 22 ships it on.
-      Deliberately kept and to be LABELLED so: `WG.fromSpec` + `ch.spec` (no chapter uses a spec
-      yet), `proto/reach/` (deployed, imports live worldgen and will rot silently — freeze its
-      own copies or say so).
+- [x] Stale claims in CLAUDE.md fixed (2026-08-17): thirteen commands, seven rules (+ `walkMul`
+      in the war's list), the hook stamps index.html + sw.js only, the Reach War intro no
+      longer claims a lord brake or the `lord` baseline, and the sheet asks `World.forkAt`.
+- [x] GAME_VISION.md's Long War rewritten as the Reach War; War Banner and the four-heir ladder
+      dropped; OPEN_WORLD_PLAN.md bannered as a record and listed in Key Documents; REALM_PLAN's
+      header says the lord brake was removed.
+- [x] Dead code deleted (2026-08-17): the `lord` baseline (its default ported into `warOrders`),
+      `CONST.REALM`/`COUNTRY`/`BIOMES` and the biome plumbing, the renderer's phantom `sgate`/
+      `watch`/`veiled` arms, ui.js's no-op `pointerdown` listener, `RENDER_MODE`, `Rec.abandon`,
+      `head.adopted`, `w.seq`, and six renderer debug hooks nobody called.
+- [ ] **Deliberately kept, and to be LABELLED so**: `WG.fromSpec` + `ch.spec` (no chapter uses a
+      spec yet), `proto/reach/` (deployed, imports live worldgen and will rot silently — freeze
+      its own copies or say so).
 - [ ] **`{c:'raze'}` is a finished sim command nobody can issue** — the dead-BUTTON failure
       inverted: a dead ENTRANCE. Its consumers all exist (the wire, the council map, the
       renderer, the lords' doctrine reads `city.razed`). Either the council offers "throw down"
       on a yielded court, or the command and its tests go.
-- [ ] **`?reach=` boot** makes a `game.bot = AI.make('marcher')` that is never stepped, and the
-      end screen's "play again" reads `game.bot.kind` — so play-again from a war or reach board
-      starts a MARCHER duel. Make `game.bot` null wherever `game.bots` exists.
+- [x] `?reach=` boot: `game.bot` is null wherever `game.bots` exists (2026-08-17), so "play
+      again" from a country goes to the menu instead of starting a marcher duel.
 
 - [ ] **`update()` wants breaking up.** It is ~480 lines (world.js 1955–2432) with a ~215-line
       per-unit loop in the middle, and the TICK ORDER is load-bearing — vision, rebin, the
@@ -353,11 +325,9 @@ them; re-measure before re-deciding.
       y-offset is `owner === 0 ? -60 : 60` (world.js ~1443) — "toward the other end of the
       lane", on a board that has not had ends since v0.8, and wrong for seats 1-3 in a
       free-for-all. Behavioural fix: `node sim.js` referees it.
-- [ ] **The module list is written in four places** — index.html, sw.js `CORE`, sim.js and
-      test/headless.js — and nothing asserts they agree. Only index.html fails loudly when a
-      file is missed; the others degrade quietly (a stale offline cache, a global leaking in
-      from an earlier require). One list, or a test that reads index.html and checks the rest
-      against it.
+- [x] The module list is one list (2026-08-17): a suite reads index.html's script tags and
+      holds sw.js `CORE`, sim.js's requires, this suite's requires and every `js/*.js` on disk
+      against it, and checks the version stamp on both files the hook writes.
 - [ ] **The pre-push gate is slow because it plays whole matches.** The headless suite's
       longest stretches are full bot games — `the solo ladder` alone is on the order of 100s,
       and the other match-length suites add ~90s more. Match-scale questions are `sim.js`'s

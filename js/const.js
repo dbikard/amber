@@ -305,59 +305,6 @@
   CONST.REALM_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8, 0xffb066, 0x9ad86a];
   CONST.NEUTRAL_TINT = 0x9a93a8;
 
-  /* ---------------- THE BIOMES OF A COUNTRY ----------------
-   * A country is many boards, and a country whose every board is drawn from one distribution is
-   * a country with one kind of ground in it. A biome shifts the three thresholds the terrain is
-   * READ off — where the water line is, where the high ground starts, where it stops being
-   * passable — and nothing else. The noise, the ridge folding and the soft rim are the same code
-   * for all of them, so a biome cannot produce a board the rest of the game has never seen: the
-   * nav grid, the fog, the placement rules and the renderer all get exactly what they always do.
-   * `null` is the country the game has always had, and `downs` is deliberately it, so the table
-   * has a member that is provably the old behaviour.
-   * `tint` is a hint for the ground bake and the realm map; nothing in the sim reads it. */
-  CONST.BIOMES = {
-    downs:  { name: 'the Downs',      world: {},                                        tint: 0x6f7a4a },
-    fen:    { name: 'the Fens',       world: { sea: 0.40, hill: 0.70, cliff: 0.82 },    tint: 0x4a6a5c },
-    forest: { name: 'the Deep Wood',  world: { sea: 0.30, hill: 0.68, cliff: 0.80 },    tint: 0x3f5a34 },
-    hills:  { name: 'the High Country', world: { sea: 0.28, hill: 0.55, cliff: 0.74 },  tint: 0x7a6a4e },
-    crags:  { name: 'the Spine',      world: { sea: 0.26, hill: 0.48, cliff: 0.66 },    tint: 0x6a6470 },
-    coast:  { name: 'the Long Shore', world: { sea: 0.44, hill: 0.68, cliff: 0.80 },    tint: 0x4e6a78 }
-  };
-
-  /* ---------------- THE COUNTRY ----------------
-   * A grid of regions, each of which is a BOARD of the size the game has always used. `sea` and
-   * the two height marks read the coarse noise the same way the terrain reads the fine one, so a
-   * country has shores, downs, high country and a spine without any of it being authored.
-   * `shut` is how often a border between two pieces of land is closed anyway — few, narrow
-   * crossings are what make a seam cheap (see js/country.js), and connectivity is repaired
-   * afterwards rather than hoped for. `inset` is how far inside its own board a crossing sits:
-   * a column steers at it and is handed over there, so it must be standable ground and not the
-   * very edge of the world. */
-  CONST.COUNTRY = { cols: 5, rows: 5, sea: 0.24, high: 0.64, crag: 0.80, rim: 0.72,
-                    shut: 0.26, inset: 120, least: 10 };
-
-  /* ---------------- THE WAR ----------------
-   * `heirs` is who else is playing to win — the rest of the country is held by lesser lords,
-   * which is where the early game lives: you grow by taking from people who are not contending
-   * for the throne, and it is why a LAN opening is not "rush your friend before he has built
-   * anything". `crossing` is how long a column spends between two regions; it is a real cost, so
-   * committing an army to a border is a decision. `lords` are the names a minor holding wears. */
-  CONST.REALM = {
-    heirs: ['julian', 'bleys', 'benedict'],
-    /* a minor lord is not an heir and has no doctrine of his own — he fights like the plainest
-     * of them, which is the point: he holds ground and does not contend for the throne */
-    holder: 'greedy',
-    crossing: 45,
-    /* THERE IS NO CEILING ON HOW MANY CITIES YOU MAY HOLD. There was: one by right and one
-     * more per LORD, a lord won only by taking a court from a contender — so a court you had
-     * broken, stood in and held for its full twenty seconds could simply refuse you. On the
-     * designer's call: what you break and hold, you keep. The brake on a conquest is the army
-     * it costs and the twenty seconds of holding the court uncontested, which is a brake you
-     * can see and fight over rather than a number saying no. */
-    lords: ['a Shadow-lord', 'a Marcher Baron', 'the Warden of the Ford', 'a Petty King',
-            'the Keeper of the Pass', 'a Sworn Brother', 'an Old Duke']
-  };
-
   /* ---------------- THE REACH WAR ----------------
    * The Long War's next shape: ONE continuous land instead of a graph of boards. Every city
    * owns a REACH — the disc its companies may be ordered inside (nav.js carries the bound) —

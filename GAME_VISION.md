@@ -21,9 +21,8 @@ best ground always has a price — and turtling loses to whoever goes out and pa
    Pattern). Every build order leans toward one and hedges the other.
 3. **The economy is the clock.** Turtling loses because the rival claims more essence than you
    can and buys an army you cannot answer — map control is the pressure behind both win
-   conditions. Chaos is the *price of the best ground*, not a doomsday timer (see
-   `OPEN_WORLD_PLAN.md` §2). The Pattern is the absolute clock: if nobody attacks, someone
-   walks and wins, so no match can draw.
+   conditions. Chaos is the *price of the best ground*, not a doomsday timer. The Pattern is
+   the absolute clock: if nobody attacks, someone walks and wins, so no match can draw.
 4. **The walk is a declaration you must keep making.** Starting the Pattern walk is
    *revealed to the rival* — the ultimate greed play. It forces the defender to attack, and
    attacking has to be worth it: the lines **fade** whenever nobody is channelling, and
@@ -34,13 +33,13 @@ best ground always has a price — and turtling loses to whoever goes out and pa
 
 > **The open world has landed.** The site graph this document once described is gone: free
 > movement over real terrain, free placement inside the writ, springs worth fighting for, and
-> walls have all shipped, stage by stage. **`OPEN_WORLD_PLAN.md`** is the plan they shipped
-> from, and now reads as the record of why each was done the way it was.
+> walls have all shipped, stage by stage. `OPEN_WORLD_PLAN.md` is the RECORD of that plan and
+> of why each stage was done the way it was.
 >
 > **Walls have shipped, and not as pieces.** The Curtain Wall is one work with a length: two
 > taps lay a run of stone that bars the ground to every heir but its owner and stops shots
 > crossing it — except from the men standing ON it, who throw further than anyone on the
-> ground and are shot at in return. A wall alone kills nobody. See `OPEN_WORLD_PLAN.md` §6.
+> ground and are shot at in return. A wall alone kills nobody. See CLAUDE.md, the wall note.
 
 ## The Board — a world made new each match
 
@@ -64,11 +63,11 @@ fights happen where armies meet.
 - **Fog of war**: you see around your Seat, works and men. Explored ground is remembered
   (dimmed, last-known state); a rival's work is seen while any part of it is in sight and
   survives as a ghost after; enemy armies move unseen otherwise.
-- **The standards**: the royal War Banner and one pennant per company — plant one on any
-  point of the world and its men march there. Defend home, seize a spring, assault their
-  gate — one tap, zero micro.
+- **The standards**: one pennant per company — plant one on any point of the world and its
+  men march there; say it twice and it is meant literally (a forced march). Defend home, seize
+  a spring, assault their gate — one tap, zero micro. The Recall strikes every standard.
 - **Walls**: the Curtain Wall is a run of stone with a length — two taps, priced by the foot,
-  barred to everyone but its owner, manned by shooters (see `OPEN_WORLD_PLAN.md` §6).
+  barred to everyone but its owner, manned by shooters (see CLAUDE.md, the wall note).
 - Essence always has somewhere to go: works, upgrades, walls, the walk — and whoever holds
   the springs out-scales the other. Map control breaks stalemates by design.
 
@@ -144,53 +143,37 @@ through his siblings.
 | **Benedict** | the master — adaptive, counters what you do |
 | **Corwin** | (skirmish/AI) balanced aggression that walks from strength — a shadow-self to duel |
 
-Campaign ladder: Julian → Bleys → Brand → Benedict (progress in localStorage). In skirmish,
-any heir — including a shadow-Corwin — can be the rival.
-AI plays fair: same information rules as a human (no map hacks, no resource cheats).
+The campaign is seven CHAPTERS (`js/campaign.js`), each with its own board, briefing and
+objective, facing Julian, Bleys, Benedict, Brand, Bleys, Bleys and Benedict in turn; progress
+is in localStorage. In skirmish, any heir — including a shadow-Corwin — can be the rival.
+AI plays fair: same information rules AND the same economy as a human (no map hacks, no
+resource cheats, no resource handicaps either); a footing is a quality of mind, not a purse
+(DESIGN_PRINCIPLES §6).
 
-## The Long War — a country of cities
+## The Reach War — a country of cities
 
 **A fourth mode, and a war you can put down.** Where the campaign is a story in chapters and a
-skirmish is one board, the Long War is a COUNTRY: a graph of a dozen or two regions, each of
-them a board of the size the game has always used, with a city in every one.
+skirmish is one board, the Reach War is a COUNTRY: one continuous land four times a board's
+width, sixteen cities on it, rivers, roads and bridges, and the Pattern in one city at the
+centre. Every city owns a **reach** — the disc its companies may be ordered inside — and to
+strike a city two hops away you must first hold the one between: the affordability rule *is*
+the strategic rule. Orders are bounded; violence is not.
 
-- **A region IS today's board.** The country is large because there are many regions, never
-  because a grid got bigger — measured: a flow field is a Dijkstra over every cell and dead
-  linear in area (6.3ms today, 59ms at 3×, 4.8MB at 10×), and the ground texture self-caps, so
-  a board three times as wide is simply three times blurrier. Same `CONST.MAP`, same nav, same
-  fog, same everything.
-- **The map, and the marches.** Every region is a tile: its ground, whose city stands in it,
-  where you are, and which borders are roads. A border is either a narrow crossing or no way
-  through at all — a shore, a wall of crag. Committing a column to a border costs real time,
-  which is what makes it a decision.
-- **Biomes.** The Downs, the Fens, the Deep Wood, the High Country, the Spine, the Long Shore —
-  three terrain thresholds each and nothing else, so a biome cannot make a board the rest of the
-  game has never seen.
-- **A Seat YIELDS rather than falling.** At nought its gates open and it belongs to nobody until
-  somebody stands in the court, uncontested, and takes it — the same verb a spring is taken with.
-  So breaking a place and holding it are different problems: a bombard train does the first from
-  beyond anyone's reach, and only a surviving army does the second. It comes back hurt. Or you
-  throw it down for good, and nobody ever has it.
-- **Lords are the brake.** One city by right and one more for every lord — past that a court
-  simply will not swear to you. A lord is WON: taking a city from an HEIR brings his over, taking
-  one from a minor holding wins ground and nothing else. A war cannot be won by eating the weak.
-- **Losing your last city is dispossession, not death.** You keep your army and may take one
-  back, because a war played over many evenings has to survive a bad one.
-- **ONE PATTERN, IN ONE CITY.** There is one Shrine site in the whole country and everyone knows
-  where. Holding AMBER is not winning — it is being *allowed to walk*. The map has a centre
-  nobody declared and the endgame is a convergence rather than fifteen sieges.
-- **TERMS.** Heirs may treat with each other: a pact is two standing offers, sealed while both
-  stand and broken the instant either is withdrawn, with no notice and no grace. Being surprised
-  is the price of having trusted somebody. Each heir has a doctrine — the Warden keeps his word,
-  the Flame takes terms and betrays them, the Master of Arms makes terms against whoever is
-  ahead — and above all of them one rule none may break: nobody keeps terms with a man on the
-  lines.
-- **Put it down, pick it up.** A region compacts to about 730 bytes, so a whole country lives in
-  `localStorage`. Out of a region is back to the *country*, not to the title screen.
-- **A LAN table may fight over one.** The country is never sent: it is generated from its seed on
-  every machine, exactly as a board is.
+- **A Seat yields rather than falling**, and the ground must be taken by standing in the court.
+  A conquest takes an **oath**, not a deed: the beaten lord keeps his purse, halls and men and
+  runs his own city under your banner, and you give him one of five standing orders — hold,
+  gates, walls, attack, support — or take his court under your own hand.
+- **Terms.** Banners may treat with each other; a pact is two standing offers, broken the
+  instant either is withdrawn. Nobody keeps terms with a man on the lines.
+- **One Pattern, in one city.** Holding AMBER is not winning — it is being *allowed to walk*,
+  and the walk is slower on a country so it can be answered.
+- **Every seat is an heir.** Two contenders play for the throne at your footing; the other
+  lords run the same doctrines with more lapses, and expand rather than conquer.
+- **Put it down, pick it up.** The country regenerates from its seed; the save writes down only
+  what was done. A LAN table is dealt into the host's war; guests regenerate the ground.
 
-The plan, its measurements and what is still open are in `REALM_PLAN.md`.
+The rules, the measurements and what is still open are in `CLAUDE.md` ("The Reach War") and
+`TODO.md`. `REALM_PLAN.md` is the record of the mode's first life as a graph of boards.
 
 ## Multiplayer (LAN, serverless)
 

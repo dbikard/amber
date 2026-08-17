@@ -56,23 +56,12 @@
   /* what will bear a building */
   G.BUILDABLE = { 3: true, 4: true, 6: true };
 
-  /* ---- A REGION HAS A CHARACTER, and it is three numbers ----
-   * A country is many boards, and a country where every board is drawn from the same
-   * distribution is a country with one kind of ground in it. A BIOME shifts the three
-   * thresholds the terrain is read off — where the water line is, where the high ground
-   * starts, where it stops being passable — and nothing else: the noise, the ridges and the
-   * rim are the same code, so a biome cannot produce a board the rest of the game has never
-   * seen. `CONST.BIOMES` is the table and `null` is the country the game has always had. */
-  G.biomeOf = function (key) {
-    return (key && C.BIOMES && C.BIOMES[key]) || null;
-  };
   /* `dims` is the land's size in world units, `{W, H}`. Omitted, it is `CONST.MAP` — the
    * board every existing mode plays on. THE SIZE IS THE WORLD'S, NOT THE GAME'S: a country
    * and the duel that referees the balance tables must be able to disagree in one process,
    * which is the same reason `world.rules` is a copy and not a global. */
-  G.generate = function (seed, biome, dims) {
-    const b = G.biomeOf(biome);
-    const N = b ? Object.assign({}, C.WORLD, b.world) : C.WORLD;
+  G.generate = function (seed, dims) {
+    const N = C.WORLD;
     const cw = C.NAV.cell;
     const D = dims || C.MAP;
     const W = Math.round(D.W / cw), H = Math.round(D.H / cw), n = W * H;
@@ -384,12 +373,11 @@
   /* ---------------- the whole world ---------------- */
   G.build = function (seed, RNG, players, opts) {
     const want = Math.max(2, Math.min(4, players || 2));
-    const biome = opts && opts.biome ? opts.biome : null;
     const dims = opts && opts.dims ? opts.dims : null;
     for (let attempt = 0; attempt < 24; attempt++) {
       const s = (seed + attempt * 7919) >>> 0;
       const rng = RNG.make(s);
-      const land = G.generate(s, biome, dims);
+      const land = G.generate(s, dims);
       const reach = mainland(land);
       if (reach.count < land.W * land.H * C.WORLD.minLand) continue;
 
@@ -458,10 +446,7 @@
         W: land.W, H: land.H, cw: land.cw, elev: land.elev, terra: land.terra,
         nodes: kept.filter((x) => x.kind === 'node').map((x) => x.id),
         homeGates,
-        seed: s, skew: seats.skew, apart: Math.round(seats.far), attempt,
-        /* the character of this ground, carried out with it so the renderer, the realm and the
-         * chronicle can name a region rather than re-deriving what it was made from */
-        biome: biome || null
+        seed: s, skew: seats.skew, apart: Math.round(seats.far), attempt
       };
     }
     return null;
@@ -705,7 +690,7 @@
     for (let attempt = 0; attempt < 24; attempt++) {
       const s = (seed + attempt * 7919) >>> 0;
       const rng = RNG.make(s);
-      const land = G.generate(s, RW.biome || null, RW.dims);
+      const land = G.generate(s, RW.dims);
       /* the rivers run before anything is placed: placement PLANS across them (`soft`), and
        * the road carver builds the bridges the plan was counting on */
       const rivers = carveRivers(land, rng, RW.rivers != null ? RW.rivers : 4);
@@ -1058,8 +1043,7 @@
         reaches: seatOrder.map((i) => reaches[i]),
         nbrs: seatOrder.map((i) => nbrs[i].map((b) => seatOrder.indexOf(b))),
         pattern: seatOrder.indexOf(pattern),
-        seed: s, skew: 0, apart: RW.spacing, attempt,
-        biome: RW.biome || null, country: true
+        seed: s, skew: 0, apart: RW.spacing, attempt, country: true
       };
     }
     return null;

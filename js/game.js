@@ -96,13 +96,6 @@
     startSP(ch.heir, Object.assign({}, foot, ch.opts, { seed: ch.seed, spec: ch.spec }), ch);
     return true;
   }
-  /* ---------------- going down into a region ----------------
-   * A region of the country is played as an ordinary single-player match, on a world the realm
-   * built rather than one this function generated: same loop, same HUD, same input, same
-   * everything. What makes it a war rather than a skirmish is the RULES the realm stamped on it
-   * (a Seat yields, terms may be made) and the fact that leaving compacts it back into the
-   * country instead of throwing it away. That is the whole of the mode's machinery.
-   * The rival is the region's holder, in seat 1, and he plays his own doctrine like any heir. */
   /* THE WAR IS ONE WORLD, entered whole. No map screen, no regions, no marches between
    * boards: the country IS the board, and putting the war down is saving that one world
    * (REALM.save) wherever the player walks away. The rival seats are the country's own
@@ -123,7 +116,7 @@
     game.run = REALM.run(realm);
     if (Render.clearSeatFalls) Render.clearSeatFalls();
     game.world = realm.world;
-    game.bot = warBot(game.world, 1);
+    game.bot = null;   // a war has a ROSTER (`game.bots`), never a single driver
     game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
     game.names = game.world.players.map((_, i) => warName(game.world, i));
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
@@ -248,17 +241,21 @@
       game.world.players[0].offers[p] = 1;
       game.world.players[p].offers[0] = 1;
     }
-    game.bot = AI.make(kind, opts);
     /* A COUNTRY SEATS MANY: one bot per AI seat, each already out of phase with the others —
-     * the seeded think-stagger is AI.make's own. `game.bot` stays what it always was for the
-     * duel, and `game.bots` exists only while a country world does. */
+     * the seeded think-stagger is AI.make's own. `game.bots` exists only while a country world
+     * does, and then `game.bot` is NULL: a duel's single driver is one thing and a country's
+     * roster is another, and holding both meant a marcher nobody stepped sat in `game.bot`
+     * while the roster played — and "play again" from a country's end screen read
+     * `game.bot.kind` and started a marcher duel. */
     game.bots = null;
-    if (opts && opts.country && game.world.players.length > 2)
+    if (opts && opts.country && game.world.players.length > 2) {
       /* A RIG THAT SEATS A DOCTRINE THE GAME DOES NOT USE MISLEADS THE PERSON USING IT. The
        * `?reach=` boot exists so a country can be watched through the real renderer, so it
        * seats the country exactly as a war does — contenders and minor lords — rather than the
        * marchers it was given before heirs could speak in a war at all. */
       game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
+      game.bot = null;
+    } else game.bot = AI.make(kind, opts);
     /* A CHAPTER MAY STILL STARVE ITS RIVAL. `opts.eco` is a SCRIPTING seam and not a footing:
      * a footing never touches a purse any more (CONST.DIFFICULTY), but a scripted story may
      * want a feeble tutorial rival, exactly as it may pin its ground or shut the Pattern road.
@@ -2252,12 +2249,10 @@
         issue({ c: 'pause', on: !on });
       },
       onFix: (id) => issue({ c: 'fix', id }),
-      /* ---------------- THE LONG WAR ----------------
+      /* ---------------- THE REACH WAR ----------------
        * game.js holds a realm for the length of a war exactly as it holds a `CAMPAIGN.run` for
-       * the length of a chapter: the layer above answers questions and never writes to a world,
-       * and going down into a region is an ordinary single-player match with the region's rules.
-       * Nothing below this line knows the country exists. */
-      /* THE LONG WAR IS ONE TAP DEEP NOW. The card resumes the saved war or begins one — no
+       * the length of a chapter: the layer above answers questions and never writes to a world.
+       * THE WAR IS ONE TAP DEEP. The card resumes the saved war or begins one — no
        * map screen between the menu and the ground, because the ground IS the map. A saved
        * war that would not load (an old version's, a torn record) begins anew and says so. */
       onRealm: () => {
@@ -2410,7 +2405,8 @@
           if (game.campaign) {
             if (done()) { try { localStorage.setItem('amber_rung', '0'); } catch (e) {} }
             startSP(LADDER[Math.min(rung(), LADDER.length - 1)], C.DIFFICULTY[UI.difficulty()], true);
-          } else startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
+          } else if (game.bot) startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);
+          else toMenu();   // a `?reach=` country: there is no rival to rematch, the roster was the country
         } else if (game.mode === 'host') rematch();
         else if (game.mode === 'guest') callAgain();
         else toMenu();
@@ -2440,10 +2436,12 @@
     $('version').textContent = 'v' + (global.GAME_VERSION || '?');
     UI.showMenu(campaignLabel(), campaignNote());
     /* ---- THE REACH DEV BOOT (?reach=SEED) ----
-     * Not a mode: a rig. One country, the viewer at seat 0, a marcher on every other seat,
-     * the war's rules on. It exists so the reach can be FELT before the realm ships, and so
-     * the browser suite can drive a country through the real renderer. It is reached only by
-     * typing the query, exactly as the old 2D renderer's `?r=2d` was. */
+     * Not a mode: a rig. One country, the viewer at seat 0, every other seat dealt exactly as
+     * a war deals it (`warBot`: contenders and minor lords at the chosen footing), the war's
+     * rules on. It exists so a country can be watched through the real renderer, and so the
+     * browser suite can drive one. It is reached only by typing the query. The `'marcher'`
+     * named here is never seated — startSP replaces the single driver with the roster on a
+     * country — it only lends its title if a name is ever asked for. */
     const dev = new URLSearchParams(location.search).get('reach');
     if (dev != null) startSP('marcher', {
       seed: (parseInt(dev, 10) || 1) >>> 0, country: true,
