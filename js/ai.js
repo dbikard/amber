@@ -349,7 +349,15 @@
    * of the walls with nothing to shoot until somebody comes out. An heir who cannot finish
    * holds his ground instead, and the want below raises him something that can. */
   const BREAKERS = 3;
-  const strike = (v) => (v.enCity && v.breakers >= BREAKERS ? v.enCityId : seek(v));
+  /* `v.green` is the `siege` LAPSE (CONST.DIFFICULTY): an heir who has not learned what breaks
+   * stone marches on the Seat with whatever he has — the beginner's assault, shooters standing
+   * under the walls with nothing to shoot. Set on the view by `decide`, never by a doctrine.
+   * It is ONLY this: a first cut also had him never raise the Works, and measured head-to-head
+   * that was a BUFF (11-6 for the lapsed heir over twenty duels — the essence went into Gates),
+   * which says something about the Works and nothing a footing may say. A lapse that makes an
+   * heir stronger is not a lapse. It bites the shooter-heavy doctrines and is a no-op for one
+   * whose recruits already break stone, which is written down in TODO rather than hidden. */
+  const strike = (v) => (v.enCity && (v.green || v.breakers >= BREAKERS) ? v.enCityId : seek(v));
   /* what an assault costs to be worth making: a real army, and more of it than he can see of
    * the other man's. Both are read fresh every time the heir thinks, so the march is a
    * standing decision rather than a one-way door. */
@@ -1147,6 +1155,44 @@
     const heldOff = (v, pi) => hold > 0 && v.t < hold && pi != null &&
                                global.World.realmOf(v.world, pi) === holdOn;
     const noWalk = !!opts.noWalk;  // a chapter that is not about the Pattern shuts that road
+    /* ---- A LESSER HEIR DECIDES WORSE; HE IS NOT POORER ----
+     * The footing's LAPSES (CONST.DIFFICULTY, composed for a minor lord in game.js) are the
+     * whole of the handicap now that the purse is everyone's own. Each is a named mistake at
+     * the decision point where a beginner actually makes it — below, where each is spent — and
+     * EVERY ROLL DRAWS FROM THE RNG ONLY WHEN THE FLAW IS SET, so an heir with no lapses keeps
+     * a bit-identical stream: `node sim.js` seats heirs with no footing at all and must not be
+     * able to tell this code was written (a suite plays twelve seeded duels both ways).
+     *   `gates`, `up`, `siege` are SPELLS: the fraction of the match he spends in the flaw. A
+     *   flaw rolled fresh every think was measured to be nearly no flaw at all — a Gate put off
+     *   for one think is a Gate a few seconds later, because missions and errands are sticky —
+     *   so a spell HOLDS for `SPELL` seconds once entered, and the entry chance per think is
+     *   derived so the long-run fraction comes out at the number in the table.
+     *   `aim` is rolled when the doctrine gives a NEW order, and the stray it starts holds for
+     *   half a minute — see the banner block.
+     *   `hoard` is a spell too: for as long as it holds he raises NOTHING — no plan, no Gate
+     *   under his feet, no errand, no level — and the essence piles up while his halls drink
+     *   what they can; when it lifts he spends. It was a LENS on the purse first (he read his
+     *   treasury at 1/(1+hoard)), and that was measured to be a death spiral: a lord who had
+     *   lost every Gate sat on 131 essence, income 2.5, wanting a 120 Gate he read as 93, for
+     *   six minutes and forever — a habit had become a lock. A spell cannot lock anything.
+     *   `trickle` is not rolled: it lowers the COMMIT floor for good, so his assaults set out
+     *   at a handful of men and arrive in dribs (22 -> 6 at SQUIRE's 0.75). */
+    const L = opts.lapses || {};
+    const lapse = (k) => L[k] > 0 && rng.chance(Math.min(1, L[k]));
+    const SPELL = 45, spells = {};
+    const spell = (k, t) => {
+      const f = L[k] || 0;
+      if (f <= 0) return false;
+      if (f >= 1) return true;
+      if (spells[k] > t) return true;
+      /* a spell of SPELL seconds entered with chance p per think, from thinks `interval` apart,
+       * is in force SPELL / (SPELL + interval / p) of the time; solve that for p = f */
+      if (rng.chance(Math.min(1, interval / (SPELL * (1 / f - 1))))) { spells[k] = t + SPELL; return true; }
+      return false;
+    };
+    const commit = Math.max(4, Math.round(COMMIT * (1 - Math.min(0.9, L.trickle || 0))));
+    let stray = null;      // {site, until} — an `aim` lapse: the army sent somewhere known and wrong
+    let lastWant = null;   // where the doctrine last meant the banner, to notice a NEW order
     let timer = interval * 0.5, rng = null;
     let mission = null;    // {site, bt, since} — march there, build, move on
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
@@ -1162,6 +1208,10 @@
       const v = view(world, me);
       if (P.custom) { P.custom(v, issue, rng, order); return; }
       if (noise > 0 && rng.chance(noise)) return;
+      /* the lapses this think is played under — see the note at `L` in make() */
+      const idle = spell('hoard', v.t);
+      const lazyGates = idle || spell('gates', v.t);
+      v.green = spell('siege', v.t);
 
       /* ---------------- terms ----------------
        * ONE OFFER PER RIVAL, SET TO WHAT THE DOCTRINE WANTS IT TO BE. `{c:'pact'}` asks for a
@@ -1292,7 +1342,7 @@
        * only a spring his own troops are standing on, unheld and uncontested — ground he was
        * walking over on his way somewhere else. Expansion pays (DESIGN_PRINCIPLES §4); it was
        * simply never being attempted. */
-      if (v.free > 0 && v.essence >= C.BUILDINGS.gate.cost) {
+      if (!lazyGates && v.free > 0 && v.essence >= C.BUILDINGS.gate.cost) {
         const spring = spotFor(v, 'gate');
         if (spring) { issue({ c: 'build', x: spring.x, y: spring.y, bt: 'gate' }); handled = true; }
       }
@@ -1343,7 +1393,7 @@
       const thirsty = v.income - walkDrain > musterCap + SPARE;
       const oneMore = (v.have.barracks || 0) < HALL_CAP &&
                       (v.enemyArmy >= v.army + OUTNUMBER || thirsty);
-      if (!handled && oneMore) {
+      if (!handled && oneMore && !idle) {
         handled = true;
         if (v.free > 0) {
           if (v.essence < C.BUILDINGS.barracks.cost) saving = true;
@@ -1362,7 +1412,7 @@
       /* ...and ONE Works may not be enough: an Engine every twenty-four seconds is a siege
        * train that never forms if the first few die on the way. He wants a second before he
        * gives up on the road by force. */
-      if (!handled && v.breakers < BREAKERS && v.army >= 5 && (v.have.siege || 0) < 2) {
+      if (!handled && !idle && v.breakers < BREAKERS && v.army >= 5 && (v.have.siege || 0) < 2) {
         handled = true;
         if (v.free > 0) {
           if (v.essence < C.BUILDINGS.siege.cost) saving = true;
@@ -1388,10 +1438,11 @@
        * So: no crew is nothing to do, no essence is a reason to SAVE, and no ground is a reason
        * to move on. The want keeps its place in the plan and is taken the moment the ground
        * allows it. */
-      const wants = handled ? [] : P.plan(v), seenW = {};
+      const wants = handled || idle ? [] : P.plan(v), seenW = {};
       for (const bt of wants) {
         seenW[bt] = (seenW[bt] || 0) + 1;
         if ((v.have[bt] || 0) >= seenW[bt]) continue;
+        if (lazyGates && C.BUILDINGS[bt].claim) continue;   // the `gates` lapse: he overlooks it this think
         if (v.free <= 0) break;                                           // no crew: nothing to raise
         if (v.essence < C.BUILDINGS[bt].cost) { saving = true; break; }   // a purse problem: save for it
         const at = spotFor(v, bt);
@@ -1413,7 +1464,7 @@
          * held four. The window now scales with the distance it is asking for. */
         const far = Math.sqrt(d2(v.myCity.x, v.myCity.y, s ? s.x : 0, s ? s.y : 0));
         if (done || v.t - mission.since > 70 + far / 30) mission = null;   // taken, lost, or stale
-        else if (v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
+        else if (!idle && v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
           const at = spotAt(v, s, mission.bt);
           if (at) { const r = issue({ c: 'build', x: at.x, y: at.y, bt: mission.bt }); if (r && r.ok) mission = null; }
         }
@@ -1445,7 +1496,7 @@
        * neither ever moves and the mirror runs to the clock — the bleys mirror went from
        * ending at 8 minutes to timing out in half its games. A column big enough to be worth
        * marching is the whole rule; whether it wins is what the fight is for. */
-      const ready = v.army >= COMMIT;
+      const ready = v.army >= commit;
       const striking = !homeThreat && wantsWar && ready;
       /* THE SEARCH OUTRANKS THE ERRAND, because it is the war's first move. Every doctrine
        * already says "go and look" — that is what `seek` is — and not one of them had ever
@@ -1499,15 +1550,23 @@
        * differs, so it is one command at each edge and not one a think.
        * The test is the WANT, not the wallet: he pauses only when there is something he means
        * to build and cannot, and resumes the moment he can, so a lord with nothing to buy
-       * musters exactly as he always did. */
+       * musters exactly as he always did.
+       * AND IT IS JUDGED ON WHAT HIS HALLS WOULD DRINK, NOT ON WHAT THEY ARE DRINKING. Written
+       * against the live `drainRate` it FLAPPED — measured, thirteen toggles in thirty seconds:
+       * a shut muster drains nothing, so the same lord read as solvent on the very next think,
+       * opened the valve, drained, and shut it again. `musterCap` is the halls' thirst at full
+       * flow whatever the valve says, so the answer holds still while the purse fills. */
       if (world.rules && world.rules.reach) {
         const want = mission ? C.BUILDINGS[mission.bt] : null;
         const need = want ? want.cost : 0;
-        const starved = need > 0 && v.essence < need && v.income - v.drain <= 0;
+        const starved = need > 0 && v.essence < need && v.income - walkDrain - musterCap <= 0;
         if (!!v.pl.musterPaused !== starved) issue({ c: 'muster', pause: starved });
       }
       if (!mission && !homeThreat) {
-        for (const w of (led ? led.concat(P.missions(v)) : P.missions(v))) {
+        /* the `gates` lapse overlooks his OWN errands and never his liege's: a lazy lord still
+         * goes where he is sent, which is what makes the order worth giving him */
+        const own = lazyGates ? P.missions(v).filter((w) => !C.BUILDINGS[w.bt].claim) : P.missions(v);
+        for (const w of (led ? led.concat(own) : own)) {
           const site = w.pick(v);
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
         }
@@ -1590,7 +1649,25 @@
         }
       } else {
         aimed = null;
-        if (want !== v.banner) issue({ c: 'banner', site: want });
+        /* ---- THE `aim` LAPSE: SOMEWHERE KNOWN, AND WRONG ----
+         * Rolled only when the doctrine gives a NEW order (a want it did not have last think),
+         * and it then STICKS for half a minute or so — a stray re-rolled every think would be a
+         * flicker the column never had time to follow, and the flaw is that he follows it. He
+         * strays only to ground he has explored (fog-honest: a beginner does not know the map
+         * better for being a beginner), never onto a rival's own court (that is an attack, not
+         * a stray, and it must not be a way round `hold`), and never while his own Seat is
+         * threatened: even a beginner comes home. */
+        const fresh = want !== lastWant; lastWant = want;
+        if (stray && (v.t >= stray.until || homeThreat)) stray = null;
+        if (!stray && fresh && !homeThreat && want !== v.myCity.id && lapse('aim')) {
+          const courts = world.map.cities.map((ci) => world.map.sites[ci]);
+          const known = world.map.sites.filter((s) => s.id !== want && s.kind !== 'city' &&
+            v.pl.explored[s.id] && !courts.some((c) => c !== v.myCity &&
+              d2(s.x, s.y, c.x, c.y) < C.CLAIM.seat * C.CLAIM.seat));
+          if (known.length) stray = { site: rng.pick(known).id, until: v.t + 30 + 30 * rng.next() };
+        }
+        const dest = stray ? stray.site : want;
+        if (dest !== v.banner) issue({ c: 'banner', site: dest });
       }
 
       /* ---------------- THE ERRAND GETS A COMPANY OF ITS OWN ----------------
@@ -1684,6 +1761,9 @@
        * it costs less than the hall did, and putting it off means fighting the whole match
        * with the recruit you were given rather than the one your doctrine wants. */
       if (saving && !canFork(v)) return;
+      /* the `up` lapse: for a spell he forgets his halls — no level, no fork. And an idle spell
+       * (`hoard`) buys nothing at all. */
+      if (idle || spell('up', v.t)) return;
       /* AN UPGRADE IS MASONRY NOW: it takes a crew and silences the work while they are on
        * it. So an heir with no crew free must not try (the order is simply refused), and one
        * with a single hall should not shut it down under threat — an upgrade in the middle of
@@ -1742,7 +1822,11 @@
 
     return {
       kind, title: P.title,
-      reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null; },
+      /* what footing actually reached this seat, READ-ONLY — the suites and a rig ask it, so a
+       * dead control (a picker that reaches nobody) is something a test can see */
+      lapses: L, hold,
+      reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
+                stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for
        * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord
        * goes on running his own city, his own purse and his own muster exactly as he did

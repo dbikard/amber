@@ -243,10 +243,16 @@ async function match(browser, base, renderer) {
     await inMatchNow(pg);
     const applied = await pg.evaluate(() => {
       const C = window.CONST, g = window.Game.game;
-      return { eco: g.world.players[1].eco, mine: g.world.players[0].eco, want: C.DIFFICULTY.squire.eco };
+      return { lapses: g.bot.lapses, hold: g.bot.hold, want: C.DIFFICULTY.squire,
+               eco: g.world.players[1].eco, mine: g.world.players[0].eco };
     });
-    ok('the chosen handicap reaches the heir', applied.eco === applied.want, `eco ${applied.eco}`);
-    ok('and never touches your own side', applied.mine === 1, `eco ${applied.mine}`);
+    /* A FOOTING IS A QUALITY OF MIND, NOT A PURSE (CONST.DIFFICULTY): what reaches the heir is
+     * his lapses and his hour, and nobody's income is touched */
+    ok('the chosen footing reaches the heir',
+       JSON.stringify(applied.lapses) === JSON.stringify(applied.want.lapses) && applied.hold === applied.want.hold,
+       JSON.stringify(applied.lapses));
+    ok('and touches no purse — his or yours', applied.eco === 1 && applied.mine === 1,
+       `eco ${applied.eco} / ${applied.mine}`);
 
     /* ...AND THE CAMPAIGN, which used to ignore the footing entirely. It is CHAPTERS now, so
      * the button opens a list and the list opens a briefing — the objective is stated before
@@ -263,19 +269,25 @@ async function match(browser, base, renderer) {
       document.getElementById('btn-campaign').click();
       await new Promise((res) => setTimeout(res, 200));
       const listShown = !document.getElementById('chapters').classList.contains('hidden');
-      /* the LAST chapter carries no eco of its own, so the footing reaches it untouched */
+      /* the LAST chapter's `opts` override the footing where they speak (`hold`), and the
+       * footing reaches it where they do not (`lapses`) — no footing carries a purse, but a
+       * CHAPTER may still script one (`opts.eco`), which is what makes a tutorial rival feeble */
       const last = CAM.CHAPTERS[CAM.CHAPTERS.length - 1];
       window.Game.startChapter(last.key);
       await new Promise((res) => setTimeout(res, 500));
       const g = window.Game.game;
       return { listShown, eco: g.world.players[1].eco,
-               want: (last.opts && last.opts.eco != null) ? last.opts.eco : C.DIFFICULTY.prince.eco,
+               wantEco: (last.opts && last.opts.eco != null) ? last.opts.eco : 1,
+               hold: g.bot.hold, wantHold: (last.opts && last.opts.hold != null) ? last.opts.hold : C.DIFFICULTY.prince.hold,
+               lapses: g.bot.lapses, wantLapses: C.DIFFICULTY.prince.lapses,
                rival: g.names[1], wantRival: last.heir, campaign: g.campaign,
                chapter: g.chapter && g.chapter.key, wantChapter: last.key };
     });
     ok('the campaign button opens the chapters rather than a match', camp.listShown, String(camp.listShown));
     ok('a chapter runs on the footing, with its own overrides on top',
-       camp.eco === camp.want && camp.campaign, `eco ${camp.eco}, wanted ${camp.want}`);
+       camp.eco === camp.wantEco && camp.hold === camp.wantHold &&
+       JSON.stringify(camp.lapses) === JSON.stringify(camp.wantLapses) && camp.campaign,
+       `eco ${camp.eco}/${camp.wantEco} hold ${camp.hold}/${camp.wantHold} lapses ${JSON.stringify(camp.lapses)}`);
     ok('...against the rival that chapter names',
        new RegExp(camp.wantRival, 'i').test(camp.rival) && camp.chapter === camp.wantChapter,
        `${camp.rival} / ${camp.chapter}, wanted ${camp.wantRival} / ${camp.wantChapter}`);

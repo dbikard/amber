@@ -62,19 +62,33 @@ this enforces is that **a court that changes hands must change colour on the sam
 board and on the minimap alike: the growth of a realm is the only thing a glance at a war map is
 really asking about, and for one version it was the one thing that never moved.
 
-### 6. AI plays fair
-Same fog, same prices, same cooldowns as a human — never map hacks, never a discount the
-player cannot have. An easier footing takes things AWAY from the heir; it never gives it
-less than the truth about the board.
+### 6. AI plays fair — and everyone plays the same game
+Same fog, same prices, same cooldowns, **same economy** as a human — never map hacks, never a
+discount the player cannot have, and never a surcharge on the heir either. The designer's
+rule (2026-08-17): every seat at the table, bot or human, contender or minor lord, earns by
+the same economy and lives under the same rules. **Difficulty is decision quality.** A lesser
+heir is one who decides worse; an easier footing never touches his purse.
 
-Difficulty was once described as "better policy + faster reactions + less noise". Measured,
-that was wrong: an heir polled at half the rate, or skipping 45% of its turns outright, still
-won its mirror 42–50% of the time, because its decisions are "spend the essence on the next
-thing in the plan" and the essence is still there a few seconds later. The two knobs that
-actually bite are **what it draws from the ground** (`eco`) and **the hour it will march on
-your Seat** (`hold`) — and both are needed, because cutting income ALONE brings the assault
-sooner: a poorer heir builds less realm and comes for you earlier. The ladder is checked the
-way any other number here is, with `test/headless.js` "the solo ladder" holding the shape.
+The rungs are therefore made of LAPSES (`CONST.DIFFICULTY[..].lapses`) — named flaws at the
+decision points where a beginner actually goes wrong: he overlooks expansion (`gates`),
+forgets to level or fork his halls (`up`), sends the army somewhere known and wrong (`aim`),
+attacks in dribs instead of massing (`trickle`), marches on stone with nothing that breaks it
+(`siege`), and hoards essence he could have spent (`hoard`) — plus `hold`, the hour before he
+marches on your Seat, which is a promise about your opening minutes rather than a flaw. PRINCE
+carries no lapses at all: it is the doctrine played straight, the same heir `node sim.js`
+referees. A minor lord in a war is the footing's heir under `CONST.MINOR`'s lapses on top,
+composed by the worse of the two per flaw.
+
+The history is why the lapses have to be real behaviour and not decoration. Difficulty was
+once "better policy + faster reactions + less noise"; measured, `slow` and `noise` alone left
+an heir at a 42–50% mirror, because its decisions are "spend the essence on the next thing in
+the plan" and the essence is still there a few seconds later. An income fraction (`eco`) was
+then the one knob that bit — and it was retired on principle, since a poorer heir is not a
+worse player, and it made a lord who lost his Gates unable ever to rebuild one. Two things are
+held by test: an heir made with no footing plays byte-identical to before this code existed
+(twelve seeded duels, both ways), and each lapse moves the thing it claims to move. The ladder
+is checked the way any other number here is, with `test/headless.js` "the solo ladder"
+holding the shape.
 
 ## Validation: the simulator is the referee
 

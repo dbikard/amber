@@ -31,8 +31,19 @@ touches no balance surface.
       here. If so the fix is to re-bake on `webglcontextrestored` / `visibilitychange` rather
       than trusting the texture to survive, and to make that measurable with a debug hook.
 
+- [ ] **Judge the lapse ladder by hand, on a phone.** Difficulty is decision quality now
+      (CONST.DIFFICULTY `lapses`, DESIGN_PRINCIPLES §6): the tables were tuned against a
+      head-to-head rig (a lapsed heir against the same heir straight, twenty duels a case) and
+      the numbers are in the commit that shipped them, but nobody has PLAYED a Squire since it
+      stopped being poor. What to watch for: does SQUIRE read as a beginner (hoards, forgets his
+      halls, wanders, dribbles men at you) rather than as a slow copy of PRINCE; is HEIR a real
+      opponent at the default; and does a war's minor lord — the footing plus `CONST.MINOR` —
+      still expand enough to be worth conquering. The two knobs that are known to bite weakest
+      are `trickle` (a duel finds the Seat late, when the army is already large) and `siege` (a
+      no-op for any heir whose recruits already break stone). Never answer a weak rung with a
+      purse: the economy is not a difficulty lever, on the designer's call.
 - [ ] **Delete the `lord` baseline, or give it a job.** The war seats heirs now (`warBot`), so
-      `BASELINES.lord` is unreachable from the shipped game and only four suites still exercise
+      `BASELINES.lord` is unreachable from the shipped game and only five suites still exercise
       it. That would be merely untidy except that the liege's five words — `hold`, `gates`,
       `walls`, `attack`, `support` — are now implemented TWICE: once in `lord.custom`, where
       nothing runs them, and once in `warOrders`, where everything does. Two spellings of one
@@ -54,8 +65,10 @@ touches no balance surface.
 - [ ] **Let an heir throw down his own work.** There is no way to remove a building you raised —
       a Gate on a spring that has stopped mattering, a hall in the wrong place, a curtain drawn
       where it now blocks your own march — so an early misplacement is permanent, and the ground
-      under it is spoken for until a rival breaks it for you. Wants a command
-      (`{c:'raze', id}`), a place on the work sheet, and a decision about what it costs and
+      under it is spoken for until a rival breaks it for you. Wants a command — NOT
+      `{c:'raze'}`, which already exists and throws down a YIELDED COURT (world.js; issued by
+      nobody yet, see the audit note below) — say `{c:'demolish', id}`, a place on the work
+      sheet, and a decision about what it costs and
       returns: instant with no refund is the simplest honest rule, and a partial refund makes
       "raise it, look at it, take it down" a free way to survey the map. Rubble already has a
       meaning for walls (`WALL.rubble`), so a razed curtain should probably follow that path
@@ -75,7 +88,7 @@ touches no balance surface.
       done**: `forNear` visits cells in grid order, so changing `BIN` reorders the candidates,
       and `acquire` breaks ties by first-found — men would pick different targets. That is a
       behaviour change in a duel as much as in a war, so it is a `node sim.js` change: run the
-      full 470 matches before and after and keep DESIGN_PRINCIPLES.md green.
+      full 176 matches before and after and keep DESIGN_PRINCIPLES.md green.
       (An alternative with no reordering at all: keep `BIN` and give `acquire` an early reject
       on squared distance before it does any real work — cheaper, smaller win, no referee.)
 - [ ] **Make a fenced flow field sparse to its bound.** A field is a `Float32Array` over the
@@ -282,6 +295,52 @@ them; re-measure before re-deciding.
       call site gives the geometry (a body of n at berth b is a disc of radius b·√(n/π)).
 
 ## Housekeeping — from an architecture review (2026-08)
+
+### From a repo audit (2026-08-17) — verified against the source, act in this order
+
+- [ ] **CLAUDE.md is a 25k-token preamble** (1,200 lines, 17.5k words; the Reach War section
+      alone is 490 lines and the wall bullet 160) and roughly half of it is measurement prose
+      arguing for rules already stated in bold. Split it: CLAUDE.md keeps every bold heading,
+      the rule sentence and the file/function pointer (target under 500 lines); the "measured …"
+      and "reported from play …" bodies (29 and 18 of them) move to a `LEDGER.md` keyed by the
+      same headings, in order, dated. Keep one clause of WHY per rule and a `→ LEDGER` pointer
+      so a rule never loses its reason. Fold the wall bullet out of *Common Tasks* into its
+      own H2 — it is a subsystem, not a task.
+- [ ] **Stale claims in CLAUDE.md**, each checked: "Eleven commands" — `applyCommand` has 13
+      (`pact`, `raze`); "the few rules (`endOnSeat`,`occupy`,`truce`)" — `CONST.RULES` has 7
+      (`hush`,`onePattern`,`reach`,`walkMul`) and the war's list omits `walkMul`; the hook
+      "re-stamps manifest.json" — manifest carries no version (its icons are stuck at
+      `?v=0.6.14`, the sed cannot match); the Reach War intro still says the lord brake "lives IN
+      the sim" and "every lord runs the `lord` baseline", both retracted further down;
+      `World.branchesOf/forkAt` "asked by the sheet" — ui.js reads the table itself with its own
+      `|| 2` default against world.js's `|| 0`, two spellings of one rule.
+- [ ] **GAME_VISION.md "The Long War"** is the region-graph design (a graph of regions, biomes,
+      lords as the brake, ~730-byte regions) — superseded twice. Rewrite as ten lines on the
+      Reach War pointing at CLAUDE.md; drop "the royal War Banner" (gone) and the
+      julian→bleys→brand→benedict ladder (chapters are julian, bleys, benedict, brand, bleys,
+      bleys, benedict); drop the four references to OPEN_WORLD_PLAN.md, or give that file
+      REALM_PLAN's "this is a RECORD" banner and list it in Key Documents. REALM_PLAN's own header
+      still says the lord brake "was ported" — one line.
+- [ ] **Dead code, by confidence.** (1) `BASELINES.lord` + `troubleAt`/`reserveAt` (ai.js) — see
+      the item above. (2) `CONST.REALM` and `CONST.COUNTRY` (const.js) — zero readers; realm.js
+      hardcodes its own heirs. (3) `CONST.BIOMES` / `G.biomeOf` / `opts.biome` — region-era,
+      test-only. (4) render3d.js `buildingModel` arms for `sgate`, `watch`, `veiled` (+
+      `TOPS.veiled`, `dummy`, the `foeSeen` fallback) — no such types exist. (5) ui.js's document
+      `pointerdown` capture listener whose body is a no-op guard. (6) `RENDER_MODE` in
+      render_select.js — written, never read. (7) `Rec.abandon`, `head.adopted`, `w.seq` —
+      written or exported, never read. (8) renderer debug hooks with no caller: `debugVeilPath`,
+      `fogPatch`, `debugFogU`, `debugFogMats`, `debugVeilEase`, `seatFallDone`; and the comment
+      calling `shaderFog` an experiment "OFF by default" while line 22 ships it on.
+      Deliberately kept and to be LABELLED so: `WG.fromSpec` + `ch.spec` (no chapter uses a spec
+      yet), `proto/reach/` (deployed, imports live worldgen and will rot silently — freeze its
+      own copies or say so).
+- [ ] **`{c:'raze'}` is a finished sim command nobody can issue** — the dead-BUTTON failure
+      inverted: a dead ENTRANCE. Its consumers all exist (the wire, the council map, the
+      renderer, the lords' doctrine reads `city.razed`). Either the council offers "throw down"
+      on a yielded court, or the command and its tests go.
+- [ ] **`?reach=` boot** makes a `game.bot = AI.make('marcher')` that is never stepped, and the
+      end screen's "play again" reads `game.bot.kind` — so play-again from a war or reach board
+      starts a MARCHER duel. Make `game.bot` null wherever `game.bots` exists.
 
 - [ ] **`update()` wants breaking up.** It is ~480 lines (world.js 1955–2432) with a ~215-line
       per-unit loop in the middle, and the TICK ORDER is load-bearing — vision, rebin, the

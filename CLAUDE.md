@@ -164,9 +164,9 @@ progress. AI reads only what a human could see (see `AI.view()`).
   Skip with AMBER_NO_BUMP=1. sw.js precaches per-version; update flow lives in game.js setupPWA().
 - Balance changes: run `node sim.js` before and after; keep the targets in
   DESIGN_PRINCIPLES.md green. `node sim.js --a=brand --b=julian --n=40` for a matchup.
-  The full run is 470 matches (15 matchups x 30 games + 2 convergence series) across
-  `os.cpus().length` workers, and the julian mirror runs to the 45-minute cap — call it ten
-  minutes on four cores. `--quick` plays every section at a third of the games for iterating;
+  The full run is 176 matches (5 series x 20 games, 10 round-robin matchups x 6, and 2
+  convergence series x 8) across `os.cpus().length` workers, and the julian mirror runs to the
+  45-minute cap — call it twenty minutes on four cores. `--quick` plays every section at a third of the games for iterating;
   the full run is what decides whether to ship.
 - The suite prints its slowest suites when a run is slow — start there rather than bisecting
   by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
@@ -632,13 +632,17 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   wrong was the CHOICE. Proven a no-op for the referee rather than assumed: `RULES.truce` is 0
   in a skirmish, so `foe` is always true there, and twelve seeded duels play out identical to the
   essence.
-- **A COURT UNDER YOUR OWN HAND PLAYS AT FULL STRENGTH.** The footing handicap exists to make a
-  BOT weaker, and a court the player has taken command of was keeping it: reported from play as a
-  hand-played inner lord with a negative economy who could never afford a Gate. The number named
-  the cause exactly — `2.5 (BASE_INCOME) x 0.52 (SQUIRE) x 0.62 (MINOR) = 0.806`, which was the
-  "+0.8/s" on his screen with the muster stopped. `warPurses` skips the hand, and is re-dealt
-  whenever the hand MOVES, so a court handed back to its lord returns to its handicap on the same
-  tap.
+- **EVERYONE AT THE TABLE EARNS BY THE SAME ECONOMY.** The designer's rule (2026-08-17): no
+  footing and no seat carries an income handicap; a lesser heir DECIDES WORSE (see "the footing
+  scales the whole country" below and `CONST.DIFFICULTY`). The rule was forced by a report from
+  play — a hand-played inner lord with a negative economy who could never afford a Gate, whose
+  number named the cause exactly: `2.5 (BASE_INCOME) x 0.52 (SQUIRE) x 0.62 (MINOR) = 0.806`, the
+  "+0.8/s" on his screen — and by the death spiral the same arithmetic made permanent for every
+  bot: a lord whose Gates the black road ate could not afford another at 0.8/s and sat idle for
+  the rest of the war. Measured gone: strip every Gate off a MINOR lord and he has one back in
+  68s and five by minute six, where the same lord on the old 0.3 purse had one after 119s.
+  `players[].eco` still exists in the sim, for a scripted CHAPTER only (`opts.eco`, a story's
+  feeble tutorial rival); nothing else writes it below 1.
 - **AND A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN.** The muster valve was a player-only
   control — no doctrine had ever issued `{c:'muster'}` — so a lord whose halls drank everything he
   earned never saved the 400 for the Gate that would have paid for them. Diagnosed by the player
@@ -649,7 +653,12 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   moment he can pay. Measured over six simulated minutes, before and after: purse under 50 in 38%
   of samples then 19%, median purse 31 then 80, Gates 19 then 21 at SQUIRE; 40% then 29% and
   Gates 33 then 40 at HEIR. At PRINCE, where lords were least starved, it is a wash (41 Gates
-  then 37) — written down rather than hidden.
+  then 37) — written down rather than hidden. **And it is judged on what his halls WOULD drink
+  (`musterCap`), never on the live `drainRate`**: written against the latter it flapped —
+  thirteen toggles in thirty seconds — because a shut muster drains nothing, so the same lord read
+  as solvent on the next think, opened, drained, and shut again. The rig that holds it asserts the
+  lord is actually in the red, because at its first setting he was a tenth in the black and the
+  suite sat red through a whole handoff.
 - **A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS** (`World.fallen`). Reported from
   play: a Seat yields, the claimant stands his twenty seconds in the court, and his men spend them
   knocking down the halls and Gates he is about to inherit — a conquest that pays for itself in
@@ -757,15 +766,26 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   into the CHRONICLE, so a war's record named a setting nothing in it had read — the dead-control
   failure landing on the one instrument used to diagnose reports from play. `warFooting` is now
   the one answer: a contender plays at the player's footing, a minor lord at that footing made
-  worse by `CONST.MINOR`, composed per field by what each field IS — `slow` and `eco` MULTIPLY
-  (a think-interval multiplier and an income fraction), `noise` takes the WORSE of the two (the
-  same penalty said twice, and stacking double-charges one axis), `hold` is the footing's own.
-  The purse is not an AI option at all — it is `players[pi].eco`, read by the sim's income pass —
-  so `warPurses` deals it wherever a seat gains a driver (a war's start, the `?reach=` boot, a
-  LAN table, a deserted seat), and never to a seat a human holds. **The top of the range is
-  today's war**, which is what makes it auditable: at PRINCE a minor lord is slow 1.5, noise 0.20,
-  eco 0.60 against today's 1.5, 0.20, 0.62, and measured over six simulated minutes the country
-  goes 677 men / 116 works / 43 Gates against today's 717 / 122 / 43. SQUIRE lands at 467 / 62 / 25.
+  worse by `CONST.MINOR`, composed per field by what each field IS — `slow` MULTIPLIES (a
+  think-interval multiplier), `noise` and each LAPSE take the WORSE of the two (the same penalty
+  said twice, and stacking double-charges one axis), `hold` is the footing's own.
+  **A FOOTING IS A QUALITY OF MIND, NOT A PURSE.** It carried an income fraction (`eco`) once,
+  dealt onto `players[].eco` by a `warPurses` pass wherever a seat gained a driver; the designer
+  retired it — everyone earns by the same economy, and difficulty is decision quality. Each rung
+  now carries LAPSES (`CONST.DIFFICULTY[..].lapses`), named flaws wired at the exact decision
+  points in ai.js `decide`: `gates` (overlooks expansion — his own errands and the spring under his
+  feet, never a liege's order), `up` (forgets the upgrade scan, levels and forks alike), `aim`
+  (a NEW order sends the army somewhere known and wrong, and it sticks for half a minute — never
+  while his Seat is threatened, never onto a rival's court, so it is no way round `hold`),
+  `trickle` (the COMMIT floor falls toward a handful, so assaults arrive in dribs), `siege`
+  (marches on the Seat with nothing that breaks stone and never raises the Works answer), `hoard`
+  (reads his own purse at 1/(1+hoard), so every purchase waits for a multiple of its price).
+  `gates`/`up`/`siege` are SPELLS — a flaw rolled fresh every think was measured to be almost no
+  flaw, because missions and errands are sticky, so a spell holds `SPELL` seconds and the entry
+  chance is derived so the table's number is the long-run FRACTION of the match spent lapsed.
+  **Every roll draws from the bot's RNG only when the flaw is set**, so an heir made with no
+  footing — which is every heir `node sim.js` seats — plays byte-identical to before: held by a
+  suite that plays twelve seeded duels both ways and hashes the traces. PRINCE has no lapses.
   **AND `hold` IS A PROMISE TO ONE BANNER.** It is checked against the heir's NEAREST rival court,
   which in a duel is the player's and nothing else; a war seats sixteen, so for most lords that
   is another bot — and ungated, an easy footing stopped **the whole country making war on itself**

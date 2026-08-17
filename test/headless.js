@@ -3992,37 +3992,46 @@ suite('the halt')
   eq('a running world sends none', Net.snapFor(w, 1).paused, null);
 }
 
-/* The solo ladder has to be a LADDER. It was not: `slow` and `noise` are decorative — an heir
- * polled at half the rate still won its mirror — so the shipped HEIR at eco 0.80 was a 50%
- * mirror, i.e. no handicap at all. Income and the hour it marches are the two knobs that bite,
- * and both must move monotonically down the table. */
+/* The solo ladder has to be a LADDER — and it is a ladder of MINDS, not of purses. The
+ * designer's rule (CONST.DIFFICULTY): everyone at the table earns by the same economy, and a
+ * lesser heir is one who decides worse. So no footing carries an income fraction any more, the
+ * top rung is the doctrine played straight — the heir `node sim.js` referees — and every rung
+ * below it is that heir under named LAPSES, monotonically more of them going down. `hold`, the
+ * hour before he marches on your Seat, is a promise about the opening minutes and stays. */
 suite('the solo ladder')
 /* ~170s of the ~6-minute run: eight full bot-vs-bot matches. The heaviest thing here by far,
  * so it is the first thing --quick puts down. */
 if (!QUICK('the solo ladder')) {
   const D = C.DIFFICULTY, order = C.DIFFICULTY_UI;
-  /* The top rung used to BE the unhandicapped heir — eco 1, hold 0 — and it is not any more:
-   * every footing was eased. What must still hold is that the top is nearly that heir and
-   * gives you almost no grace, or the ladder has no top. The unhandicapped reference lives in
-   * `node sim.js`, where the heirs fight each other, not here. */
-  ok('the hardest footing is very nearly a full-strength heir', D.prince.eco >= 0.85 && D.prince.eco <= 1,
-     String(D.prince.eco));
+  const lapsesOf = (k) => D[k].lapses || {};
+  const flaws = (k) => Object.keys(lapsesOf(k)).filter((f) => lapsesOf(k)[f] > 0);
+  ok('no footing touches the purse: the economy is not a difficulty lever',
+     order.every((k) => D[k].eco == null) && C.MINOR.eco == null,
+     order.map((k) => `${k}:${D[k].eco}`).join(' ') + ` minor:${C.MINOR.eco}`);
+  ok('the hardest footing is the doctrine played straight — no lapses at all',
+     flaws('prince').length === 0, JSON.stringify(lapsesOf('prince')));
   ok('...that comes for you almost at once', D.prince.hold <= 150, `${D.prince.hold}s`);
   ok('the default is not the hardest', C.DIFFICULTY_DEFAULT !== 'prince', C.DIFFICULTY_DEFAULT);
-  /* and every rung is easier than it was — the whole point of the change */
-  ok('every footing leaves more room than the old table did',
-     D.squire.eco < 0.55 && D.heir.eco < 0.72 && D.prince.eco < 1.0,
-     order.map((k) => D[k].eco).join(' '));
-  ok('...and every one of them holds off longer',
+  ok('every footing below the top has real flaws',
+     order.filter((k) => k !== 'prince').every((k) => flaws(k).length >= 3),
+     order.map((k) => `${k}:${flaws(k).length}`).join(' '));
+  ok('...and every one of them holds off longer than the top',
      D.squire.hold > 720 && D.heir.hold > 360 && D.prince.hold > 0,
      order.map((k) => D[k].hold).join(' '));
   for (let i = 1; i < order.length; i++) {
-    const lo = D[order[i - 1]], hi = D[order[i]];
-    ok(`${hi.name} draws more from the ground than ${lo.name}`, hi.eco > lo.eco, `${lo.eco} → ${hi.eco}`);
-    ok(`...and comes for you sooner`, hi.hold < lo.hold, `${lo.hold}s → ${hi.hold}s`);
+    const lo = order[i - 1], hi = order[i];
+    /* the rung above is never MORE flawed on any axis, and less flawed on at least one */
+    const keys = [...new Set(flaws(lo).concat(flaws(hi)))];
+    ok(`${D[hi].name} lapses less than ${D[lo].name}, on every axis`,
+       keys.every((f) => (lapsesOf(hi)[f] || 0) <= (lapsesOf(lo)[f] || 0)) &&
+       keys.some((f) => (lapsesOf(hi)[f] || 0) < (lapsesOf(lo)[f] || 0)),
+       `${JSON.stringify(lapsesOf(lo))} → ${JSON.stringify(lapsesOf(hi))}`);
+    ok(`...and comes for you sooner`, D[hi].hold < D[lo].hold, `${D[lo].hold}s → ${D[hi].hold}s`);
   }
-  ok('every footing is a real handicap', order.filter((k) => D[k].eco < 0.9).length >= 2,
-     order.map((k) => D[k].eco).join(' '));
+  /* AND THE FOOTING REACHES THE SEAT: a picker that reaches nobody is the dead-control failure */
+  const foot = AI.make('benedict', D.squire);
+  ok('the lapses reach the heir made from a footing', foot.lapses === D.squire.lapses && foot.hold === D.squire.hold);
+  ok('...and an heir made with none carries none', Object.keys(AI.make('benedict', {}).lapses).length === 0);
 
   /* and `hold` must actually hold: an heir on the easiest footing does not march on your
    * Seat inside the hour it was given, however well the fight is going for it. Several
@@ -4042,7 +4051,6 @@ if (!QUICK('the solo ladder')) {
     maps++;
     const w = World.createWorld(seed, 2);
     const bots = [AI.make('random'), AI.make('benedict', D.squire)];
-    w.players[1].eco = D.squire.eco;
     const iss = [0, 1].map((pi) => (cmd) => World.applyCommand(w, pi, cmd));
     const c0 = World.cityOf(w, 0);
     let peak = 0;
@@ -4501,7 +4509,6 @@ suite('the chronicle')
   const seed = 20250802;
   const w = World.createWorld(seed, 2);
   const bots = [AI.make('bleys'), AI.make('benedict', C.DIFFICULTY.heir)];
-  w.players[1].eco = C.DIFFICULTY.heir.eco;
   Rec.begin({ version: 'test', seed, viewer: 0, names: ['Corwin', 'Benedict, Master of Arms'],
               mode: 'skirmish', footing: 'HEIR' });
   const issue = (pi) => (cmd) => {
@@ -8573,7 +8580,14 @@ suite('a lord who cannot afford his plans stops buying men');
      * different worlds */
     const me = w.players.length > 3 ? 3 : 1;
     w.players[me].essence = 0;
-    w.players[me].eco = 0.3;            // a minor lord's purse on an easy footing
+    /* A STARVED LORD, made by the rig: `players[].eco` is a sim field a scripted chapter may
+     * still set (no footing does — CONST.DIFFICULTY), and here it stands in for a lord whose
+     * Gates the black road has eaten, so his halls out-drink what is left of his ground. The
+     * claim under test is the VALVE, not how he came to be poor.
+     * 0.2, NOT 0.3: at 0.3 his opening Gate and the base together earn 2.1 against a level-one
+     * hall's 2.0 — a tenth in the black, which is not starved by the valve's own rule, and the
+     * rig sat green-looking and red for a whole handoff. The rig now ASSERTS he is in the red. */
+    w.players[me].eco = 0.2;
     return { w, me, bot: AI.make('benedict', Object.assign({}, C.MINOR)) };
   };
   const drive = (r, secs) => {
@@ -8585,8 +8599,18 @@ suite('a lord who cannot afford his plans stops buying men');
   };
   const war = rig({ reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
   ok('the rig is alive: he starts with nothing to spend', war.w.players[war.me].essence === 0);
-  ok('a starved lord with something to build shuts the muster', drive(war, 30),
-     `purse ${Math.round(war.w.players[war.me].essence)}`);
+  const shut = drive(war, 30);
+  const wp = war.w.players[war.me];
+  /* what his halls WOULD drink at full flow — never the live drain, which is zero the moment
+   * the valve does its job (the exact confusion that made the valve flap) */
+  const thirst = wp.buildings.reduce((t, b) => {
+    const m = !b.raise && !b.work && World.mustersOf(b);
+    return m ? t + C.UNITS[m.kind].cost * C.TIER[b.level - 1] / m.period : t;
+  }, 0);
+  ok('the rig is alive: his halls out-drink his ground', wp.incomeRate - thirst <= 0,
+     `income ${wp.incomeRate} against a thirst of ${thirst}`);
+  ok('a starved lord with something to build shuts the muster', shut,
+     `purse ${Math.round(wp.essence)}`);
   /* ...AND OPENS IT AGAIN. A valve that only ever shuts is a lord who stops fielding an army. */
   war.w.players[war.me].essence = 5000;
   ok('...and opens it the moment he can pay', !drive(war, 6),
@@ -8853,6 +8877,126 @@ suite('an order biases the crew, not only the column');
      `${free0} free before, ${gates.freeLeft} after`);
 }
 
+/* ---------------- A LESSER HEIR DECIDES WORSE; HE IS NOT POORER ----------------
+ * The designer's rule (CONST.DIFFICULTY): everyone earns by the same economy, and a footing is
+ * a table of LAPSES — named flaws at the decision points in ai.js `decide`. Two things have to
+ * be true of the mechanism, and both are the kind that rot silently:
+ * (1) AN HEIR WITH NO LAPSES IS UNTOUCHED. `node sim.js` seats heirs with no footing at all,
+ *     and its 176-match verdicts are the game's referee — so the lapse code must not draw from
+ *     an unlapsed heir's RNG, or every seeded match in the referee moves. The invariant that
+ *     holds it forward is countable: an heir with no lapses and no noise touches its RNG exactly
+ *     ONCE, for its think-phase, however long it plays. (Twelve seeded duels were also hashed
+ *     against the tree before this code existed and came out identical; a golden hash cannot
+ *     live in the suite because every honest referee change would break it, so the mechanism
+ *     is what is asserted.)
+ * (2) EACH LAPSE MOVES THE THING IT NAMES. A flaw that changes nothing is the dead-control
+ *     failure wearing a difficulty label. Cheap, direct probes, one per lapse. */
+suite('a lesser heir decides worse, he is not poorer');
+{
+  /* (1) the RNG is untouched */
+  const draws = (opts, secs) => {
+    const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+    let n = 0;
+    const real = RNG.make;
+    /* every method of an RNG draws exactly once from the same closure-internal `next`, so the
+     * count has to wrap ALL of them — `chance()` does not go through `r.next` */
+    RNG.make = (seed) => { const r = real(seed), out = {};
+      for (const k of Object.keys(r)) out[k] = typeof r[k] === 'function' ? (...a) => { n++; return r[k](...a); } : r[k];
+      return out; };
+    try {
+      const bot = AI.make('benedict', opts);
+      const iss = (cmd) => World.applyCommand(w, 1, cmd);
+      for (let i = 0; i < 30 * secs; i++) { bot.step(w, 1, iss, C.SIM_DT); World.update(w, C.SIM_DT); w.events.length = 0; }
+    } finally { RNG.make = real; }
+    return n;
+  };
+  eq('an heir with no lapses and no noise draws from its RNG exactly once — its phase', draws({ noise: 0 }, 60), 1);
+  ok('...and one under lapses draws more, so the flaws are really being rolled',
+     draws({ noise: 0, lapses: { gates: 0.5, up: 0.5 } }, 60) > 1);
+  ok('...while a lapse table of zeros draws nothing either', draws({ noise: 0, lapses: { gates: 0, up: 0, aim: 0 } }, 60) === 1);
+  ok('the footing tables carry the shape the rule needs',
+     Object.keys(C.DIFFICULTY.prince.lapses).length === 0 && Object.keys(C.DIFFICULTY.squire.lapses).length >= 5,
+     JSON.stringify(C.DIFFICULTY.squire.lapses));
+
+  /* (2) each lapse moves what it names — measured on one seeded board against the ghost */
+  const play = (lapses, secs, tap) => {
+    const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+    const bots = [AI.make('random'), AI.make('benedict', { noise: 0, lapses })];
+    const iss = [0, 1].map((pi) => (cmd) => { const r = World.applyCommand(w, pi, cmd); if (pi === 1 && r.ok && tap) tap(cmd, w); return r; });
+    for (let i = 0; i < 30 * secs && w.winner === null; i++) {
+      for (const f of [0, 1]) bots[f].step(w, f, iss[f], C.SIM_DT);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+    }
+    return w;
+  };
+  /* trickle: the COMMIT floor. Give him a Seat to march on and men enough for a handful, and
+   * see whether the banner goes: the straight heir waits for the army, the trickler does not.
+   * Probed on the view directly, which is what `ready` is computed from. */
+  {
+    const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+    const en = w.map.cities[0];
+    w.players[1].explored[en] = 1;
+    for (let k = 0; k < 8; k++) manAt(w, 1, 'soldier', World.seatOf(w, 1).x + 40 + k * 8, World.seatOf(w, 1).y);
+    const marched = (lapses) => {
+      const bot = AI.make('benedict', { noise: 0, lapses });
+      let hit = false;
+      const iss = (cmd) => { const r = World.applyCommand(w, 1, cmd); if (r.ok && cmd.c === 'banner' && cmd.site === en) hit = true; return r; };
+      for (let i = 0; i < 30 * 20; i++) { bot.step(w, 1, iss, C.SIM_DT); World.update(w, C.SIM_DT); w.events.length = 0; }
+      return hit;
+    };
+    ok('the rig is alive: eight men are a handful, under the twenty-two an assault waits for',
+       w.units.filter((u) => u.owner === 1).length < 22 && w.units.filter((u) => u.owner === 1).length >= 6);
+    ok('trickle: a straight heir does not march eight men on a Seat', !marched({}));
+    ok('...and a trickler does', marched({ trickle: 0.75, siege: 1 }));
+  }
+  /* hoard: the purse he keeps */
+  {
+    const purse = (lapses) => { let acc = 0, n = 0;
+      /* sample the purse over the second half */
+      const w3 = World.createWorld(1000, 2); w3.chaosNext = 1e9;
+      const bots = [AI.make('random'), AI.make('benedict', { noise: 0, lapses })];
+      const iss = [0, 1].map((pi) => (cmd) => World.applyCommand(w3, pi, cmd));
+      for (let i = 0; i < 30 * 240; i++) { for (const f of [0, 1]) bots[f].step(w3, f, iss[f], C.SIM_DT); World.update(w3, C.SIM_DT); w3.events.length = 0;
+        if (i > 30 * 120 && i % 30 === 0) { acc += w3.players[1].essence; n++; } }
+      return acc / n; };
+    const straight = purse({}), hoarder = purse({ hoard: 1 });
+    ok('hoard: essence piles up unspent', hoarder > straight * 1.5, `${Math.round(hoarder)} against ${Math.round(straight)}`);
+  }
+  /* up: the halls he forgets */
+  {
+    const ups = (lapses) => { let n = 0; play(lapses, 300, (cmd) => { if (cmd.c === 'up') n++; }); return n; };
+    const straight = ups({}), lazy = ups({ up: 1 });
+    ok('the rig is alive: a straight heir levels and forks', straight >= 2, `${straight} upgrades`);
+    eq('up: an heir who forgets his halls never levels one', lazy, 0);
+  }
+  /* gates: the ground he never takes */
+  {
+    const gates = (lapses) => play(lapses, 300, null).players[1].buildings.filter((b) => b.bt === 'gate').length;
+    const straight = gates({}), lazy = gates({ gates: 1 });
+    ok('the rig is alive: a straight heir raises Gates past his opening one', straight >= 2, `${straight}`);
+    ok('gates: an heir who overlooks expansion holds fewer', lazy < straight, `${lazy} against ${straight}`);
+  }
+  /* aim: the army sent somewhere known and wrong. Give him a found Seat, an army, and no
+   * threat, and count banners planted on sites that are neither his court nor the enemy's. */
+  {
+    const strays = (lapses) => {
+      const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+      const en = w.map.cities[0], home = w.map.cities[1];
+      for (const s of w.map.sites) w.players[1].explored[s.id] = 1;   // he knows the whole board
+      for (let k = 0; k < 30; k++) manAt(w, 1, 'soldier', World.seatOf(w, 1).x + 40 + (k % 6) * 8, World.seatOf(w, 1).y + Math.floor(k / 6) * 8);
+      const bot = AI.make('benedict', { noise: 0, lapses });
+      let odd = 0;
+      const iss = (cmd) => { const r = World.applyCommand(w, 1, cmd);
+        if (r.ok && cmd.c === 'banner' && cmd.site != null && cmd.site !== en && cmd.site !== home) odd++; return r; };
+      for (let i = 0; i < 30 * 90; i++) { bot.step(w, 1, iss, C.SIM_DT); World.update(w, C.SIM_DT); w.events.length = 0; }
+      return odd;
+    };
+    const straight = strays({}), stray = strays({ aim: 1 });
+    ok('aim: a straight heir who knows the board and has an army sends it home or at the Seat', straight === 0, `${straight} odd banners`);
+    ok('...and one who strays plants it somewhere else', stray > 0, `${stray} odd banners`);
+  }
+}
+
 /* ---------------- THE HOLD IS A PROMISE TO ONE BANNER ----------------
  * `hold` — the seconds an easy footing buys you before an heir will march on your Seat — is
  * checked against that heir's NEAREST rival court. In a duel that is the player's and nothing
@@ -8868,7 +9012,6 @@ suite('the hold is a promise to one banner');
   {
     const w = World.createWorld(17, 2);
     const bot = AI.make('benedict', Object.assign({}, foot));
-    w.players[1].eco = foot.eco;
     const seat = World.seatOf(w, 0);
     let hit = 0;
     for (let i = 0; i < 30 * 240; i++) {
@@ -8886,13 +9029,14 @@ suite('the hold is a promise to one banner');
                                 { country: true });
     const kinds = Object.keys(AI.HEIRS);
     const m = C.MINOR;
+    /* game.js warFooting's composition, by hand — this file cannot load game.js */
     const bots = w.players.map((p, i) => {
       const isH = (w.heirs || []).indexOf(i) >= 0;
+      const lapses = Object.assign({}, foot.lapses || {});
+      for (const k of Object.keys(m.lapses || {})) lapses[k] = Math.max(lapses[k] || 0, m.lapses[k]);
       const f = isH ? Object.assign({ holdOn: 0 }, foot)
                     : Object.assign({ holdOn: 0 }, foot, {
-                        slow: foot.slow * m.slow, noise: Math.max(foot.noise, m.noise),
-                        eco: foot.eco * m.eco });
-      if (i > 0) p.eco = f.eco;
+                        slow: foot.slow * m.slow, noise: Math.max(foot.noise, m.noise), lapses });
       return i === 0 ? null : AI.make(kinds[i % kinds.length], f);
     });
     ok('the rig is alive: the hold is longer than the window watched',

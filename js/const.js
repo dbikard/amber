@@ -79,39 +79,70 @@
    * still holding ground. */
   CONST.MASONS = { base: 0, per: 1, max: 4, floor: 1 };
 
-  /* Solo difficulty, MEASURED rather than guessed. `slow` and `noise` turned out to be decorative: an heir polled at
-   * half the rate, or skipping 45% of its turns outright, still won its mirror 42-50% of the
-   * time, because its decisions are "spend the essence on the next thing in the plan" and the
-   * essence is still there a few seconds later. `eco` is the only knob that bit — and the
-   * shipped HEIR at 0.80 measured a 50% mirror, i.e. no handicap at all, while still putting
-   * an army on the player's ground at 5.3 minutes. Worse, cutting income alone brings the
-   * assault SOONER, since a poorer heir builds less realm and marches earlier. So the ladder
-   * now runs on income AND on `hold`, the hour before the heir will march on your Seat. */
-  /* EASED, ALL THREE OF THEM — and then put back a notch, because eased read as too easy once
-   * the heirs started marching on Seats instead of escorting builders around their own half of
-   * the board. The table sits between where it began and where the easing left it: still more
-   * room than the original on every rung, and a good deal less than it had a version ago.
-   * The shape is unchanged — income and the hour it marches, both moving monotonically down. Note what this costs: PRINCE is no longer the unhandicapped heir. The
-   * heirs still fight each other at full strength in `node sim.js`, and that is where the
-   * balance targets are measured; the top of the solo ladder is now a hard opponent rather
-   * than the reference one. */
+  /* ---- EVERYONE PLAYS THE SAME GAME, AND A FOOTING IS A QUALITY OF MIND ----
+   * The designer's rule (2026-08-17): every seat at the table — bot or human, contender or
+   * minor lord — earns by the same economy and lives under the same rules. Difficulty is not
+   * a resource handicap; a lesser heir is one who makes POOR DECISIONS, and the top of the
+   * ladder is the doctrine played straight — the same heir `node sim.js` referees.
+   * The history matters, because it is why the lapses below have to be real behaviour and not
+   * decoration: an income handicap (`eco`) used to be here, and it was MEASURED as the only
+   * knob that bit — `slow` and `noise` alone left an heir at a 50% mirror, because his
+   * decisions are "spend the essence on the next thing in the plan" and the essence is still
+   * there a few seconds later. Take the purse away without giving the ladder real flaws and
+   * it collapses onto `hold` alone. So each rung carries LAPSES — named flaws at the exact
+   * decision points in ai.js, each one a mistake a human beginner actually makes. `gates`,
+   * `up`, `siege` and `hoard` are SPELLS: the number is the FRACTION of the match he spends in
+   * the flaw, held for a while at a time (a flaw rolled fresh every think measured as almost no
+   * flaw — missions and errands are sticky, and a Gate put off one think is a Gate seconds
+   * later). `aim` is a chance per NEW order; `trickle` is a fixed floor.
+   *   `gates`   — overlooks expansion: no spring taken under his feet, no new gate errand
+   *               picked up. A liege's direct order still cuts through it.
+   *   `up`      — forgets the upgrade scan: halls sit at level 1, unforked.
+   *   `aim`     — a new order sends the army somewhere known but wrong, and it sticks for
+   *               half a minute. Never while his own Seat is under threat: even a beginner
+   *               comes home; never onto a rival's court, so it is no way round `hold`.
+   *   `trickle` — the grouping discipline collapses: the COMMIT floor (the 22 men an assault
+   *               waits for) shrinks toward a handful, so his attacks arrive in dribs.
+   *   `siege`   — he has not learned what breaks stone: marches on a Seat with nothing that
+   *               can break it. The greenest mistake; SQUIRE only.
+   *   `hoard`   — sits on his purse: for a spell he raises nothing at all, and the essence
+   *               piles up unused until it lifts.
+   * `hold` stays what it was — the hour before he will march on YOUR Seat, a promise about
+   * the player's opening minutes rather than a flaw — and `slow`/`noise` stay as the tempo
+   * half of a worse mind. PRINCE carries no lapses at all: the reference heir, almost at once.
+   * MEASURED, head-to-head against the same heir played straight (benedict and bleys, five
+   * seeds, both seats, 15-minute cap; the footing's slow + noise + lapses, hold 0): the control
+   * mirror 9-9, SQUIRE 2-17 (his median assault sets out at NINE men), HEIR 4-14, a minor
+   * lord at HEIR (CONST.MINOR on top) 4-14, PRINCE 6-12 — within noise of even, and its
+   * benedict half is identical to the control match for match.
+   * Single flaws in isolation: `hoard` at 1 is 0-20 and `aim` alone is 8-9 (it delays the march
+   * and the bigger army compensates — a mirror bot does not punish wandering the way a human
+   * will, so the mirror is a LOWER bound on the handicap). And what a footing does to a whole
+   * COUNTRY at six minutes, men / works / Gates: SQUIRE 748 / 135 / 35 against 467 / 62 / 25
+   * under the old purse, PRINCE 701 / 156 / 44 against 677 / 116 / 43 — livelier at every rung,
+   * and the SQUIRE lords hold more MEN than PRINCE's, because what they hoard and never put into
+   * stone their halls put into unforked recruits. Written down; judged by hand next (TODO). */
   CONST.DIFFICULTY = {
-    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, eco: 0.52, hold: 780,
-               blurb: 'Poor, and will not march on your Seat for thirteen minutes.' },
-    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, eco: 0.70, hold: 390,
-               blurb: 'A real opponent, and at your gate not long after you have a realm.' },
-    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, eco: 0.96, hold: 60,
-               blurb: 'Very nearly the heir the other heirs face, and he comes almost at once.' }
+    squire:  { key: 'squire',  name: 'SQUIRE',  slow: 1.6,  noise: 0.30, hold: 780,
+               lapses: { gates: 0.8, up: 0.8, aim: 0.5, trickle: 0.8, siege: 1, hoard: 0.6 },
+               blurb: 'Green: hoards his essence, forgets his halls, and feeds you his army '
+                    + 'a handful at a time — and will not march on your Seat for thirteen minutes.' },
+    heir:    { key: 'heir',    name: 'HEIR',    slow: 1.2,  noise: 0.15, hold: 390,
+               lapses: { gates: 0.45, up: 0.45, aim: 0.2, trickle: 0.5, hoard: 0.3 },
+               blurb: 'Seasoned but fallible, and at your gate not long after you have a realm.' },
+    prince:  { key: 'prince',  name: 'PRINCE',  slow: 1.0,  noise: 0.05, hold: 60,
+               lapses: {},
+               blurb: 'The heir the other heirs face — no lapses, and he comes almost at once.' }
   };
   /* ---- A MINOR LORD IS A WEAKER HEIR, NOT A DUMBER ONE ----
    * A country seats sixteen and only a few of them contend for the throne (`world.heirs`). The
-   * rest are minor lords, and the temptation is to give them a smaller brain — which is what
-   * the `lord` baseline was, and what made a war feel like a different, worse game than a duel.
-   * They run the SAME doctrine as a contender and are simply poorer and slower at it, which is
-   * exactly what `CONST.DIFFICULTY` already does for the classical game: the heir plays its own
-   * game, only worse off. So a minor lord is a personality plus this handicap, and there is one
-   * brain in the whole of Amber. */
-  CONST.MINOR = { slow: 1.5, noise: 0.20, eco: 0.62 };
+   * rest are minor lords running the SAME doctrine as a contender — one brain in the whole of
+   * Amber — only lazier at it: his lapses compose with the footing's by the WORSE of the two
+   * per flaw (game.js warFooting), the same way `noise` already composes. His purse is nobody's
+   * business but his own: a lord who falls behind now falls behind by his own hand, and can
+   * always earn his way back (the death spiral the eco handicap used to make permanent). */
+  CONST.MINOR = { slow: 1.5, noise: 0.20,
+                  lapses: { gates: 0.6, up: 0.6, aim: 0.3, trickle: 0.6, hoard: 0.4 } };
   CONST.DIFFICULTY_UI = ['squire', 'heir', 'prince'];
   CONST.DIFFICULTY_DEFAULT = 'heir';
 

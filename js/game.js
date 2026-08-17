@@ -125,7 +125,6 @@
     game.world = realm.world;
     game.bot = warBot(game.world, 1);
     game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
-    warPurses(game.world, game.bots);
     game.names = game.world.players.map((_, i) => warName(game.world, i));
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
@@ -146,7 +145,7 @@
    * its army with `{c:'banner'}` and the reach law has no banner, so an heir in a country was
    * mute rather than wrong (see `warOrders` in ai.js, which translates the word).
    * Now: a CONTENDER (`world.heirs`) is a full-strength heir, and every other lord is the same
-   * heir under `CONST.MINOR` — poorer, slower, noisier, and playing the same game. That is what
+   * heir under `CONST.MINOR` — lazier, slower, noisier, and playing the same game. That is what
    * "a minor lord is a weaker heir" means, and it is the same mechanism the classical game's
    * footing already uses. The temperament is chosen by SEAT so the same court always fields the
    * same character, on every machine and across a save, without a byte of state saying so. */
@@ -161,19 +160,20 @@
    * by `CONST.MINOR` — which is what "a minor lord is a weaker heir" already meant, now said
    * relative to the footing instead of instead of it. The composition is per field and each
    * follows what the field IS:
-   *   `slow`  — a think-interval multiplier, so the two multiply;
-   *   `noise` — the chance of skipping a think, so the WORSE of the two rather than both: they
-   *             are the same penalty said twice, and stacking them double-charges one axis;
-   *   `eco`   — an income fraction, so the two multiply;
-   *   `hold`  — the footing's own, untouched. It is a promise to the PLAYER about his own
-   *             ground and there is nothing for a minor lord to add to it.
-   * THE TOP OF THE RANGE IS TODAY'S WAR, which is what makes the change auditable: at PRINCE a
-   * contender is slow 1.0 / eco 0.96 against today's 1.0 / 1.0, and a minor lord is slow 1.5,
-   * noise 0.20, eco 0.60 against today's 1.5, 0.20, 0.62. Everything softer scales down from a
-   * war that has already been measured. */
-  /* what a seat's footing IS, as plain numbers — one answer, because the BOT is made from it
-   * and the purse is written from it and the two must not drift. `eco` is not an AI option at
-   * all: it is `players[pi].eco`, read by the sim's income pass, so the caller writes it. */
+   *   `slow`   — a think-interval multiplier, so the two multiply;
+   *   `noise`  — the chance of skipping a think, so the WORSE of the two rather than both: they
+   *              are the same penalty said twice, and stacking them double-charges one axis;
+   *   `lapses` — a chance per flaw, so the WORSE of the two per flaw, for the same reason;
+   *   `hold`   — the footing's own, untouched. It is a promise to the PLAYER about his own
+   *              ground and there is nothing for a minor lord to add to it.
+   * THERE IS NO PURSE IN IT. There was — `eco`, an income fraction that multiplied — and it was
+   * the one field the sim read rather than the bot, so it had to be dealt onto `players[].eco`
+   * separately (a `warPurses` pass, gone) and re-dealt whenever the hand moved. The designer's
+   * rule is that everyone at the table earns by the same economy and a lesser heir is one who
+   * decides worse (CONST.DIFFICULTY); the death spiral it used to make permanent — a lord
+   * whose Gates were eaten could not afford another at 0.8/s and sat idle for the rest of the
+   * war — is measured gone: strip every Gate off a minor lord and he has one back in 68s and
+   * five by minute six (the same lord at the old 0.3 purse: one, after 119s). */
   function warFooting(world, pi) {
     /* `hold` is a promise about the PLAYER's ground, and in a country a lord's nearest rival
      * court is usually another lord's — so it is aimed at the viewer's banner rather than at
@@ -182,11 +182,13 @@
     const foot = Object.assign({ holdOn: World.realmOf(world, game.viewer) },
                                C.DIFFICULTY[UI.difficulty()] || {});
     if ((world.heirs || []).indexOf(pi) >= 0) return Object.assign({}, foot);
-    const m = C.MINOR;
+    const m = C.MINOR, lapses = Object.assign({}, foot.lapses || {});
+    for (const k of Object.keys(m.lapses || {}))
+      lapses[k] = Math.max(lapses[k] || 0, m.lapses[k]);
     return Object.assign({}, foot, {
       slow: (foot.slow || 1) * m.slow,
       noise: Math.max(foot.noise || 0, m.noise),
-      eco: (foot.eco != null ? foot.eco : 1) * m.eco
+      lapses
     });
   }
   function warKind(pi) {
@@ -211,23 +213,6 @@
     const k = warKind(pi);
     return k.charAt(0).toUpperCase() + k.slice(1).toUpperCase();
   }
-  /* THE PURSE IS PART OF THE FOOTING and it lives on the world, so it is dealt where the bots
-   * are — every AI seat, and never a seat a HUMAN is playing.
-   * ---- AND THE COURT UNDER YOUR OWN HAND IS ONE OF THOSE ----
-   * The handicap exists to make a BOT weaker; a court the player has taken command of is not
-   * being played by a bot, and it was keeping the crippled purse anyway. Reported from play as
-   * a hand-played inner lord with a negative economy who could never afford a Gate — and the
-   * number named the cause exactly: `2.5 (BASE_INCOME) x 0.52 (SQUIRE) x 0.62 (MINOR) = 0.806`,
-   * which is the "+0.8/s" on his screen with the muster stopped and nothing else running.
-   * Re-dealt whenever the hand MOVES, not only when a war starts, so a court handed back to its
-   * lord goes back onto its handicap on the same tap. */
-  function warPurses(world, bots) {
-    const driving = game.war ? hand() : -1;
-    for (let i = 0; i < world.players.length; i++)
-      world.players[i].eco = (bots && bots[i] && i !== driving)
-        ? (warFooting(world, i).eco || 1) : 1;
-  }
-
   function saveWar() {
     if (!game.war || !game.realm) return;
     REALM.save(game.realm);
@@ -274,11 +259,11 @@
        * seats the country exactly as a war does — contenders and minor lords — rather than the
        * marchers it was given before heirs could speak in a war at all. */
       game.bots = game.world.players.map((_, i) => (i === 0 ? null : warBot(game.world, i)));
-    /* the handicap is the heir's, not the board's: it plays its own game, only poorer. A COUNTRY
-     * deals every AI seat its own (`warPurses`), so the duel's single line would overwrite one
-     * seat of sixteen with the wrong number. */
-    if (game.bots) warPurses(game.world, game.bots);
-    else game.world.players[1].eco = (opts && opts.eco) || 1;
+    /* A CHAPTER MAY STILL STARVE ITS RIVAL. `opts.eco` is a SCRIPTING seam and not a footing:
+     * a footing never touches a purse any more (CONST.DIFFICULTY), but a scripted story may
+     * want a feeble tutorial rival, exactly as it may pin its ground or shut the Pattern road.
+     * A country's seats are dealt no purse at all — everyone earns by the same economy. */
+    if (!game.bots) game.world.players[1].eco = (opts && opts.eco) || 1;
     /* a kind may be an heir or a baseline (the reach rig runs marchers) — both carry a title */
     const kindTitle = (AI.HEIRS[kind] && AI.HEIRS[kind].title) ||
                       (AI.BASELINES && AI.BASELINES[kind] && AI.BASELINES[kind].title) || 'a lord';
@@ -352,7 +337,6 @@
         game.world = savedRealm.world;
         /* the seats nobody human took are played exactly as a solo war's are */
         game.bots = game.world.players.map((_, i) => (i >= n ? warBot(game.world, i) : null));
-        warPurses(game.world, game.bots);   // a seat a human holds keeps a full purse
       } else {
         /* a guest builds the same country from the seed alone — geometry, never history */
         game.world = null;
@@ -488,9 +472,6 @@
     const heirs = Object.keys(AI.HEIRS);
     if (!game.bots) game.bots = w.players.map(() => null);
     game.bots[seat] = game.war ? warBot(w, seat) : AI.make(heirs[seat % heirs.length], {});
-    /* he was a human a moment ago and had a full purse; now he is a driver and takes its
-     * footing, the same as every other AI seat at this table */
-    if (game.war) warPurses(w, game.bots);
     UI.banner(seatName(seat) + ' has left the table — a shadow of him fights on', 'warn');
     return true;
   }
@@ -2368,9 +2349,6 @@
           UI.banner(REFUSAL.held, 'warn'); return;
         }
         helm().hand = c.owner;
-        /* the purse follows the hand: the court you are driving plays at full strength, and the
-         * one you just put down goes back onto its lord's handicap */
-        if (game.world && game.bots) warPurses(game.world, game.bots);
         game.armedFlag = null; clearPlacing();
         if (game.realm) REALM.save(game.realm);
         if (Render.lookAt) Render.lookAt(c.x, c.y);
