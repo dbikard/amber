@@ -165,6 +165,7 @@
   const dum = typeof THREE !== 'undefined' ? new THREE.Object3D() : null;
   const colTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
   const penTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
+  const livTmp = typeof THREE !== 'undefined' ? new THREE.Color() : null;
 
   /* ---------------- low-poly model kit: merged geometry with vertex colors ---------------- */
   function colorize(geo, hex) {
@@ -175,30 +176,40 @@
     geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
     return geo;
   }
-  function part(geo, hex, x, y, z, ry) {
+  /* `cloth` marks the ONE part of a man that wears his court's livery — see the `livery` arm
+   * of `fogPatch`. It rides the merged geometry as a per-vertex float (1 on cloth, 0 on
+   * everything else), so the shader needs no table of which vertices are which. */
+  function part(geo, hex, x, y, z, ry, cloth) {
     geo = geo.toNonIndexed();
     if (ry) geo.rotateY(ry);
     geo.translate(x, y, z);
+    geo.userData.cloth = cloth ? 1 : 0;
     return colorize(geo, hex);
   }
   function merge(parts) {
     let total = 0;
     for (const g of parts) total += g.attributes.position.count;
     const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), col = new Float32Array(total * 3);
+    const clo = new Float32Array(total);
     let o = 0;
     for (const g of parts) {
       pos.set(g.attributes.position.array, o * 3);
       nor.set(g.attributes.normal.array, o * 3);
       col.set(g.attributes.color.array, o * 3);
+      if (g.userData.cloth) clo.fill(1, o, o + g.attributes.position.count);
       o += g.attributes.position.count;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('cloth', new THREE.BufferAttribute(clo, 1));
     return geo;
   }
-  let MAT = null, MATB = null;
+  /* MAT is the world's; MATU is the ARMY'S — the same Lambert with the `livery` arm of the
+   * veil patch on it, so a man's cloth part is two-toned by his court. Only `makeIM` uses it:
+   * trees, rocks and works carry no livery and pay for no varyings. */
+  let MAT = null, MATB = null, MATU = null;
   const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const cyl = (rt, rb, h, seg) => new THREE.CylinderGeometry(rt, rb, h, seg || 7);
   const cone = (r2, h, seg) => new THREE.ConeGeometry(r2, h, seg || 7);
@@ -312,7 +323,49 @@
     const b = Math.round((tint & 255) * k);
     return (Math.min(255, r) << 16) | (Math.min(255, g) << 8) | Math.min(255, b);
   };
-  function towerModel(tint) {
+  /* ---- THE COURT'S LIVERY, DRAWN ----
+   * One drawing of a livery for everything that shows one flat: the flag on the Seat's finial
+   * and the swatch beside a tap label or a council row. The ground is the holder's TINT (the
+   * side), the pattern the court's secondary colour, so the flag on a conquered tower says
+   * both things at once exactly as the men do. Pattern 0 is plain: a field of the tint. The
+   * shapes mirror the shader's mask in the `livery` arm of `fogPatch` in spirit rather than
+   * to the pixel — a flag is read at forty pixels and a tabard at three. */
+  function liveryCanvas(w, h, tintHex, colourHex, p) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    const css = (hex) => '#' + (hex >>> 0).toString(16).padStart(6, '0');
+    ctx.fillStyle = css(tintHex);
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = css(colourHex);
+    const n = 6, sw = w / n, sh = h / 4;
+    if (p === 1) {                                        // stripes
+      for (let i = 0; i < n; i += 2) ctx.fillRect(i * sw, 0, sw, h);
+    } else if (p === 2) {                                 // bands
+      for (let i = 0; i < 4; i += 2) ctx.fillRect(0, i * sh, w, sh);
+    } else if (p === 3) {                                 // checkers
+      const c = w / 6, rows = Math.max(1, Math.round(h / c));
+      for (let y = 0; y < rows; y++) for (let x = 0; x < 6; x++)
+        if ((x + y) % 2 === 0) ctx.fillRect(x * c, y * c, c, c);
+    } else if (p === 4) {                                 // pale: halved left and right
+      ctx.fillRect(0, 0, w / 2, h);
+    } else if (p === 5) {                                 // dots
+      const c = w / 6, r = c * 0.32, rows = Math.max(1, Math.round(h / c));
+      for (let y = 0; y < rows; y++) for (let x = 0; x < 6; x++) {
+        ctx.beginPath(); ctx.arc((x + 0.5) * c, (y + 0.5) * c, r, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (p === 6) {                                 // quartered
+      ctx.fillRect(0, 0, w / 2, h / 2); ctx.fillRect(w / 2, h / 2, w / 2, h / 2);
+    }
+    return cv;
+  }
+  R.liveryCanvas = liveryCanvas;
+  /* the Seat: a merged, vertex-coloured tower and — on the finial — the court's FLAG. A Group
+   * because the flag is a textured plane and cannot merge into the tower's vertex colours;
+   * anything that held `g.tower` as a mesh (the collapse, the re-dressing, the sweep) walks
+   * the group now. `livery` is the COURT's — `C.liveryOf(pi)`, by seat — and the flag's ground
+   * is the holder's tint, so a conquered court flies its own device under the taker's colour. */
+  function towerModel(tint, livery) {
     const wall = shade(tint, 0.72), light = shade(tint, 0.9),
       dark = shade(tint, 0.42), roof = shade(tint, 0.54);
     const p = [];
@@ -329,9 +382,31 @@
     for (const a of [0.4, 2.1, 3.8, 5.5])                         // arrow lights
       p.push(part(box(3, 8, 1.6), lit, Math.cos(a) * 25.5, 90, Math.sin(a) * 25.5, a));
     p.push(part(box(16, 22, 5), dark, 0, 11, 34));               // the tower gate
-    p.push(part(cyl(0.9, 0.9, 26, 5), light, 0, 196, 0));
-    p.push(part(box(15, 9, 0.8), lit, 8.5, 204, 0));
-    return meshOf(p);
+    p.push(part(cyl(0.9, 0.9, 26, 5), light, 0, 196, 0));   // the pole
+    const grp = new THREE.Group();
+    grp.add(meshOf(p));
+    const lv = livery || C.liveryOf(-1);
+    const tex = new THREE.CanvasTexture(liveryCanvas(96, 64, tint, lv.colour, lv.p));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    /* LARGE, and hung from the top of the pole: it is the one place a court's livery can be
+     * read from across the board, and the small pennant it replaces said only the tint. Fog-
+     * patched like everything else under worldG, and named so the sweep can find its texture. */
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(36, 24),
+      fogPatch(new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })));
+    flag.name = 'seat-flag';
+    flag.position.set(19, 197, 0);
+    grp.add(flag);
+    return grp;
+  }
+  /* everything a Seat's model holds — the geometry, the flag's material and its texture */
+  function disposeTower(t) {
+    t.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.name === 'seat-flag' && o.material) {
+        if (o.material.map) o.material.map.dispose();
+        o.material.dispose();
+      }
+    });
   }
   function modelKey(b, gar, hurt) {
     return (b.br ? b.bt + ':' + b.br : b.bt)
@@ -788,7 +863,7 @@
     const crest = t === 3 ? 0xffe08a : 0xd8e0ff;
     if (kind === 'soldier') {
       const w = 1 + (t - 1) * 0.14;                       // a veteran is a heavier man
-      p.push(part(cyl(3.2 * w, 4.2 * w, 12, 6), t > 1 ? 0xc9c9d2 : 0xbbbbbb, 0, 8, 0));
+      p.push(part(cyl(3.2 * w, 4.2 * w, 12, 6), t > 1 ? 0xc9c9d2 : 0xbbbbbb, 0, 8, 0, 0, 1));   // the tabard: his court's livery
       p.push(part(sph(3.4), 0xdddddd, 0, 17, 0));
       p.push(part(cyl(0.7, 0.7, 20, 4), 0xeeeeee, 5, 12, 0));
       p.push(part(cyl(3.4 * w, 3.4 * w, 1.4, 7), 0x999999, -5.4, 10, 0, 0));
@@ -800,7 +875,7 @@
         p.push(part(box(6, 4, 0.5), crest, -8, 25, 0));
       }
     } else if (kind === 'sorcerer') {
-      p.push(part(cone(4.6, 15, 6), t > 1 ? 0xb9b4c6 : 0xaaaaaa, 0, 7.5, 0));
+      p.push(part(cone(4.6, 15, 6), t > 1 ? 0xb9b4c6 : 0xaaaaaa, 0, 7.5, 0, 0, 1));           // the robe: livery
       p.push(part(sph(2.9), 0xcccccc, 0, 16, 0));
       p.push(part(cyl(0.7, 0.7, 22, 4), 0xdddddd, 5, 12, 0));
       p.push(part(sph(1.8 + (t - 1) * 0.7), 0xffffff, 5, 23.5, 0));  // a fuller light
@@ -814,7 +889,7 @@
        * played at, a shieldman must be a different SHAPE from a soldier, not a soldier with a
        * bigger number. Squat, broad, and a shield taller than his head. */
       const w = 1.25 + (t - 1) * 0.12;
-      p.push(part(cyl(4.0 * w, 5.0 * w, 12, 6), t > 1 ? 0xb8bcc8 : 0xa8acb4, 0, 8, 0));
+      p.push(part(cyl(4.0 * w, 5.0 * w, 12, 6), t > 1 ? 0xb8bcc8 : 0xa8acb4, 0, 8, 0, 0, 1));   // the tabard: livery
       p.push(part(sph(3.6), 0xd8d8dc, 0, 17, 0));
       p.push(part(box(1.6, 17, 11), t > 2 ? 0xd8c078 : 0x8a8f9c, 6.5, 11, 0));   // the shield
       p.push(part(box(1.2, 3, 9), crest, 7.3, 11, 0));                            // its boss-line
@@ -824,7 +899,7 @@
     } else if (kind === 'outrider') {
       /* LEANING FORWARD. Everything about him says speed: a thin body pitched off vertical, a
        * long trailing cloak, and no shield at all. */
-      p.push(part(cyl(2.4, 3.0, 13, 5), t > 1 ? 0xc4b898 : 0xb0a888, 0, 8, 0));
+      p.push(part(cyl(2.4, 3.0, 13, 5), t > 1 ? 0xc4b898 : 0xb0a888, 0, 8, 0, 0, 1));           // the coat: livery
       p.push(part(sph(2.9), 0xd8d0b8, 1.5, 16.5, 0));
       p.push(part(cone(4.5, 12, 5), 0x6a5a3a, -3, 9, 0));            // the cloak, streaming back
       p.push(part(cyl(0.6, 0.6, 17, 4), 0xdddddd, 4.5, 11, 0));       // a light lance
@@ -833,7 +908,7 @@
     } else if (kind === 'archer') {
       /* THE BOW IS THE WHOLE SILHOUETTE — a tall arc across the body, which nothing else on
        * the board has, plus the quiver behind the shoulder. */
-      p.push(part(cyl(2.8, 3.6, 12, 5), t > 1 ? 0x9aa88c : 0x8a9880, 0, 8, 0));
+      p.push(part(cyl(2.8, 3.6, 12, 5), t > 1 ? 0x9aa88c : 0x8a9880, 0, 8, 0, 0, 1));           // the jerkin: livery
       p.push(part(sph(3.0), 0xc8ccc0, 0, 16.5, 0));
       p.push(part(cyl(0.55, 0.55, 20, 4), 0xc8b088, 4.5, 12, 0.5));   // the bow stave
       p.push(part(cyl(0.3, 0.3, 19, 3), 0xeeeeee, 5.4, 12, 0.5));      // its string
@@ -844,7 +919,7 @@
       /* PALE, AND CARRYING A LIGHT. The cross of light over the staff is the read: it is the
        * one unit on the board whose business is not killing, and it must not look like a
        * sorcerer with a different hat. */
-      p.push(part(cone(4.2, 15, 6), 0xe8e4ee, 0, 7.5, 0));
+      p.push(part(cone(4.2, 15, 6), 0xe8e4ee, 0, 7.5, 0, 0, 1));                               // the robe: livery
       p.push(part(sph(2.9), 0xf0eef6, 0, 16, 0));
       p.push(part(cyl(0.7, 0.7, 24, 4), 0xd8d0c0, 5, 13, 0));          // the staff
       p.push(part(box(1.6, 7, 1.6), 0xdcf0e0, 5, 26, 0));              // ...and its cross,
@@ -854,7 +929,7 @@
     } else if (kind === 'binder') {
       /* HOOKED AND DARK, and carrying a ring rather than a blade — the thing he throws is a
        * loop of Shadow, so the loop is the silhouette. */
-      p.push(part(cone(4.4, 14, 6), 0x4a4258, 0, 7, 0));
+      p.push(part(cone(4.4, 14, 6), 0x4a4258, 0, 7, 0, 0, 1));                                 // the robe: livery
       p.push(part(sph(2.8), 0x6a6078, 0, 15.5, 0));
       p.push(part(cone(2.4, 7, 5), 0x2e2838, 0, 19, 0));               // a deep hood
       p.push(part(cyl(0.7, 0.7, 20, 4), 0x8a7ca8, 5, 12, 0));          // a crooked rod
@@ -871,7 +946,7 @@
        * timber a cylinder cannot be here */
       p.push(part(box(24, 4.4, 4.4), 0x8a6c46, 0, 10, 0));             // the beam
       p.push(part(box(5, 5.6, 5.6), 0x9aa0aa, 13, 10, 0));             // its iron cap
-      p.push(part(box(21, 2.4, 13), 0x6b5236, 0, 17, 0));              // the roof
+      p.push(part(box(21, 2.4, 13), 0x6b5236, 0, 17, 0, 0, 1));        // the roof, hung in livery
       p.push(part(box(1.8, 8, 1.8), 0x4a3a26, -8, 13, 0));
       p.push(part(box(1.8, 8, 1.8), 0x4a3a26, 8, 13, 0));
       if (t > 1) p.push(part(box(21, 1.4, 13.6), crest, 0, 19, 0));    // banded, plated
@@ -883,7 +958,7 @@
       p.push(part(box(13, 5, 11), 0x5a4a3a, 0, 4, 0));
       p.push(part(cyl(3.4, 3.4, 3, 8), 0x3e3222, -3.5, 3, 0));
       p.push(part(cyl(3.4, 3.4, 3, 8), 0x3e3222, 3.5, 3, 0));
-      p.push(part(box(7, 7, 7), 0x6b5236, -3, 9, 0));                  // the bed
+      p.push(part(box(7, 7, 7), 0x6b5236, -3, 9, 0, 0, 1));            // the bed, draped in livery
       /* THE BARREL CLIMBS. `part` yaws and cannot pitch, so the elevation is built as three
        * stepped blocks rather than one tilted tube — at this zoom the staircase reads as a
        * gun pointed at the sky, which is the whole silhouette. */
@@ -899,7 +974,7 @@
        * told apart at a glance instead: a long cloak that breaks the upright silhouette every
        * other unit has, a two-handed blade held high, and the Trump's own violet — a colour
        * no company standard can take — burning over his head. */
-      p.push(part(cyl(3.4, 4.6, 18, 6), 0xdcd4e8, 0, 11, 0));            // the man
+      p.push(part(cyl(3.4, 4.6, 18, 6), 0xdcd4e8, 0, 11, 0, 0, 1));      // the man, in his court's livery
       p.push(part(sph(4.0), 0xefeaf6, 0, 23, 0));
       p.push(part(cone(7.5, 20, 7), 0x6a4a9a, 0, 12, -2.5));             // the cloak, falling wide
       p.push(part(box(9, 3, 9), 0x8a6ac0, 0, 22, -2));                   // its clasp at the shoulder
@@ -911,7 +986,7 @@
       /* a trebuchet on a cart: a low hull, rollers either side, a mast and a throwing arm
        * with the counterweight hauled back. Squat and wide, so a siege train reads as one
        * even at the far zoom, where a soldier is four pixels. */
-      p.push(part(box(15, 5, 10), 0x6b5236, 0, 4, 0));
+      p.push(part(box(15, 5, 10), 0x6b5236, 0, 4, 0, 0, 1));            // the hull, in livery
       p.push(part(cyl(3.6, 3.6, 3, 8), 0x4a3a26, -4, 3, 0));
       p.push(part(cyl(3.6, 3.6, 3, 8), 0x4a3a26, 4, 3, 0));
       p.push(part(box(2.2, 15, 2.2), 0x8a6c46, 0, 13, 0));
@@ -1004,6 +1079,7 @@
     scene.add(underM);
     MAT = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }));
     MATB = fogPatch(new THREE.MeshBasicMaterial({ vertexColors: true }));
+    MATU = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }), 'livery');
     overlay = document.getElementById('overlay');
     octx = overlay.getContext('2d');
     stormState = [];
@@ -1238,6 +1314,20 @@
     }
     if (out && best) out.d = bd;
     return best;
+  };
+  /* ANY MAN UNDER THE FINGER, whoever's — for the tap that asks "whose are these". The same
+   * tight reach as `hitUnit`, and it walks the VIEW, so it can only answer for a man the veil
+   * has already handed over. A man shut in a tower is not drawn and is not offered. */
+  R.hitAnyUnit = function (px, py) {
+    if (!curView) return null;
+    const w2 = R.toWorld(px, py);
+    let best = null, bd = 24 * 24;
+    for (const u of curView.units) {
+      if (u.in || (u.hp != null && u.hp <= 0)) continue;
+      const dd = (w2.x - u.x) * (w2.x - u.x) + (w2.y - u.y) * (w2.y - u.y);
+      if (dd < bd) { bd = dd; best = u; }
+    }
+    return best ? { owner: best.owner, kind: best.kind, co: best.co || 0 } : null;
   };
   /* A WORK OF SOMEBODY ELSE'S UNDER THE FINGER — for the order that names one. `hitBuilding`
    * answers for the HAND'S works and must go on doing so (it is what opens the sheet); this is
@@ -1561,6 +1651,41 @@
           }`);
         mat.userData.slopeFrag = sh.fragmentShader.indexOf('vUpness') >= 0;
       }
+      /* THE MEN SAY WHICH COURT. The banner tint (the instance colour) says whose SIDE a man
+       * is on and stays the primary read; his court is the SECOND read, worn as a pattern in
+       * a secondary colour on the one part of him `part(..., cloth)` marked. Two per-instance
+       * attributes carry it — `livB` the livery colour, `livP` the pattern index (0 = plain,
+       * no mask, which is what Chaos wears) — set from `CONST.liveryOf(owner)` per man each
+       * frame, and the mask is computed over OBJECT space so it turns with him and needs no
+       * texture. Injected after `<color_fragment>`, where `diffuseColor` already carries the
+       * vertex colour and the tint, so the lighting falls on the livery exactly as on the
+       * rest of him. Periods of ~3 units read as a few pixels of pattern at the played zoom;
+       * finer would shimmer, coarser would be one blot. */
+      if (mode === 'livery') {
+        sh.vertexShader = 'attribute vec3 livB;\nattribute float livP;\nattribute float cloth;\n'
+          + 'varying vec3 vLivB;\nvarying float vLivP;\nvarying float vCloth;\nvarying vec3 vLocal;\n'
+          + sh.vertexShader.replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+          vLivB = livB; vLivP = livP; vCloth = cloth; vLocal = position;`);
+        sh.fragmentShader = 'varying vec3 vLivB;\nvarying float vLivP;\nvarying float vCloth;\nvarying vec3 vLocal;\n'
+          + sh.fragmentShader.replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          if (vCloth > 0.5 && vLivP > 0.5) {
+            vec2 q = vLocal.xy / 3.0;
+            float lm;
+            if (vLivP < 1.5)      lm = step(fract(q.x), 0.5);                          // stripes, across him
+            else if (vLivP < 2.5) lm = step(fract(q.y), 0.5);                          // bands, up him
+            else if (vLivP < 3.5) lm = mod(floor(q.x) + floor(q.y), 2.0);              // checkers
+            else if (vLivP < 4.5) lm = step(0.0, vLocal.x);                            // pale: halved left and right
+            else if (vLivP < 5.5) lm = 1.0 - step(0.30, length(fract(q) - 0.5));       // dots
+            else lm = abs(step(0.0, vLocal.x) - mod(floor(vLocal.y / 6.0), 2.0));      // quartered
+            diffuseColor.rgb = mix(diffuseColor.rgb, vLivB * 0.85, lm);
+          }`);
+        mat.userData.livFrag = sh.fragmentShader.indexOf('vLivP > 0.5') >= 0 &&
+                               sh.vertexShader.indexOf('vLocal = position') >= 0;
+      }
       /* PROVE THE INJECTION LANDED. A `.replace` whose needle is absent returns the string
        * unchanged and throws nothing — the patch then silently does nothing and the render
        * looks like a plausible result rather than a broken one. */
@@ -1576,6 +1701,8 @@
     mat.needsUpdate = true;
     return mat;
   }
+  /* test handle: the army's material, so a suite can prove the livery arm landed in it */
+  R.debugUnitMaterial = () => MATU;
   /* THE ONE HAZARD OF PUTTING THE VEIL IN THE MATERIALS: it only veils the materials it was
    * given. The 2D canvas covered everything by construction; this covers what it is told to,
    * and anything added later without `fogPatch` shines at full strength across black shroud.
@@ -1773,7 +1900,11 @@
      * walked once. */
     while (worldG.children.length) {
       const c2 = worldG.children[0];
-      c2.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      c2.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        /* the Seat's flag is the one textured thing here that is made per match */
+        if (o.name === 'seat-flag' && o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+      });
       worldG.remove(c2);
     }
     siteObjs.clear(); unitIM = {}; unitFace.clear(); coFlags.clear();
@@ -2019,7 +2150,7 @@
      * second court stamped on top of a better one. Deleted; the bake does the work. */
     const ch = groundH(city.x, city.y);
     g.tint = cityTint(view.cities && view.cities[pi], viewer);
-    g.tower = towerModel(g.tint);
+    g.tower = towerModel(g.tint, C.liveryOf(pi));
     g.tower.position.set(city.x, ch, city.y);
     g.group.add(g.tower);
     /* works are placed things now: their groups are made and destroyed as they rise and fall */
@@ -2045,10 +2176,11 @@
       if (want === g.tint) continue;
       if (seatFalls.some((f) => f.pi === pi)) continue;
       g.tower.removeFromParent();
-      g.tower.geometry.dispose();
+      disposeTower(g.tower);
       const at = g.tower.position;
       g.tint = want;
-      g.tower = towerModel(want);
+      /* the livery is the COURT's, by seat, whoever holds it: only the ground changes */
+      g.tower = towerModel(want, C.liveryOf(pi));
       g.tower.position.copy(at);
       g.group.add(g.tower);
       /* ...AND SO DOES THE GROUND. `terrain.js` paints a warm or a cold wash into the bake
@@ -2455,7 +2587,16 @@
   const rankOf = (u) => Math.max(1, Math.min(C.TIER.length, u.tier || 1));
   function makeIM(key, room) {
     const cut = key.indexOf('#');
-    const im = new THREE.InstancedMesh(unitGeo(key.slice(0, cut), +key.slice(cut + 1)), MAT, room);
+    const geo = unitGeo(key.slice(0, cut), +key.slice(cut + 1));
+    /* THE LIVERY RIDES BESIDE THE INSTANCE COLOUR: a colour and a pattern per man, read by
+     * the `livery` arm of MATU. Per-IM, because the geometry is (a fresh `unitGeo` each), so
+     * a bucket that grows brings its own along. Written every frame like the matrices. */
+    const livB = new THREE.InstancedBufferAttribute(new Float32Array(room * 3), 3);
+    const livP = new THREE.InstancedBufferAttribute(new Float32Array(room), 1);
+    livB.setUsage(THREE.DynamicDrawUsage); livP.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('livB', livB);
+    geo.setAttribute('livP', livP);
+    const im = new THREE.InstancedMesh(geo, MATU, room);
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     /* An InstancedMesh is culled against a bounding sphere derived from its instance
      * matrices — computed ONCE, on the first frustum test, and cached. The trees get away
@@ -2606,6 +2747,7 @@
         im = unitIM[kind] = makeIM(kind, room);
         worldG.add(im);
       }
+      const livB = im.geometry.attributes.livB, livP = im.geometry.attributes.livP;
       for (let i = 0; i < list.length; i++) {
         const u = list[i];
         let f = unitFace.get(u.id);
@@ -2644,11 +2786,19 @@
           marked.push(u);
         }
         im.setColorAt(i, colTmp);
+        /* ...and his court's livery, the second read: `liveryOf` is by SEAT, so a sworn
+         * lord's men keep their own court's cloth under their liege's tint, and Chaos (plain,
+         * pattern 0) wears none */
+        const lv = C.liveryOf(u.owner);
+        livTmp.setHex(lv.colour);
+        livB.setXYZ(i, livTmp.r, livTmp.g, livTmp.b);
+        livP.setX(i, lv.p);
         if (R.debugSlots) unitSlot.set(u.id, kind + '|' + i);
       }
       im.count = list.length;
       im.instanceMatrix.needsUpdate = true;
       if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      livB.needsUpdate = true; livP.needsUpdate = true;
     }
     /* forget the dead. This asked `view.units.some(...)` per remembered id, which is a scan of
      * the whole army for every man in it — the one place the renderer went quadratic, and it

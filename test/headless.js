@@ -9255,6 +9255,52 @@ suite('the stone near a man is binned, and it is the same answer');
                          : `${ticks} ticks identical, ${felled} works felled in the window`);
 }
 
+/* ---------------- the men say which court ----------------
+ * The banner tint says whose SIDE a man is on; LIVERY says which COURT, worn on one cloth part
+ * of every man and flown on his court's tower. It is BY SEAT — `players[i]` is the lord of
+ * `cities[i]` permanently — so it is arithmetic on every machine and nothing rides the wire.
+ * The table must be as long as the name bag (`REACHWAR.names`, twenty) and every entry
+ * distinct, or two courts wear one device; and Chaos wears none. */
+suite('the men say which court');
+{
+  ok('there is a livery table, and it names its patterns and colours',
+     !!C.LIVERY && Array.isArray(C.LIVERY.patterns) && Array.isArray(C.LIVERY.colours) && Array.isArray(C.LIVERY.table),
+     JSON.stringify(C.LIVERY && Object.keys(C.LIVERY)));
+  /* read defensively so that the old code fails these rows rather than crashing the suite */
+  const L = C.LIVERY || { patterns: [], colours: [], table: [] };
+  if (!C.liveryOf) C.liveryOf = () => ({});
+  ok('pattern 0 is plain — the absence of a device, not a device', L.patterns[0] === 'plain', L.patterns[0]);
+  ok('twenty liveries, like twenty names: add a city, add both',
+     L.table.length === 20 && L.table.length >= C.REACHWAR.names.length,
+     `${L.table.length} liveries against ${C.REACHWAR.names.length} names`);
+  const keys = L.table.map((e) => e.join(','));
+  ok('...every one a distinct pair', L.table.length > 0 && new Set(keys).size === L.table.length, keys.join(' '));
+  ok('...and every index in range, none of them plain',
+     L.table.length > 0 && L.table.every((e) => e.length === 2 && e[0] >= 1 && e[0] < L.patterns.length && e[1] >= 0 && e[1] < L.colours.length),
+     JSON.stringify(L.table));
+  const l0 = C.liveryOf(0), t0 = L.table[0] || [];
+  ok('liveryOf answers a seat with its pattern, colour and name',
+     l0.p >= 1 && l0.p === t0[0] && l0.colour === L.colours[t0[1]] && l0.name === L.patterns[l0.p],
+     JSON.stringify(l0));
+  ok('Chaos and nobody wear plain',
+     C.liveryOf(C.CHAOS_ID).p === 0 && C.liveryOf(-1).p === 0 && C.liveryOf(null).p === 0 && C.liveryOf(undefined).p === 0);
+  ok('...and it cycles at twenty', l0.p >= 1 && C.liveryOf(20).p === C.liveryOf(0).p && C.liveryOf(20).colour === C.liveryOf(0).colour
+     && C.liveryOf(35).p === C.liveryOf(15).p);
+  /* BY SEAT: sixteen lords of a country each wear their own, and a conquest changes nothing —
+   * `players[i]` is still the lord of `cities[i]` and his men keep his court's cloth under
+   * the taker's tint */
+  const seats = []; for (let i = 0; i < C.REACHWAR.cities; i++) seats.push(C.liveryOf(i));
+  ok('sixteen seats, sixteen liveries, no two alike',
+     new Set(seats.map((l) => l.p + ',' + l.colour)).size === C.REACHWAR.cities,
+     seats.map((l) => l.name).join(' '));
+  const w = World.createWorld(7, 4, null, { truce: 1 });
+  const before = C.liveryOf(3);
+  w.players[3].realm = 0;   // seat 3 swears to seat 0
+  const after = C.liveryOf(3);
+  ok('a lord who swears keeps his court\'s livery — it is the tint that changes, not the cloth',
+     before.p >= 1 && before.p === after.p && before.colour === after.colour && World.realmOf(w, 3) === 0);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

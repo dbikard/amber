@@ -304,6 +304,42 @@
    * somebody takes it, and the eye should go to the banners. */
   CONST.REALM_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8, 0xffb066, 0x9ad86a];
   CONST.NEUTRAL_TINT = 0x9a93a8;
+  /* ---------------- THE MEN SAY WHICH COURT ----------------
+   * The banner tint says WHOSE SIDE a man is on, and that is the whole of what a glance at a
+   * war map asks — but a realm of six courts fields six lords' men in one colour, and the man
+   * on your spring could be from any of them. LIVERY is the second read: a pattern in a
+   * secondary colour worn on one cloth part of every man and flown large on his court's tower,
+   * so the two questions have two answers on the same figure — the tint for the side, the
+   * cloth for the court.
+   * IT IS BY SEAT. `players[i]` is the lord of `cities[i]` permanently and a conquest takes an
+   * oath, not a deed, so a lord's men wear his own court's livery sworn or not; a rival's men
+   * are told from a vassal's by the tint, exactly as before. Being by seat it is arithmetic on
+   * every machine and nothing about it rides the wire.
+   * `patterns[0]` is PLAIN — no mask at all — and it is what Chaos and nobody wear; the table
+   * uses the rest. `colours` are chosen to read against every banner tint at once, so a
+   * livery cannot vanish because its court swore to the wrong colour of banner. `table` holds
+   * TWENTY distinct pairs, like `REACHWAR.names` holds twenty names: add a city, add a livery.
+   * `liveryOf` is the one answer; the renderer, the tap label and the council swatch all ask it. */
+  CONST.LIVERY = {
+    patterns: ['plain', 'stripes', 'bands', 'checkers', 'pale', 'dots', 'quartered'],
+    colours: [0xf2ead8, 0x2a2430, 0xf0b428, 0x7cc4f0, 0xf07a9a, 0x6aa85a],   // ivory, soot, saffron, sky, rose, moss
+    table: [
+      [1, 0], [2, 1], [3, 2], [4, 3], [5, 4], [6, 5],
+      [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [6, 1],
+      [1, 4], [2, 5], [3, 0], [4, 1], [5, 2], [6, 3],
+      [1, 5], [2, 0]
+    ]
+  };
+  /* asked per man per frame by the renderer, so the answers are made once and SHARED — read
+   * them, do not write to them */
+  const LIVERIES = [], PLAIN = { p: 0, ci: -1, colour: 0xffffff, name: 'plain' };
+  CONST.liveryOf = function (i) {
+    const L = CONST.LIVERY;
+    /* Chaos (-1), nobody (null) and anything that is not a seat wear PLAIN */
+    if (i == null || !(i >= 0)) return PLAIN;
+    const k = Math.floor(i) % L.table.length, e = L.table[k];
+    return LIVERIES[k] || (LIVERIES[k] = { p: e[0], ci: e[1], colour: L.colours[e[1]], name: L.patterns[e[0]] });
+  };
 
   /* ---------------- THE REACH WAR ----------------
    * The Long War's next shape: ONE continuous land instead of a graph of boards. Every city

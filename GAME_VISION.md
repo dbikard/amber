@@ -210,6 +210,9 @@ cold crimson rival skyline, black-green Chaos boiling out of the rifts. The grou
 painterly at boot (`js/terrain.js`) and draped over a real 3D land; buildings and units are
 procedural low-poly models under a pitched camera (`js/render3d.js`, Three.js) — a solo-dev
 sustainable pipeline, richer than Perils' neon vectors. The renderer stays isolated.
+Every court has a LIVERY — a pattern in a second colour, worn on one cloth part of its men and
+flown large on its Seat's tower — so the banner tint says whose side and the cloth says which
+court, and a tap on another lord's men says it in words (`CONST.LIVERY`, by seat).
 
 ## Match Targets
 

@@ -4684,6 +4684,156 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- the men say which court ----------------
+   * The banner tint says whose SIDE a man is on; LIVERY says which COURT — a pattern in a
+   * secondary colour on one cloth part of every man (the `livery` arm of the veil patch,
+   * fed per instance from `CONST.liveryOf(owner)`), flown large on the court's tower, and
+   * said in words at the finger when another lord's man is tapped. Everything added is
+   * under worldG and so must be under the veil; the tap is a REAL click at a screen position
+   * asked of the renderer. */
+  {
+    suite('the men say which court');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 20260911 }, false));
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const seen = await pg.evaluate(async () => {
+      const R = window.Render, C = window.CONST, g = window.Game.game, w = g.world;
+      const seat = w.map.sites[w.map.cities[0]];
+      /* a rival's man and one of my own on my own court, where the veil is certainly lifted;
+       * a spot clear of works so the tap cannot be claimed by a sheet, and on the screen */
+      const clear = (x, y) => w.players.every((p) => p.buildings.every((b) => Math.hypot(b.x - x, b.y - y) > 70))
+        && w.units.every((u) => Math.hypot(u.x - x, u.y - y) > 40);
+      let at = null;
+      for (let r = 90; r <= 220 && !at; r += 20) for (let a = 0; a < 12 && !at; a++) {
+        const x = seat.x + Math.cos(a / 12 * Math.PI * 2) * r, y = seat.y + Math.sin(a / 12 * Math.PI * 2) * r;
+        const s = R.project(x, y);
+        if (clear(x, y) && s.ok && s.x > 30 && s.x < 390 && s.y > 120 && s.y < 700) at = { x, y };
+      }
+      if (!at) return { at: null };
+      w.units.push({ id: 9001, owner: 1, kind: 'soldier', x: at.x, y: at.y, hp: 70, maxHp: 70, co: 1, cd: 0, goal: null });
+      w.units.push({ id: 9002, owner: 0, kind: 'archer', x: at.x + 60, y: at.y, hp: 70, maxHp: 70, co: 1, cd: 0, goal: null });
+      R.debugSlots = true;   // which slot of which bucket each man was drawn in
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const ims = R.debugUnitMeshes();
+      /* the bucket and slot the man himself landed in — never slot 0, which is whoever the
+       * view listed first */
+      const bucket = (id) => {
+        const slot = R.debugUnitSlot(id); if (!slot) return null;
+        const im = ims[slot.bucket]; if (!im) return null;
+        const B = im.geometry.attributes.livB, P = im.geometry.attributes.livP;
+        return { count: im.count, hasB: !!(B && B.isInstancedBufferAttribute), hasP: !!(P && P.isInstancedBufferAttribute),
+                 p0: P ? P.getX(slot.i) : null, cloth: !!im.geometry.attributes.cloth, key: im.material.customProgramCacheKey() };
+      };
+      const mu = R.debugUnitMaterial ? R.debugUnitMaterial() : null;
+      /* the Seat's flag: a textured plane under the veil, in the tower group */
+      let flag = null;
+      R.debugScene().scene.traverse((o) => { if (o.name === 'seat-flag' && !flag) flag = o; });
+      const tap = R.project(at.x, at.y);
+      R.debugSlots = false;
+      return { at, tap, soldier: bucket(9001), archer: bucket(9002),
+               livFrag: !!(mu && mu.userData.livFrag), fogFrag: !!(mu && mu.userData.fogFrag),
+               wantP1: C.liveryOf ? C.liveryOf(1).p : null, wantP0: C.liveryOf ? C.liveryOf(0).p : null,
+               flag: flag && { map: !!(flag.material && flag.material.map && flag.material.map.isTexture),
+                               patched: !!flag.material._fogPatched, w: flag.geometry.parameters.width },
+               unpatched: R.debugUnpatched(), rivalName: g.names[1] };
+    });
+    ok('the rig is alive: a clear spot on the court was found and two men stand on it',
+       !!seen.at && seen.soldier && seen.soldier.count >= 1 && seen.archer && seen.archer.count >= 1,
+       JSON.stringify({ at: seen.at, s: seen.soldier, a: seen.archer }));
+    if (seen.at) {
+      ok('the army carries a livery colour and pattern per instance',
+         seen.soldier.hasB && seen.soldier.hasP && seen.archer.hasB && seen.archer.hasP && seen.soldier.cloth,
+         JSON.stringify(seen.soldier));
+      ok('...and a man wears his OWNER\'s pattern: the rival\'s soldier seat 1\'s, my archer seat 0\'s',
+         seen.soldier.p0 === seen.wantP1 && seen.archer.p0 === seen.wantP0 && seen.wantP0 !== seen.wantP1,
+         `soldier ${seen.soldier.p0} (want ${seen.wantP1}), archer ${seen.archer.p0} (want ${seen.wantP0})`);
+      ok('the livery arm landed in the army\'s material, beside the veil',
+         seen.livFrag && seen.fogFrag && seen.soldier.key === 'amber-fog-livery',
+         `livFrag ${seen.livFrag}, fogFrag ${seen.fogFrag}, key ${seen.soldier.key}`);
+      ok('the Seat flies a flag: a textured plane, large, and under the veil',
+         !!seen.flag && seen.flag.map && seen.flag.patched && seen.flag.w >= 30, JSON.stringify(seen.flag));
+      ok('nothing added escapes the veil', seen.unpatched.length === 0, seen.unpatched.join(', '));
+      /* THE TAP. A real click where the renderer says the rival's man is; the label must name
+       * his court — a duel names the seat — and say where he stands to you. */
+      await pg.mouse.click(seen.tap.x, seen.tap.y);
+      const shown = () => { const e = document.getElementById('tap-label'); return !!e && !e.classList.contains('hidden'); };
+      await until(pg, shown, 1500);
+      const lab = await pg.evaluate(() => {
+        const e = document.getElementById('tap-label');
+        return { hidden: !e || e.classList.contains('hidden'), text: e ? e.textContent : '', swatch: !!(e && e.querySelector('canvas.tap-swatch')),
+                 armed: window.Game.game.armedFlag, sheet: window.UI.sheetOpen() };
+      });
+      ok('tapping a rival\'s man answers at the finger with whose he is',
+         !lab.hidden && lab.text.indexOf(seen.rivalName) >= 0 && /rival banner/.test(lab.text),
+         JSON.stringify(lab));
+      ok('...with his livery beside the words, and neither a sheet nor an armed standard',
+         lab.swatch && lab.armed == null && !lab.sheet, JSON.stringify(lab));
+      /* and it GOES: an answer read is an answer done with */
+      const gone = () => { const e = document.getElementById('tap-label'); return !!e && e.classList.contains('hidden'); };
+      await until(pg, gone, 4000);
+      ok('...and it fades rather than staying', await pg.evaluate(gone));
+      /* the control: my own man arms his company and says nothing */
+      const own = await pg.evaluate(() => window.Render.project(window.Game.game.world.units.find((u) => u.id === 9002).x,
+                                                                window.Game.game.world.units.find((u) => u.id === 9002).y));
+      await pg.mouse.click(own.x, own.y);
+      await pg.waitForTimeout(250);
+      const mine = await pg.evaluate(() => { const e = document.getElementById('tap-label');
+        return { armed: window.Game.game.armedFlag, hidden: !e || e.classList.contains('hidden') }; });
+      ok('my own man arms his company and gets no label — that answer is the ring and the chip',
+         mine.armed === 1 && mine.hidden, JSON.stringify(mine));
+    }
+    /* THE RELATION IS THE BANNER'S: under terms the same man is 'at terms with you', and a
+     * lord sworn to you is 'your own banner' — the label asks `World.pactOn`/`realmOf` of the
+     * view, the same questions `foe` asks, so it cannot disagree with who may strike whom */
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 20260911, rules: { truce: 1 } }, false));
+    await inMatchNow(pg);
+    /* the renderer must have DRAWN the new world before a tap can find a man in it — a hit
+     * test walks the last frame's view, and the frame after startSP is the old match's */
+    await pg.waitForTimeout(400);
+    const relation = async (setup) => {
+      const at = await pg.evaluate(async (setupSrc) => {
+        const R = window.Render, g = window.Game.game, w = g.world;
+        w.units = w.units.filter((u) => u.id < 9000);
+        /* the heir's own view of terms must not withdraw the offer under the tap — this is
+         * about what the LABEL says of a standing pact, not about whether julian keeps one */
+        g.bot.step = () => {};
+        g.armedFlag = null;   // an armed standard would make the tap an order, as every suite here knows
+        (new Function('w', setupSrc))(w);
+        const seat = w.map.sites[w.map.cities[0]];
+        const clear = (x, y) => w.players.every((p) => p.buildings.every((b) => Math.hypot(b.x - x, b.y - y) > 70))
+          && w.units.every((u) => Math.hypot(u.x - x, u.y - y) > 40);
+        let at = null;
+        for (let r = 90; r <= 220 && !at; r += 20) for (let a = 0; a < 12 && !at; a++) {
+          const x = seat.x + Math.cos(a / 12 * Math.PI * 2) * r, y = seat.y + Math.sin(a / 12 * Math.PI * 2) * r;
+          const s = R.project(x, y);
+          if (clear(x, y) && s.ok && s.x > 30 && s.x < 390 && s.y > 120 && s.y < 700) at = { x, y };
+        }
+        if (!at) return null;
+        w.units.push({ id: 9003, owner: 1, kind: 'soldier', x: at.x, y: at.y, hp: 70, maxHp: 70, co: 1, cd: 0, goal: null });
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return R.project(at.x, at.y);
+      }, setup);
+      if (!at) return null;
+      await pg.mouse.click(at.x, at.y);
+      await until(pg, () => { const e = document.getElementById('tap-label'); return !!e && !e.classList.contains('hidden'); }, 1500);
+      /* the text only while it is SHOWN — a hidden label still holds the last answer */
+      return pg.evaluate(() => { const e = document.getElementById('tap-label');
+        return e && !e.classList.contains('hidden') ? e.textContent : null; });
+    };
+    const terms = await relation('w.players[0].offers = w.players[0].offers || []; w.players[1].offers = w.players[1].offers || []; w.players[0].offers[1] = 1; w.players[1].offers[0] = 1;');
+    ok('under terms the same man is "at terms with you"', !!terms && /at terms with you/.test(terms), String(terms));
+    const sworn = await relation('w.players[1].realm = 0; w.players[0].offers = []; w.players[1].offers = [];');
+    ok('...and a lord sworn to you is "your own banner"', !!sworn && /your own banner/.test(sworn), String(sworn));
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
   /* ---------------- the terms tray ----------------
    * The chip IS the readout — that is what lets offering be silent, and it means the tray has
    * to say all four states and has to take a tap. Driven through the real page: the click goes

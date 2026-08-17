@@ -1557,6 +1557,37 @@
       b: setTimeout(() => { el.classList.add('hidden'); el.classList.remove('fade', 'ring'); }, 3800)
     };
   };
+  /* THE ANSWER TO A TAP. Point at another lord's men and this says whose they are, AT the
+   * finger and gone in a moment — an answer to a question the player just asked, which is
+   * why it is not a banner: the corner is for refusals and surprises, and this is neither.
+   * `swatch` is `{ tint, colour, p }` and is drawn by the renderer's own `liveryCanvas`, so
+   * the chip beside the words is the same device the man is wearing. One label at a time:
+   * a second tap replaces the first rather than stacking. */
+  let tapTimer = null;
+  UI.tapLabel = function (x, y, text, swatch) {
+    const el = $('tap-label');
+    if (!el) return;
+    if (tapTimer) { clearTimeout(tapTimer.a); clearTimeout(tapTimer.b); }
+    el.textContent = '';
+    const R = global.Render;
+    if (swatch && R && R.liveryCanvas) {
+      const cv = R.liveryCanvas(36, 24, swatch.tint, swatch.colour, swatch.p);
+      cv.className = 'tap-swatch';
+      el.appendChild(cv);
+    }
+    const t = document.createElement('span');
+    t.textContent = text;
+    el.appendChild(t);
+    /* clamped inside the screen, and above the finger so the hand does not cover it */
+    el.classList.remove('hidden', 'fade');
+    const w = el.offsetWidth || 160, h = el.offsetHeight || 28;
+    el.style.left = Math.max(6, Math.min(window.innerWidth - w - 6, x - w / 2)) + 'px';
+    el.style.top = Math.max(6, y - h - 18) + 'px';
+    tapTimer = {
+      a: setTimeout(() => el.classList.add('fade'), 1800),
+      b: setTimeout(() => { el.classList.add('hidden'); el.classList.remove('fade'); }, 2500)
+    };
+  };
   UI.banner = function (text, cls) {
     const wrap = $('banner-wrap');
     while (wrap.children.length >= 3) wrap.removeChild(wrap.firstChild);

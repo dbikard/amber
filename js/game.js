@@ -1722,6 +1722,29 @@
        * already say this — and say it for as long as it is true rather than for 3.4 seconds */
       return;
     }
+    /* ---- AND THE MEN SAY WHICH COURT ----
+     * Another lord's man under the finger — a rival's, a partner's, a sworn lord's — answers
+     * with whose he is: the court, and where that court stands to you. The tint already says
+     * the side and the cloth already says the court, for anyone who has learned the sixteen
+     * liveries; this is for everyone who has not. An ANSWER at the finger (`UI.tapLabel`),
+     * not a banner: it says nothing the player did not just ask. Silent for Chaos' fiends
+     * beyond naming them — Chaos wears no livery and treats with nobody. */
+    const man = Render.hitAnyUnit ? Render.hitAnyUnit(x, y) : null;
+    if (man && man.owner !== hand()) {
+      let text, swatch = null;
+      if (man.owner < 0) text = 'Fiends of Chaos — a foe of everyone';
+      else {
+        const court = game.war && view.cities && view.cities[man.owner]
+          ? view.map.sites[view.cities[man.owner].site].name : seatName(man.owner);
+        const rel = World.realmOf(view, man.owner) === World.realmOf(view, game.viewer) ? 'your own banner'
+          : World.pactOn(view, man.owner, game.viewer) ? 'at terms with you' : 'a rival banner';
+        text = 'Men of ' + court + ' — ' + rel;
+        const lv = C.liveryOf(man.owner);
+        swatch = { tint: Render.tintOf(man.owner, game.viewer), colour: lv.colour, p: lv.p };
+      }
+      UI.tapLabel(x, y, text, swatch);
+      return;
+    }
     const siteId = Render.hitSite(x, y, view, game.viewer);
     if (siteId >= 0) {
       /* every site opens a sheet — including the rival's city (the assault order) */

@@ -972,6 +972,22 @@ their top level added together (retune a branch, retune the Seat), and it alone 
 stopped by stone**: the Seat stands where worldgen put it forever, so if stone could shade it
 the cheapest work in the game would switch the throne's guns off from outside their reach.
 
+- **AND THE MEN SAY WHICH COURT.** The tint says whose SIDE a man is on and stays the primary
+  read; a realm of six courts fields six lords' men in one colour, so LIVERY is the second: a
+  pattern in a secondary colour worn on ONE cloth part of every man and flown LARGE on his
+  court's tower. It is BY SEAT (`CONST.LIVERY`, `CONST.liveryOf(i)` — the one answer; twenty
+  distinct pairs like `REACHWAR.names` has twenty names, plain for Chaos and nobody): `players[i]`
+  is the lord of `cities[i]` permanently, so a sworn lord's men keep their own court's cloth under
+  their liege's tint, it is arithmetic on every machine, and nothing rides the wire. In
+  `render3d.js`: `part(..., cloth)` marks the part and `merge` carries a `cloth` attribute; the
+  army draws on `MATU`, the Lambert with the `livery` arm of `fogPatch` (its own
+  `customProgramCacheKey`, `userData.livFrag` the proof), fed per instance by `livB`/`livP` in
+  `makeIM`; `towerModel(tint, livery)` is a GROUP now — the merged tower plus a fog-patched
+  `seat-flag` textured by `liveryCanvas` (`R.liveryCanvas`, also the UI's swatch), and
+  `disposeTower`/the sweep dispose its texture. A tap on another lord's man answers at the finger
+  (`R.hitAnyUnit` → `UI.tapLabel`, in game.js beside `hitUnit`) with the court and the relation —
+  an ANSWER, not a banner. `R.debugUnpatched()` must stay empty; a suite in each half holds it.
+
 ## Common Tasks
 
 - **Add a building**: table entry in `const.js` (cost/up/effect) + `BUILD_ORDER_UI` → handle
