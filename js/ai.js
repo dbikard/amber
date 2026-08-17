@@ -56,7 +56,19 @@
       if (u.owner === me) {
         myUnits.push(u);
         if (enCity && d2(u.x, u.y, enCity.x, enCity.y) < 700 * 700) push++;
-      } else if (World.canSee(world, me, u.x, u.y)) {
+      } else if (World.foe(world, me, u.owner) && World.canSee(world, me, u.x, u.y)) {
+        /* ---- A HOSTILE IS SOMEBODY I MAY STRIKE, AND `World.foe` IS THE ONE SPELLING ----
+         * This asked `owner !== me`, which is a different question and gets two answers wrong
+         * in a war. A PACT PARTNER's men counted as hostiles, so an heir at terms with the
+         * player read his army as a threat, came home to defend against it, trumped against it
+         * and called the JEWEL down on it — reported from play in exactly those words. The
+         * damage was correctly refused at `hurt`'s door, so it did nothing at all except spend
+         * the Jewel and put a storm over the player's men, which from his chair is being
+         * attacked by an ally. And a SWORN LORD's men are `owner !== me` too, so a liege read
+         * his own vassal's army as an enemy massing on his border.
+         * The sim is left permissive on purpose: a human may want to storm ground beside a
+         * partner to catch Chaos in it, and `hurt` already refuses what must not land. What was
+         * wrong was the CHOICE, and the choice is made here. */
         visHostiles.push(u);
         if (d2(u.x, u.y, myCity.x, myCity.y) < 600 * 600) threats.push(u);
       }
@@ -1473,6 +1485,27 @@
        * down the spring is free and this picks it up. `springTo` is the same answer both halves
        * ask, which is what keeps the column and the mason wanting the same ground. */
       const led = ordered(world, me, order);
+      /* ---- A LORD WHO CANNOT AFFORD HIS OWN PLANS STOPS BUYING MEN ----
+       * The muster valve (`{c:'muster'}`) was a player-only control: no doctrine had ever
+       * touched it, so a lord whose halls drank everything he earned went on buying soldiers
+       * he did not need and never saved the 400 for the Gate that would have paid for them.
+       * Reported from play, diagnosed by the player himself — *"he has a negative economy and
+       * doesn't know how to stop the muster to get the funds to build."* Measured over six
+       * simulated minutes of a country: a minor lord's purse is under 50 essence in 28-40% of
+       * samples and his net rate is negative in 4-15%, at every footing.
+       * WAR ONLY (`rules.reach`), like `warOrders`. The duel economy is tuned and its heirs are
+       * measured against a referee; this answers a country, where a lord's income is a fraction
+       * of a duel's and a hall costs the same. It asks for a STATE and only when that state
+       * differs, so it is one command at each edge and not one a think.
+       * The test is the WANT, not the wallet: he pauses only when there is something he means
+       * to build and cannot, and resumes the moment he can, so a lord with nothing to buy
+       * musters exactly as he always did. */
+      if (world.rules && world.rules.reach) {
+        const want = mission ? C.BUILDINGS[mission.bt] : null;
+        const need = want ? want.cost : 0;
+        const starved = need > 0 && v.essence < need && v.income - v.drain <= 0;
+        if (!!v.pl.musterPaused !== starved) issue({ c: 'muster', pause: starved });
+      }
       if (!mission && !homeThreat) {
         for (const w of (led ? led.concat(P.missions(v)) : P.missions(v))) {
           const site = w.pick(v);

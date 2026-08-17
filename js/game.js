@@ -212,11 +212,20 @@
     return k.charAt(0).toUpperCase() + k.slice(1).toUpperCase();
   }
   /* THE PURSE IS PART OF THE FOOTING and it lives on the world, so it is dealt where the bots
-   * are — every AI seat, and never the player's own. Written once at the start of a war and
-   * again when a seat is adopted, which are the only two moments a seat gains a driver. */
+   * are — every AI seat, and never a seat a HUMAN is playing.
+   * ---- AND THE COURT UNDER YOUR OWN HAND IS ONE OF THOSE ----
+   * The handicap exists to make a BOT weaker; a court the player has taken command of is not
+   * being played by a bot, and it was keeping the crippled purse anyway. Reported from play as
+   * a hand-played inner lord with a negative economy who could never afford a Gate — and the
+   * number named the cause exactly: `2.5 (BASE_INCOME) x 0.52 (SQUIRE) x 0.62 (MINOR) = 0.806`,
+   * which is the "+0.8/s" on his screen with the muster stopped and nothing else running.
+   * Re-dealt whenever the hand MOVES, not only when a war starts, so a court handed back to its
+   * lord goes back onto its handicap on the same tap. */
   function warPurses(world, bots) {
+    const driving = game.war ? hand() : -1;
     for (let i = 0; i < world.players.length; i++)
-      world.players[i].eco = bots && bots[i] ? (warFooting(world, i).eco || 1) : 1;
+      world.players[i].eco = (bots && bots[i] && i !== driving)
+        ? (warFooting(world, i).eco || 1) : 1;
   }
 
   function saveWar() {
@@ -2359,6 +2368,9 @@
           UI.banner(REFUSAL.held, 'warn'); return;
         }
         helm().hand = c.owner;
+        /* the purse follows the hand: the court you are driving plays at full strength, and the
+         * one you just put down goes back onto its lord's handicap */
+        if (game.world && game.bots) warPurses(game.world, game.bots);
         game.armedFlag = null; clearPlacing();
         if (game.realm) REALM.save(game.realm);
         if (Render.lookAt) Render.lookAt(c.x, c.y);

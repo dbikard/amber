@@ -8552,6 +8552,115 @@ suite('a deserted seat is played by somebody');
      `${held.men} against ${idle.men}`);
 }
 
+/* ---------------- A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN ----------------
+ * The muster valve was a player-only control — no doctrine had ever issued `{c:'muster'}` — so
+ * a lord whose halls drank everything he earned went on buying soldiers and never saved the 400
+ * for the Gate that would have paid for them. Reported from play and diagnosed by the player:
+ * *"he has a negative economy and doesn't know how to stop the muster to get the funds."*
+ * WAR ONLY, like `warOrders`: the duel economy is tuned against a referee, and this answers a
+ * country, where a lord's income is a fraction of a duel's and a hall costs the same.
+ * Measured over six simulated minutes of a country, before and after: a minor lord's purse is
+ * under 50 essence in 38% of samples and 19%; median purse 31 and 80; Gates 19 and 21 (SQUIRE).
+ * The claim under test is the RULE, not the tuning — it opens when he is starved with something
+ * to build, and it closes again the moment he can pay. */
+suite('a lord who cannot afford his plans stops buying men');
+{
+  const rig = (rules, opts) => {
+    const w = World.createWorld(17, 2, null, rules, opts);
+    w.chaosNext = 1e9;
+    /* a country seats sixteen and a board seats two — asking for seat 3 on a board is how the
+     * first cut of this rig crashed, which is the cheapest possible reminder that the two are
+     * different worlds */
+    const me = w.players.length > 3 ? 3 : 1;
+    w.players[me].essence = 0;
+    w.players[me].eco = 0.3;            // a minor lord's purse on an easy footing
+    return { w, me, bot: AI.make('benedict', Object.assign({}, C.MINOR)) };
+  };
+  const drive = (r, secs) => {
+    for (let i = 0; i < 30 * secs; i++) {
+      if (i % 30 === 0) r.bot.step(r.w, r.me, (cmd) => World.applyCommand(r.w, r.me, cmd), 1.0, { mode: 'gates' });
+      World.update(r.w, C.SIM_DT); r.w.events.length = 0;
+    }
+    return !!r.w.players[r.me].musterPaused;
+  };
+  const war = rig({ reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  ok('the rig is alive: he starts with nothing to spend', war.w.players[war.me].essence === 0);
+  ok('a starved lord with something to build shuts the muster', drive(war, 30),
+     `purse ${Math.round(war.w.players[war.me].essence)}`);
+  /* ...AND OPENS IT AGAIN. A valve that only ever shuts is a lord who stops fielding an army. */
+  war.w.players[war.me].essence = 5000;
+  ok('...and opens it the moment he can pay', !drive(war, 6),
+     `purse ${Math.round(war.w.players[war.me].essence)}`);
+  /* A BOARD NEVER SEES IT — the duel's economy is the referee's, and this is not part of it */
+  const board = rig(null, null);
+  ok('a duel is untouched: no doctrine touches the valve on a board', !drive(board, 30));
+}
+
+/* ---------------- A HOSTILE IS SOMEBODY I MAY STRIKE ----------------
+ * Reported from play: *"a lord with whom I'm at terms still unleashes the jewel storm on me."*
+ * The damage was never the bug — `hurt` refuses a blow between heirs at peace, and the storm
+ * pass asks `foe` before it deals one, so the player lost nothing. What he SAW was real: the
+ * cast succeeded, a storm sat over his army, the banner said so, and the rival spent his Jewel.
+ * The cause is one comparison in the AI's own view. `visHostiles` asked `owner !== me`, which is
+ * a different question from "may I strike this" and gets two answers wrong in a war: a PACT
+ * PARTNER's men counted as hostiles, and so did a SWORN LORD's — so a liege read his own
+ * vassal's army as an enemy massing on his border. `World.foe` is the one spelling.
+ * The sim is deliberately left permissive: a human may want to storm ground beside a partner to
+ * catch Chaos standing in it. What was wrong was the CHOICE. */
+suite('a hostile is somebody I may strike');
+{
+  const run = (sealed) => {
+    const w = World.createWorld(17, 2, null, { reach: 0, occupy: 0, endOnSeat: 1, truce: 1 });
+    w.chaosNext = 1e9;
+    if (sealed) {
+      World.applyCommand(w, 0, { c: 'pact', p: 1, on: true });
+      World.applyCommand(w, 1, { c: 'pact', p: 0, on: true });
+    }
+    const his = World.seatOf(w, 1);
+    for (let k = 0; k < 10; k++) manAt(w, 0, 'soldier', his.x + 170 + k * 9, his.y + 170);
+    w.players[1].essence = 6000;
+    const bot = AI.make('julian', {});
+    let storms = 0, trumps = 0;
+    for (let i = 0; i < 30 * 90; i++) {
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      if (i % 30 === 0) bot.step(w, 1, (cmd) => {
+        if (cmd.c === 'power' && cmd.k === 'storm') storms++;
+        if (cmd.c === 'power' && cmd.k === 'trump') trumps++;
+        return World.applyCommand(w, 1, cmd);
+      }, 1.0, null);
+    }
+    return { pact: World.pactOn(w, 0, 1), storms, trumps };
+  };
+  /* THE RIG IS ALIVE: with no terms sworn he does exactly what he is meant to */
+  const war = run(false);
+  ok('the rig is alive: an army at his gate is stormed', war.storms > 0 && !war.pact,
+     `${war.storms} storms, ${war.trumps} Trumps`);
+  const peace = run(true);
+  ok('the rig is alive: the terms really are sealed', peace.pact);
+  ok('an heir at terms does not call the Jewel down on you', peace.storms === 0,
+     `${peace.storms} storms`);
+  ok('...nor draw a Trump against you', peace.trumps === 0, `${peace.trumps} Trumps`);
+  /* AND A VASSAL'S ARMY IS NOT AN ENEMY MASSING ON THE BORDER — the other half of the same
+   * comparison, and the one nobody would have reported because it only makes a lord timid. */
+  {
+    const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
+                                { country: true, heirs: [0] });
+    w.chaosNext = 1e9;
+    const liege = 3, vassal = 4;
+    w.players[vassal].realm = World.realmOf(w, liege);
+    const seat = World.seatOf(w, liege);
+    for (let k = 0; k < 12; k++) manAt(w, vassal, 'soldier', seat.x + 120 + k * 9, seat.y + 90);
+    for (let i = 0; i < 12; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    const v = AI.view(w, liege);
+    ok('the rig is alive: his vassal\'s men are standing at his door and he can see them',
+       World.canSee(w, liege, seat.x + 120, seat.y + 90) &&
+       World.realmOf(w, vassal) === World.realmOf(w, liege));
+    ok('a sworn lord\'s army is not a threat at his liege\'s gate',
+       v.threats.length === 0 && v.enemyArmy === 0,
+       `${v.threats.length} threats, enemyArmy ${v.enemyArmy}`);
+  }
+}
+
 /* ---------------- EVERY COURT IS NAMED, AND A MINOR LORD DOES NOT CONQUER ----------------
  * Two reports in one: *"there shouldn't be cities named a city of shadow, give a proper name to
  * every city"*, and *"minor lords ... should never try to conquer neighbouring cities. Heirs ...

@@ -620,6 +620,36 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   bodies aimed at a rival court, every one turned. Beware the obvious metric — "men standing
   inside a rival court's radius" does NOT measure this, because a rival's own writ spring sits
   inside that radius and taking it is exactly what the lord is supposed to do instead.
+- **A HOSTILE IS SOMEBODY I MAY STRIKE, AND `World.foe` IS THE ONE SPELLING.** `AI.view`'s
+  `visHostiles` asked `owner !== me`, which is a different question and gets two answers wrong in
+  a war. A PACT PARTNER's men counted as hostiles, so an heir at terms with the player read his
+  army as a threat, came home against it, drew a Trump against it and called the JEWEL down on
+  it — reported from play in exactly those words. The damage was always refused at `hurt`'s door,
+  so it did nothing but spend the Jewel and put a storm over the player's men, which from his
+  chair is an ally attacking him. And a SWORN LORD's men are `owner !== me` too, so a liege read
+  his own vassal's army as an enemy massing on his border. The sim stays permissive on purpose —
+  a human may want to storm ground beside a partner to catch Chaos in it — because what was
+  wrong was the CHOICE. Proven a no-op for the referee rather than assumed: `RULES.truce` is 0
+  in a skirmish, so `foe` is always true there, and twelve seeded duels play out identical to the
+  essence.
+- **A COURT UNDER YOUR OWN HAND PLAYS AT FULL STRENGTH.** The footing handicap exists to make a
+  BOT weaker, and a court the player has taken command of was keeping it: reported from play as a
+  hand-played inner lord with a negative economy who could never afford a Gate. The number named
+  the cause exactly — `2.5 (BASE_INCOME) x 0.52 (SQUIRE) x 0.62 (MINOR) = 0.806`, which was the
+  "+0.8/s" on his screen with the muster stopped. `warPurses` skips the hand, and is re-dealt
+  whenever the hand MOVES, so a court handed back to its lord returns to its handicap on the same
+  tap.
+- **AND A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN.** The muster valve was a player-only
+  control — no doctrine had ever issued `{c:'muster'}` — so a lord whose halls drank everything he
+  earned never saved the 400 for the Gate that would have paid for them. Diagnosed by the player
+  himself. WAR ONLY (`rules.reach`), like `warOrders`: the duel economy is tuned against a referee
+  and this answers a country, where a lord's income is a fraction of a duel's and a hall costs the
+  same. It asks for a STATE and only when that state differs, and the test is the WANT rather than
+  the wallet — he shuts it only with something he means to build and cannot, and opens it the
+  moment he can pay. Measured over six simulated minutes, before and after: purse under 50 in 38%
+  of samples then 19%, median purse 31 then 80, Gates 19 then 21 at SQUIRE; 40% then 29% and
+  Gates 33 then 40 at HEIR. At PRINCE, where lords were least starved, it is a wash (41 Gates
+  then 37) — written down rather than hidden.
 - **A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS** (`World.fallen`). Reported from
   play: a Seat yields, the claimant stands his twenty seconds in the court, and his men spend them
   knocking down the halls and Gates he is about to inherit — a conquest that pays for itself in
