@@ -3368,12 +3368,27 @@
     const head = world.host || (world.host = []);
     head.length = 0;
     for (let i = 0; i < world.players.length; i++) head.push(0);
+    /* ...AND BY OWNER WITHIN A CELL. `acquire`'s nine-cell look paid a `foe` and a distance
+     * for every man in reach, and most men in reach of a man are his OWN company — profiled on
+     * a country of eleven hundred men, the look was a third of the tick. `obins` keys the same
+     * cells by owner (an array indexed by owner+1, Chaos first), so `acquire` skips a whole
+     * owner on one `foe` test and never touches his own men at all. Insertion order within an
+     * owner is the same as in `bins`; only the interleaving of owners differs, which can only
+     * change a tie at EXACTLY equal distance — held by hashing every man's position every
+     * second over three simulated minutes of two seeded countries. */
+    const obins = world.obins || (world.obins = new Map());
+    obins.clear();
+    const np1 = world.players.length + 1;
     for (const v of world.units) {
       if (v.hp <= 0) continue;
       if (v.owner >= 0) head[v.owner]++;   // how many each heir has standing, counted once
       const k = ((v.y / BIN) | 0) * 100003 + ((v.x / BIN) | 0);
       const cell = bins.get(k);
       if (cell) cell.push(v); else bins.set(k, [v]);
+      let oc = obins.get(k);
+      if (!oc) { oc = new Array(np1).fill(null); obins.set(k, oc); }
+      const oi = v.owner + 1;
+      if (oc[oi]) oc[oi].push(v); else oc[oi] = [v];
     }
     rebinWorks(world);   // and the stone, for the same reason — see worksNear
   }
@@ -3465,16 +3480,21 @@
     /* a radius wider than one cell (the Seat's own garrison sees further) needs a wider ring */
     const reach = Math.max(1, Math.ceil(radius / BIN));
     for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
-      const cell = world.bins.get((gy + dy) * 100003 + (gx + dx));
-      if (!cell) continue;
-      for (const v of cell) {
-        if (v.hp <= 0 || !foe(world, u.owner, v.owner)) continue;
-        const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
-        /* a man inside a tower is not a target — the stone is. `hurt` refuses the blow anyway,
-         * but a swordsman who aimed at him would stand at the foot of the tower swinging at
-         * somebody he can never reach instead of going for the tower or moving on. */
-        if (v.in) continue;
-        if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
+      const oc = world.obins.get((gy + dy) * 100003 + (gx + dx));
+      if (!oc) continue;
+      /* by OWNER: one `foe` test skips a whole owner, and his own men are never walked */
+      for (let oi = 0; oi < oc.length; oi++) {
+        const cell = oc[oi];
+        if (!cell || !foe(world, u.owner, oi - 1)) continue;
+        for (const v of cell) {
+          if (v.hp <= 0) continue;
+          const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
+          /* a man inside a tower is not a target — the stone is. `hurt` refuses the blow anyway,
+           * but a swordsman who aimed at him would stand at the foot of the tower swinging at
+           * somebody he can never reach instead of going for the tower or moving on. */
+          if (v.in) continue;
+          if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
+        }
       }
     }
     /* A SHOOTER DOES NOT TOUCH STONE. Archers, sorcerers, wardens and binders have no target
