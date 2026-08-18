@@ -3417,7 +3417,12 @@ suite('an heir does not walk himself broke');
   /* the whole point, and it is sharper than it was: he cannot stop any more, so sitting on the
    * Pattern with an empty treasury is not a phase he passes through — it is the rest of his
    * match with no soldier bought. The gate has to keep him off the lines in the first place. */
-  ok('...and never held the Pattern with an empty treasury', brokeWhileWalking < 30,
+  /* TEN SECONDS, not one: the failure this holds against is SIX MINUTES at zero with the army
+   * dismantled. Measured 2026-08-19, after the halls started joining one standard (`hallCo`):
+   * benedict's purse touched 0.7 for 1.8s at t=212 with income exactly the Shrine's drain, the
+   * muster waited out the dip and he recovered — 0s on the code before, so the old threshold
+   * of one second was luck, not a rule. A dip is not a walk he could not pay for. */
+  ok('...and never held the Pattern with an empty treasury', brokeWhileWalking < 30 * 10,
      `${(brokeWhileWalking / 30).toFixed(1)}s walking at zero`);
 
   /* AND THE RULE STATED DIRECTLY — WHICH IS NO LONGER AN INCOME TEST. The old shared gate
@@ -9343,6 +9348,59 @@ suite('a war has two sides');
   }
 }
 
+/* ---------------- THE ARMY AT HOME STANDS ON ITS WALLS ----------------
+ * A man is posted to a wall or a tower by his ORDER, and the heirs' home banner was the throne
+ * — so every curtain and tower a heir raised stood empty while his archers milled at the Seat.
+ * Reported from play as bots unaware they can put shooters on walls. The home banner goes to
+ * the finished defence facing the enemy now (`defencePost`). */
+suite('the army at home stands on its walls');
+{
+  const rig = wallRig(World, C, { runs: 1 });
+  ok('the board has room for a curtain', !!rig, 'nowhere to draw it');
+  if (rig) {
+    const { w, pl, city: c } = rig;
+    const wall = rig.walls[0];
+    /* the enemy's men at the gate, so the doctrine wants HOME — the way a real defence begins */
+    const en = World.cityOf(w, 1);
+    for (let i = 0; i < 3; i++) { const u = manAt(w, 1, 'soldier', c.x + 300 + i * 12, c.y + 300); u.hp = 1e6; u.maxHp = 1e6; }
+    for (let i = 0; i < 6; i++) manAt(w, 0, 'archer', c.x + (i % 3) * 14, c.y + 40 + ((i / 3) | 0) * 14);
+    for (const q of w.players) q.musterPaused = true;
+    pl.essence = 0;   // nothing to build: the question is where the banner goes
+    const bot = AI.make('julian', {});
+    let coordBanner = null;
+    const issue = (cmd) => { if (cmd.c === 'banner' && cmd.x != null) coordBanner = { x: cmd.x, y: cmd.y }; return World.applyCommand(w, 0, cmd); };
+    for (let i = 0; i < 30 * 40; i++) { World.update(w, C.SIM_DT); w.events.length = 0; bot.step(w, 0, issue, C.SIM_DT, null); }
+    const mid = { x: wall.x, y: wall.y };
+    ok('the rig is alive: the enemy court lies elsewhere and the wall stands', !!en && !wall.breach && w.walls.length > 0);
+    ok('the home banner is planted at the curtain, not on the throne',
+       !!coordBanner && Math.hypot(coordBanner.x - mid.x, coordBanner.y - mid.y) < C.WALL.man * 1.5,
+       coordBanner ? `banner ${Math.round(Math.hypot(coordBanner.x - mid.x, coordBanner.y - mid.y))} from the run` : 'no coordinate banner given');
+    const posted = w.units.filter((u) => u.owner === 0 && u.hp > 0 && u.post === wall.id).length;
+    const manned = w.units.filter((u) => u.owner === 0 && u.hp > 0 && u.man === wall.id).length;
+    ok('...and his men are posted to it, the shooters on the parapet', posted > 0 && manned > 0,
+       `${posted} posted, ${manned} on the stone of ${w.units.filter((u) => u.owner === 0 && u.hp > 0).length}`);
+  }
+}
+
+/* ---------------- A HALL JOINS A STANDARD; IT DOES NOT RAISE ONE ----------------
+ * Every hall a heir raised flew a new flag, and a court taken by a human handed him five flags
+ * to reassign one by one. Two per city now: the war body and the errand. */
+suite('a hall joins a standard; it does not raise one');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const pl = w.players[1];
+  const bot = AI.make('benedict', {});
+  for (let i = 0; i < 30 * 240; i++) {
+    pl.essence = Math.max(pl.essence, 5000);   // the purse is not the question
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 1, (cmd) => World.applyCommand(w, 1, cmd), C.SIM_DT, null);
+  }
+  const halls = pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns).length;
+  ok('the rig is alive: the heir raised three halls or more', halls >= 3, `${halls} halls`);
+  ok('...and flies at most two standards for them', pl.companies.length <= 2,
+     `${pl.companies.length} companies for ${halls} halls: ${pl.companies.map((co) => co.id).join(',')}`);
+}
+
 /* ---------------- A FALLEN HEIR GIVES NO ORDERS ----------------
  * `topple` throws down his works and buries his men, but his court is still his on the map and
  * his crews are floored at one — so he could raise a Gate on his own rubble and play on as a
@@ -9506,11 +9564,16 @@ suite('a man engages what he can actually hit');
   const d = C.UNITS.bombard, reach = d.range + 36;   // what `mark.d <= reach` allows for a Seat
   ok('the rig is alive: a bombard out-reaches his own aggro against a throne',
      reach > d.aggro, `strikes to ${reach}, looks to ${d.aggro}`);
-  /* INSIDE the old aggro — this always worked, and it is the control that says the rig fires */
-  const near = gun(200, true);
+  /* INSIDE the aggro — this always worked, and it is the control that says the rig fires.
+   * THE DISTANCES COME OFF THE TABLE (they were 200/260/300/360 against a 365 reach and a 240
+   * aggro; the reach is 240 now, on the designer's call, and the aggro 200 under it). */
+  const near = gun(d.aggro - 40, true);
   ok('a bombard inside his aggro brings the throne down', near.dealt > 0, `${near.dealt.toFixed(0)} dealt`);
-  /* BEYOND it, and still well inside his reach — this is the bug, and it was zero */
-  for (const dist of [260, 300, 360]) {
+  /* BEYOND it, and still inside his reach — this is the bug, and it was zero */
+  /* inside RANGE, not merely inside `reach`: the +36 is the throne's own radius, and a gun
+   * dropped between range and reach acquires the throne and walks up to range before it fires
+   * (measured: at reach - 8 he closed 42) — a stand-off is asked for at range - 8 */
+  for (const dist of [d.aggro + 10, Math.round((d.aggro + d.range) / 2), d.range - 8]) {
     const far = gun(dist, true);
     ok(`...and so does one at ${dist}, past his aggro and inside his reach`, far.dealt > 0,
        `${far.dealt.toFixed(0)} dealt`);
@@ -9519,7 +9582,7 @@ suite('a man engages what he can actually hit');
   }
   /* AND THE REACH IS STILL A LIMIT — "as far as he can hit", not "always".
    * NOT tested just past `reach`: measured, a bombard dropped at 441 or 521 WALKS IN to exactly
-   * 365 (his range) and opens fire, which is correct and is what any unit does with a target it
+   * his range and opens fire, which is correct and is what any unit does with a target it
    * cannot yet reach. The claim here is about the radius he can find one at, so it is asked far
    * enough out that walking cannot confuse it — at 700 he never engages at all and wanders off
    * (measured: 701 -> 889 over the same twenty seconds, nothing dealt). */
@@ -9528,7 +9591,7 @@ suite('a man engages what he can actually hit');
      `${out.dealt.toFixed(0)} dealt`);
   /* AND THE NEAREST TARGET STILL WINS: with the rival's works standing he shoots those, not
    * the throne behind them. A wider look must not become a preference for the bigger prize. */
-  const past = gun(300, false);
+  const past = gun(d.range - 8, false);
   ok('...and a work in front of the throne is still the nearer target', past.dealt === 0,
      `${past.dealt.toFixed(0)} dealt to the throne`);
 }

@@ -599,7 +599,7 @@
    * table marks `mans` may hold a place on a wall or a room in a tower; everyone else still
    * gets a `post`, and still stations at the FOOT of the run in cover, which is where a
    * Shieldwall belongs. A flag rather than a reach threshold on purpose: an Engine throws 150
-   * and a Bombard 365, and a siege train does not climb a curtain. */
+   * and a Bombard 240, and a siege train does not climb a curtain. */
   const mans = (u) => !!C.UNITS[u.kind].mans;
   /* ONE PASS OWNS THE POSTING, because two of them owning half of it each did not work: both
    * cleared `u.tow` at their own start, so whichever ran second wiped what the first had just
@@ -4311,9 +4311,10 @@
        * LOOKING for a fight" and it is rightly the smaller number for everyone who has to walk
        * up to what he strikes — but for every unit in the game bar one it is also the LARGER of
        * the two, so the difference had never mattered and the rule read as if it did not exist.
-       * The Bombard is the exception, and it is the exception on purpose: 365 reach against 240
-       * aggro, sold on out-ranging every tower ever raised. It could not use a foot of that
-       * against a Seat. `acquire`'s radius was its aggro, so it engaged only what it had walked
+       * The Bombard was the exception, and on purpose: 365 reach against 240 aggro, sold on
+       * out-ranging every tower ever raised (its reach is 240 now — the designer took the
+       * out-ranging back — but the rule stays, for the next long gun). It could not use a foot
+       * of that against a Seat. `acquire`'s radius was its aggro, so it engaged only what it had walked
        * within 240 of, while a Seat is struck out to `range + 36` = 401 — and being a SHOOTER it
        * is deliberately held in the back line, standing off behind the fighting men, which parks
        * it precisely in the band where it can see the throne and will not fire.

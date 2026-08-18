@@ -93,7 +93,7 @@ better armed, a branch makes him somebody else:
 |---|---|
 | **Barracks** | Shieldwall (heavy, holds ground) · Outriders (fast, cheap) · Archers (the garrison) |
 | **Sorcery Spire** | the Warden's Art (Wardens MEND — nothing else in Amber heals) · the Binding (Shadow-binders turn a beaten fiend) |
-| **Siege Works** | the Ram Shed (contact, huge against stone) · the Gun Pit (Bombards out-range every tower) |
+| **Siege Works** | the Ram Shed (contact, huge against stone) · the Gun Pit (Bombards: a burst and a bite on stone, under the towers' reach) |
 | **Watchtower** | Ballista (far, heavy, single target) · Cannon (shorter, bursts over a column) |
 
 Two rules follow from it and shape every army: **shooters — archers and sorcerers — cannot

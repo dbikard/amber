@@ -315,6 +315,57 @@
     }
     return null;
   }
+  /* ---- THE ARMY AT HOME STANDS ON ITS WALLS ----
+   * A man is posted to a wall or a tower by his ORDER: `postWalls` reads the company's rally
+   * (else the banner) and posts him if it falls within `WALL.man * 1.5` of a run of his own;
+   * `postTowers` does the same within `TOWER.man` of a finished tower. The heirs' home banner
+   * was the CITY SITE — the throne — so every curtain a heir raised across the approach and
+   * every tower he put on a vantage stood EMPTY while his archers milled round the Seat two
+   * hundred away: reported from play as bots unaware they can put shooters on walls. The
+   * answer is where the home banner is planted, not a new rule about manning: at home, the
+   * standard goes to the finished defence facing the enemy — a curtain run first (its bastions
+   * post with it; the men who cannot get up stand at the foot in cover), a tower otherwise —
+   * so the shooters climb and the rest hold the ground before it. Only the home defences
+   * count (inside CLAIM.seat of the court), and only finished, unbreached stone. */
+  function defencePost(v) {
+    const c = v.myCity;
+    if (!c) return null;
+    const R2 = C.CLAIM.seat * C.CLAIM.seat;
+    const face = v.enCity || v.frontier || { x: v.world.mapW / 2, y: v.world.mapH / 2 };
+    let wall = null, wd = Infinity, tower = null, td = Infinity;
+    for (const b of v.pl.buildings) {
+      if (b.raise > 0 || b.breach || d2(b.x, b.y, c.x, c.y) > R2) continue;
+      const d = d2(b.x, b.y, face.x, face.y);
+      if (b.x2 != null) { if (d < wd) { wd = d; wall = b; } }
+      else if (b.bt === 'tower' && !b.onWall) { if (d < td) { td = d; tower = b; } }
+    }
+    if (wall) {
+      /* the run's middle, stepped a little toward the throne — the sheltered side, where the
+       * foot of the wall is — so the standard is not planted in the stone */
+      const dx = c.x - wall.x, dy = c.y - wall.y, dl = Math.hypot(dx, dy) || 1;
+      return { x: wall.x + (dx / dl) * (C.WALL.thick + 8), y: wall.y + (dy / dl) * (C.WALL.thick + 8), id: wall.id };
+    }
+    if (tower) return { x: tower.x, y: tower.y, id: tower.id };
+    return null;
+  }
+  /* ---- A HALL JOINS A STANDARD; IT DOES NOT RAISE ONE ----
+   * `joinCo` gives a hall built with no company a company of its own, so every hall a heir
+   * raised flew a new flag — five halls, five standards, and a court taken by a human handed
+   * him five flags to reassign one by one. Reported from play. The doctrine wants exactly two:
+   * the war body and the errand (`errandCo` is chosen among the manned companies by size), so
+   * the first two halls of a city fly their own and every hall after joins the SENIOR standard
+   * of that city — the lowest id, which is the opening hall's and by habit the war body. Under
+   * the reach law a company belongs to a city; `joinCo` refuses a standard of another city and
+   * raises a fresh one, so the city test here only has to be good enough to name a candidate. */
+  function hallCo(v, at) {
+    const cos = (v.pl.companies || []).filter((co) => {
+      if (co.city == null) return true;
+      const cc = v.world.cities && v.world.cities[co.city];
+      return !!cc && (!cc.reach || d2(cc.x, cc.y, at.x, at.y) <= cc.reach * cc.reach);
+    });
+    if (cos.length < 2) return undefined;
+    return cos[0].id;
+  }
   /* A CURTAIN IS A CHORD, not a spot. An heir walls the side it expects trouble from: a run
    * laid across the approach at arm's length from the Seat, swept outward and swung either
    * way until the ground and the writ will take one. Returns the two ends. */
@@ -464,9 +515,12 @@
   const WALK_ANSWER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKANS) || 10;
   const WALK_ARMY = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKARM) || 8;
   /* how near a RIVAL comes to a walker's own Shrine before the walker's army turns and stands
-   * over it. A shooter throws 105 and a Bombard shells stone from 365, so anything inside this
-   * is either already hitting it or one march from it. */
+   * over it. A shooter throws 105 and a Ballista Tower 350, so anything inside this is either
+   * already hitting it or one march from it. */
   const SHRINE_GUARD = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SHGUARD) || 500;
+  /* the referee's switch for `defencePost` (the home banner on the defences), so its effect can
+   * be measured apart from anything shipped beside it */
+  const NO_POST = !!(typeof process !== 'undefined' && process.env && process.env.AMBER_NOPOST);
   /* THE PURSE IS NOT THE TEST ANY MORE. Every doctrine's walk clause carried a cash threshold
    * of its own — 200, 240, 260, 360 — written when an heir with nothing left to buy simply
    * banked what it earned; they were standing in for "can my realm carry this". The shared
@@ -1398,7 +1452,7 @@
           if (v.essence < C.BUILDINGS.barracks.cost) saving = true;
           else {
             const at = spotFor(v, 'barracks');
-            if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks' });
+            if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'barracks', co: hallCo(v, at) });
             else handled = false;   // nowhere to put it: the plan is still the plan
           }
         }
@@ -1417,7 +1471,7 @@
           if (v.essence < C.BUILDINGS.siege.cost) saving = true;
           else {
             const at = spotFor(v, 'siege');
-            if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'siege' });
+            if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'siege', co: hallCo(v, at) });
             else handled = false;
           }
         }
@@ -1447,7 +1501,11 @@
         if (v.essence < C.BUILDINGS[bt].cost) { saving = true; break; }   // a purse problem: save for it
         const at = spotFor(v, bt);
         /* `handled` marks the crew as spoken for: the mend below competes for the same one */
-        if (at) { issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt }); handled = true; break; }
+        if (at) {
+          const cmd = { c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt };
+          if (C.BUILDINGS[bt].spawns) cmd.co = hallCo(v, at);
+          issue(cmd); handled = true; break;
+        }
         /* nowhere on the board will take it today — step past it, do not stop the realm */
       }
 
@@ -1472,7 +1530,11 @@
         if (done || v.t - mission.since > 70 + far / 30) mission = null;   // taken, lost, or stale
         else if (!idle && v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
           const at = spotAt(v, s, mission.bt);
-          if (at) { const r = issue({ c: 'build', x: at.x, y: at.y, bt: mission.bt }); if (r && r.ok) mission = null; }
+          if (at) {
+            const cmd = { c: 'build', x: at.x, y: at.y, bt: mission.bt };
+            if (C.BUILDINGS[mission.bt].spawns) cmd.co = hallCo(v, at);
+            const r = issue(cmd); if (r && r.ok) mission = null;
+          }
         }
       }
       /* THE WAR OUTRANKS THE SHOPPING. Every heir's doctrine has a clause that says "now go
@@ -1671,10 +1733,15 @@
       const shrine = v.walking && !answer ? v.pl.buildings.find((b) => b.bt === 'shrine' && !b.raise) : null;
       const myShrine = shrine && v.visHostiles.some((u) => u.owner !== C.CHAOS_ID &&
         d2(u.x, u.y, shrine.x, shrine.y) < SHRINE_GUARD * SHRINE_GUARD) ? shrine : null;
-      const aim = answer || myShrine;
+      /* ...and at HOME, the finished defence facing the enemy rather than the throne itself:
+       * a coordinate banner, so the shooters are posted to the wall or the tower (see
+       * `defencePost`). Not while a walk is being answered or a Shrine guarded — those aim
+       * elsewhere — and not for a stray, which is a flaw about going somewhere else. */
+      const post = !stray && want === v.myCity.id && !NO_POST ? defencePost(v) : null;
+      const aim = answer || myShrine || post;
       if (aim) {
-        if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80) {
-          aimed = { x: aim.x, y: aim.y };
+        if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80 || (post && aimed.id !== post.id)) {
+          aimed = { x: aim.x, y: aim.y, id: post && aim === post ? post.id : undefined };
           /* `walk` marks the answer to a walk, so warOrders knows not to turn a minor lord away
            * from the walker's court — the sim ignores the field */
           issue({ c: 'banner', x: aim.x, y: aim.y, walk: answer ? 1 : 0 });

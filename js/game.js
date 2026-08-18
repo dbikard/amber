@@ -23,10 +23,12 @@
    * the heir who walks LAST, and the last walker in a field that now marches on Shrines is the
    * one who never gets there. Pasted from the run, not adjusted by hand. Re-pasted 2026-08-17
    * after the recall and hysteresis changes (six games a matchup: it tells corwin from
-   * benedict and little between). It orders the skirmish rivals list (ui.js); the campaign
-   * itself is CHAPTERS now (campaign.js), and the rung counter that used to walk this list is
-   * gone with them. */
-  const LADDER = ['corwin', 'julian', 'bleys', 'brand', 'benedict'];
+   * benedict and little between). Re-pasted 2026-08-19 after the Bombard's reach came under
+   * the towers' (corwin, the gun heir, fell further) and the home banner moved to the walls
+   * (bleys, who builds under fire, rose). It orders the skirmish rivals list (ui.js); the
+   * campaign itself is CHAPTERS now (campaign.js), and the rung counter that used to walk this
+   * list is gone with them. */
+  const LADDER = ['corwin', 'julian', 'brand', 'bleys', 'benedict'];
 
   const game = {
     mode: null, world: null, viewer: 0, bot: null,

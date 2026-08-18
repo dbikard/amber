@@ -656,3 +656,40 @@ never lift it, measured (`lifted: false`) before the drain moved out of the loop
 Rejected: ending the table when SEAT 0 loses (the old rule — a LAN table where the host fell
 first ended for everyone); giving a war's loser the sim's all-ones mask (his court's driver
 would read it and play omniscient); leaving his colours to the realm (the enemy turned gold).
+
+## The Bombard, the walls and the standards — refereed changes (2026-08-18/19)
+
+### NO GUN OUT-REACHES THE TOWERS
+
+The designer's report from play: "cannons shouldn't have a longer reach than towers — it's now
+too easy to take down walls and towers from afar and there is no good counter measure for
+someone who defends." The Bombard was 365, sold on out-ranging every tower ever raised (Ballista
+350, Watchtower 250-300, Cannon 232-252). It is 240 now — under a plain level-1 Watchtower —
+with `aggro` 200 under it so `acquire`'s `max(aggro, range)` rule still has a kind to show on.
+Its reach still beats the Seat gun (200), so a court without towers can be shelled from its rim.
+The bombard suite reads its distances off the table now; measured while rewriting it: a gun
+dropped between `range` and `range + 36` (the throne's radius) acquires the throne and CLOSES to
+range before it fires (42 units at reach − 8), so a stand-off is asked for at range − 8.
+
+### THE ARMY AT HOME STANDS ON ITS WALLS, and a hall joins a standard
+
+Two reports in one message: bots "seem unaware they can / should place archers / sorcerers on
+walls and in towers", and "they create new flags for every hall they build — fine for a bot,
+but when a city is conquered having so many flags to manage is hard for a human". Both were
+true. `postWalls`/`postTowers` post a man by his ORDER and the heirs' home banner was the city
+site, so a heir's own curtain stood empty (rig: julian with a finished run and three enemy
+soldiers at his gate — 0 posted, 0 on the stone of 9 before; banner at the run, shooters on the
+parapet after). And `joinCo` gives a hall built with no company a fresh one, which every heir
+did (rig: benedict, four minutes, 4 halls → 5 companies before; ≤ 2 after).
+
+`node sim.js` before → after (same seed, both changes and the Bombard together):
+mirrors benedict 8-11 (40%) → 10-10, bleys 11-8 → 13-7 (65%; n=20, noise); gradient
+benedict/random 18-0 → 17-1 (2 draws each), benedict/greedy 19-1 → 17-3, greedy/random 20-0 →
+20-0; contested Pattern share 69% → 72% (target 50, tolerate 25-75 — at the lip, unchanged in
+kind); convergence greedy mirror `med 14.3m [castle:7 timeout:1]` → `med 24.5m [castle:6
+timeout:2]` on eight games — measured apart at sixteen games and the 45-minute cap, greedy v
+greedy is 8-8 med 17.9m [castle:16] both WITH the home post and with it switched off
+(`AMBER_NOPOST=1`), byte-identical: greedy never plants a home post at all and the eight-game
+difference is seed noise. The ladder re-pasted `corwin, julian, brand, bleys, benedict`: corwin,
+the gun heir (Cannon Towers and Bombards by doctrine), fell from 7 wins to 4 — the price of the
+designer's call, and he was already the first rung; bleys rose 11 → 15.

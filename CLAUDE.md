@@ -406,10 +406,28 @@ several men at once. `br` never rides the wire to a rival (`net.js`), so a fork 
 **A MAN ENGAGES WHAT HE CAN ACTUALLY HIT.** `acquire`'s radius is `max(aggro, range, ...)` —
 `range` must be in it. `aggro` is "how far will I go LOOKING for a fight", rightly the smaller
 number for a man who walks up to what he strikes; for every unit bar one it is also the LARGER
-of the two, so the omission could not show. The Bombard is the exception on purpose: 365 reach
-against 240 aggro, and being a SHOOTER it is held in the back line — precisely the band where it
+of the two, so the omission could not show. The Bombard was the exception on purpose — 365 reach
+against 240 aggro — and being a SHOOTER it is held in the back line, precisely the band where it
 sees the throne and, without `range` in the radius, does not fire. Nothing names the Bombard: a
-longer-reaching kind added later lands right by having a reach.
+longer-reaching kind added later lands right by having a reach. **AND NO GUN OUT-REACHES THE
+TOWERS ANY MORE** (the designer, 2026-08-18): the Bombard's reach is 240, under a plain
+Watchtower's 250 and every branch and level above it — a gun that shelled stone from beyond every
+tower left a defender no counter. It still out-reaches the Seat's own gun (200), and its
+`aggro` (200) stays under its reach so it remains the one kind the rule can be seen on.
+(→ LEDGER: NO GUN OUT-REACHES THE TOWERS)
+
+**THE ARMY AT HOME STANDS ON ITS WALLS, AND A HALL JOINS A STANDARD** (ai.js `defencePost`,
+`hallCo`; the designer, 2026-08-18). A man is posted to a wall or a tower by his ORDER
+(`postWalls`/`postTowers` read the company's rally, else the banner), and the heirs' home banner
+was the city SITE — the throne — so every curtain and tower an heir raised stood empty while his
+archers milled at the Seat. At home the banner goes to the finished defence facing the enemy
+(a curtain run first, its bastions post with it; a tower otherwise; only inside `CLAIM.seat`),
+as a coordinate banner with the same memo `aimed` a walk's answer uses. And a heir's halls
+flew a new standard each (`joinCo` raises one for a hall built with no company), which handed a
+human who took the court five flags to reassign; the doctrine wants exactly two — the war body
+and the errand — so the first two halls of a city fly their own and every hall after joins the
+SENIOR standard of that city (`hallCo`; under the reach law `joinCo` still refuses a standard of
+another city). Both refereed: (→ LEDGER: THE ARMY AT HOME STANDS ON ITS WALLS).
 (→ LEDGER: A MAN ENGAGES WHAT HE CAN ACTUALLY HIT)
 
 **Three flags on `CONST.UNITS` decide what a man is for.** `menOnly` — no target among works or

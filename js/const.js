@@ -705,10 +705,10 @@
                   * he stood, and he snapped onto the stone from wherever the roster found him. */
                  step: 15,
                  /* HOW NEAR AN ENEMY COMES BEFORE THE CURTAIN GATHERS TO HIM. Generous on
-                  * purpose: a Bombard out-ranges everything on the board and shells stone from
-                  * 365 away, and men who only muster once the ram is at the foot arrive after
-                  * the breach. Wide enough to cover the longest gun, tight enough that a column
-                  * crossing the country beyond it is somebody else's problem.
+                  * purpose: a Ballista Tower throws 350 and a Bombard shells stone from 240
+                  * (it was 365 once), and men who only muster once the ram is at the foot arrive
+                  * after the breach. Wide enough to cover the longest gun, tight enough that a
+                  * column crossing the country beyond it is somebody else's problem.
                   * `alarms` is how many separate attacks one curtain can answer at once and
                   * `alarmSpan` how far apart two enemies must be ALONG THE STONE before they
                   * count as two attacks rather than one body — one alarm answers a feint
@@ -868,7 +868,7 @@
                blurb: 'Builds Rams: twice an Engine\'s bite and twice its stone, and they must reach the wall to swing.' },
     bombard: { name: 'The Gun Pit',  short: 'Bombards', icon: '💣',
                cost: 240, up: [370], spawns: 'bombard', period: [28, 28],
-               blurb: 'Builds Bombards: they out-range every tower on the board and burst where they land.' }
+               blurb: 'Builds Bombards: guns on carts that burst where they land and bite stone — under the towers\' reach, so they arrive escorted.' }
   };
   CONST.BUILDINGS.siege.branchUI = ['ram', 'bombard'];
 
@@ -973,11 +973,21 @@
     ram:      { name: 'Siege Ram',  icon: '🪵', hp: 480, dmg: 16, atk: 2.6, range: 26,  speed: 26, aggro: 120, bounty: 40, size: 15, cost: 95, siege: 22,
                 blurb: 'A roofed ram on rollers. It must reach the wall to swing, and very little that reaches one survives it.' },
     /* THE BOMBARD is Corwin's trick on a cart — the same shadow-rouge that burns in a Cannon
-     * Tower. It out-ranges every tower on the board, which is what a siege train is FOR; it
-     * pays for that in stone bitten per shot, and in being unable to defend itself at all. */
-    bombard:  { name: 'Bombard',    icon: '💣', hp: 190, dmg: 14, atk: 3.2, range: 365, speed: 26, aggro: 240, bounty: 34, size: 14, cost: 88, siege: 9,
+     * Tower. It was sold on out-ranging every tower on the board (365), and the designer took
+     * that back (2026-08-18): a gun that shells stone from beyond every tower's reach leaves a
+     * defender no counter at all — walls and towers came down from afar and nothing on the
+     * defending side could answer. Its reach is UNDER a plain Watchtower's now (240 against
+     * 250, and every level and branch above that), so the tower a bombard shells shoots back:
+     * a siege train arrives under the guns, as an Engine and a Ram always did, and pays for its
+     * burst and its bite on stone by being unable to defend itself at all. It still out-reaches
+     * the Seat's own gun (200), so a court without towers can still be shelled from its rim.
+     * `aggro` stays UNDER `range` (200 against 240): `acquire` looks out to the larger of the
+     * two, so the number changes nothing he does, and it keeps him the one kind whose reach
+     * out-runs his aggro — which is what holds the "a man engages what he can actually hit"
+     * rule in the suite that guards it. */
+    bombard:  { name: 'Bombard',    icon: '💣', hp: 190, dmg: 14, atk: 3.2, range: 240, speed: 26, aggro: 200, bounty: 34, size: 14, cost: 88, siege: 9,
                 splash: 55, splashFrac: 0.4,
-                blurb: 'It out-ranges every tower ever raised, and bursts where it lands. Nothing that gets close to it lives long enough to regret it.' }
+                blurb: 'A cannon on a cart: it bursts where it lands and bites stone, but every tower out-reaches it. Nothing that gets close to it lives long enough to regret it.' }
   };
 
   CONST.POWERS = {
