@@ -33,7 +33,12 @@
     names: ['', ''], campaign: false,
     targeting: false, over: false, lastRiftBanner: -99, armedFlag: null,
     span: null,             // a wall half-placed: its anchor, waiting for the far end
-    placing: null           // a work CHOSEN and waiting for the ground: { bt, co }
+    placing: null,          // a work CHOSEN and waiting for the ground: { bt, co }
+    /* THE SEATS THAT HAVE LOST WHILE A HUMAN HELD THEM (host and solo): a set, because a
+     * departed guest's seat is given a driver and stops reading as human, and "every human has
+     * lost" must still be able to count him. `watching` is this CLIENT's own answer — the host
+     * reads it off the set, a guest off `allSeen` on the snapshot the host sends him. */
+    spect: new Set(), watching: false
   };
   let acc = 0, lastFrame = 0;
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
@@ -110,7 +115,7 @@
     realm.helm = realm.helm || { orders: {}, hand: 0 };
     realm.helm.orders = realm.helm.orders || {};
     if (realm.helm.hand == null) realm.helm.hand = 0;
-    game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false;
+    game.mode = 'sp'; game.viewer = 0; game.campaign = false; game.over = false; game.spect = new Set(); game.watching = false;
     game.chapter = null;
     game.war = true;
     /* the war is polled where a chapter is polled — same shape, same door out */
@@ -187,17 +192,22 @@
      * `holdOn` composes the same way everywhere. */
     const foot = Object.assign({ holdOn }, C.DIFFICULTY[UI.difficulty()] || {});
     const mine = World.realmOf(world, pi) === holdOn;
+    /* A CONTENDER WHOSE COURT HAS SWORN AWAY IS A CONTENDER NO LONGER: he holds his court for
+     * the banner that broke him, and is dealt as any minor lord of that banner is (below) —
+     * never a rival heir's initiative and never the walk. Asked with `World.lost`, the same
+     * question the table asks about a human's seat. */
+    const heir = (world.heirs || []).indexOf(pi) >= 0 && !World.lost(world, pi);
     /* AN ALLY IS A CONTENDER, NOT A VASSAL. A heir on the player's SIDE (a contender of his
      * banner from genesis) plays the war as a contender — the footing, his own initiative, the
      * walk if he wins AMBER — and only does not treat, because the banner's founder does. */
-    if (mine && (world.heirs || []).indexOf(pi) >= 0 && pi !== game.viewer)
+    if (mine && heir && pi !== game.viewer)
       return Object.assign({}, foot, { noTerms: true });
     /* the designer's rule (2026-08-17): an inner lord is AS STRONG AS A MINOR LORD AND NO
      * STRONGER — the footing plus CONST.MINOR, exactly as an unsworn lord — never the
      * contender's footing (seat 0 is a contender by birth) and never better; and he neither
      * treats nor walks (the human's decisions) nor takes a court on his own initiative (`obey`,
      * read by warOrders): a vassal attacks only where the player's order sends him. */
-    if ((world.heirs || []).indexOf(pi) >= 0 && !mine) return Object.assign({}, foot);
+    if (heir && !mine) return Object.assign({}, foot);
     const m = C.MINOR, lapses = Object.assign({}, foot.lapses || {});
     for (const k of Object.keys(m.lapses || {}))
       lapses[k] = Math.max(lapses[k] || 0, m.lapses[k]);
@@ -294,7 +304,7 @@
 
   function startSP(kind, opts, chapter) {
     const isCampaign = !!chapter;
-    game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false;
+    game.mode = 'sp'; game.viewer = 0; game.campaign = isCampaign; game.over = false; game.spect = new Set(); game.watching = false;
     game.armedFlag = null;   // a company armed in the last match is not an order in this one
     /* the chapter's runner holds the objective's own state for the length of the match, and
      * nothing else in the game knows it exists */
@@ -390,7 +400,7 @@
     game.mode = Net.isHost ? 'host' : 'guest';
     game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
     Net.localIdx = game.viewer;
-    game.campaign = false; game.over = false; game.targeting = false; game.armedFlag = null;
+    game.campaign = false; game.over = false; game.spect = new Set(); game.watching = false; game.targeting = false; game.armedFlag = null;
     if (Render.clearSeatFalls) Render.clearSeatFalls();   // no throne is falling in a new match
     game.span = null; game.placing = null; Render.span = null;
     /* a call for another match belongs to the match that ended, not to this one */
@@ -601,7 +611,7 @@
       Rec.end(undefined, null, game.world ? Rec.fromWorld(game.world)
                              : snapCur ? Rec.fromSnap(snapCur, game.viewer) : null);
     }
-    game.mode = null; game.world = null; game.over = false;
+    game.mode = null; game.world = null; game.over = false; game.spect = new Set(); game.watching = false;
     if (Render.lookAt) Render._homed = false;
     /* walking out of a LAN match ends it for everyone else at the table — say so on the way
      * out, so the other phones can tell a heir leaving from a link dying */
@@ -686,12 +696,11 @@
      * viewer whose court has sworn to the enemy is a member of the enemy's realm by then, and
      * asking the realm alone told him he had won when his conqueror did. `world.sides` (the
      * wire carries it) is read first where there is one; a board has none and reads the realm. */
-    const sideOf = (pi) => (wv && wv.sides || []).find((sd) => sd.indexOf(pi) >= 0) || null;
+    const mySide = (wv && wv.sides || []).find((sd) => sd.indexOf(game.viewer) >= 0) || null;
     const won = winner === game.viewer ||
       (winner >= 0 && !!wv && wv.players && game.viewer >= 0 &&
-       (sideOf(game.viewer) && sideOf(World.realmOf(wv, winner))
-         ? sideOf(game.viewer) === sideOf(World.realmOf(wv, winner))
-         : World.realmOf(wv, winner) === World.realmOf(wv, game.viewer)));
+       (mySide ? mySide.indexOf(World.realmOf(wv, winner)) >= 0
+               : World.realmOf(wv, winner) === World.realmOf(wv, game.viewer)));
     /* ---- A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT ----
      * `realm.done` was written in one place only: where `run.tick` answers. But a war ends
      * through the SIM as often as through its run — a Seat toppling, or `holdCities` finding
@@ -857,6 +866,10 @@
    * the city index it was chosen from. Exported so a suite can ask whose hand is on the game. */
   game.handOf = hand;
   function issue(cmd) {
+    /* A SEAT THAT HAS LOST GIVES NO ORDERS — refused here for the screen's sake (the host's
+     * queue and the sim's `out` door refuse it again), and SAID, because a tap that does
+     * nothing and says nothing is the one thing this game never allows. */
+    if (game.watching && cmd.c !== 'pause') { sayErr('out'); return { ok: false, err: 'out' }; }
     if (game.mode === 'guest') {
       /* the lord this order is FOR rides with it: the host checks he is of the sender's realm
        * before applying it, exactly as it checks everything else a guest asks for */
@@ -891,6 +904,7 @@
     short: 'Too short a run to be a wall',
     crews: 'Too long for the crews you have — hold more Gates, or draw a shorter run',
     paused: 'The world is halted — lift it to give orders',
+    out: 'You are out of the fight — you watch now',
     whole: 'There is nothing broken to mend',
     working: 'The masons are already in it',
     /* ---- AND THE ONES THE LADDER USED TO SWALLOW ----
@@ -1198,11 +1212,78 @@
   }
 
   /* ---------------- view assembly (render-ready, fog applied) ---------------- */
+  /* ---------------- A SEAT THAT HAS LOST WATCHES; THE TABLE ENDS WHEN THEY ALL HAVE ----------------
+   * The seats HUMANS hold at this table: the viewer, and on a hosted table every guest whose
+   * channel is open (a guest who left has a driver on his seat and nobody to spectate). */
+  function humanSeats() {
+    const hs = [game.viewer];
+    if (game.mode === 'host' && Net.peers)
+      for (const p of Net.peers)
+        if (p.dc && p.dc.readyState === 'open' && p.idx != null && p.idx !== game.viewer &&
+            game.world && game.world.players[p.idx]) hs.push(p.idx);
+    return hs;
+  }
+  /* Asked once per simulated frame on the host and in solo. `World.lost` is the one spelling
+   * of "out of the fight" (toppled on a board; a war's court sworn outside the side it was
+   * dealt). A human seat that has lost joins `game.spect`: his screen loses its veil and its
+   * controls (`hostView` / `Net.snapFor` / `UI.spectate`), his orders are refused at the door
+   * (`issue`, the guest queue), and in a war his court — the enemy's vassal now — is given a
+   * driver like any other seat nobody human holds. When EVERY human seat has lost the match is
+   * ended through `World.declare` — the same door a chapter's loss and a war's ending use — and
+   * NOT before: a LAN table where one heir fell early plays on for the others, and the fallen
+   * one watches. Solo this is the old rule to the byte: one human, lost, the end. */
+  function spectatorTick() {
+    const w = game.world;
+    if (!w || game.over || game.mode === 'guest') return;
+    const hs = humanSeats();
+    let lostN = 0;
+    for (const sSeat of hs) {
+      if (!World.lost(w, sSeat)) continue;
+      lostN++;
+      if (game.spect.has(sSeat)) continue;
+      game.spect.add(sSeat);
+      /* a war's loser keeps a court that plays on for its new liege — a driver, as for any
+       * seat no human commands. A toppled heir has nothing left to drive. */
+      if (game.war && game.bots && !game.bots[sSeat] && !w.players[sSeat].out) game.bots[sSeat] = warBot(w, sSeat);
+      if (sSeat === game.viewer) {
+        game.watching = true;
+        game.targeting = false; game.placing = null; game.span = null; Render.span = null; game.armedFlag = null;
+        UI.banner('👁 You are out of the fight — you watch now, with the veil lifted', 'warn');
+      }
+    }
+    if (hs.length && lostN === hs.length) endAllLost();
+  }
+  /* WHO IS NAMED THE WINNER when the last human seat has lost. In a war the banner that broke
+   * the viewer's court — `realmOf(viewer)` IS the conqueror under the oath, which is also why
+   * "the first realm that is not mine" (the old wording) could name a minor lord who had done
+   * nothing. On a board the strongest heir still standing, by his Seat's hit points. */
+  function endAllLost() {
+    const w = game.world;
+    let winner = -1, reason = 'castle';
+    if (w.rules && w.rules.occupy) {
+      winner = World.realmOf(w, game.viewer);
+      reason = 'objective';
+    } else {
+      let best = -1;
+      for (let pi = 0; pi < w.players.length; pi++) {
+        if (w.players[pi].out) continue;
+        const hp = (World.seatOf(w, pi) || {}).hp || 0;
+        if (hp > best) { best = hp; winner = pi; }
+      }
+      if (winner >= 0) winner = World.realmOf(w, winner);
+    }
+    World.declare(w, winner, reason);
+  }
   function hostView() {
     const world = game.world, viewer = game.viewer;
-    const see = (x, y) => World.canSee(world, viewer, x, y);
+    /* A SEAT THAT HAS LOST WATCHES THE WHOLE BOARD — see `spectatorTick`. The all-ones mask the
+     * sim gives a TOPPLED heir does the same for a board; a war's loser is not toppled (his
+     * court swore), so the lifting is done here, at the view, and the sim's own sight — which
+     * the driver now running his court reads — stays honest. */
+    const watching = game.spect.has(viewer);
+    const see = watching ? () => true : (x, y) => World.canSee(world, viewer, x, y);
     const mem = world.players[viewer].explored;
-    return {
+    return watchView({
       t: world.t, map: world.map, nav: world.nav, mapSeed: world.seed,
       /* the rules of this match, so the HUD asks the world rather than the mode — the same
        * field the wire carries, so a host and a guest draw the same controls */
@@ -1248,7 +1329,8 @@
        * when present, falling back to source ellipses when not. Tolerant of either shape the
        * sim might serve ({g,gw,gh,cell} directly, or wrapped as {mask}), because the two
        * halves of this feature land in separate changes and neither may break the other. */
-      allSeen: !!world.players[viewer].out,   // a fallen heir spectates: no veil at all
+      allSeen: !!world.players[viewer].out || watching,   // a fallen heir spectates: no veil at all
+      sides: world.sides,
       visMask: (() => {
         const v = world.vis && world.vis[viewer];
         if (!v) return null;
@@ -1257,7 +1339,23 @@
         return null;
       })(),
       see
-    };
+    }, viewer);
+  }
+  /* THE WATCHER KEEPS HIS COLOURS. A war's loser has sworn to the banner that broke him, so
+   * asked plainly the view would paint the ENEMY gold and his own allies crimson from the moment
+   * he fell — the exact opposite of the war he was watching a second ago. His seat is pinned,
+   * on the VIEW's copy of him alone, to the banner his dealt side fights under now (whichever
+   * member's realm is still inside the side), so `tintOf`, `mineOf` and the roster read as they
+   * did. Nothing in the world is touched, and a board (no sides) reads as it always did. */
+  function watchView(view, viewer) {
+    if (!view.allSeen || !view.sides || !view.players) return view;
+    const side = view.sides.find((sd) => sd.indexOf(viewer) >= 0);
+    if (!side) return view;
+    const live = side.map((m) => World.realmOf(view, m)).find((r) => side.indexOf(r) >= 0);
+    if (live == null || live === World.realmOf(view, viewer)) return view;
+    view.players = view.players.slice();
+    view.players[viewer] = { ...view.players[viewer], realm: live };
+    return view;
   }
   function guestView() {
     const snap = snapCur;
@@ -1297,7 +1395,8 @@
      * guest receives is already fogged by the true set; its own veil is merely a shade
      * optimistic until the wall is found, which is the moment it starts blocking. */
     let vism = null;
-    const meOut = !!(snap.players[me] && snap.players[me].out);
+    /* out (toppled on a board), or told by the host that this seat WATCHES now (a war's loser) */
+    const meOut = !!(snap.players[me] && snap.players[me].out) || !!snap.allSeen;
     if (!meOut && World.bakeSight && World.visMask) {
       if (!refWorld.sight) World.bakeSight(refWorld);
       const wallList = [];
@@ -1333,7 +1432,8 @@
      * small one. The host has always cut it from the world's own extents (`createWorld`). */
     if (!guestSeen) guestSeen = World.newSeenMask(refWorld.mapW, refWorld.mapH);
     World.markSeen(guestSeen, vism || src);
-    return { t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
+    return watchView({ t: snap.t, map: refWorld.map, nav: refWorld.nav, mapSeed: refWorld.seed, players: snap.players,
+             sides: snap.sides,
              /* the same two the host's own view carries, off the wire rather than off a world:
               * the rules so the HUD draws the same controls, and the cities so it draws the
               * same board */
@@ -1342,7 +1442,7 @@
              seatSeen: refWorld.map.cities.map((id, pi) => pi === Net.localIdx ||
                !!(snap.sites[id] && snap.sites[id].live !== undefined)),
              sites: snap.sites, units, storms: snap.storms, visSources: src, see,
-             visMask: vism, allSeen: meOut };
+             visMask: vism, allSeen: meOut }, me);
   }
 
   /* ---------------- event routing (banners + canvas fx; fog respected) ---------------- */
@@ -1480,6 +1580,20 @@
       /* A HALT BANKS NO TIME. Letting the accumulator fill while the world is stopped would
        * make lifting the pause fast-forward the match by however long you stood there —
        * which is the one thing a pause must never do. */
+      /* every guest's commands are applied AS THAT GUEST — with four seats the sender is the
+       * only thing that says whose order it was. Drained HERE, once a frame and OUTSIDE the
+       * step loop: it used to sit inside it, and the loop takes no steps while the world is
+       * halted — so a guest could call a halt and never lift one, and the host was the only
+       * seat that could ever move the table again ("anyone may lift it" was a sentence about
+       * the host). A seat that has LOST gives no orders (see `spectatorTick`). */
+      if (game.mode === 'host' && !game.over)
+        for (const q of guestCmdQueue.splice(0)) {
+          const w2 = game.world;
+          if (game.spect.has(q.pi)) continue;
+          const as = q.as != null && w2.players[q.as] &&
+                     World.realmOf(w2, q.as) === World.realmOf(w2, q.pi) ? q.as : q.pi;
+          World.applyCommand(w2, as, q.c);
+        }
       if (game.world.paused) acc = 0; else acc += dtReal;
       let steps = 0;
       while (acc >= C.SIM_DT && steps++ < 6) {
@@ -1498,7 +1612,7 @@
             const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || null;
             /* the hand is the one seat no driver steps: the taps ARE its orders. On a board
              * (`?reach=` with no war) seat 0 is the player and has no driver to skip. */
-            const driving = game.war ? hand() : 0;
+            const driving = game.war ? (game.watching ? -1 : hand()) : 0;
             for (let bi = 0; bi < game.bots.length; bi++)
               if (game.bots[bi] && bi !== driving) game.bots[bi].step(game.world, bi,
                 (cmd) => World.applyCommand(game.world, bi, cmd), C.SIM_DT,
@@ -1506,16 +1620,8 @@
           } else if (game.mode === 'sp') {
             game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
           }
-          /* every guest's commands are applied AS THAT GUEST — with four seats the sender
-           * is the only thing that says whose order it was */
-          if (game.mode === 'host')
-            for (const q of guestCmdQueue.splice(0)) {
-              const w2 = game.world;
-              const as = q.as != null && w2.players[q.as] &&
-                         World.realmOf(w2, q.as) === World.realmOf(w2, q.pi) ? q.as : q.pi;
-              World.applyCommand(w2, as, q.c);
-            }
           World.update(game.world, C.SIM_DT);
+          spectatorTick();
           /* ---- THE CHAPTER'S OWN CONDITION ----
            * Polled here, over the world this loop already holds, and NOT grown into `update`:
            * the sim is headless-first and host-authoritative, and a scripted objective is a
@@ -1529,16 +1635,13 @@
             /* A WAR ENDS THROUGH THE SAME DOOR A CHAPTER DOES, and there is no second door: the
              * realm's run has the shape a chapter's has, so one branch serves both. What the
              * war remembers is set HERE and not in `tick`, which answers and never writes. */
-            if (r && game.realm && game.war) { game.realm.done = r; REALM.save(game.realm); }
+            /* THE LOSS IS THE TABLE'S TO CALL, not seat 0's: `run.tick` says seat 0 has lost,
+             * and on a hosted table another human may still be fighting — so the ending
+             * belongs to `spectatorTick`, which ends the war when the LAST human seat has lost
+             * (solo: seat 0, at once, as before) and names the conqueror. Only the win is
+             * declared from here. */
+            if (r === 'won' && game.realm && game.war) { game.realm.done = r; REALM.save(game.realm); }
             if (r === 'won') World.declare(game.world, game.viewer, 'objective');
-            else if (r === 'lost') {
-              /* the ENEMY SIDE'S founder is the winner named, not seat 1, which in a war of two
-               * sides may be your own ally: the banner other than yours that still holds ground */
-              const w0 = game.world, mine = World.realmOf(w0, 0);
-              const other = (w0.cities || []).map((c) => c && c.owner >= 0 ? World.realmOf(w0, c.owner) : -1)
-                .find((rl) => rl >= 0 && rl !== mine);
-              World.declare(w0, other != null && other >= 0 ? other : 1, 'objective');
-            }
           }
           /* THE WAR AUTOSAVES ON A HEARTBEAT — every thirty simulated seconds, beside the
            * saves on every door out — because the door the app actually dies through most
@@ -1608,7 +1711,7 @@
             const q = evQ[p.idx] || (evQ[p.idx] = []);
             /* the events are only consumed if the snapshot actually GOES — a dropped snapshot
              * must not eat the shots and deaths the guest has still never been told about */
-            if (Net.sendSnap({ t: 'snap', s: Net.snapFor(game.world, p.idx, q) }, p.idx)) q.length = 0;
+            if (Net.sendSnap({ t: 'snap', s: Net.snapFor(game.world, p.idx, q, game.spect.has(p.idx)) }, p.idx)) q.length = 0;
           }
         }
       }
@@ -1623,6 +1726,7 @@
       UI.hud(view, game.viewer, (hp.incomeRate || 0) - (hp.drainRate || 0), game.targeting, hv);
       UI.tick(hp.essence);
       UI.flags(view, hv, game.armedFlag);
+      UI.spectate(game.watching, watchLine());
     } else if (game.mode === 'guest' && snapCur) {
       linkCheck();
       const view = guestView();
@@ -1638,7 +1742,30 @@
       UI.hud(view, gv, (gp.incomeRate || 0) - (gp.drainRate || 0), game.targeting, gh);
       UI.tick(gp.essence || 0);
       UI.flags(view, gh, game.armedFlag);
+      /* a guest learns he watches from the snapshot: the host lifted his veil (`allSeen`) */
+      if (!!view.allSeen !== game.watching) {
+        game.watching = !!view.allSeen;
+        if (game.watching) {
+          game.targeting = false; game.placing = null; game.span = null; Render.span = null; game.armedFlag = null;
+          UI.banner('👁 You are out of the fight — you watch now, with the veil lifted', 'warn');
+        }
+      }
+      UI.spectate(game.watching, watchLine());
     }
+  }
+  /* what the watcher's line says: who is still fighting */
+  function watchLine() {
+    if (!game.watching) return null;
+    const v = game.world || snapCur;
+    if (!v || !v.players) return '👁 You are out of the fight — watching';
+    const left = [];
+    for (let pi = 0; pi < v.players.length; pi++) {
+      if (pi === game.viewer || v.players[pi].out) continue;
+      if (game.mode !== 'guest' && !humanSeats().includes(pi)) continue;   // the host names the humans
+      if (game.mode !== 'guest' && World.lost(v, pi)) continue;
+      left.push(game.names[pi] || ('seat ' + pi));
+    }
+    return '👁 You are out of the fight — watching' + (game.mode !== 'guest' && left.length ? ': ' + left.join(', ') + ' still fight' : '');
   }
 
   /* ---------------- input: drag pans, pinch zooms, tap acts ---------------- */
@@ -2436,7 +2563,7 @@
   /* the chapter list, with `focus` naming the one to open a briefing for straight away (which
    * is what the end screen's button wants: it has just named the next chapter) */
   function toChapters(focus) {
-    game.over = false;
+    game.over = false; game.spect = new Set(); game.watching = false;
     game.mode = null; game.chapter = null; game.run = null;
     if (game.world) game.world = null;
     UI.objective(null); UI.warChip(null);
@@ -2727,6 +2854,10 @@
                    * the RULE rather than the render loop, which is the only way to test a
                    * wall-clock rule on a machine slower than its own threshold */
                   debugQuiet: (secs) => { snapAt = performance.now() - secs * 1000; return linkCheck(); },
+                  /* the one door an order goes through, for a rig that has to ask whether a
+                   * seat may still give one — the same function every tap calls */
+                  debugIssue: (cmd) => issue(cmd),
+                  debugHumans: () => humanSeats(),
                   debugSeen: () => (guestSeen ? { gw: guestSeen.gw, gh: guestSeen.gh,
                                                   cell: guestSeen.cell, marks: guestSeen.v,
                                                   at: (x, y) => !!guestSeen.g[((y / guestSeen.cell) | 0)

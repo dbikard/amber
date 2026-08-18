@@ -463,9 +463,13 @@
    * and banner never sent. Works follow the open-world rule: your own always, a rival's
    * only while you can SEE it — otherwise the ghost you last saw, at the place it stood.
    * A started Pattern walk reveals that shrine + progress. */
-  Net.snapFor = function (world, viewer, events) {
+  /* `watching`: this seat has LOST and spectates (game.js `spectatorTick`) — the positional
+   * fog is lifted for him and the snapshot says so (`allSeen`), so his screen draws no veil.
+   * The private fields (a rival's essence, branch, income) stay behind the ownership checks
+   * below, which never consult the fog: watching is not auditing. */
+  Net.snapFor = function (world, viewer, events, watching) {
     const World = global.World, C = global.CONST;
-    const see = (x, y) => World.canSee(world, viewer, x, y);
+    const see = watching ? () => true : (x, y) => World.canSee(world, viewer, x, y);
     const players = world.players.map((pl, pi) => {
       /* "MINE" IS THE BANNER'S, NOT THE SEAT'S. A guest plays a realm: the lords sworn to him
        * are his to command, so their purses, their branches, their companies and their halls
@@ -577,6 +581,8 @@
       /* THE SIDES AS DEALT, so a guest's end screen judges "won" by the side he was dealt and
        * not by the banner conquest left his court under (see `endMatch`). Nothing else reads it. */
       sides: world.sides,
+      /* the seat watches: no veil, no controls — see game.js */
+      ...(watching ? { allSeen: 1 } : {}),
       /* the cities of the world, and every one of them public: a Seat's hit points always
        * were, and in a country the question "whose is that" is the map. Where the court
        * STANDS is a different question, and `seatSeen` still answers it. */

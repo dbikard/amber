@@ -348,6 +348,18 @@
     el.textContent = text || '';
     el.classList.toggle('hidden', !text);
   };
+  /* ---- 👁 A SEAT THAT WATCHES ----
+   * A human seat that has lost keeps his screen for as long as the table plays — the veil is
+   * lifted by the view (game.js) — and loses everything a hand would use: the build button, the
+   * purse, the flag tray, the powers, the war chip and the terms tray, all of it in one class
+   * so a control added to the HUD later hides with the rest. The objective line says what he is
+   * doing there. Idempotent; called every frame from the same place the HUD is painted. */
+  let watchOn = false;
+  UI.spectate = function (on, text) {
+    if (!!on !== watchOn) { watchOn = !!on; $('hud').classList.toggle('watching', watchOn); }
+    if (watchOn) UI.objective(text || '👁 You are out of the fight — watching');
+  };
+  UI.watching = () => watchOn;
   /* ---- ⚑ THE WAR, IN A CHIP ----
    * The war's status line and the door to the council, in the space one chip takes. `held` of
    * `all` is the whole of what the old two-line box said; the DOT is what the old terms tray

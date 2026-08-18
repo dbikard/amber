@@ -5215,6 +5215,138 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- A SEAT THAT HAS LOST WATCHES; THE TABLE ENDS WHEN THEY ALL HAVE ----------------
+   * A hosted war with two guests. Each human seat that loses (his court sworn outside the side
+   * he was dealt — `World.lost`) keeps his screen with the veil lifted and his hand taken away,
+   * his court is given a driver, and the table plays on for whoever is still fighting; when the
+   * LAST human seat has lost the war ends and names the conqueror. Courts are broken by a MINOR
+   * LORD's men pinned in the yard through the take, so nobody's side has to do the breaking. */
+  {
+    suite('a seat that has lost watches, and the table ends when they all have');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate(() => {
+      const Net = window.Net;
+      window.REALM.forget();
+      window.UI.lan();
+      Net.isHost = true; Net.active = true; window.__sent = [];
+      const dc = (idx) => ({ readyState: 'open', send: (m) => window.__sent.push(Object.assign(JSON.parse(m), { to: idx })) });
+      Net.peers = [{ idx: 1, dc: dc(1), pc: {} }, { idx: 2, dc: dc(2), pc: {} }];
+      Net.onOpen();
+    });
+    try { await pg.click('#lan-start-war', { timeout: 20000 }); } catch (e) { /* the war starting is the claim */ }
+    await until(pg, () => !!(window.Game.game.mode === 'host' && window.Game.game.war), 30000);
+    await until(pg, () => window.Render.ready, 20000);
+    const rig = await pg.evaluate(() => {
+      const { Game, World } = window, g = Game.game, w = g.world;
+      /* nobody drives: the page's questions are about the seats, not the heirs' play */
+      g.bots = g.bots.map(() => null);
+      w.chaosNext = 1e9;
+      for (const p of w.players) p.musterPaused = true;
+      return { humans: Game.debugHumans(), sides: JSON.stringify(w.sides), seats: w.players.length,
+               lost: [0, 1, 2].map((i) => World.lost(w, i)) };
+    });
+    ok('the rig is alive: three humans at a war table, none of them lost',
+       rig.humans.join(',') === '0,1,2' && rig.lost.every((x) => x === false), JSON.stringify(rig));
+    /* break a court: a minor lord's men in the yard, pinned, through the take */
+    const breakCourt = (seat) => pg.evaluate(async (seat2) => {
+      const { Game, World, CONST: C } = window, g = Game.game, w = g.world;
+      const city = w.cities[seat2];
+      const by = w.players.findIndex((p, i) => i > 3 && World.realmOf(w, i) === i && !World.lost(w, i));
+      /* his army fell first — men of his in the yard would contest the take */
+      for (const u of w.units) if (World.realmOf(w, u.owner) === World.realmOf(w, seat2)) u.hp = 0;
+      World.seatDown(w, city, by);
+      const men = [];
+      for (let k = 0; k < 2; k++) {
+        const d = C.UNITS.soldier;
+        const u = { id: w.nextId++, owner: by, kind: 'soldier', tier: 1, x: city.x + 24 + k * 14, y: city.y, ox: 0, oy: 0,
+                    hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
+        w.units.push(u); men.push(u);
+      }
+      /* the sim is stepped here, by hand, so the page's own frames only have to notice */
+      for (let i = 0; i < 30 * 30 && World.realmOf(w, seat2) === seat2; i++) {
+        if (city.owner < 0) for (let k = 0; k < men.length; k++) { men[k].x = city.x + 24 + k * 14; men[k].y = city.y; men[k].hp = men[k].maxHp; }
+        World.update(w, C.SIM_DT);
+      }
+      await new Promise((r) => setTimeout(r, 300));   // a few of the page's own frames
+      return { realm: World.realmOf(w, seat2), by, lost: World.lost(w, seat2), over: g.over,
+               spect: [...g.spect], watching: g.watching, drivers: g.bots.map((b) => !!b),
+               hudWatching: document.getElementById('hud').classList.contains('watching'),
+               fogOn: window.Render.debugFogOn(), winner: w.winner };
+    }, seat);
+    /* ---- the first guest loses ---- */
+    const g1 = await breakCourt(1);
+    ok('a guest\'s court broken and sworn away is that seat lost', g1.lost === true && g1.realm !== 1, JSON.stringify(g1));
+    ok('...the host marks the seat a watcher and the table plays on', g1.spect.join(',') === '1' && !g1.over && g1.winner == null, JSON.stringify(g1));
+    ok('...his court is given a driver, as any seat nobody human holds', g1.drivers[1] === true, JSON.stringify(g1.drivers));
+    ok('...and the host himself is not watching', !g1.watching && !g1.hudWatching);
+    const snap1 = await pg.evaluate(async () => {
+      window.__sent.length = 0;
+      await new Promise((r) => setTimeout(r, 400));
+      const to1 = window.__sent.filter((m) => m.t === 'snap' && m.to === 1);
+      const to2 = window.__sent.filter((m) => m.t === 'snap' && m.to === 2);
+      const w = window.Game.game.world;
+      const s1 = to1[to1.length - 1] && to1[to1.length - 1].s;
+      return { n1: to1.length, n2: to2.length,
+               allSeen1: !!(s1 && s1.allSeen), allSeen2: !!(to2.length && to2[to2.length - 1].s.allSeen),
+               units1: s1 ? s1.units.length : -1, unitsAll: w.units.filter((u) => u.hp > 0).length,
+               essence: s1 ? s1.players[3].essence : 'x' };
+    });
+    ok('the watcher\'s snapshots carry the whole board: no veil, every man', snap1.n1 > 0 && snap1.allSeen1 && snap1.units1 === snap1.unitsAll, JSON.stringify(snap1));
+    ok('...and a rival\'s purse still does not (watching is not auditing)', snap1.essence === null, String(snap1.essence));
+    ok('...while the seat still fighting is served the fog he always was', snap1.n2 > 0 && !snap1.allSeen2, JSON.stringify(snap1));
+    const halt = await pg.evaluate(async () => {
+      const { Game, Net } = window, w = Game.game.world;
+      Net.onCmd({ c: 'pause', on: true }, 1, 1);
+      await new Promise((r) => setTimeout(r, 200));
+      const byWatcher = !!w.paused;
+      Net.onCmd({ c: 'pause', on: true }, 2, 2);
+      await new Promise((r) => setTimeout(r, 200));
+      const byPlayer = !!w.paused;
+      Net.onCmd({ c: 'pause', on: false }, 2, 2);
+      await new Promise((r) => setTimeout(r, 200));
+      return { byWatcher, byPlayer, lifted: !w.paused };
+    });
+    ok('a watcher\'s orders are dropped at the host\'s door (a halt included); a player\'s still land',
+       !halt.byWatcher && halt.byPlayer && halt.lifted, JSON.stringify(halt));
+    /* ---- the host loses: he watches, and the table plays on for the last guest ---- */
+    const g0 = await breakCourt(0);
+    ok('the host\'s court broken is the host lost, and the war goes on for the guest still fighting',
+       g0.lost && g0.spect.slice().sort().join(',') === '0,1' && !g0.over, JSON.stringify(g0));
+    ok('...he watches: the HUD loses its controls and the shader veil is switched off', g0.watching && g0.hudWatching && g0.fogOn === false, JSON.stringify(g0));
+    const hand = await pg.evaluate(async () => {
+      const { Game } = window, g = Game.game;
+      const r = Game.debugIssue({ c: 'muster', pause: true });
+      /* his court is driven now — seat 0's driver is stepped, since no hand is on it */
+      let steps = 0; const bot = g.bots[0];
+      const real = bot.step; bot.step = function () { steps++; return real.apply(this, arguments); };
+      await new Promise((res) => setTimeout(res, 400));
+      bot.step = real;
+      return { err: r.err, steps, ctrl: document.getElementById('hud-bottom').getBoundingClientRect().height };
+    });
+    ok('...his orders are refused, and said', hand.err === 'out', JSON.stringify(hand));
+    ok('...and his court is run by its driver while he watches', hand.steps > 0, `${hand.steps} steps`);
+    ok('...with the hand\'s controls off the screen', hand.ctrl === 0, `hud-bottom ${hand.ctrl}px`);
+    /* ---- the last human loses: the war ends, and names the conqueror ---- */
+    const g2 = await breakCourt(2);
+    const end = await pg.evaluate(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      const g = window.Game.game;
+      return { over: g.over, winner: g.world.winner, won: g.endWon, endShown: !document.getElementById('end').classList.contains('hidden'),
+               sub: document.getElementById('end-sub').textContent };
+    });
+    ok('the last human seat lost ends the war', g2.lost && end.over && end.endShown, JSON.stringify(end));
+    ok('...as a loss, naming the banner that broke the host', end.won === false && end.winner === g0.realm, JSON.stringify({ end, realm0: g0.realm }));
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.evaluate(() => { window.Game.toMenu(); window.REALM.forget(); window.Net.peers = []; window.Net.active = false; window.Net.isHost = false; });
+    await pg.close();
+  }
+
+
   /* ---------------- the reach dev boot ----------------
    * `?reach=SEED` is a rig, not a mode: one country through the real renderer, seated exactly
    * as a war seats itself — a contender or a minor lord on every seat but the viewer's. What must be true: it boots, it is the world it claims to
@@ -5409,7 +5541,10 @@ async function match(browser, base, renderer) {
       R.lookAt(hall.x, hall.y); R.setZoom(1.6);
       const seen = w.players[0].seen;
       for (const p of w.players) p.explored = p.explored || {};
-      w.players[0].out = true;                      // spectate: no veil at all, so sight is not the variable
+      /* spectate: no veil at all, so sight is not the variable. Through the WATCHER's door
+       * (`game.spect`), not `out` — a toppled solo seat is a match the table ends at once now
+       * (`spectatorTick`), and this page's world has to go on living for the suites after it */
+      window.Game.game.spect.add(0);
       await paint(); await paint();
       const before = { own: R.debugWorks ? null : null, flag: R.debugStandard(hall.id) };
       /* THE OATH ITSELF — the one thing a conquest does to a lord */
@@ -5422,7 +5557,7 @@ async function match(browser, base, renderer) {
        * suite downstream failed on a colour that was correct for a board this test had quietly
        * conquered. A rig that mutates a shared world owes it the state it borrowed. */
       w.players[pi].realm = wasRealm;
-      w.players[0].out = false;
+      window.Game.game.spect.delete(0);
       await paint();
       return { pi, hallId: hall.id, co: hall.co, before, after, seen: !!seen,
                want: '#' + (hall.co
@@ -6211,15 +6346,28 @@ async function match(browser, base, renderer) {
       Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, []))));
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
       const snapSeats = Net.snapFor(hw, 1, []).players.length;
+      const fogBefore = window.Render.debugFogOn();
+      /* ...AND THEN THE HOST SAYS THIS SEAT WATCHES: the snapshot arrives with `allSeen`, and
+       * the guest's screen must lift its veil, drop its controls and refuse its own taps
+       * without a word from anyone else */
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, [], true))));
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const watch = { watching: Game.game.watching, hud: document.getElementById('hud').classList.contains('watching'),
+                      fogOn: window.Render.debugFogOn(), fogBefore,
+                      refused: Game.debugIssue({ c: 'walk', on: true }).err,
+                      controls: document.getElementById('hud-bottom').getBoundingClientRect().height };
       Net.active = false; Net.peers = [];
       return { mode: Game.game.mode, seats: names.length, snapSeats,
-               amber: names.includes('AMBER'), war: !!Game.game.lanWar };
+               amber: names.includes('AMBER'), war: !!Game.game.lanWar, watch };
     });
     ok('the guest sits at a ten-throne table', lan.mode === 'guest' && lan.seats >= 8,
        JSON.stringify(lan));
     ok('...on the war\'s own ground, AMBER among the seats', lan.amber === true, lan.seats + ' names');
     ok('...and a snapshot serves every one of them', lan.snapSeats === lan.seats,
        `${lan.snapSeats} of ${lan.seats}`);
+    ok('a snapshot that says this seat watches lifts the guest\'s veil and takes his hand',
+       lan.watch.watching && lan.watch.hud && lan.watch.fogOn === false && lan.watch.fogBefore === true &&
+       lan.watch.refused === 'out' && lan.watch.controls === 0, JSON.stringify(lan.watch));
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

@@ -837,6 +837,27 @@ staleness check is required. (→ LEDGER: WHEN THE TABLE BREAKS UP)
 - **The host's back press asks once**, and only his, and only with somebody seated. Back is free
   and instant everywhere else and must stay so, which rules out a modal; the phone's own idiom
   is the answer, where the first press says what the second will do.
+- **A SEAT THAT HAS LOST WATCHES, AND THE TABLE ENDS WHEN THEY ALL HAVE** (`World.lost`,
+  game.js `spectatorTick`/`endAllLost`, `Net.snapFor(..., watching)`, `UI.spectate`).
+  `World.lost` is the ONE spelling of "out of the fight": toppled on a board (`pl.out`), or in a
+  war his court sworn to a banner outside the SIDE HE WAS DEALT (`world.sides`; seat 0 alone
+  when there are none) — the one thing conquest cannot rewrite; `REALM.run.tick` asks it of
+  seat 0 and the host asks it of every human seat (`humanSeats`: the viewer plus every guest
+  whose channel is open). A human seat that has lost joins `game.spect`: his veil is lifted at
+  the VIEW (`hostView`'s `see`, the snapshot's `allSeen` — never in the sim, whose sight the
+  driver now running his court reads), his controls go (`#hud.watching`), his orders are refused
+  three times over (`issue`, the host's queue, and for a toppled heir the sim's own `out` door,
+  which lets only the halt through), and in a war his court gets a driver like any seat nobody
+  human holds. **He keeps his colours**: `watchView` pins the view's copy of him to the banner his
+  dealt side fights under, or the enemy would turn gold the moment he fell. The table ends ONLY
+  when the last human seat has lost — solo, that is seat 0 at once, as before — through
+  `World.declare`, naming the banner that broke the viewer (`realmOf(viewer)` IS the conqueror
+  under the oath; on a board the strongest heir standing). `endMatch`'s `won` is "the winner's
+  banner is founded inside my dealt side", never the viewer's CURRENT realm, which after the
+  oath is the conqueror's. Found while testing: **the shader veil never lifted for a spectator**
+  (`uFogOn` left at 1 when the veil block was skipped) and **a guest could never lift a halt**
+  (his commands were drained inside the step loop, which takes no steps while halted).
+  (→ LEDGER: A SEAT THAT HAS LOST WATCHES)
 
 ### ⚑ THE WAR COUNCIL, AND WHAT THE MAP STOPPED SAYING
 

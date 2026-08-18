@@ -799,3 +799,7 @@ body {
 
 /* a wide card on the menu: the long war is its own kind of thing and gets its own row */
 .mcard.wide { width: 100%; }
+
+/* 👁 a seat that has lost watches: the hand's controls go, the map and the readouts stay */
+#hud.watching #hud-bottom, #hud.watching #war-chip, #hud.watching #terms, #hud.watching #sheet { display: none !important; }
+#hud.watching #objective { display: block; }

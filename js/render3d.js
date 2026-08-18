@@ -1722,6 +1722,9 @@
    * That has already happened once — the writ was an unpatched LineBasicMaterial, and it read
    * as the writ and the sight disagreeing about where the ground was. So the scene can be
    * asked, and a suite asks it: every material under worldG, by name, that nothing darkens. */
+  /* is the shader veil switched on this frame — the watcher suite asks it, since a spectator's
+   * "no veil" and a stale veil left on look identical from a pixel far from anything */
+  R.debugFogOn = () => !!FOGU.uFogOn.value;
   R.debugUnpatched = () => {
     const out = [];
     if (worldG) worldG.traverse((o) => {
@@ -3460,7 +3463,12 @@
     /* fog of war, projected: dark veil with soft elliptical holes at each vision source */
     /* A FALLEN HEIR HAS NO VEIL — he spectates, and the cheapest fog is none: skip the dark
      * fill, the mask march, the discs and the rim in one test rather than asking each pass
-     * to notice an all-ones mask. */
+     * to notice an all-ones mask. AND THE MATERIALS MUST BE TOLD: the shader veil is switched
+     * off inside the block below, so skipping the block left `uFogOn` at 1 with the last
+     * uploaded texture — a watcher on the shader path kept the veil of the frame he fell on,
+     * frozen. Measured on the spectator suite; the 2D path never had the fault because it
+     * draws nothing when it draws nothing. */
+    if (view.allSeen && FOGU.uFogOn.value) FOGU.uFogOn.value = 0;
     if (!view.allSeen) {
     if (!R.shaderFog) {
       g.fillStyle = 'rgba(6,4,12,0.86)';

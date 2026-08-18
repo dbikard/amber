@@ -315,6 +315,21 @@
     const r = realmOf(world, pi);
     return (world.cities || []).filter((c) => c.owner >= 0 && realmOf(world, c.owner) === r);
   }
+  /* IS THIS SEAT OUT OF THE FIGHT — the one spelling, for the run's verdict and for the table.
+   * On a board a Seat toppled puts its heir OUT (`pl.out`). In a war nobody is toppled: a broken
+   * lord keeps his court and swears, so "out" is his court answering to a banner outside the
+   * SIDE HE WAS DEALT (`world.sides`; seat 0 alone when a country was made without any) — the
+   * one thing conquest cannot rewrite. Nothing in here knows whether the seat is a human's:
+   * game.js asks it about the seats humans hold, and REALM.run.tick asks it about seat 0. */
+  function lost(world, pi) {
+    const pl = world.players[pi];
+    if (!pl) return false;
+    if (pl.out) return true;
+    const sides = world.sides || null;
+    const side = sides ? sides.find((sd) => sd.indexOf(pi) >= 0) : (pi === 0 ? [0] : null);
+    if (!side) return false;
+    return side.indexOf(realmOf(world, pi)) < 0;
+  }
   function foe(world, a, b) {
     if (a === b) return false;
     if (a === C.CHAOS_ID || b === C.CHAOS_ID) return true;
@@ -2881,6 +2896,11 @@
     if (world.winner !== null) return { ok: false, err: 'over' };
     const pl = world.players[pi];
     if (!pl) return { ok: false, err: 'player' };
+    /* A FALLEN HEIR GIVES NO ORDERS. `topple` throws down his works and buries his men, but his
+     * court is still his on the map and his crews are floored at one — so he could raise a Gate
+     * on his own rubble and play on as a ghost, on a free-for-all that runs long after his fall.
+     * He may still call or lift the halt: that is the table's, not a seat's. */
+    if (pl.out && cmd.c !== 'pause') return { ok: false, err: 'out' };
 
     /* ---------------- the halt ----------------
      * ANYONE AT THE TABLE MAY CALL ONE, AND ANYONE MAY LIFT IT. A halt is host-authoritative
@@ -4984,7 +5004,7 @@
                     * the two are not the same question — a rival at TERMS is not a foe and is
                     * not mine either. The renderer colours by realm, the HUD counts by realm,
                     * and the war ends by realm; none of them may spell it themselves. */
-                   realmOf, realmMembers, realmCities, refound,
+                   realmOf, realmMembers, realmCities, refound, lost,
                    /* a city is a THING with an owner now, not a property of a player — these
                     * three are the only ways anything asks about one */
                    seatOf, citiesOf, cityAt, seatDown,

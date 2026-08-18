@@ -1065,7 +1065,8 @@ suite('a Seat falls')
 {
   /* a duel ends when a Seat falls; a free-for-all only loses an heir */
   const topple = (w, pi) => {
-    const by = (pi + 1) % w.players.length;
+    /* a STANDING heir does the toppling: a fallen one gives no orders, the Trump included */
+    const by = w.players.findIndex((p, i) => i !== pi && !p.out);
     World.seatOf(w, pi).hp = 1;
     w.players[by].essence = 99999; w.players[by].powers.trump = 0;
     World.applyCommand(w, by, { c: 'power', k: 'trump' });
@@ -9325,7 +9326,39 @@ suite('a war has two sides');
     eq('...and that is the loss', run.tick(w2), 'lost');
     w2.players[1].pattern = 100;
     eq('...not a win when your conqueror walks', run.tick(w2), 'lost');
+    /* WORLD.LOST IS THE ONE SPELLING, and it is asked of any seat: the founder who knelt is
+     * lost (his court serves the other side), the ally re-founded is not */
+    ok('World.lost: the sworn founder is out of the fight, the re-founded ally is not, you are',
+       World.lost(w, 1) === true && World.lost(w, 2) === false && World.lost(w, 3) === false &&
+       World.lost(w2, 0) === true && World.lost(w2, 1) === false,
+       [World.lost(w, 1), World.lost(w, 2), World.lost(w2, 0)].join(','));
+    /* AND A WATCHER'S SNAPSHOT: the whole board, and still not the enemy's books */
+    const sw = Net.snapFor(w, 3, [], true), sf = Net.snapFor(w, 3, []);
+    ok('a watching seat is served every man and every work, and told so',
+       sw.allSeen === 1 && sw.units.length === w.units.filter((u) => u.hp > 0).length &&
+       sw.units.length > sf.units.length,
+       `${sw.units.length} of ${w.units.length} (fogged: ${sf.units.length})`);
+    ok('...and a rival\'s purse is still not on the wire', sw.players[0].essence === null && sf.allSeen === undefined,
+       String(sw.players[0].essence));
   }
+}
+
+/* ---------------- A FALLEN HEIR GIVES NO ORDERS ----------------
+ * `topple` throws down his works and buries his men, but his court is still his on the map and
+ * his crews are floored at one — so he could raise a Gate on his own rubble and play on as a
+ * ghost on a free-for-all that runs long after his fall. Refused at the sim's door, but for the
+ * halt, which is the table's. */
+suite('a fallen heir gives no orders');
+{
+  const w = World.createWorld(31, 3);
+  const c0 = w.cities[0];
+  w.players[0].out = true;
+  eq('an order from a toppled heir is refused as out', World.applyCommand(w, 0, { c: 'walk', on: true }).err, 'out');
+  eq('...a build too', World.applyCommand(w, 0, { c: 'build', bt: 'gate', x: c0.x + 90, y: c0.y }).err, 'out');
+  ok('...but a halt still passes: it is the table\'s', World.applyCommand(w, 0, { c: 'pause', on: true }).ok === true && !!w.paused);
+  World.applyCommand(w, 0, { c: 'pause', on: false });
+  ok('a standing heir is not touched by it', World.applyCommand(w, 1, { c: 'walk', on: true }).err !== 'out');
+  eq('World.lost reads a toppled heir on a board, and nobody else', [0, 1, 2].map((i) => World.lost(w, i)).join(','), 'true,false,false');
 }
 
 /* ---------------- TERMS HOLD, AND A LORD WHO WILL NEVER WALK RAISES NO SHRINE ----------------

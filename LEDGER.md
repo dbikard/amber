@@ -638,3 +638,21 @@ The council page is nondeterministic by construction — a random seed, three he
 and measured three different failures on three runs before the bots were silenced for the length
 of the page (a heir asking you for terms in the first minute re-sorts the roster, relabels the
 button ACCEPT and turns the tap into a seal).
+
+### A seat that has lost watches, and the table ends when they all have
+
+The designer's ask (2026-08-18): a human who lost a LAN game early watches the remaining humans'
+games — full world, no shroud, no fog — and the end screen comes when every human has lost.
+The sim already lifted a TOPPLED heir's veil (`out` → the all-ones mask), so a board's half
+existed; a war's loser is not toppled (his court swears), and the run declared the WHOLE table
+lost the moment seat 0 was — and, being sworn to his conqueror, told him he had won when the
+conqueror walked. Two things found by the suite that holds it (`a seat that has lost watches`,
+17 checks on a hosted war with two fake guests, courts broken by a minor lord's men pinned
+through the take): the shader-fog path skipped the veil block for `allSeen` and left `uFogOn`
+at 1 with the last texture — a spectator on the shader path kept the veil of the frame he fell
+on, frozen (`R.debugFogOn` is the probe); and the guest command queue was drained INSIDE the
+step loop, so with the world halted no guest command applied — a guest could call a halt and
+never lift it, measured (`lifted: false`) before the drain moved out of the loop.
+Rejected: ending the table when SEAT 0 loses (the old rule — a LAN table where the host fell
+first ended for everyone); giving a war's loser the sim's all-ones mask (his court's driver
+would read it and play omniscient); leaving his colours to the realm (the enemy turned gold).

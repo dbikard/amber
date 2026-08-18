@@ -111,8 +111,7 @@
          * is the one thing conquest cannot rewrite: your court under a banner outside it is
          * the loss. It stays "lost" if an ally later breaks the court back — the war ended for
          * this seat when it fell — and the ally fights on under the re-founded banner. */
-        const sideA = (world.sides && world.sides[0]) || [0];
-        if (sideA.indexOf(W.realmOf(world, 0)) < 0) return 'lost';
+        if (W.lost(world, 0)) return 'lost';
         /* THE WALK IS THE BANNER'S. Under `onePattern` the Shrine rises only in the Pattern's
          * own city, and in a war that city is usually held by a SWORN lord — so the hundred is
          * reached by him and won by his liege. Asked of the realm, never of seat 0 alone. */
