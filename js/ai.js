@@ -35,9 +35,20 @@
       pi !== me && !world.players[pi].out && World.realmOf(world, pi) !== World.realmOf(world, me));
     const foes = living.filter((pi) => World.foe(world, me, pi));
     const others = foes.length ? foes : living;
-    const byNear = others.slice().sort((a, b) =>
-      d2(World.cityOf(world, a).x, World.cityOf(world, a).y, myCity.x, myCity.y) -
-      d2(World.cityOf(world, b).x, World.cityOf(world, b).y, myCity.x, myCity.y));
+    /* UNDER THE REACH LAW, THE COURT YOU CAN STRIKE IS THE ONE THAT MATTERS. Nearest by
+     * distance alone, a rival court just past the rim was the target for as long as it stood
+     * nearest — and warOrders clamps every rally into the reach, so the whole army parked on
+     * the rim toward a court it could never be ordered onto (measured: bleys, seven companies
+     * rallied 2,794 from a court 2,722 away against a reach of 2,299, for the rest of the war).
+     * So a court inside my own city's reach comes before any court beyond it, nearest first
+     * within each; a board has no reach and reads exactly as it did. */
+    const seat0 = World.seatOf(world, me);
+    const rr = seat0 && seat0.reach ? seat0.reach * seat0.reach : Infinity;
+    const dc = (pi) => d2(World.cityOf(world, pi).x, World.cityOf(world, pi).y, myCity.x, myCity.y);
+    const byNear = others.slice().sort((a, b) => {
+      const ia = dc(a) > rr ? 1 : 0, ib = dc(b) > rr ? 1 : 0;
+      return ia - ib || dc(a) - dc(b);
+    });
     const foundIdx = byNear.find((pi) => pl.explored[world.map.cities[pi]]);
     const enIdx = foundIdx != null ? foundIdx : (byNear[0] != null ? byNear[0] : me);
     const en = world.players[enIdx];
@@ -1048,11 +1059,20 @@
          * So the aim is remembered on the bot and the fan-out is skipped while it has not
          * moved. 40 units is the sim's own threshold for "this is the same order", so the
          * bot and the sim agree about what repeating an order means. */
-        if (st && st.aim && d2(st.aim.x, st.aim.y, at.x, at.y) < 40 * 40) return { ok: true };
+        /* ...BUT A COMPANY WITHOUT ITS STANDARD IS STILL SENT. Skipping the whole fan-out while
+         * the aim had not moved left every company that lost its rally afterwards — struck when
+         * it stopped being the errand, or raised by a hall after the aim was set — standing at
+         * home for the rest of the war while a two-man company carried the assault: measured on
+         * a country at PRINCE, bleys with two thirty-two-man companies at home and no rally on
+         * either for ten minutes, and the three heirs taking no court in twenty. So the memo
+         * only decides whether the aim MOVED; each company is rallied when its own standard is
+         * not already there, which is one rally per company per aim and no more. */
+        const moved = !(st && st.aim && d2(st.aim.x, st.aim.y, at.x, at.y) < 40 * 40);
         if (st) st.aim = { x: at.x, y: at.y };
         let last = { ok: true };
         for (const co of cos) {
           const p = within(cityOfCo(co), at.x, at.y);
+          if (!moved && co.rally && d2(co.rally.x, co.rally.y, p.x, p.y) < 40 * 40) continue;
           last = issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
         }
         return last;
@@ -1103,6 +1123,7 @@
      * doctrine made and unmade the player's terms (measured: an offer the player had standing
      * withdrawn within a think). Terms, like the walk, are the human's decision. */
     const noTerms = !!opts.noTerms;
+    const PACT_HOLD = 30, pactAt = {};   // when this bot last changed its offer to each seat
     /* ---- A LESSER HEIR DECIDES WORSE; HE IS NOT POORER ----
      * The footing's LAPSES (CONST.DIFFICULTY, composed for a minor lord in game.js) are the
      * whole of the handicap now that the purse is everyone's own. Each is a named mistake at
@@ -1188,6 +1209,13 @@
         const walkers = v.walkers;
         const coalition = walkers.length > 0 && !v.walking;
         for (const s of v.seats) {
+          /* WITH HYSTERESIS. A doctrine whose condition sits on a knife-edge — Bleys treats only
+           * while his army is under fourteen, so every recruit and every death flipped it — made
+           * and unmade terms every think, and every reciprocating heir followed him: a chronicle
+           * carried "X breaks with AMBLERASH / X and AMBLERASH come to terms" once a second for
+           * minutes, and every seal disengages men mid-fight. An offer made or withdrawn stands
+           * for PACT_HOLD seconds before the doctrine may change its mind. */
+          if (pactAt[s] != null && v.t - pactAt[s] < PACT_HOLD) continue;
           /* AND NO HEIR KEEPS TERMS WITH A MAN ON THE LINES. This is not a doctrine, it is the
            * same rule that makes a walk public in the first place: a walk cannot be called off,
            * every heir walks at one rate, and the only answer to one is an army at his Shrine.
@@ -1195,7 +1223,7 @@
            * gets to be foolish enough to sign it. Above every doctrine, so none can forget. */
           const isWalker = walkers.some((q) => q.pi === s);
           const want = !isWalker && (coalition || !!P.pact(v, s));
-          if (want !== v.mine[s]) issue({ c: 'pact', p: s, on: want });
+          if (want !== v.mine[s]) { issue({ c: 'pact', p: s, on: want }); pactAt[s] = v.t; }
         }
       }
 
@@ -1414,6 +1442,7 @@
         seenW[bt] = (seenW[bt] || 0) + 1;
         if ((v.have[bt] || 0) >= seenW[bt]) continue;
         if (lazyGates && C.BUILDINGS[bt].claim) continue;   // the `gates` lapse: he overlooks it this think
+        if (noWalk && bt === 'shrine') continue;   // a Shrine is fuel for a walk he will never take
         if (v.free <= 0) break;                                           // no crew: nothing to raise
         if (v.essence < C.BUILDINGS[bt].cost) { saving = true; break; }   // a purse problem: save for it
         const at = spotFor(v, bt);
@@ -1501,6 +1530,10 @@
       const hunting = !homeThreat && !v.enCity && !!v.frontier && call0 === v.frontier.id;
       /* an assault he cannot afford is not an errand either — he holds his own choke */
       const call = wantsWar && !ready ? ownChoke(v).id : call0;
+      /* an opt-in window on the decision, for rigs (`opts.debug`): what this think decided and
+       * why — never read by the game */
+      if (opts.debug) warSt.last = { t: v.t, enCity: !!v.enCity, homeThreat, wantsWar, ready, striking, hunting,
+                                     army: v.army, unexplored: v.unexplored, call0, mission: mission ? mission.bt : null };
       /* ---- THE LIEGE'S ORDER BIASES THE CREW, NOT ONLY THE COLUMN ----
        * `warOrders` rewrites where the war BODY goes and nothing else, so an heir told to go and
        * get gates marched — and then his mason, who had never heard the order, went on wanting
@@ -1823,9 +1856,10 @@
       kind, title: P.title,
       /* what footing actually reached this seat, READ-ONLY — the suites and a rig ask it, so a
        * dead control (a picker that reaches nobody) is something a test can see */
-      lapses: L, hold,
+      lapses: L, hold, noWalk, debug: warSt,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
-                marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k]; },
+                marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k];
+                for (const k of Object.keys(pactAt)) delete pactAt[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for
        * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord
        * goes on running his own city, his own purse and his own muster exactly as he did

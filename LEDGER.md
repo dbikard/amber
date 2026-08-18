@@ -592,3 +592,49 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 67% (target 50, tolerate 25-75 — nearer the lip than before, and the thing to re-read on the
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
+
+## The Reach War — sides, and what a chronicle showed (2026-08-17/18)
+
+### From one chronicle: a minor lord walked, terms churned, the heirs took no courts
+
+The designer's report from play (the whole chronicle pasted): AMBER's own minor lord walked the
+Pattern to a hundred; "X breaks with AMBLERASH / X and AMBLERASH come to terms" once a second for
+minutes; and no heir took a single court in a game where they were meant to be marching on
+AMBER. Three causes, each measured with a rig on the same seed:
+- **The walk.** Nothing said a minor lord may not; AMBER's holder builds the Shrine by doctrine
+  whoever he is. `noWalk` on every non-contender (and every vassal), which is refused in the plan
+  loop before the Shrine is wanted — brand's plan opens with one, and the rig counts zero wants.
+- **The churn.** A knife-edge pact doctrine flipping every think, and every reciprocator following:
+  `PACT_HOLD` = 30 s per seat — an offer made or withdrawn stands thirty seconds. Rig: a doctrine
+  that flips on EVERY ask issues at most four pact commands per seat in ninety seconds.
+- **No conquest.** Two holes in `warOrders`. The fan-out issued a rally per company only when the
+  BANNER's aim moved, so a company whose standard was later struck (the Recall, a hall razed) was
+  never re-sent while the aim stood; and the assault's target was the NEAREST rival court, which
+  for an heir is very often outside his reach — the clamp marched him to the rim and no further,
+  every think, forever. `view()` now sorts courts INSIDE the seat's reach first, so the court he can
+  actually strike is the one that matters, and a company without its standard is re-sent. Measured
+  (`where.js`, `why.js`, `why2.js` rigs): before, the heirs' war bodies parked at the reach rim;
+  after, they arrive at the neighbouring court.
+
+### A war has two sides
+
+The default war is you against three heirs (`REALM.SIDES_DEFAULT = [[0],[1,2,3]]`); counts dealt by
+geography (the ally is the contender court nearest yours). The setup screen went in with it, and
+the LAN lobby's `#lan-sides`. Eighteen headless checks and the browser flow through `#ws-begin`.
+
+### A founder broken re-founds his banner, and a player broken has lost
+
+Found on the council browser page, which swears a lord by hand: with sides the first lord is the
+heirs' FOUNDER, and the diagnostics read `offer to banner 1: err 'seat'`, `label: null` — the pact
+command normalised the offer onto the founder (`realmOf(1)` = 0 by then) and refused it as your own
+seat, and no terms row was built (a founder whose `realmOf` is not himself is skipped). The sim
+did the same in `holdCities` all along to a contender's sworn lords. Alternatives rejected: the
+vassals following the founder into the conqueror's banner (one court taken hands over a whole
+side — a decapitation nobody asked for), or each going free (a 2v2's allies must stay allied).
+And `run.tick`'s loss ("your banner holds no city") dated from the deed model; under the oath a
+conquered player was a member of his conqueror's realm and was told he had WON when the conqueror
+walked. Held by five checks in 'a war has two sides'.
+The council page is nondeterministic by construction — a random seed, three heirs at SQUIRE —
+and measured three different failures on three runs before the bots were silenced for the length
+of the page (a heir asking you for terms in the first minute re-sorts the roster, relabels the
+button ACCEPT and turns the tap into a seal).

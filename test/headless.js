@@ -7490,13 +7490,17 @@ if (!QUICK('the marchers take the country')) {
     const bots = w.players.map((_, i) => (i === 0 ? null : AI.make('marcher', {})));
     const owners0 = w.cities.map((c) => c.owner).join(',');
     let flipAt = null, worst = 0, total = 0, ticks = 0;
+    /* CPU TIME, NOT WALL TIME: this is a budget claim about the SIM, and wall time on a shared
+     * box measures whatever else is running — it read 9ms against a bound of 8 while the browser
+     * suite ran beside it, on a sim that costs 5 alone */
+    const cpuMs = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
     for (let sec = 0; sec < 900 && flipAt == null && w.winner === null; sec++) {
       for (let f = 0; f < 30; f++) {
-        const t0 = Date.now();
+        const t0 = cpuMs();
         for (let bi = 1; bi < bots.length; bi++)
           bots[bi].step(w, bi, (cmd) => World.applyCommand(w, bi, cmd), C.SIM_DT);
         World.update(w, C.SIM_DT);
-        const ms = Date.now() - t0;
+        const ms = cpuMs() - t0;
         worst = Math.max(worst, ms); total += ms; ticks++;
         w.events.length = 0;
       }
@@ -7839,8 +7843,11 @@ if (!QUICK('the lords hold a country')) {
     NAV.debugFieldsReset();
     const bots = w.players.map((_, i) => (i === 0 ? null : AI.make('benedict', {})));
     const owners0 = w.cities.map((c) => c.owner).join(',');
-    let flipAt = null, builtAt = null;
-    for (let sec = 0; sec < 900 && (flipAt == null || builtAt == null) && w.winner === null; sec++) {
+    let flipAt = null, builtAt = null, walkAt = null;
+    /* EIGHT MINUTES, and the war MOVING is a throne taken or a walk BEGUN — a walk begun is the
+     * clock running, and waiting for it to finish cost this suite twelve minutes of a country
+     * of sixteen heirs at thirty ticks a second (measured: 705s of the whole run) */
+    for (let sec = 0; sec < 480 && (flipAt == null || builtAt == null) && walkAt == null && w.winner === null; sec++) {
       for (let f = 0; f < 30; f++) {
         for (let bi = 1; bi < bots.length; bi++)
           bots[bi].step(w, bi, (cmd) => World.applyCommand(w, bi, cmd), C.SIM_DT);
@@ -7848,12 +7855,13 @@ if (!QUICK('the lords hold a country')) {
         w.events.length = 0;
       }
       if (flipAt == null && w.cities.map((c) => c.owner).join(',') !== owners0) flipAt = sec;
+      if (walkAt == null && World.walkers(w).length) walkAt = sec;
       /* GROWTH is a third work standing under some lord's name — every seat opens with two */
       if (builtAt == null && w.players.some((p, pi) => pi > 0 && p.buildings.length > 2)) builtAt = sec;
     }
-    ok('the war moves: a throne is taken or the Pattern is walked inside fifteen minutes',
-       flipAt != null || w.winner !== null,
-       flipAt == null ? `no city fell in 15 simulated minutes (winner ${w.winner})` : `first at ${flipAt}s`);
+    ok('the war moves: a throne is taken or a walk begun inside eight minutes',
+       flipAt != null || walkAt != null || w.winner !== null,
+       `throne ${flipAt}s, walk ${walkAt}s, winner ${w.winner}`);
     ok('a lord raised a work beyond his opening two', builtAt != null,
        builtAt == null ? 'every seat still holds its birth pair' : `at ${builtAt}s`);
     const keys = Array.from(w.nav.fields.keys());
@@ -7915,8 +7923,10 @@ suite('a war is dealt to a table');
   ok('every city\'s reach rides, public', snap.cities.every((c) => c.reach > 0));
   ok('a company\'s city rides to its owner', snap.players[1].companies.every((co) => co.city === 1),
      JSON.stringify(snap.players[1].companies));
-  ok('...and nobody else\'s crosses the wire', snap.players.every((p, pi) =>
-     pi === 1 || p.companies.length === 0));
+  /* `mine` on the wire is the BANNER's — a guest may command a sworn lord's men, and his allies
+   * are his banner from genesis (the default war seats 1, 2 and 3 on one side) */
+  ok('...and nobody\'s outside his banner crosses the wire', snap.players.every((p, pi) =>
+     World.realmOf(w, pi) === World.realmOf(w, 1) || p.companies.length === 0));
   /* the one thing that must be true, or every position on the wire is a lie */
   const geo = (world) => JSON.stringify(world.map.sites.map((s) => [s.kind, Math.round(s.x), Math.round(s.y)]));
   eq('two machines given only the seed stand on identical ground',
@@ -9212,6 +9222,146 @@ suite('the stances, and a pressed court draws its neighbours');
       ok('a timed order past its hour is no order', !co3.rally || Math.hypot(co3.rally.x - w3.cities[nb].x, co3.rally.y - w3.cities[nb].y) > 0,
          'the lord read the expired order as none');
     }
+  }
+}
+
+/* ---------------- A WAR HAS TWO SIDES ----------------
+ * Two to four contenders in two sides, seat 0 always on the first; a side is ONE BANNER from
+ * genesis (createWorld `opts.sides` sets each member's realm to the side's first seat), so wins,
+ * losses, sight, hostility and terms all follow from the realm code. The default is the
+ * designer's: you against three heirs. Counts from the setup screen are dealt by geography —
+ * the ally courts nearest yours — and the sides ride the save. */
+suite('a war has two sides');
+{
+  const r = REALM.create(17);
+  eq('the default war is you against three heirs', JSON.stringify(r.sides), '[[0],[1,2,3]]');
+  eq('...four contenders', JSON.stringify(r.world.heirs), '[0,1,2,3]');
+  ok('...and the three are ONE banner from genesis', [1, 2, 3].every((i) => World.realmOf(r.world, i) === 1),
+     r.world.players.slice(0, 4).map((p) => p.realm).join(','));
+  ok('...who cannot strike each other, and can strike you', !World.foe(r.world, 2, 3) && World.foe(r.world, 0, 2));
+  /* COUNTS, dealt by geography */
+  const r2 = REALM.create(17, { a: 1, b: 2 });
+  ok('one ally and two rivals: four contenders in two sides', r2.sides[0].length === 2 && r2.sides[1].length === 2, JSON.stringify(r2.sides));
+  const c0 = r2.world.cities[0], dist = (i) => Math.hypot(r2.world.cities[i].x - c0.x, r2.world.cities[i].y - c0.y);
+  ok('...the ally is the contender court nearest yours', r2.sides[1].every((i) => dist(i) >= dist(r2.sides[0][1])),
+     `ally ${Math.round(dist(r2.sides[0][1]))} against ${r2.sides[1].map((i) => Math.round(dist(i))).join('/')}`);
+  ok('...on your banner, and no foe of yours', World.realmOf(r2.world, r2.sides[0][1]) === 0 && !World.foe(r2.world, 0, r2.sides[0][1]));
+  /* THE SIDES RIDE THE SAVE — round trip through pack/unpack via a fake localStorage */
+  {
+    const store = {};
+    globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } };
+    try {
+      REALM.save(r2);
+      const back = REALM.load();
+      ok('a saved war comes back with its sides', !!back && JSON.stringify(back.sides) === JSON.stringify(r2.sides),
+         back ? JSON.stringify(back.sides) : 'no war');
+      ok('...and the same banners', !!back && back.world.players.slice(0, 4).map((p) => p.realm).join(',') === r2.world.players.slice(0, 4).map((p) => p.realm).join(','));
+    } finally { delete globalThis.localStorage; }
+  }
+  /* A WIN IS THE BANNER'S: your ally's walk finishing is your side's victory, judged by the run */
+  {
+    const r3 = REALM.create(17, { a: 1, b: 2 }), run = REALM.run(r3), ally = r3.sides[0][1];
+    eq('the rig is alive: nothing decided yet', run.tick(r3.world), null);
+    r3.world.players[ally].pattern = 100;
+    eq('your ally reaching a hundred on the Pattern is your side\'s win', run.tick(r3.world), 'won');
+  }
+  /* AND THE SHAPES: 1v1, 1v3, 2v2, 3v1 — every one two to four contenders, seat 0 first */
+  for (const [a, b] of [[0, 1], [0, 3], [1, 2], [2, 1], [1, 1], [0, 2]]) {
+    const x = REALM.create(29, { a, b });
+    ok(`${1 + a} v ${b} deals ${1 + a + b} contenders in two banners`,
+       x.sides[0].length === 1 + a && x.sides[1].length === b && x.sides[0][0] === 0 &&
+       x.world.heirs.length === 1 + a + b &&
+       x.sides[1].every((i) => World.realmOf(x.world, i) === x.sides[1][0]),
+       JSON.stringify(x.sides));
+  }
+  /* explicit sides (a LAN lobby's) are taken as given, tidied: seat 0 first, four at most */
+  eq('explicit sides are kept, tidied', JSON.stringify(REALM.setup([[2, 0], [3, 1, 9]])), '[[0,2],[3,1]]');
+
+  /* A FOUNDER BROKEN RE-FOUNDS HIS BANNER; A PLAYER BROKEN HAS LOST.
+   * The heirs' banner is named for its founder (`realmOf(founder) === founder`), so when
+   * `holdCities` swears him to the taker every ally still pointing at his index is pointing at
+   * a man of another banner. Measured on the council page: an offer to that banner returned
+   * `err: 'seat'` and its courts had no terms button. And the run judged a conquered player a
+   * member of his conqueror's banner — told he had WON when the conqueror walked. */
+  {
+    const w = REALM.create(17).world;   // [[0],[1,2,3]]: 1 founds the heirs' banner
+    w.chaosNext = 1e9;
+    for (let pi = 1; pi < w.players.length; pi++) w.players[pi].musterPaused = true;
+    /* the enemy founder's court is broken and held by the player */
+    const prize = w.cities[1];
+    World.seatDown(w, prize, 0);
+    const men = [manAt(w, 0, 'soldier', prize.x + 24, prize.y), manAt(w, 0, 'soldier', prize.x + 38, prize.y)];
+    for (let i = 0; i < 30 * 60 && World.realmOf(w, 1) !== 0; i++) {
+      if (prize.owner < 0)
+        for (let k = 0; k < men.length; k++) { men[k].x = prize.x + 24 + k * 14; men[k].y = prize.y; men[k].hp = men[k].maxHp; }
+      World.update(w, C.SIM_DT); w.events.length = 0;
+    }
+    eq('the rig is alive: the heirs\' founder swore to you', World.realmOf(w, 1), 0);
+    ok('...and his allies are re-founded under the next contender, not orphaned',
+       World.realmOf(w, 2) === 2 && World.realmOf(w, 3) === 2, w.players.slice(0, 4).map((p) => p.realm).join(','));
+    ok('...every banner\'s founder is his own founder (no realm points at a man of another)',
+       w.players.every((p, i) => World.realmOf(w, World.realmOf(w, i)) === World.realmOf(w, i)),
+       w.players.map((p) => p.realm).join(','));
+    ok('...they are still one side, still your foes, and terms to them are possible again',
+       !World.foe(w, 2, 3) && World.foe(w, 0, 2) && World.foe(w, 0, 3) &&
+       World.applyCommand(w, 0, { c: 'pact', p: 3, on: 1 }).ok === true &&
+       !!w.players[0].offers[2]);
+    ok('...and the banner starts at war with everyone: its terms fell with its founder',
+       !(w.players[2].offers || []).some(Boolean));
+    /* the other way round: YOUR court broken and sworn to the enemy is the loss, however
+     * many cities the enemy holds and whatever he does next */
+    const w2 = REALM.create(17).world, run = REALM.run({ world: w2, seed: 17, sides: w2.sides, helm: {} });
+    w2.chaosNext = 1e9;
+    for (let pi = 0; pi < w2.players.length; pi++) w2.players[pi].musterPaused = true;
+    const home = w2.cities[0];
+    World.seatDown(w2, home, 1);
+    const foes = [manAt(w2, 1, 'soldier', home.x + 24, home.y), manAt(w2, 1, 'soldier', home.x + 38, home.y)];
+    for (let i = 0; i < 30 * 60 && World.realmOf(w2, 0) === 0; i++) {
+      if (home.owner < 0)
+        for (let k = 0; k < foes.length; k++) { foes[k].x = home.x + 24 + k * 14; foes[k].y = home.y; foes[k].hp = foes[k].maxHp; }
+      World.update(w2, C.SIM_DT); w2.events.length = 0;
+    }
+    eq('the rig is alive: your court swore to the heirs\' banner', World.realmOf(w2, 0), 1);
+    eq('...and that is the loss', run.tick(w2), 'lost');
+    w2.players[1].pattern = 100;
+    eq('...not a win when your conqueror walks', run.tick(w2), 'lost');
+  }
+}
+
+/* ---------------- TERMS HOLD, AND A LORD WHO WILL NEVER WALK RAISES NO SHRINE ----------------
+ * From one chronicle: "X breaks with AMBLERASH / X and AMBLERASH come to terms" once a second
+ * for minutes — a knife-edge doctrine flipping every think and every reciprocator following —
+ * and AMBER's own minor lord walking to a hundred. */
+suite('terms hold, and a lord who will never walk raises no Shrine');
+{
+  /* a doctrine that flips every think, on a founder in a country at terms */
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }, { country: true });
+  w.chaosNext = 1e9;
+  const real = AI.HEIRS.bleys.pact; let flip = 0;
+  AI.HEIRS.bleys.pact = () => (flip++ % 2 === 0);
+  try {
+    const bot = AI.make('bleys', {});
+    let pacts = 0;
+    for (let i = 0; i < 30 * 90; i++) {
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      bot.step(w, 5, (cmd) => { if (cmd.c === 'pact') pacts++; return World.applyCommand(w, 5, cmd); }, C.SIM_DT, null);
+    }
+    const seats = w.players.length - 1;
+    ok('the rig is alive: the doctrine flips on every ask, and it was asked', flip > 30 && pacts > 0, `${flip} asks, ${pacts} commands`);
+    ok('an offer made or withdrawn stands thirty seconds: at most a few changes per seat in ninety',
+       pacts <= seats * 4, `${pacts} pact commands for ${seats} seats in 90s`);
+  } finally { AI.HEIRS.bleys.pact = real; }
+  /* no Shrine for a lord who will never walk — brand's plan opens with one */
+  {
+    const w2 = World.createWorld(1000, 2); w2.chaosNext = 1e9;
+    w2.players[1].essence = 5000;
+    const shrineWants = (opts) => { let n = 0; const bot = AI.make('brand', opts);
+      for (let i = 0; i < 30 * 120; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0;
+        bot.step(w2, 1, (cmd) => { if (cmd.c === 'build' && cmd.bt === 'shrine') n++; return World.applyCommand(w2, 1, cmd); }, C.SIM_DT, null); }
+      return n; };
+    eq('a lord dealt noWalk never asks for a Shrine', shrineWants({ noWalk: true }), 0);
+    ok('the rig is alive: the same lord free to walk does', shrineWants({}) > 0);
+    ok('...and the bot says what it was dealt', AI.make('brand', { noWalk: true }).noWalk === true && AI.make('brand', {}).noWalk === false);
   }
 }
 

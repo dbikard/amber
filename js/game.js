@@ -187,6 +187,11 @@
      * `holdOn` composes the same way everywhere. */
     const foot = Object.assign({ holdOn }, C.DIFFICULTY[UI.difficulty()] || {});
     const mine = World.realmOf(world, pi) === holdOn;
+    /* AN ALLY IS A CONTENDER, NOT A VASSAL. A heir on the player's SIDE (a contender of his
+     * banner from genesis) plays the war as a contender — the footing, his own initiative, the
+     * walk if he wins AMBER — and only does not treat, because the banner's founder does. */
+    if (mine && (world.heirs || []).indexOf(pi) >= 0 && pi !== game.viewer)
+      return Object.assign({}, foot, { noTerms: true });
     /* the designer's rule (2026-08-17): an inner lord is AS STRONG AS A MINOR LORD AND NO
      * STRONGER — the footing plus CONST.MINOR, exactly as an unsworn lord — never the
      * contender's footing (seat 0 is a contender by birth) and never better; and he neither
@@ -196,11 +201,15 @@
     const m = C.MINOR, lapses = Object.assign({}, foot.lapses || {});
     for (const k of Object.keys(m.lapses || {}))
       lapses[k] = Math.max(lapses[k] || 0, m.lapses[k]);
+    /* A MINOR LORD NEVER WALKS THE PATTERN (the designer's rule, from a chronicle in which
+     * AMBER's own lord — sworn to another minor lord — walked to a hundred and ended the war
+     * with no heir near it): the walk is a contender's, and only a contender's; a minor lord
+     * holding AMBER holds it FOR whoever conquers him. He raises no Shrine either. */
     return Object.assign({}, foot, {
       slow: (foot.slow || 1) * m.slow,
       noise: Math.max(foot.noise || 0, m.noise),
-      lapses
-    }, mine ? { noTerms: true, noWalk: true, obey: true } : {});
+      lapses, noWalk: true
+    }, mine ? { noTerms: true, obey: true } : {});
   }
   function warKind(pi) {
     const kinds = Object.keys(AI.HEIRS);
@@ -251,6 +260,32 @@
       UI.banner(quiet ? 'The alarm is lifted — the court is quiet, the lords return to their stances'
                       : 'The alarm has run its span — the lords return to their stances', 'alert');
     }
+  }
+  /* the sides of the last war set up, remembered across matches — a preference, not a save */
+  function warSides() {
+    try {
+      const s = JSON.parse(localStorage.getItem('amber_war_sides') || 'null');
+      if (s && s.a != null) return { a: s.a | 0, b: s.b | 0 };
+      if (Array.isArray(s)) { const x = REALM.setup(s); return { a: x[0].length - 1, b: x[1].length }; }
+    } catch (e) {}
+    return { a: 0, b: 3 };   // the designer's default: you against three heirs
+  }
+  function rememberSides(spec) { try { localStorage.setItem('amber_war_sides', JSON.stringify(spec)); } catch (e) {} }
+  /* THE SIDES OF A WAR DEALT TO A LAN TABLE. Humans hold seats 0..n-1 in join order and are
+   * contenders by right; the host says which side each guest stands on (`lanTeam.with`) and how
+   * many bot heirs fill each side, and the total stays two to four — humans replace the heirs.
+   * Bots take the seats after the humans, side A's first. */
+  const lanTeam = { with: {}, botsA: 0, botsB: 3 };
+  function lanSides(seats) {
+    const n = Math.max(1, seats | 0);
+    const a = [0], b = [];
+    for (let i = 1; i < n && i < 4; i++) (lanTeam.with[i] ? a : b).push(i);
+    let next = Math.min(n, 4), room = 4 - next;
+    const bA = Math.max(0, Math.min(lanTeam.botsA | 0, room)); room -= bA;
+    const bB = Math.max(b.length ? 0 : 1, Math.min(lanTeam.botsB | 0, room));
+    for (let i = 0; i < bA && next < 4; i++) a.push(next++);
+    for (let i = 0; i < bB && next < 4; i++) b.push(next++);
+    return REALM.setup([a, b]);
   }
   function saveWar() {
     if (!game.war || !game.realm) return;
@@ -362,7 +397,7 @@
     game.called = false; game.noMore = false;
     game.bots = null; game.war = false;
     game.realm = null; game.run = null;
-    game.lanWar = war ? { seed: war.seed } : null;   // so a rematch can find the same war
+    game.lanWar = war ? { seed: war.seed, sides: war.sides || null } : null;   // so a rematch can find the same war
     guestCmdQueue = []; pendingGuestEvents = []; snapTimer = 0; snapPrev = snapCur = null; guestSeen = null;
     snapTurn = 0; evQ = Object.create(null); snapGap = 100;
     if (war) {
@@ -388,7 +423,7 @@
       } else {
         /* a guest builds the same country from the seed alone — geometry, never history */
         game.world = null;
-        refWorld = REALM.create(war.seed).world;
+        refWorld = REALM.create(war.seed, war.sides || null).world;
       }
       const geo = Net.isHost ? game.world : refWorld;
       /* the humans at the table keep their own seat names; every seat the host plays is named
@@ -436,6 +471,7 @@
     /* the chapter list and its briefing sit over the MENU, where `game.mode` is null — back
      * out of them the same way the codex does, and only then leave the site */
     if (UI.chaptersOpen && UI.chaptersOpen()) { UI.chaptersClose(); return; }
+    if (UI.warSetupOpen && UI.warSetupOpen()) { UI.warSetupClose(); return; }
     /* the rivals and the LAN table sit over the menu the same way, and peel the same way */
     if (UI.screensOpen && UI.screensOpen()) { UI.screensClose(); return; }
     if (!game.mode) return;                       // at the menu: let the browser have it
@@ -641,7 +677,21 @@
     game._fellAt = 0;
     Rec.end(winner, reason, game.world ? Rec.fromWorld(game.world)
                           : snapCur ? Rec.fromSnap(snapCur, game.viewer) : null);
-    const won = winner === game.viewer;
+    /* WON BY THE BANNER, not the seat: in a war a side is one banner, and a walk finished by
+     * your ally — or a country absorbed under his oath — is your side's win; a rival banner's
+     * ending is your loss whichever seat the sim names. On a board every seat is its own banner
+     * and this reads exactly as it always did. */
+    const wv = game.world || snapCur;
+    /* ...AND THE SIDE IS THE ONE YOU WERE DEALT, not the banner conquest left you under: a
+     * viewer whose court has sworn to the enemy is a member of the enemy's realm by then, and
+     * asking the realm alone told him he had won when his conqueror did. `world.sides` (the
+     * wire carries it) is read first where there is one; a board has none and reads the realm. */
+    const sideOf = (pi) => (wv && wv.sides || []).find((sd) => sd.indexOf(pi) >= 0) || null;
+    const won = winner === game.viewer ||
+      (winner >= 0 && !!wv && wv.players && game.viewer >= 0 &&
+       (sideOf(game.viewer) && sideOf(World.realmOf(wv, winner))
+         ? sideOf(game.viewer) === sideOf(World.realmOf(wv, winner))
+         : World.realmOf(wv, winner) === World.realmOf(wv, game.viewer)));
     /* ---- A DECIDED WAR IS REMEMBERED AS DECIDED, WHOEVER DECIDED IT ----
      * `realm.done` was written in one place only: where `run.tick` answers. But a war ends
      * through the SIM as often as through its run — a Seat toppling, or `holdCities` finding
@@ -752,7 +802,7 @@
     /* a war table's rematch is the SAME war, reloaded — the country has moved since the
      * deal and the save is the truth of it. A war decided since falls back to a board. */
     const saved = game.lanWar ? REALM.load() : null;
-    const war = saved && !saved.done ? { seed: saved.seed } : null;
+    const war = saved && !saved.done ? { seed: saved.seed, sides: saved.sides || null } : null;
     for (const p of Net.peers)
       if (p.dc && p.dc.readyState === 'open') Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx);
     startMP(seed, seats, 0, war, war ? saved : null);
@@ -910,7 +960,7 @@
     if (view.cities.some((c) => c.owner < 0 && !c.razed)) return true;
     /* a lord of mine has no standing order — he is running on his own judgement */
     const orders = (game.realm && game.realm.helm && game.realm.helm.orders) || {};
-    return mine.some((c) => c.owner !== hand() && !orders[c.owner]);
+    return mine.some((c) => c.owner !== hand() && (view.heirs || []).indexOf(c.owner) < 0 && !orders[c.owner]);
   }
   function warChip() {
     const view = warView();
@@ -976,6 +1026,10 @@
        * the shape of is a war you cannot play */
       const mineC = ours(c.owner);
       const lordIdx = c.owner;
+      /* AN ALLY IS NOT A VASSAL: a contender of your side (a heir on your banner from genesis, or
+       * a human at the table) is commanded by nobody and takes no stance — his row says so and
+       * offers nothing but the way to his court */
+      const ally = mineC && (view.heirs || []).indexOf(c.owner) >= 0 && c.owner !== hand() && c.owner !== game.viewer;
       const nm = view.map.sites[c.site].name || 'a Seat of Power';
       const sub = [];
       if (c.razed) sub.push('thrown down — nothing left of it');
@@ -989,7 +1043,8 @@
           const o = orders[c.owner];
           /* the court your own hand is on needs no order: your taps ARE the order, and telling
            * a player his own capital has "no standing order" is telling him off for playing */
-          if (c.owner !== hand()) {
+          if (ally) sub.push('your ally — his own counsel');
+          else if (c.owner !== hand()) {
             const live = o && (o.until == null || (view.t || 0) < o.until) ? o : null;
             const cn = (i) => (view.cities[i] && view.map.sites[view.cities[i].site].name) || 'a court';
             sub.push(!live ? defaultStance(view, ci) + ' by default'
@@ -1012,12 +1067,12 @@
         .map((i) => ({ mode: 'attack', target: i, label: '⚔ ' + (view.map.sites[view.cities[i].site].name || 'a court'),
                        on: orders[lordIdx] && orders[lordIdx].mode === 'attack' && orders[lordIdx].target === i }));
       cities.push({
-        idx: ci, lordIdx, name: nm, mine: mineC, hand: c.owner === hand(),
+        idx: ci, lordIdx, name: nm, mine: mineC, hand: c.owner === hand(), ally,
         /* WHOSE BANNER THIS COURT IS UNDER — the key the roster is grouped by. -1 is a court
          * with no lord at all (yielded, or thrown down), which belongs to nobody's banner. */
         realm: c.owner >= 0 ? World.realmOf(view, c.owner) : -1,
         tint: c.owner < 0 ? hex(C.NEUTRAL_TINT) : tint(c.owner),
-        lord: c.owner < 0 ? 'no lord' : (mineC ? (c.owner === hand() ? 'your own hand' : 'sworn to you') : ''),
+        lord: c.owner < 0 ? 'no lord' : (mineC ? (c.owner === hand() ? 'your own hand' : ally ? 'your ally' : 'sworn to you') : ''),
         sub: sub.join(' · '),
         hp: c.razed ? null : Math.max(0, c.hp / (c.maxHp || C.CASTLE_HP)),
         /* A STANDING ORDER IS THE HOST'S TO KEEP. It is a parameter to the lord's own doctrine
@@ -1026,7 +1081,7 @@
          * which is exactly what the end screen's dead ANOTHER MATCH button was. A guest's rows
          * still carry him to the court and still hand him the command of it; they simply do
          * not offer what only a host can honour. */
-        orders: game.realm
+        orders: game.realm && !ally
           ? ORDERS.map((o) => ({ ...o, on: !!orders[lordIdx] && STANCE_WORD[orders[lordIdx].mode] === o.mode })).concat(nbrs)
           : []
       });
@@ -1476,7 +1531,14 @@
              * war remembers is set HERE and not in `tick`, which answers and never writes. */
             if (r && game.realm && game.war) { game.realm.done = r; REALM.save(game.realm); }
             if (r === 'won') World.declare(game.world, game.viewer, 'objective');
-            else if (r === 'lost') World.declare(game.world, 1, 'objective');
+            else if (r === 'lost') {
+              /* the ENEMY SIDE'S founder is the winner named, not seat 1, which in a war of two
+               * sides may be your own ally: the banner other than yours that still holds ground */
+              const w0 = game.world, mine = World.realmOf(w0, 0);
+              const other = (w0.cities || []).map((c) => c && c.owner >= 0 ? World.realmOf(w0, c.owner) : -1)
+                .find((rl) => rl >= 0 && rl !== mine);
+              World.declare(w0, other != null && other >= 0 ? other : 1, 'objective');
+            }
           }
           /* THE WAR AUTOSAVES ON A HEARTBEAT — every thirty simulated seconds, beside the
            * saves on every door out — because the door the app actually dies through most
@@ -1980,6 +2042,57 @@
      * `Net.seated()` is the honest measure — it counts OPEN channels, so a link that died
      * without an event still empties the table — and `game.mode` is the other half: a lobby
      * is the moment between pairing and playing, and there is nothing to offer outside it. */
+    /* THE SIDES PANEL of the lobby: which side each guest stands on and how many bot heirs fill
+     * the rest, for a NEW war dealt to this table. A saved war's sides are the war's own —
+     * humans take its seats in join order — and the panel says so instead of offering knobs. */
+    const paintSides = (n, has) => {
+      const box = $('lan-sides');
+      box.innerHTML = '';
+      const row = (cls, name, who, ctl) => {
+        const r = document.createElement('div');
+        r.className = 'ws-side ' + cls;
+        const left = document.createElement('div');
+        left.innerHTML = `<span class="ws-name">${name}</span><span class="ws-who">${who}</span>`;
+        r.appendChild(left);
+        if (ctl) r.appendChild(ctl);
+        box.appendChild(r);
+      };
+      if (has) {
+        row('own', 'THE WAR IN YOUR POCKET', 'its sides are set — the heirs at the table take its seats in join order', null);
+        return;
+      }
+      for (let i = 1; i < n && i < 4; i++) {
+        const b = document.createElement('button');
+        b.className = 'mbtn small';
+        b.dataset.seat = i;
+        b.textContent = lanTeam.with[i] ? 'WITH YOU' : 'AGAINST YOU';
+        b.addEventListener('click', () => { lanTeam.with[i] = !lanTeam.with[i]; paintSides(n, has); });
+        row(lanTeam.with[i] ? 'own' : 'foe', C.SEAT_NAMES[i] || ('heir ' + i), 'a human at the table', b);
+      }
+      const humansB = [1, 2, 3].filter((i) => i < n && !lanTeam.with[i]).length;
+      const room = () => 4 - Math.min(n, 4) - (lanTeam.botsA | 0) - (lanTeam.botsB | 0);
+      const step = (key, lo) => {
+        const d = document.createElement('div');
+        d.className = 'ws-step';
+        const minus = document.createElement('button'), plus = document.createElement('button'), v = document.createElement('b');
+        minus.className = plus.className = 'mbtn small'; minus.textContent = '−'; plus.textContent = '+';
+        v.textContent = String(lanTeam[key] | 0);
+        minus.disabled = (lanTeam[key] | 0) <= lo; plus.disabled = room() <= 0;
+        minus.addEventListener('click', () => { lanTeam[key] = Math.max(lo, (lanTeam[key] | 0) - 1); paintSides(n, has); });
+        plus.addEventListener('click', () => { lanTeam[key] += 1; paintSides(n, has); });
+        d.appendChild(minus); d.appendChild(v); d.appendChild(plus);
+        return d;
+      };
+      /* the total stays two to four: bots beyond the room are trimmed on the deal (lanSides) */
+      while (room() < 0) { if ((lanTeam.botsB | 0) > (humansB ? 0 : 1)) lanTeam.botsB--; else if ((lanTeam.botsA | 0) > 0) lanTeam.botsA--; else break; }
+      row('own', 'BOT HEIRS AT YOUR SIDE', 'allies of your banner, played by the host', step('botsA', 0));
+      row('foe', 'BOT HEIRS AGAINST YOU', humansB ? 'beside the humans against you' : 'at least one — a war needs an enemy', step('botsB', humansB ? 0 : 1));
+      const s = lanSides(n);
+      const sum = document.createElement('div');
+      sum.className = 'ws-sum';
+      sum.textContent = s[0].length + ' v ' + s[1].length + ' — ' + (s[0].length + s[1].length) + ' contenders';
+      box.appendChild(sum);
+    };
     const paintTable = () => {
       const n = Net.seated();
       const lobby = Net.isHost && n > 1 && !game.mode;
@@ -1995,6 +2108,7 @@
         el.appendChild(b); el.appendChild(s);
       };
       for (const id of ['lan-start', 'lan-start-war']) $(id).classList.toggle('hidden', !lobby);
+      $('lan-sides').classList.toggle('hidden', !lobby);
       if (lobby) {
         twoLine($('lan-start'), 'BEGIN — ' + n + ' HEIRS', 'a skirmish: one fresh board, first Seat to fall');
         /* `REALM.saved()` and not `REALM.load()`: load REGROWS the whole country from its seed,
@@ -2009,6 +2123,7 @@
         $('qr-host').disabled = !Net.canAdd();
         $('qr-host').classList.remove('hidden');
         say(n + ' of ' + C.MAX_PLAYERS + ' seated — add another, or begin');
+        paintSides(n, has);
       } else if (!Net.active && !Net._pairing) {
         /* nothing in flight and nobody linked: the opening line, not whatever was true once */
         $('qr-host').textContent = 'HOST THE TABLE';
@@ -2210,10 +2325,14 @@
       let saved = inWar ? REALM.load() : null;
       if (inWar && !(saved && !saved.done)) {
         say('growing the country — a moment…');
-        saved = REALM.create(seed);
+        /* a NEW war for the table takes the sides the lobby drew — humans on seats 0..n-1 by
+         * join order, bots on the seats after — and remembers them */
+        const sides = lanSides(seats);
+        rememberSides(sides);
+        saved = REALM.create(seed, sides);
         REALM.save(saved);
       }
-      const war = inWar && saved ? { seed: saved.seed } : null;
+      const war = inWar && saved ? { seed: saved.seed, sides: saved.sides || null } : null;
       let dealt = 0;
       for (const p of open) {
         try { Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx); dealt++; }
@@ -2366,15 +2485,22 @@
         let realm = REALM.load();
         /* a DECIDED war is not resumed — the record kept `done` so this door can know */
         if (realm && realm.done) { REALM.forget(); realm = null; }
-        if (!realm) {
-          realm = REALM.create((Math.random() * 0xffffffff) >>> 0);
-          if (REALM.lost) UI.banner('The old war is lost to a new age — a new one begins', 'warn');
-        }
-        startRealm(realm);
+        if (realm) { startRealm(realm); return; }
+        /* A NEW WAR IS SET UP FIRST: the sides. The screen offers every shape two sides of two
+         * to four contenders can take — you alone against three heirs (the default), one ally
+         * against two, two against two — and remembers the last one chosen. */
+        if (REALM.lost) UI.banner('The old war is lost to a new age — a new one begins', 'warn');
+        UI.warSetup(warSides(), (sides) => {
+          rememberSides(sides);
+          startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0, sides));
+        });
       },
       onRealmNew: () => {
         REALM.forget();
-        startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0));
+        UI.warSetup(warSides(), (sides) => {
+          rememberSides(sides);
+          startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0, sides));
+        });
       },
       /* TERMS. The chip sets MY offer and nothing else — a pact is the two of them standing, so
        * the order says what I want and the sim works out whether that seals or breaks anything.
@@ -2533,7 +2659,7 @@
           if (game.war) {
             game.war = false;
             REALM.forget();
-            startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0));
+            startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0, warSides()));
             return;
           }
           if (game.bot) startSP(game.bot.kind, C.DIFFICULTY[UI.difficulty()], false);

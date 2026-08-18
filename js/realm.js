@@ -38,10 +38,55 @@
    * `world.heirs` is the sim's copy: it decides who gets a colour of his own on the map and
    * who is scenery, and the sim cannot ask the realm. */
   const HEIRS = [0, 1, 2];
-
-  REALM.create = function (seed) {
-    const world = World().createWorld(seed >>> 0, 2, null, WAR, { country: true, heirs: HEIRS });
-    return { v: 2, seed: seed >>> 0, world };
+  /* ---- THE SIDES ----
+   * A war is fought by two SIDES of contenders — two to four seats in all, seat 0 (the human at
+   * the table) always on the first — and the rest of the country by minor lords. The default
+   * is the designer's: you against three heirs, each of them contending for AMBER and the walk.
+   * `REALM.setup(sides)` normalises whatever the setup screen or a LAN lobby hands over: two
+   * lists of seat indices, seat 0 first on side A, no seat on both, contenders 0..k-1 — humans
+   * take the low seats in join order at a LAN table and bots fill the rest. The sides are the
+   * war's `heirs` (flattened) and its `sides` (createWorld makes each one banner from genesis),
+   * and they ride the save and the wire, because a guest regenerates the country from the seed
+   * and must deal the same banners. */
+  REALM.SIDES_DEFAULT = [[0], [1, 2, 3]];
+  REALM.setup = function (sides) {
+    /* contenders are the country's four courts furthest from AMBER — seats 0..3 by worldgen's
+     * order — so a side may only name those; anything else is dropped, not guessed at */
+    const ok = (x) => x >= 0 && x < 4;
+    let a = (sides && sides[0] || []).map((x) => x | 0).filter(ok);
+    let b = (sides && sides[1] || []).map((x) => x | 0).filter(ok);
+    a = [0].concat(a.filter((x, i) => x !== 0 && a.indexOf(x) === i));
+    b = b.filter((x, i) => x !== 0 && a.indexOf(x) < 0 && b.indexOf(x) === i);
+    if (!b.length) {   // a war needs an enemy: the first contender seat side A left free
+      const free = [1, 2, 3].find((x) => a.indexOf(x) < 0);
+      if (free == null) a = a.slice(0, 3);
+      b = [free != null ? free : 3];
+    }
+    return [a, b];
+  };
+  const heirsOf = (sides) => sides[0].concat(sides[1]);
+  /* `spec` is either explicit sides (a LAN lobby's, a record's) or COUNTS `{a, b}` from the
+   * setup screen — heirs at your side and against you — in which case the ally seats are dealt
+   * BY GEOGRAPHY once the country exists: of the contender courts, the ones nearest yours stand
+   * with you, so a side reads as a side on the map and not as a lottery of seat numbers. */
+  REALM.create = function (seed, spec) {
+    const counts = spec && spec.a != null;
+    const s0 = counts ? null : REALM.setup(spec || REALM.SIDES_DEFAULT);
+    const k = counts ? Math.max(2, Math.min(4, 1 + (spec.a | 0) + Math.max(1, spec.b | 0))) : heirsOf(s0).length;
+    const heirs = counts ? Array.from({ length: k }, (_, i) => i) : heirsOf(s0);
+    const world = World().createWorld(seed >>> 0, 2, null, WAR, { country: true, heirs, sides: s0 });
+    let sides = s0;
+    if (counts) {
+      const c0 = world.cities[0];
+      const others = heirs.slice(1).sort((p, q) =>
+        ((world.cities[p].x - c0.x) ** 2 + (world.cities[p].y - c0.y) ** 2) -
+        ((world.cities[q].x - c0.x) ** 2 + (world.cities[q].y - c0.y) ** 2));
+      const a = Math.max(0, Math.min(k - 2, spec.a | 0));
+      sides = REALM.setup([[0].concat(others.slice(0, a)), others.slice(a)]);
+      for (const side of sides) for (const m of side) world.players[m].realm = side[0];
+      world.sides = sides.map((x) => x.slice());
+    }
+    return { v: 2, seed: seed >>> 0, sides, world };
   };
 
   /* ---------------- who is winning ----------------
@@ -57,14 +102,23 @@
       tick(world) {
         if (!world) return null;
         const W = World();
+        /* A WAR IS LOST WHEN YOUR OWN COURT SWEARS TO THE OTHER SIDE, and that is asked FIRST.
+         * "Your banner holds no city" was the loss when a taken court changed owner; under the
+         * oath a broken lord KEEPS his court and answers to the banner that broke him — so a
+         * conquered player was counted a member of his conqueror's banner, held all of its
+         * cities, and was told he had WON the moment his conqueror walked the Pattern. The
+         * side you were dealt at genesis (`world.sides[0]`, seat 0 alone when there are none)
+         * is the one thing conquest cannot rewrite: your court under a banner outside it is
+         * the loss. It stays "lost" if an ally later breaks the court back — the war ended for
+         * this seat when it fell — and the ally fights on under the re-founded banner. */
+        const sideA = (world.sides && world.sides[0]) || [0];
+        if (sideA.indexOf(W.realmOf(world, 0)) < 0) return 'lost';
         /* THE WALK IS THE BANNER'S. Under `onePattern` the Shrine rises only in the Pattern's
          * own city, and in a war that city is usually held by a SWORN lord — so the hundred is
          * reached by him and won by his liege. Asked of the realm, never of seat 0 alone. */
         if (W.realmMembers(world, 0).some((pi) => world.players[pi].pattern >= 100)) return 'won';
-        /* ...AND A WAR CAN BE LOST. There was no losing condition at all: your own court could
-         * be stormed and sworn away and the war simply went on with nothing left to play. A
-         * realm that holds no city has no lord, no purse and no muster — it is over, and the
-         * end screen already knows how to say so. */
+        /* ...AND A REALM THAT HOLDS NO CITY has no lord, no purse and no muster — it is over,
+         * and the end screen already knows how to say so. */
         if (!W.realmCities(world, 0).length) return 'lost';
         return null;
       },
@@ -135,7 +189,7 @@
     const w = realm.world;
     return {
       v: 2, seed: realm.seed, t: w.t, tick: w.tick, nextId: w.nextId,
-      chaosNext: w.chaosNext, chaosParity: w.chaosParity, heirs: w.heirs,
+      chaosNext: w.chaosNext, chaosParity: w.chaosParity, heirs: w.heirs, sides: w.sides || null,
       cities: w.cities.map((c) => [c.owner, Math.round(c.hp), c.level, c.razed ? 1 : 0,
                                    c.fell != null ? c.fell : -1]),
       players: w.players.map((p) => ({
@@ -182,8 +236,11 @@
   /* fresh ground from the seed, the record laid over it — v1's restore idiom, one level up */
   function unpack(rec) {
     const W = World();
+    /* a record from before the sides carries `heirs` alone: every contender his own banner,
+     * which is what those wars were */
+    const sides = rec.sides ? REALM.setup(rec.sides) : null;
     const world = W.createWorld(rec.seed >>> 0, 2, null, WAR,
-                                { country: true, heirs: rec.heirs || HEIRS });
+                                { country: true, heirs: sides ? heirsOf(sides) : (rec.heirs || HEIRS), sides });
     world.t = rec.t || 0; world.tick = rec.tick || 0;
     if (rec.chaosNext != null) world.chaosNext = rec.chaosNext;
     world.chaosParity = rec.chaosParity || 0;
@@ -294,7 +351,8 @@
     if (p && p.v === 1) { REALM.lost = true; return null; }
     if (!p || p.v !== 2 || p.seed == null) return null;
     try {
-      return { v: 2, seed: p.seed >>> 0, world: unpack(p), helm: p.helm || null,
+      const world = unpack(p);
+      return { v: 2, seed: p.seed >>> 0, sides: world.sides || null, world, helm: p.helm || null,
                done: p.done || null };
     }
     catch (e) { return null; }

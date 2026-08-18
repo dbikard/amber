@@ -43,11 +43,16 @@ function guard(what) {
   if (tallied) throw new Error(`${what} was registered AFTER report() — it would never be ` +
     'printed, counted, or able to fail the run. Move it above the report block.');
 }
+/* AMBER_TRACE=1 names each suite on stderr the moment it starts. The tally is buffered until
+ * report(), so a run that HANGS looks exactly like a run that is slow — measured: two browser
+ * runs sat idle for hours with nothing on the terminal — and this is how one names itself. */
+const TRACE = !!process.env.AMBER_TRACE;
 function suite(name) {
   guard(`suite('${name}')`);
   if (group) timing.push([group, Date.now() - markAt]);
   markAt = Date.now();
   group = name;
+  if (TRACE) process.stderr.write(`  · ${name}\n`);
 }
 function ok(name, cond, detail) {
   guard(`ok('${name}')`);

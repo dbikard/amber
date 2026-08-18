@@ -61,6 +61,7 @@
     $('pw-trump').addEventListener('click', () => H.onPower('trump'));
     $('end-next').addEventListener('click', () => H.onEndNext());
     $('chapters-close').addEventListener('click', () => UI.chaptersClose());
+    $('war-setup-close').addEventListener('click', () => UI.warSetupClose());
     $('end-menu').addEventListener('click', () => H.onEndMenu());
     $('end-copy').addEventListener('click', () => UI.copyRecord($('end-copy')));
     $('end-save').addEventListener('click', () => UI.saveRecord());
@@ -200,6 +201,66 @@
     $('end').classList.add('hidden');
     $('menu').classList.add('hidden');
     UI.closeSheet();
+  };
+  /* ---------------- THE WAR'S SIDES ----------------
+   * `spec` is `{a, b}`: heirs at your side and heirs against you — you are always on side A —
+   * two to four contenders in all. The screen offers steppers and one summary line, and hands
+   * the counts back to BEGIN; which COURTS the allies get is decided by geography once the
+   * country exists (REALM.create deals the ally seats nearest yours). */
+  UI.warSetupOpen = () => !$('war-setup').classList.contains('hidden');
+  UI.warSetupClose = function () {
+    $('war-setup').classList.add('hidden');
+    if (UI.showMenu && H.onMenuAgain) H.onMenuAgain();
+  };
+  UI.warSetup = function (spec, onBegin) {
+    const el = $('war-setup'), body = $('war-setup-body');
+    const st = { a: Math.max(0, Math.min(2, (spec && spec.a) | 0)), b: Math.max(1, Math.min(3, spec && spec.b != null ? spec.b | 0 : 3)) };
+    while (1 + st.a + st.b > 4) st.b--;
+    if (st.b < 1) { st.b = 1; st.a = Math.min(st.a, 2); }
+    el.classList.remove('hidden');
+    $('menu').classList.add('hidden');
+    const paint = () => {
+      body.innerHTML = '';
+      const p = document.createElement('div');
+      p.className = 'ws-blurb';
+      p.textContent = 'One country, sixteen thrones, one Pattern. Two to four heirs contend for it in two ' +
+                      'sides; the rest of the country is minor lords who hold ground and swear to whoever breaks them. ' +
+                      'An heir at your side is your ally — one banner, one victory — not your vassal.';
+      body.appendChild(p);
+      const side = (name, who, cls, val, lo, hi, set) => {
+        const row = document.createElement('div');
+        row.className = 'ws-side ' + cls;
+        const left = document.createElement('div');
+        left.innerHTML = `<span class="ws-name">${name}</span><span class="ws-who">${who}</span>`;
+        const step = document.createElement('div');
+        step.className = 'ws-step';
+        const minus = document.createElement('button'), plus = document.createElement('button'), n = document.createElement('b');
+        minus.className = plus.className = 'mbtn small'; minus.textContent = '−'; plus.textContent = '+';
+        n.textContent = String(val);
+        minus.disabled = val <= lo; plus.disabled = val >= hi;
+        minus.addEventListener('click', () => { set(val - 1); paint(); });
+        plus.addEventListener('click', () => { set(val + 1); paint(); });
+        step.appendChild(minus); step.appendChild(n); step.appendChild(plus);
+        row.appendChild(left); row.appendChild(step);
+        return row;
+      };
+      const room = 4 - 1 - st.a - st.b;   // seats left at the table
+      body.appendChild(side('YOUR SIDE', 'you' + (st.a ? ' and ' + st.a + (st.a === 1 ? ' heir' : ' heirs') : ', alone'), 'own',
+                            st.a, 0, Math.min(2, st.a + room), (v) => { st.a = v; }));
+      body.appendChild(side('AGAINST YOU', st.b + (st.b === 1 ? ' heir' : ' heirs') + ', one banner', 'foe',
+                            st.b, 1, Math.min(3, st.b + room), (v) => { st.b = v; }));
+      const sum = document.createElement('div');
+      sum.className = 'ws-sum';
+      sum.id = 'ws-sum';
+      sum.textContent = (1 + st.a) + ' v ' + st.b + ' — ' + (1 + st.a + st.b) + ' contenders, ' + (16 - 1 - st.a - st.b) + ' minor lords';
+      body.appendChild(sum);
+      const go = document.createElement('button');
+      go.className = 'mbtn'; go.id = 'ws-begin';
+      go.textContent = 'BEGIN THE WAR';
+      go.addEventListener('click', () => { el.classList.add('hidden'); onBegin({ a: st.a, b: st.b }); });
+      body.appendChild(go);
+    };
+    paint();
   };
   UI.chaptersOpen = () => !$('chapters').classList.contains('hidden');
   /* which chapter's briefing is up, or null for the list. The phone's back gesture reads it:
@@ -467,7 +528,7 @@
       return b;
     };
     btn('◎ GO THERE', '', () => { UI.courtPopClose(); popH.onLook(c.idx); UI.councilClose(); });
-    if (c.mine && !c.hand) {
+    if (c.mine && !c.hand && !c.ally) {
       btn('👑 COMMAND', '', () => { UI.courtPopClose(); popH.onTake(c.idx); UI.councilClose(); });
       for (const o of c.orders)
         btn(o.on ? '● ' + o.label : o.label, '', () => {
@@ -522,7 +583,7 @@
     /* TO ARMS — the one banner-wide order: every lord of yours in reach of your court marches
      * to it, for as long as it is pressed and no longer (game.js liftArms). Offered only where
      * a standing order can be honoured — the host's — like the stances on the rows. */
-    if (H2.onToArms && d.cities.some((c) => c.mine && !c.hand && c.orders && c.orders.length)) {
+    if (H2.onToArms && d.cities.some((c) => c.mine && !c.hand && !c.ally && c.orders && c.orders.length)) {
       const arms = el('button', 'mbtn cc-arms', '⚔ TO ARMS — every lord in reach, to your court');
       arms.id = 'cc-to-arms';
       arms.addEventListener('click', () => { H2.onToArms(); UI.council(popH.data(), popH); });
@@ -575,8 +636,9 @@
       row.appendChild(mid);
       row.addEventListener('click', () => { H2.onLook(c.idx); UI.councilClose(); });
       body.appendChild(row);
-      /* the actions a court of your own offers, under it rather than behind another tap */
-      if (c.mine && !c.hand) {
+      /* the actions a court of your own offers, under it rather than behind another tap — an
+       * ALLY's court offers none: he is a contender of your side, not a vassal */
+      if (c.mine && !c.hand && !c.ally) {
         const acts = el('div', 'cc-acts');
         const btn = (t, fn) => { const b = el('button', 'mbtn small', t); b.addEventListener('click', fn); acts.appendChild(b); };
         btn('👑 COMMAND', () => { H2.onTake(c.idx); UI.councilClose(); });

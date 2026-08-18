@@ -317,7 +317,7 @@ body {
 .c-blurb:empty { display: none; }
 
 /* ---------------- menu ---------------- */
-#menu, #end, #roll, #chapters, #rivals, #lan-screen {
+#menu, #end, #roll, #chapters, #rivals, #lan-screen, #war-setup {
   position: fixed; inset: 0; z-index: 40;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 20px; text-align: center;
@@ -584,6 +584,18 @@ body {
 #roll h2 { font-size: 24px; letter-spacing: 5px; color: #ffe9a8; margin-bottom: 10px; }
 #roll-body { width: min(96vw, 560px); }
 #chapters-body { width: min(96vw, 520px); display: flex; flex-direction: column; gap: 8px; }
+#war-setup-body { width: min(96vw, 520px); display: flex; flex-direction: column; gap: 10px; }
+.ws-blurb { font-size: 13px; line-height: 1.45; color: #cdc6d8; }
+.ws-side { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+           padding: 10px 12px; border: 1px solid #c9a44f55; border-radius: 6px; background: #1a1424; }
+.ws-side.foe { border-color: #ff8a9655; }
+.ws-side .ws-name { font-weight: 700; letter-spacing: 0.04em; }
+.ws-side .ws-who { font-size: 12px; color: #cdc6d8; display: block; margin-top: 2px; }
+.ws-step { display: flex; align-items: center; gap: 6px; }
+.ws-step b { min-width: 1.6em; text-align: center; font-size: 18px; }
+.ws-sum { text-align: center; font-size: 15px; letter-spacing: 0.06em; color: #ffe9a8; margin: 4px 0; }
+#lan-sides { width: 100%; display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+#lan-sides .ws-side { padding: 7px 10px; }
 /* EVERY BUTTON IN THE PANEL IS THE PANEL'S WIDTH. `.mbtn` carries a fixed `min(78vw,340px)`
  * and `.mbtn.small` carries `width:auto`, so a column of them came out three different widths
  * — one flush left at 340, one sized to its own text, and the close button centred on its own

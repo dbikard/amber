@@ -4916,17 +4916,44 @@ async function match(browser, base, renderer) {
     await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await ready(pg);
     await pg.evaluate(() => window.REALM.forget());
-    /* one tap: the card boots the war itself — no screen between the menu and the ground */
+    /* THE SIDES FIRST. With no war in the pocket the card opens the setup screen: how many
+     * heirs at your side, how many against; every shape two sides of two to four contenders
+     * can take. The default is you against three; BEGIN grows the country. */
     await pg.click('#btn-realm');
+    await until(pg, () => !document.getElementById('war-setup').classList.contains('hidden'));
+    const setup = await pg.evaluate(async () => {
+      const sum = () => document.getElementById('ws-sum').textContent;
+      const out = { first: sum() };
+      /* one step: an ally at your side — 2 v 3 is five, so the against-side loses one first */
+      const plus = [...document.querySelectorAll('#war-setup-body .ws-side.own .ws-step button')].find((b) => b.textContent === '+');
+      out.plusOffered = !!plus && !plus.disabled;
+      const foeMinus = [...document.querySelectorAll('#war-setup-body .ws-side.foe .ws-step button')].find((b) => b.textContent === '−');
+      if (foeMinus) { foeMinus.click(); await new Promise((r) => setTimeout(r, 50)); }
+      const plus2 = [...document.querySelectorAll('#war-setup-body .ws-side.own .ws-step button')].find((b) => b.textContent === '+');
+      if (plus2 && !plus2.disabled) { plus2.click(); await new Promise((r) => setTimeout(r, 50)); }
+      out.after = sum();
+      return out;
+    });
+    ok('the card opens the setup screen, defaulting to you against three heirs', /^1 v 3/.test(setup.first), setup.first);
+    ok('...whose steppers make every shape of two sides — here 2 v 2', /^2 v 2/.test(setup.after), setup.after);
+    await pg.click('#ws-begin');
     await inMatchNow(pg);
     await until(pg, () => window.Render.ready);
     const boot = await pg.evaluate(() => {
       const g = window.Game.game, w = g.world;
       return { war: g.war === true, seats: w.players.length, reach: w.rules.reach,
                onePattern: w.rules.onePattern, saved: window.REALM.saved(),
-               bots: g.bots ? g.bots.filter(Boolean).length : 0 };
+               bots: g.bots ? g.bots.filter(Boolean).length : 0,
+               sides: w.sides, ally: w.sides && w.sides[0][1], allyRealm: w.sides && window.World.realmOf(w, w.sides[0][1]),
+               minorNoWalk: g.bots.every((b, i) => !b || w.heirs.indexOf(i) >= 0 || b.noWalk === true),
+               /* seat 0's driver is the inner lord of your home court while your hand is away, and the
+                * walk is the human's decision there — every OTHER heir may walk */
+               heirsMayWalk: g.bots.every((b, i) => !b || i === g.viewer || w.heirs.indexOf(i) < 0 || b.noWalk !== true) };
     });
-    ok('the card is one tap into a war', boot.war && boot.seats >= 8, JSON.stringify(boot));
+    ok('BEGIN grows the war', boot.war && boot.seats >= 8, JSON.stringify(boot));
+    ok('...with the sides chosen: two and two', boot.sides && boot.sides[0].length === 2 && boot.sides[1].length === 2, JSON.stringify(boot.sides));
+    ok('...and your ally on your banner from the first tick', boot.allyRealm === 0, String(boot.allyRealm));
+    ok('a minor lord never walks the Pattern, and every heir may', boot.minorNoWalk && boot.heirsMayWalk, JSON.stringify({ m: boot.minorNoWalk, h: boot.heirsMayWalk }));
     ok("...playing by the war's rules", boot.reach === 1 && boot.onePattern === 1,
        JSON.stringify(boot));
     /* EVERY seat, the player's own included: seat 0's driver is skipped while the hand is on it
@@ -4958,12 +4985,15 @@ async function match(browser, base, renderer) {
     /* the page forgets everything but localStorage; the war comes back */
     await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await ready(pg);
+    /* a war in the pocket is RESUMED by the card — no setup screen in the way */
     await pg.click('#btn-realm');
     await inMatchNow(pg);
     const back = await pg.evaluate(() => {
       const g = window.Game.game, w = g.world;
-      return { seed: w.seed, essence: Math.round(w.players[0].essence), war: g.war === true };
+      return { seed: w.seed, essence: Math.round(w.players[0].essence), war: g.war === true,
+               sides: JSON.stringify(w.sides), setupShown: !document.getElementById('war-setup').classList.contains('hidden') };
     });
+    ok('...a saved war is resumed with its sides, and no setup screen in the way', back.sides === JSON.stringify(boot.sides) && !back.setupShown, back.sides + ' against ' + JSON.stringify(boot.sides));
     ok('the same war is picked up from the seed alone', back.war && back.seed === mark.seed,
        `seed ${back.seed}, want ${mark.seed}`);
     ok('...with what was done still done', back.essence >= 4321 - 50 && back.essence < 6000,
@@ -4984,8 +5014,11 @@ async function match(browser, base, renderer) {
     const still = await pg.evaluate(() => window.Game.game.mode);
     ok('...and the war still stands', still === null, String(still));
     await pg.click('#realm-new');
+    /* a NEW war is set up before it is grown: the sides screen, then BEGIN */
+    await until(pg, () => !document.getElementById('war-setup').classList.contains('hidden'));
+    await pg.click('#ws-begin');
     await inMatchNow(pg);
-    const fresh = await pg.evaluate(() => ({ seed: window.Game.game.world.seed,
+    const fresh = await pg.evaluate(() => ({ seed: window.Game.game.world ? window.Game.game.world.seed : null,
                                              war: window.Game.game.war === true }));
     ok('the second tap deals a NEW country', fresh.war && fresh.seed !== mark.seed,
        `seed ${fresh.seed} vs old ${mark.seed}`);
@@ -5155,8 +5188,10 @@ async function match(browser, base, renderer) {
     });
     ok('the war button deals a war when there is none to continue',
        war.war && war.seats >= 8 && war.reach === 1, JSON.stringify(war));
-    ok('...and the wire carries the seed and nothing else of the country',
-       war.seedSent && war.sameSeed && war.keys.length === 1, war.keys.join(','));
+    /* the seed, and the SIDES — the banners a guest must deal from genesis; nothing else of the
+     * country, which is regenerated from the seed */
+    ok('...and the wire carries the seed and the sides, and nothing else of the country',
+       war.seedSent && war.sameSeed && war.keys.slice().sort().join(',') === 'seed,sides', war.keys.join(','));
     ok('...and it becomes the host\'s war, so a rematch can find it', war.saved === true);
     /* back at the table, with a war in the pocket now, the button says it is YOURS */
     await pg.evaluate(() => window.Game.toMenu());
@@ -5623,14 +5658,25 @@ async function match(browser, base, renderer) {
     pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
     await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
     await ready(pg);
-    /* a real war, through the real door on the menu */
-    await pg.evaluate(() => { document.getElementById('btn-realm').click(); });
+    /* a real war, through the real door on the menu — the setup screen first when none is saved */
+    /* at SQUIRE, so the war outlives the page's questions: three allied heirs break an idle
+     * player's court inside a few minutes at PRINCE, and a finished war answers no council */
+    await pg.evaluate(() => { window.UI.setDifficulty('squire'); window.REALM.forget(); document.getElementById('btn-realm').click(); });
+    await until(pg, () => !document.getElementById('war-setup').classList.contains('hidden'));
+    await pg.click('#ws-begin');
     await until(pg, () => !!(window.Game && window.Game.game.world && window.Game.game.war), 30000);
     await until(pg, () => window.Render.ready);
-    /* ...with somebody on the Pattern, so the right rail has both of its things in it */
+    /* ...with somebody on the Pattern, so the right rail has both of its things in it.
+     * AND THE HEIRS ARE SILENCED: this page asks about the roster, the map and the terms
+     * buttons, and every one of those questions has a different answer once a rival heir has
+     * asked YOU for terms — the row sorts first, the button reads ACCEPT, the tap seals rather
+     * than offers. On a random seed with three allied heirs that happens inside the first
+     * minute often enough to make the page a coin toss (measured: three different failures on
+     * three runs). The seats stay whose they are; nobody drives them for the length of the page. */
     await pg.evaluate(() => {
       const w = window.Game.game.world;
       w.players[3].revealed = true; w.players[3].walking = true; w.players[3].pattern = 12;
+      window.Game.game.bots = window.Game.game.bots.map(() => null);
     });
     await pg.waitForTimeout(600);
     const hud = await pg.evaluate(() => {
@@ -5825,7 +5871,10 @@ async function match(browser, base, renderer) {
        * view: it tapped a court on the MAP, and the day the roster's order shifted under it the
        * row picked here was the court already under the camera — `moved: 0`, correct behaviour,
        * red test. The row says which court it is (`data-ci`), so ask it. */
-      const row = rows[rows.length - 1];
+      /* THE FAR COURT'S ROW, not the last row: the roster's tail is whichever rival court
+       * sorts last, and on a seed where that court neighbours yours it is on screen before the
+       * tap and the claim below cannot be made. `far` was chosen for being far. */
+      const row = rows.find((r2) => Number(r2.dataset.ci) === far.i) || rows[rows.length - 1];
       const ci = Number(row.dataset.ci);
       const c = w.cities[ci];
       /* ON SCREEN is the claim, and `Render.project` is the only thing that may answer it —
@@ -5885,7 +5934,10 @@ async function match(browser, base, renderer) {
       let lord = -1;
       for (let i = 1; i < w.players.length; i++)
         if (w.cities[i] && !w.cities[i].razed && w.cities[i].owner === i) { lord = i; break; }
-      if (lord > 0) w.players[lord].realm = W.realmOf(w, g.viewer);
+      /* sworn by hand, so what the oath does to his banner is done too: with sides the first
+       * lord is the heirs' FOUNDER, and his allies must be re-founded or they are an orphan
+       * banner nobody can treat with (see `World.refound`) */
+      if (lord > 0) { w.players[lord].realm = W.realmOf(w, g.viewer); W.refound(w, lord); }
       /* close and reopen so the sworn court is on the roster with its actions under it */
       document.getElementById('war-chip').click();
       await new Promise((r2) => setTimeout(r2, 150));
@@ -5912,7 +5964,7 @@ async function match(browser, base, renderer) {
       /* a lord IN REACH of the court under the hand, so the alarm has somebody to call: the
        * hand's neighbour swears (connectivity is a placement law, so a neighbour is in reach) */
       const hnow = g.handOf(), nb0 = ((w.map.gen.nbrs && w.map.gen.nbrs[hnow]) || []).find((i) => i !== g.viewer && i !== hnow);
-      if (nb0 != null) w.players[nb0].realm = W.realmOf(w, g.viewer);
+      if (nb0 != null) { w.players[nb0].realm = W.realmOf(w, g.viewer); W.refound(w, nb0); }
       await open();
       const arms = document.getElementById('cc-to-arms');
       out.hadArms = !!arms;
@@ -6024,6 +6076,15 @@ async function match(browser, base, renderer) {
           document.getElementById('war-chip').click();
         await new Promise((r2) => setTimeout(r2, 250));
       };
+      /* FROM A CLEAN SLATE, THROUGH THE SIM'S DOOR. An earlier step in this page offered
+       * terms from a roster row, and with sides dealt there may be only ONE rival banner — so
+       * the card would open reading WITHDRAW OFFER and the tap here would be a withdrawal.
+       * Every standing offer is taken back by the command (not by writing the array, which the
+       * card built a moment ago would not have read), BEFORE the council is opened. */
+      const me0 = World.realmOf(w, Game.game.viewer);
+      (w.players[me0].offers || []).forEach((on, p) => {
+        if (on) World.applyCommand(w, me0, { c: 'pact', p, on: false }); });
+      window.UI.councilClose();
       await open();
       const land = { w: w.nav.W * w.nav.cw, h: w.nav.H * w.nav.cw };
       /* THE CANVAS IS RE-QUERIED EVERY TAP. Every action rebuilds the panel through
@@ -6060,10 +6121,19 @@ async function match(browser, base, renderer) {
       /* TERMS FROM THE MAP, read off the world — a relabelled button proves nothing */
       const t = btn(/TERMS/);
       out.hasTerms = !!t;
-      out.before = (w.players[me].offers || []).filter(Boolean).length;
-      if (t) t.click();
+      /* the offer to THIS court's banner, not a count of every offer standing: another test in
+       * this page left one standing already, and the tap here is a toggle on one banner */
+      const banner = window.World.realmOf(w, w.cities[rival].owner);
+      /* from a clean slate: earlier steps in this page leave offers standing, and the tap is a
+       * toggle — so no offer before, and the tap must make one */
+      out.before = !!((w.players[me].offers || [])[banner]);
+      out.clickErr = null;
+      try { if (t) t.click(); } catch (e) { out.clickErr = e.message; }
       await new Promise((r2) => setTimeout(r2, 250));
-      out.after = (w.players[me].offers || []).filter(Boolean).length;
+      out.after = !!((w.players[me].offers || [])[banner]);
+      out.banner = banner; out.diag = { over: Game.game.over, paused: !!w.paused, hand: Game.game.handOf(), me,
+        offers: JSON.stringify(w.players[me].offers), pops: document.querySelectorAll('#court-pop').length,
+        label: t ? t.textContent : null, sides: JSON.stringify(w.sides) };
       out.stillUp = !!document.getElementById('court-pop');
       out.relabelled = !!btn(/WITHDRAW/);
       /* YOUR OWN COURT OFFERS COMMAND instead — the row's actions, in the row's place */
@@ -6089,8 +6159,8 @@ async function match(browser, base, renderer) {
        pop.rival >= 0 && pop.own >= 0, JSON.stringify({ rival: pop.rival, own: pop.own }));
     ok('tapping a court on the map opens it', pop.opened && pop.names, JSON.stringify(pop));
     ok('...WITHOUT closing the council you were reading', pop.councilStillOpen);
-    ok('...and offers terms from the map', pop.hasTerms && pop.after > pop.before,
-       `${pop.before} offers before, ${pop.after} after`);
+    ok('...and offers terms from the map', pop.hasTerms && !pop.before && pop.after,
+       `offer to banner ${pop.banner}: ${pop.before} before, ${pop.after} after — ${JSON.stringify(pop.diag)} ${pop.clickErr || ''}`);
     ok('...staying open, saying the new state back', pop.stillUp && pop.relabelled,
        JSON.stringify({ stillUp: pop.stillUp, relabelled: pop.relabelled }));
     ok('a court of your own offers COMMAND instead', pop.ownOpened && pop.ownHasCommand,
@@ -6160,4 +6230,13 @@ async function match(browser, base, renderer) {
    * runner captures both suites so their tallies do not interleave) an exit drops whatever is
    * still queued, and the tally is the largest thing this file writes. */
   process.exitCode = report('browser');
-})().catch((e) => { console.error(e); process.exitCode = 1; });
+})().catch((e) => {
+  /* A THROW MUST END THE RUN, NOT HANG IT. An uncaught error left Chromium open and Node
+   * waiting on it forever — measured: two runs sat idle for hours with a TypeError on stderr
+   * and no tally, and every gate after them fought their zombies for the cores. Say what
+   * failed, print the tally that exists, tear the browser down, and exit. */
+  console.error(e);
+  try { if (typeof report === 'function') report('browser (aborted by an error)'); } catch (e2) {}
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 2000).unref();
+});

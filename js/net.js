@@ -574,6 +574,9 @@
       /* WHICH BANNERS CONTEND. The renderer gives each one a colour of its own and everyone
        * else the neutral; without the list a guest would paint a country in one crimson. */
       heirs: world.heirs,
+      /* THE SIDES AS DEALT, so a guest's end screen judges "won" by the side he was dealt and
+       * not by the banner conquest left his court under (see `endMatch`). Nothing else reads it. */
+      sides: world.sides,
       /* the cities of the world, and every one of them public: a Seat's hit points always
        * were, and in a country the question "whose is that" is the map. Where the court
        * STANDS is a different question, and `seatSeen` still answers it. */

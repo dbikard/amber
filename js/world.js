@@ -173,6 +173,15 @@
       sight: null               // what the land does to a sight line, baked per fog cell
     };
     for (let pi = 0; pi < world.players.length; pi++) world.players[pi].realm = pi;
+    /* ---- A SIDE IS ONE BANNER FROM GENESIS ----
+     * `opts.sides` is a war's teams: lists of contender seats, and every seat on a side answers
+     * to the side's FIRST seat from the first tick — the same `realm` an oath moves, so wins
+     * and losses (by banner), sight, hostility and terms all follow from what already exists,
+     * and nothing in the sim knows the word "team". Seat 0 is always the first of its side, so
+     * the human at the table is his banner's founder and the one who treats. */
+    for (const side of (opts && opts.sides) || [])
+      for (const m of side) if (world.players[m] && world.players[side[0]]) world.players[m].realm = side[0];
+    world.sides = opts && opts.sides ? opts.sides.map((s) => s.slice()) : null;
     /* ---- A COUNTRY PAYS FOR ITS OWN PATHFINDING ----
      * Both of these are duel numbers, and a country is sixteen economies rather than two. Its
      * MEASURED working set is 74 flow fields against a ceiling of 48 — so the cache filled,
@@ -265,6 +274,31 @@
     if (pi == null || pi < 0) return -1;
     const p = world.players && world.players[pi];
     return p && p.realm != null ? p.realm : pi;
+  }
+  /* A BANNER WHOSE FOUNDER HAS KNELT IS RE-FOUNDED BY ITS SENIOR LORD. The founder's own index
+   * NAMES the realm, so when `holdCities` swears him to the banner that broke him, every lord
+   * still pointing at his index is pointing at a man who now answers to somebody else — an
+   * orphan banner: its members are `foe` to their own former liege, no `terms` row is built for
+   * it (its founder's `realmOf` is not himself), and the pact command normalises an offer to it
+   * onto the founder and refuses it as your own seat. Measured on the council page: an offer to
+   * such a banner returned `err: 'seat'` and its courts had no button at all. It was always so
+   * for a contender's sworn lords; with SIDES it is every ally of a broken heir.
+   * The vassals do not follow him into the conqueror's banner — breaking one court would then
+   * hand over a whole side — and they do not each become their own banner — allies must stay
+   * allied. They re-found under the senior member, a CONTENDER before a minor lord (so a side
+   * that loses one heir is led by the other and keeps that heir's colour), and the banner's
+   * terms fall with the founder who made them: the new banner starts at war with everyone. */
+  function refound(world, lord) {
+    const vassals = [];
+    for (let m = 0; m < world.players.length; m++)
+      if (m !== lord && world.players[m] && world.players[m].realm === lord) vassals.push(m);
+    if (!vassals.length) return -1;
+    const heirs = world.heirs || [];
+    let nf = vassals.find((m) => heirs.indexOf(m) >= 0);
+    if (nf == null) nf = vassals[0];
+    for (const m of vassals) world.players[m].realm = nf;
+    world.players[nf].offers = [];
+    return nf;
   }
   /* every lord under one banner, in seat order. The founder's own index NAMES the realm, so a
    * realm's founder is `realmOf(pi)` itself and needs no second field. */
@@ -4838,6 +4872,7 @@
         world.players[lord].realm = to;
         world.players[lord].offers = [];
         world.players[lord].out = false;
+        refound(world, lord);
       }
       city.owner = lord;
       city.hp = Math.max(1, city.maxHp * C.CITY.back);
@@ -4949,7 +4984,7 @@
                     * the two are not the same question — a rival at TERMS is not a foe and is
                     * not mine either. The renderer colours by realm, the HUD counts by realm,
                     * and the war ends by realm; none of them may spell it themselves. */
-                   realmOf, realmMembers, realmCities,
+                   realmOf, realmMembers, realmCities, refound,
                    /* a city is a THING with an owner now, not a property of a player — these
                     * three are the only ways anything asks about one */
                    seatOf, citiesOf, cityAt, seatDown,

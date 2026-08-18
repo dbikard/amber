@@ -494,6 +494,38 @@ of the country (a guest regenerates the ground from the seed; history rides the 
 absolute snapshots), humans take the contender seats in join order, and the host's lords play
 the rest.
 
+**A WAR HAS TWO SIDES** (`REALM.create(seed, spec)`, `REALM.setup`, createWorld `opts.sides`).
+Two to four CONTENDERS in two sides — seat 0, the human at the table, always first on side A —
+and the rest of the country minor lords. A side is ONE BANNER FROM GENESIS: every member's
+`realm` is the side's first seat, so wins and losses (the run judges by banner), sight,
+hostility and terms all follow from the realm code and nothing in the sim knows the word "team".
+The designer's default is you against three heirs, each contending for AMBER and the walk. The
+setup screen (`UI.warSetup`) takes COUNTS — heirs at your side, heirs against — and the ally
+courts are dealt BY GEOGRAPHY once the country exists (the contender courts nearest yours); a
+LAN lobby's sides are explicit seats (humans on 0..n-1 in join order, replacing the heirs, bots
+on the seats after; `lanSides`, the `#lan-sides` panel). The sides ride the save (`rec.sides`)
+and the wire (`{war: {seed, sides}}`), because a guest regenerates the country from the seed
+and must deal the same banners. AN ALLY IS A CONTENDER, NOT A VASSAL: a heir of your side plays
+at the footing with his own initiative and the walk, only does not treat (the founder does), and
+the council offers neither COMMAND nor a stance on his court. `won` at the end screen is by
+banner, and a lost war names the ENEMY side's founder, never seat 1 (which may be your ally).
+**A FOUNDER BROKEN RE-FOUNDS HIS BANNER, AND A PLAYER BROKEN HAS LOST** (`World.refound`, in
+`holdCities`; `REALM.run.tick`). A banner is NAMED for its founder, so when the oath swears him
+to the taker every lord still pointing at his index points at a man of another banner — an
+orphan: `foe` to its own former liege, no terms row (its founder's `realmOf` is not himself),
+and the pact command normalising onto him and refusing with `seat`. Found on the council page,
+where the first lord sworn by hand was the heirs' founder; the sim did the same to a
+contender's sworn lords all along. The vassals re-found under the senior member — a CONTENDER
+before a minor lord, so a side that loses one heir is led by the other — and the banner's terms
+fall with the founder. They do NOT follow him (one court would hand over a side) and do NOT
+each go free (allies stay allied). And the loss: "your banner holds no city" was written when
+a taken court changed OWNER; under the oath a conquered player kept his court and was counted a
+member of his conqueror's banner — told he had WON when the conqueror walked. `tick` asks
+first whether seat 0's realm is still inside the side he was DEALT (`world.sides[0]`; the wire
+carries `sides` so a guest's `endMatch` judges the same way). The council page (test) SILENCES
+the bots after the war starts — its questions are about the roster and the map, and a rival
+asking you for terms in the first minute changes every one of their answers.
+
 **The rules of a war**, all of them off in every other mode: `reach`, `occupy` (a Seat yields
 and the ground must be taken), `endOnSeat: 0` (dispossession, not death), `truce`,
 `onePattern` (a Shrine may rise only in the Pattern's city, held), and `walkMul: 0.4` (the walk
@@ -616,6 +648,28 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   court as a minor lord's is turned — the player's ⚔ order is the one way a vassal attacks.
   Re-dealt on the oath: the frame loop re-makes a lord's bot when the sim's `taken` event names
   him. The rest of the lords' design is proposed in `LORDS_PLAN.md`.
+- **A MINOR LORD NEVER WALKS THE PATTERN** (`warFooting` deals every non-contender `noWalk`; a
+  `noWalk` bot raises no Shrine either). From a chronicle in which AMBER's own lord — sworn to
+  another minor lord — walked to a hundred and ended the war with no heir near it: the walk is a
+  contender's and only a contender's, and a minor lord holding AMBER holds it FOR whoever conquers
+  him. The war's clock is the heirs taking the cities between them and AMBER.
+- **TERMS HOLD FOR THIRTY SECONDS** (`PACT_HOLD` in ai.js). A doctrine on a knife-edge — Bleys
+  treats only while his army is under fourteen, so every recruit and every death flipped it — made
+  and unmade terms every think and every reciprocator followed him: a chronicle carried "X breaks
+  with AMBLERASH / X and AMBLERASH come to terms" once a second for minutes, and every seal
+  disengages men mid-fight. An offer made or withdrawn stands `PACT_HOLD` before the doctrine may
+  change its mind.
+- **A COMPANY WITHOUT ITS STANDARD IS STILL SENT, AND THE COURT YOU CAN STRIKE IS THE ONE THAT
+  MATTERS.** Two holes that together left the heirs taking no court in twenty minutes at PRINCE:
+  `warOrders` remembered the aim so a banner was not fanned out every think, and so a company that
+  lost its rally afterwards (struck when it stopped being the errand; raised after the aim was set)
+  stood at home for the rest of the war — measured, bleys with two thirty-two-man companies at
+  home and a two-man company carrying the assault; the memo now decides only whether the aim MOVED
+  and each company is rallied when its own standard is not already there. And `AI.view` oriented
+  on the nearest rival court by distance alone, which under the reach law can be a court just past
+  the rim — every rally clamped into the reach parked the whole army on the rim toward it forever;
+  a court inside the seat's own reach now comes before any beyond it (a board has no reach and
+  reads exactly as it did — twelve seeded duels trace identical).
 - **A WALKER IS EVERYBODY'S ENEMY, AND EVERYBODY ELSE'S FRIEND.** While anyone is on the lines,
   every founder who is not walking offers terms to every other who is not (the coalition) and
   none to the walker; the answer to a walk (`WALK_ANSWER`) is NOT held off by the footing — a

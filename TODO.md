@@ -18,6 +18,12 @@ touches no balance surface.
       seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
       holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
       (`{t:'hand', as}`) so the host can drive the guest's home court while he commands another.
+- [ ] **A guest's loss is never declared to him.** `REALM.run.tick` asks about seat 0 (the host)
+      only, and the doctrines and the run step on the host — so a guest whose court is broken and
+      sworn to the enemy plays on as a vassal of the enemy until the host's war ends. His end
+      screen judges "won" by the side he was DEALT (`world.sides` rides the wire), so at least the
+      verdict is right when it comes. A per-seat verdict on the host (declare for each human seat
+      whose court has sworn away) is the fix; it needs `endMatch` to be told which seat lost.
 - [ ] **The council rows and the court card could carry each court's livery swatch**
       (`R.liveryCanvas` is ready for it) — the men and the Seat's flag say which court now
       (CLAUDE.md "AND THE MEN SAY WHICH COURT"); the roster does not yet.

@@ -167,8 +167,11 @@ the strategic rule. Orders are bounded; violence is not.
   instant either is withdrawn. Nobody keeps terms with a man on the lines.
 - **One Pattern, in one city.** Holding AMBER is not winning — it is being *allowed to walk*,
   and the walk is slower on a country so it can be answered.
-- **Every seat is an heir.** Two contenders play for the throne at your footing; the other
-  lords run the same doctrines with more lapses, and expand rather than conquer.
+- **Two sides, two to four heirs.** You against three heirs by default — each contending for
+  AMBER and the walk — or an ally at your side against two, or two against two: the setup
+  screen offers every shape, and at a LAN table humans replace the heirs, each placed on a side.
+  A side is one banner and one victory. The other lords run the same doctrines with more
+  lapses, and expand rather than conquer.
 - **Put it down, pick it up.** The country regenerates from its seed; the save writes down only
   what was done. A LAN table is dealt into the host's war; guests regenerate the ground.
 
