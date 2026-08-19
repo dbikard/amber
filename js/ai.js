@@ -416,7 +416,14 @@
      * run of exactly `unit` length can round to two crews on the far side of a hypot. */
     const purse = Math.floor(v.essence / def.cost) * C.WALL.unit;
     const half = Math.min(reach, C.WALL.unit * 2, purse) * 0.99 / 2;
-    if (half * 2 < def.span[0]) return null;
+    /* NEVER A STUB. A run under `WALL.gateMin` is solid stone with no gateway, and it bars its
+     * OWNER as surely as anyone: benedict, short of essence, raised a thirty-eight-unit piece
+     * across his own muster ground at arm's length from the throne, and ninety men with a
+     * walk to answer stood jammed between it, the hall and the Seat for the rest of the match
+     * (measured, seed 7: the centroid of his army did not move in ninety seconds; with the stub
+     * taken away it marched 250 units in ten). An heir's wall has a gate or it is not raised. */
+    const minL = Math.max(def.span[0], C.WALL.gateMin + 16);
+    if (half * 2 < minL) return null;
     for (let ring = 0; ring < 4; ring++) {
       const r = 120 + ring * 34;
       for (let k = 0; k < 9; k++) {
@@ -425,6 +432,7 @@
         /* perpendicular to the approach: the wall stands ACROSS the road, not along it */
         const px = -Math.sin(a), py = Math.cos(a);
         for (const L of [half, half * 0.7, half * 0.5]) {
+          if (L * 2 < minL) continue;
           const ax = mx - px * L, ay = my - py * L, bx = mx + px * L, by = my + py * L;
           if (!W.wallError(v.world, v.me, ax, ay, bx, by)) return { x: ax, y: ay, x2: bx, y2: by };
         }
@@ -542,7 +550,9 @@
    * early is the whole value: a walk cannot be called off, so there is no feint to be drawn by
    * and nothing is wasted by setting out. `WALK_ARMY` is the floor that stops him sending four
    * men across the world — a Shrine is 900 hit points behind whatever its owner left at home. */
-  const WALK_ANSWER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKANS) || 10;
+  /* a walk is PUBLIC from its first tick, and a walk takes five minutes; the answer used to wait
+   * for ten per cent — thirty seconds a column two minutes away did not have (2026-08-19) */
+  const WALK_ANSWER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKANS) || 1;
   const WALK_ARMY = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKARM) || 8;
   /* how near a RIVAL comes to a walker's own Shrine before the walker's army turns and stands
    * over it. A shooter throws 105 and a Ballista Tower 350, so anything inside this is either
@@ -1779,7 +1789,35 @@
        * begun, and a beginner who steps on under a thirteen-minute hold would win uncontested.
        * GAME_VISION pillar 4: the walk is a declaration that forces the defender to attack. So
        * whoever walks — the player included — is answered by everyone who can reach his Shrine. */
-      const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY ? race : null;
+      /* ---- THE ANSWER IS THE WALKER'S GATES FIRST, AND THE SHRINE WHEN THEY ARE GONE ----
+       * Measured (2026-08-19, benedict against brand on seed 1000): brand stepped on at 7:50
+       * with sixty-three men and four towers at home; benedict's forty answered at the Shrine,
+       * which stands behind the throne, and not one of them got within three hundred of it in
+       * five minutes — they died on the court's guns in thirties and were replaced, and the
+       * walk finished at 96%. An army that cannot reach a Shrine behind a fortified court can
+       * still reach the Gates that PAY for the walk: the drain comes before the muster, so a
+       * walker whose springs are razed stops mustering and his court empties — which is
+       * exactly how the player stopped Brand in the chronicle that started all this. So the
+       * answer goes for the walker's nearest OUTLYING Gate (beyond his throne's writ, one this
+       * heir has seen) while he has any, and for the Shrine once he has none. */
+      const answerAt = (race) => {
+        if (!race) return null;
+        /* an army plainly bigger than what it can see of the walker's goes straight for the
+         * Shrine; a smaller one starves him first */
+        if (v.army >= v.enemyArmy * 1.2 + 6) return race;
+        const W = global.World, wr = v.world;
+        let best = null, bd = Infinity;
+        for (const s of wr.map.sites) {
+          if (s.kind !== 'node' || !v.pl.explored[s.id]) continue;
+          if (W.nodeHolder(wr, s) !== race.pi) continue;
+          const hc = W.cityOf(wr, race.pi);
+          if (hc && d2(s.x, s.y, hc.x, hc.y) < C.CLAIM.seat * C.CLAIM.seat) continue;
+          const d = d2(s.x, s.y, v.myCity.x, v.myCity.y);
+          if (d < bd) { bd = d; best = s; }
+        }
+        return best ? { x: best.x, y: best.y, pattern: race.pattern, pi: race.pi, gate: best.id } : race;
+      };
+      const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY ? answerAt(race) : null;
       /* ...AND THE OTHER HALF OF IT: A WALKER GUARDS HIS OWN SHRINE. The answer above was
        * measured on its own first, and it was too good: the banner reached the burning Shrine
        * on 95% of samples against 62% before it, and brand — the one heir whose plan is dig,
@@ -1828,10 +1866,14 @@
          * is out to grow */
         const t = troubleAt(v, v.myCity);
         if (t && t !== v.myCity) guard = { x: t.x, y: t.y, id: 'g' + t.id };
-        else if (armyIdle && v.army >= RAID_MEN) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
+        /* idle with eight, or TWICE that with anything short of an assault: brand sat at home
+         * with a hundred men and an income of seven for ten minutes while his errand wanted a
+         * spring the rival had already taken (the chronicle of 2026-08-19, seed 1443391195) */
+        else if ((armyIdle && v.army >= RAID_MEN) || v.army >= RAID_MEN * 2) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
       }
       const aim = answer || myShrine || guard || raid || post;
-      if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id });
+      if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, free, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id,
+                                                                raidPick: (raidAt(v, (h) => heldOff(v, h)) || {}).id, trouble: (troubleAt(v, v.myCity) || {}).id, stray: !!stray });
       if (aim) {
         const aimId = aim === post ? post.id : aim.id;
         if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80 || aimed.id !== aimId) {

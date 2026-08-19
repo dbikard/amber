@@ -837,3 +837,26 @@ forty seconds and to the rival's Gate when every spring beyond his writ was the 
 87% — the drift the designer's option A already accepted, now wider: raiding armies answer walks
 less, and the heirs' answer to a walk is the next job; convergence greedy 13.7m/0 timeouts; ladder
 `corwin, bleys, julian, benedict, brand`.
+
+### THE ANSWER TO A WALK (2026-08-19)
+
+The designer: "do the answer to a walk". Traced (benedict v brand, seed 1000): brand stepped on at
+7:50 with 63 men and four towers, benedict's 40 answered at the Shrine behind the throne and not
+one got within 300 of it in five minutes — they died in thirties on the court's guns and were
+replaced, and the walk finished at 96%. Seed 7: benedict's whole army (92 men, goal at the Shrine)
+stood at HOME for ninety seconds — his own thirty-eight-unit wall stub across the muster ground,
+raised short of essence, had jammed them between the hall, the Seat and the stone (the centroid
+did not move; with the stub removed it marched 250 units in ten seconds). So: `spanFor` raises
+no run under `WALL.gateMin + 16`; the answer goes out at the walk's first tick (`WALK_ANSWER`
+10 → 1); and `answerAt` sends a smaller army for the walker's outlying Gates (starve him — the
+drain comes before the muster) and a plainly bigger one for the Shrine. Referee: mirrors 65/55
+(benedict 2 timeouts), gradient 95/70/75, contested share 87% → 90% — NOT inside the band and not
+moved by any of it: when the walker is the bigger army nothing an equal or smaller one aims at
+stops him inside five minutes. The levers left are the walk's length (`AMBER_WALKRATE` added to
+`shrine.rate` for the referee; 0.26 measured next) and where a Shrine may stand.
+Also from a third chronicle (brand at PRINCE, seed 1443391195, the player won by the Pattern at
+17:47): brand's doctrine never attacks — "leave him alone and he simply wins" — and with his
+Gates raided and every free spring taken he sat at home with a hundred men and an income of
+seven for ten minutes (`armyIdle` was false for a gate errand to a spring the rival held); a
+raid now goes out with twice `RAID_MEN` whatever errand stands. Traced against greedy on that
+seed: raids at 8:00, a guard at 9:00, then a walk won at 14:17.

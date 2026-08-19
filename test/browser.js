@@ -5423,7 +5423,9 @@ async function match(browser, base, renderer) {
     ok('...and the host himself is not watching', !g1.watching && !g1.hudWatching);
     const snap1 = await pg.evaluate(async () => {
       window.__sent.length = 0;
-      await new Promise((r) => setTimeout(r, 400));
+      /* the host serves one guest a slot; under a loaded box 400ms gave one snapshot to one seat
+       * and none to the other — a second is several each */
+      await new Promise((r) => setTimeout(r, 1000));
       const to1 = window.__sent.filter((m) => m.t === 'snap' && m.to === 1);
       const to2 = window.__sent.filter((m) => m.t === 'snap' && m.to === 2);
       const w = window.Game.game.world;

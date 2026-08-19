@@ -646,7 +646,9 @@
                  * what he had paid for. At 0.035 the lines fade slower than they are drawn, so
                  * committing and then defending is a plan rather than a waste. That rewards
                  * holding the ground you walk from, which is the shape the walk should have. */
-                drain: [22], rate: [0.32], decay: 0.035, breakLoss: 22,
+                /* `AMBER_WALKRATE` is the referee's knob for the walk's length — the lever the
+                 * contested-share band turns on (see DESIGN_PRINCIPLES) — and nothing else reads it */
+                drain: [22], rate: [(typeof process !== 'undefined' && process.env && +process.env.AMBER_WALKRATE) || 0.32], decay: 0.035, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it CANNOT be called off, and it is paid before your halls are — a walker who cannot carry the drain musters nobody.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'wall', 'barracks', 'tower', 'spire', 'siege', 'shrine'];

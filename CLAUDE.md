@@ -473,6 +473,19 @@ was built, measured and REJECTED: the Pattern decided 97% of contested matches w
 (target 50, tolerate 25-75); it stays behind `AMBER_WALKHOLD=1` for the referee.
 (→ LEDGER: A WALKER FORTIFIES FIRST)
 
+**THE ANSWER TO A WALK GOES OUT AT ONCE, AND GOES FOR THE WALKER'S GATES WHEN IT IS THE
+SMALLER ARMY** (ai.js `answerAt`; `WALK_ANSWER` 1, was 10). Measured: an answering army that
+could not reach a Shrine behind a fortified court died on the court's guns in thirties; a
+smaller army starves the walker instead (his outlying Gates pay for the walk, and the drain
+comes before the muster), a plainly bigger one goes straight for the Shrine. **AND AN HEIR
+RAISES NO STUB**: `spanFor` refuses a run under `WALL.gateMin + 16` — a shorter run has no
+gateway and bars its OWNER; benedict's thirty-eight-unit piece across his own muster ground
+jammed ninety men at home for the rest of a match (measured, seed 7). The contested Pattern
+share did not come back inside the band for any of it (90%): a fortified, funded walker with
+an army at home is not stopped by an equal army in five minutes, whatever it aims at; the
+levers left are the walk's LENGTH (`AMBER_WALKRATE`, the referee's knob on `shrine.rate`) and
+where a Shrine may stand — the designer's to pull. (→ LEDGER: THE ANSWER TO A WALK)
+
 **AN IDLE ARMY ANSWERS A RAIDED WORK, AND RAIDS IN KIND** (ai.js `troubleAt`/`raidAt` in
 `decide`; from a second chronicle at PRINCE, 2026-08-19: the player's raid company razed four of
 julian's Gates in four minutes, julian's war body stood at home throughout and never raided
@@ -480,8 +493,10 @@ back, and he ended with an income of 7 and three men). On a board as in a war: a
 finished work of his beyond the court takes the war body there (outranking an errand — the Gate
 under attack IS the economy), and an army of `RAID_MEN` (8) or more with nothing of his touched
 and nothing but home, the choke or a crew-only errand to go to marches on the rival's nearest
-outlying Gate — never one under his throne's guns (that is the assault), never one the footing's
-`hold` covers. Coordinate banners through the same `aimed` memo as a walk's answer.
+outlying Gate — or with twice `RAID_MEN` whatever errand stands (brand sat at home with a hundred
+men and an income of seven while his errand wanted a spring the rival had taken: the chronicle of
+seed 1443391195) — never one under his throne's guns (that is the assault), never one the
+footing's `hold` covers. Coordinate banners through the same `aimed` memo as a walk's answer.
 
 **A MOMENT SAYS WHERE** (record.js): the chronicle wrote "the enemy is inside your city" for
 every `hurtcity`, a Gate on a spring four hundred out included (reported from play: the enemy

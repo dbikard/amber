@@ -9662,6 +9662,66 @@ suite('an idle army answers a raided work, and raids in kind');
   ok('an idle army of eight or more goes for it', raided != null, raided == null ? 'the banner never went to the rival Gate' : `at ${raided.toFixed(0)}s`);
 }
 
+/* ---------------- THE ANSWER TO A WALK: HIS GATES FIRST, THE SHRINE WHEN THEY ARE GONE ----------------
+ * Measured (2026-08-19, benedict against brand on seed 1000): the answerer's forty men died on
+ * the walker's court in thirties without one of them reaching a Shrine behind the throne. A
+ * smaller army starves the walker — his outlying Gates pay for the walk — and a plainly bigger
+ * one goes straight for the Shrine; and the answer goes out at the FIRST tick of a walk, not
+ * at ten per cent. And AN HEIR RAISES NO STUB: a run under WALL.gateMin has no gateway and
+ * bars its owner, and benedict's own thirty-eight-unit piece jammed ninety men at home. */
+suite('the answer to a walk: his gates first, the shrine when they are gone');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const me = w.players[0], them = w.players[1], c0 = World.cityOf(w, 0), c1 = World.cityOf(w, 1);
+  for (const s of w.map.sites) me.explored[s.id] = { kind: s.kind };
+  /* the rival walks: a Shrine behind his throne, on the lines from the first tick */
+  const sd = C.BUILDINGS.shrine;
+  const shrine = { id: w.nextId++, bt: 'shrine', level: 1, x: c1.x + 120, y: c1.y, cd: 0, raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp, lastHurt: -99, node: -1, co: 0 };
+  them.buildings.push(shrine);
+  World.applyCommand(w, 1, { c: 'walk', on: true });
+  /* and holds a Gate on an outlying spring */
+  const gd = C.BUILDINGS.gate;
+  const sp = w.map.sites.filter((s) => s.kind === 'node' && Math.hypot(s.x - c1.x, s.y - c1.y) > C.CLAIM.seat + 20 && Math.hypot(s.x - c0.x, s.y - c0.y) > C.CLAIM.seat + 20)
+    .sort((a, b) => Math.hypot(a.x - c0.x, a.y - c0.y) - Math.hypot(b.x - c0.x, b.y - c0.y))[0];
+  them.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: sp.x + 30, y: sp.y, cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: sp.id, co: 0 });
+  for (const p of w.players) p.musterPaused = true;
+  /* a SMALL answering army — twelve — against twenty of his in sight of them at his court */
+  for (let i = 0; i < 12; i++) manAt(w, 0, 'soldier', c0.x + 40 + (i % 4) * 14, c0.y + 30 + ((i / 4) | 0) * 14);
+  for (let i = 0; i < 20; i++) manAt(w, 1, 'soldier', c1.x + 40 + (i % 5) * 14, c1.y + 30 + ((i / 5) | 0) * 14);
+  me.essence = 0;
+  const bot = AI.make('benedict', {});
+  let first = null;
+  for (let i = 0; i < 30 * 20 && !first; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 0, (cmd) => { if (cmd.c === 'banner' && cmd.walk && !first) first = { x: cmd.x, y: cmd.y, t: w.t }; return World.applyCommand(w, 0, cmd); }, C.SIM_DT, null);
+  }
+  ok('the answer goes out inside the first seconds of the walk', !!first && first.t < 15 && w.players[1].pattern < 10, first ? `at ${first.t.toFixed(1)}s, pattern ${w.players[1].pattern.toFixed(1)}` : 'no answer');
+  ok('...and a small army goes for the walker\'s outlying Gate, not his Shrine', !!first && Math.hypot(first.x - sp.x, first.y - sp.y) < 60,
+     first ? `aimed ${Math.round(first.x)},${Math.round(first.y)}; gate ${Math.round(sp.x)},${Math.round(sp.y)}; shrine ${Math.round(shrine.x)},${Math.round(shrine.y)}` : '');
+  /* a plainly bigger one goes for the Shrine itself */
+  for (let i = 0; i < 40; i++) manAt(w, 0, 'soldier', c0.x + 40 + (i % 8) * 14, c0.y + 90 + ((i / 8) | 0) * 14);
+  const bot2 = AI.make('benedict', {});
+  let big = null;
+  for (let i = 0; i < 30 * 20 && !big; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot2.step(w, 0, (cmd) => { if (cmd.c === 'banner' && cmd.walk && !big) big = { x: cmd.x, y: cmd.y }; return World.applyCommand(w, 0, cmd); }, C.SIM_DT, null);
+  }
+  ok('...while a plainly bigger army goes straight for the Shrine', !!big && Math.hypot(big.x - shrine.x, big.y - shrine.y) < 60,
+     big ? `aimed ${Math.round(big.x)},${Math.round(big.y)}` : 'no answer');
+  /* no stub: an heir short of essence under threat raises no run shorter than a gateway */
+  const w3 = World.createWorld(7, 2); w3.chaosNext = 1e9;
+  const p3 = w3.players[0], c3 = World.cityOf(w3, 0);
+  for (let i = 0; i < 4; i++) { const u = manAt(w3, 1, 'soldier', c3.x + 250 + i * 12, c3.y + 250); u.hp = u.maxHp = 1e5; u.dmg = 0; }
+  const bot3 = AI.make('julian', {});
+  for (let i = 0; i < 30 * 240; i++) {
+    p3.essence = Math.min(p3.essence, C.BUILDINGS.wall.cost * 0.4 + 5);   // never enough for a full unit of wall
+    World.update(w3, C.SIM_DT); w3.events.length = 0;
+    bot3.step(w3, 0, (cmd) => World.applyCommand(w3, 0, cmd), C.SIM_DT, null);
+  }
+  const runs = p3.buildings.filter((b) => b.x2 != null).map((b) => Math.round(Math.hypot(b.x2 - b.x, b.y2 - b.y)));
+  ok('an heir raises no run shorter than a gateway', runs.every((L) => L >= C.WALL.gateMin), runs.length ? `runs of ${runs.join(', ')}` : 'no run raised');
+}
+
 /* ---------------- A WALKER FORTIFIES FIRST ----------------
  * From a chronicle at PRINCE (2026-08-19): Brand stepped onto the Pattern at 3:57 with a Shrine
  * and nothing beside it, sent his army at the player's court in the same breath, lost it under
