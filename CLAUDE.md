@@ -67,9 +67,16 @@ in order.
 - Fixed timestep `SIM_DT = 1/30`; browser uses an accumulator; `sim.js` steps the same dt.
   Seeded RNG (`world.rng`) — deterministic replays/balance runs (netcode does NOT rely on it).
 - Open world: `CONST.MAP` is 2000×2400 and units and works carry real `x`/`y` on it. The land
-  is noise, not a template — asymmetric on purpose (a mirrored world tells you where the rival
-  stands), with fairness *chosen* by scoring candidate Seat pairs (`js/worldgen.js`). A guest's
-  renderer mirrors nothing: its camera simply starts over its own Seat (`js/render3d.js`).
+  is noise, not a template — but what stands on it is dealt by QUARTER (the designer's rule,
+  2026-08-19): the Seats in the corners (two heirs on a diagonal, rerolled rather than seated
+  along one edge; three or four in corners of their own, `C.WORLD.cornerBox` from one and never
+  nearer the edge than `inland`), and `C.WORLD.perQuarter` (two) springs in every quarter, the
+  starting springs among them — each Seat's own at arm's length with a Gate ring, the rest
+  outside every writ, so a Seat opens with exactly one spring it can draw on. Fairness is what
+  is left to choose: the room around the corner Seats (`js/worldgen.js` `placeCities`,
+  `placeNodes`; the old scatter-and-score is gone, and worldgen runs in ~10ms against 60-100).
+  A guest's renderer mirrors nothing: its camera simply starts over its own Seat
+  (`js/render3d.js`).
 - `world.events` is an append-only queue for the renderer/UI (shots, deaths, rifts, alerts);
   the sim never reads it. Consumers drain it each frame.
 - Thirteen commands, all validated in `applyCommand(world, playerIdx, cmd)`. None carries a

@@ -693,3 +693,33 @@ greedy is 8-8 med 17.9m [castle:16] both WITH the home post and with it switched
 difference is seed noise. The ladder re-pasted `corwin, julian, brand, bleys, benedict`: corwin,
 the gun heir (Cannon Towers and Bombards by doctrine), fell from 7 wins to 4 — the price of the
 designer's call, and he was already the first rung; bleys rose 11 → 15.
+
+### THE BOARD IS FOUR QUARTERS (2026-08-19)
+
+The designer's rule for a skirmish: "starting positions should be in corners with springs equally
+distributed in all 4 quarters of the map (2 springs per quarter, starting springs included)".
+Before: fourteen springs scattered over the landmass with a separation rule, and the Seats chosen
+by scoring hundreds of candidate pairs on what each side had in reach (`maxSkew` 6) — a search
+that could only narrow a skewed scatter. After: `placeCities` seats each heir in a corner
+(`cornerBox` 520 from it, `inland` 300 from the edge; two heirs on a DIAGONAL or the world is
+rerolled — a fallback to the adjacent pairs put two heirs 880 apart on six seeds in a hundred and
+twenty, measured; three and four take corners of their own), the fairest set by the ROOM around
+them; then `placeNodes` deals exactly `perQuarter` (2) springs a quarter — a Seat's own first, at
+arm's length with a Gate ring, the rest at random outside every writ. Measured over 600 builds
+(200 seeds × 2/3/4 heirs): 0 failures, mean extra attempts 0.2/0.3/1.6, every quarter 2 springs,
+every Seat in its corner, two heirs ≥ 1803 apart, three/four ≥ 980; worldgen fell from 60-100ms
+to 8-14ms because the scatter-and-score is gone. Twelve headless rigs had assumed the old
+geometry (phantom crews pushed 520 PAST a corner Seat stood off the map; a flag 380 "into open
+country" stood on the edge of the world; a sweep's first legal run lay beside the opening hall
+or inside the Seat's own ground; a run of exactly one unit measured 150.00000002 along a new
+angle and rounded to two crews — fixed in the sim with a hair of tolerance under the ceiling)
+and were made to ask their questions toward the middle of the board.
+
+`node sim.js` after (against the 758fb49 numbers before): mirrors benedict 10-10 → 8-12, bleys
+13-7 → 9-10; gradient benedict/random 17-1 → 16-3 (80%, a hair under the ">85" the principles
+name, with one timeout), benedict/greedy 17-3 → 17-3, greedy/random 20-0 → 19-1; contested
+Pattern share 72% → 70%; convergence greedy mirror `med 24.5m [castle:6 timeout:2]` → `med 35.4m
+[castle:6 timeout:2]` (the diagonal is a longer road for an army that never walks), julian mirror
+14.2m → 14.3m. The LADDER turned over — `bleys, corwin, julian, benedict, brand` — the walkers
+(brand 11 → 17) gained what the marchers (bleys 15 → 7) lost on a board where the Seats stand
+further apart than the old pairs did; re-pasted, not adjusted.

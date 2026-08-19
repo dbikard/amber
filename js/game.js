@@ -27,8 +27,10 @@
    * the towers' (corwin, the gun heir, fell further) and the home banner moved to the walls
    * (bleys, who builds under fire, rose). It orders the skirmish rivals list (ui.js); the
    * campaign itself is CHAPTERS now (campaign.js), and the rung counter that used to walk this
-   * list is gone with them. */
-  const LADDER = ['corwin', 'julian', 'brand', 'bleys', 'benedict'];
+   * list is gone with them. Re-pasted again the same day for the CORNER boards (the Seats in
+   * the corners, two springs a quarter): the diagonal is longer than the old pairs stood
+   * apart, and the walkers — brand first — gained what the marchers lost. */
+  const LADDER = ['bleys', 'corwin', 'julian', 'benedict', 'brand'];
 
   const game = {
     mode: null, world: null, viewer: 0, bot: null,

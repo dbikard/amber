@@ -190,25 +190,77 @@
     return room;
   }
 
-  /* Springs of Shadow, scattered over the whole landmass with a minimum separation so no
-   * corner of the world is worth ignoring. */
-  function placeNodes(land, reach, rng) {
+  /* ---------------- THE BOARD IS FOUR QUARTERS ----------------
+   * The designer's rule for a skirmish (2026-08-19): the Seats stand in the CORNERS, and the
+   * springs are dealt EQUALLY — `C.WORLD.perQuarter` (two) in every quarter of the map, the
+   * starting springs among them. Before this the springs were a scatter over the whole
+   * landmass and the Seats a fairness search over candidate pairs; the scatter could stack
+   * five springs on one side and the search could only narrow that. Symmetry by construction
+   * instead of by scoring: every quarter holds the same ground, whoever opens in it. */
+  const quarterOf = (land, x, y) => (x < land.W * land.cw / 2 ? 0 : 1) + (y < land.H * land.cw / 2 ? 0 : 2);
+  const CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]];   // quarter k: corner (qx, qy), k = qx + 2*qy
+  /* a spring wants level, open ground that will bear a Gate beside it */
+  const springRoom = (land, i) => roomAt(land, i, 110) > 24;
+  /* Springs of Shadow: two a quarter. A quarter with a Seat in it gets that Seat's HOME spring
+   * first — at arm's length (springNear..springFar), with a Gate ring a crew can raise on
+   * (`homeGateOn`), inside its own quarter — and the rest are dealt at random inside the
+   * quarter with the separation rule, outside every Seat's writ (CLAIM.seat), so a Seat opens
+   * with EXACTLY one spring it can draw on and the second is something it goes and takes. */
+  function placeNodes(land, reach, rng, seats) {
     const { W, H, cw, terra } = land, n = W * H;
-    const cand = [];
-    for (let i = 0; i < n; i++)
-      if (reach.seen[i] && G.BUILDABLE[terra[i]] && roomAt(land, i, 110) > 24) cand.push(i);
-    /* shuffle, then take greedily with a separation rule */
-    for (let i = cand.length - 1; i > 0; i--) {
-      const j = Math.floor(rng.next() * (i + 1));
-      const t = cand[i]; cand[i] = cand[j]; cand[j] = t;
+    const per = C.WORLD.perQuarter, min2 = C.WORLD.nodeGap * C.WORLD.nodeGap;
+    const cellAt = (x, y) => {
+      const gx = (x / cw) | 0, gy = (y / cw) | 0;
+      if (gx < 0 || gy < 0 || gx >= W || gy >= H) return -1;
+      return gy * W + gx;
+    };
+    const buildableAt = (x, y) => { const ci = cellAt(x, y); return ci >= 0 && !!G.BUILDABLE[terra[ci]]; };
+    const out = [];
+    const clear = (p) => out.every((q) => (p.x - q.x) ** 2 + (p.y - q.y) ** 2 >= min2) &&
+      (seats || []).every((sp) => (p.x - sp.x) ** 2 + (p.y - sp.y) ** 2 > C.CLAIM.seat * C.CLAIM.seat);
+    /* the home springs first, one per Seat */
+    for (const sp of seats || []) {
+      const k = quarterOf(land, sp.x, sp.y);
+      let home = null;
+      const a0 = rng.next() * Math.PI * 2;
+      for (let rr = C.WORLD.springNear + 20; rr <= C.WORLD.springFar - 20 && !home; rr += 30)
+        for (let ai = 0; ai < 24 && !home; ai++) {
+          const th = a0 + ai / 24 * Math.PI * 2;
+          const x = sp.x + Math.cos(th) * rr, y = sp.y + Math.sin(th) * rr;
+          const ci = cellAt(x, y);
+          if (ci < 0 || !reach.seen[ci] || !G.BUILDABLE[terra[ci]] || !springRoom(land, ci)) continue;
+          const q = cellXY(land, ci);
+          if (quarterOf(land, q.x, q.y) !== k) continue;
+          if (out.some((o) => (q.x - o.x) ** 2 + (q.y - o.y) ** 2 < min2)) continue;
+          /* no other Seat may have it in ITS writ either */
+          if ((seats || []).some((o) => o !== sp && (q.x - o.x) ** 2 + (q.y - o.y) ** 2 <= C.CLAIM.seat * C.CLAIM.seat)) continue;
+          if (!G.homeGateOn(sp, [q], buildableAt)) continue;
+          home = q;
+        }
+      if (!home) return null;
+      out.push(home);
     }
-    const out = [], min2 = C.WORLD.nodeGap * C.WORLD.nodeGap;
-    for (const i of cand) {
-      if (out.length >= C.WORLD.nodes) break;
+    /* then the rest of every quarter, at random with the separation rule */
+    const cand = [[], [], [], []];
+    for (let i = 0; i < n; i++) {
+      if (!reach.seen[i] || !G.BUILDABLE[terra[i]]) continue;
       const p = cellXY(land, i);
-      let ok = true;
-      for (const q of out) if ((p.x - q.x) ** 2 + (p.y - q.y) ** 2 < min2) { ok = false; break; }
-      if (ok) out.push(p);
+      cand[quarterOf(land, p.x, p.y)].push(i);
+    }
+    for (let k = 0; k < 4; k++) {
+      const list = cand[k];
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(rng.next() * (i + 1));
+        const t = list[i]; list[i] = list[j]; list[j] = t;
+      }
+      let have = out.filter((q) => quarterOf(land, q.x, q.y) === k).length;
+      for (const i of list) {
+        if (have >= per) break;
+        const p = cellXY(land, i);
+        if (!clear(p) || !springRoom(land, i)) continue;
+        out.push(p); have++;
+      }
+      if (have < per) return null;
     }
     return out;
   }
@@ -258,114 +310,66 @@
     return null;
   };
 
-  function placeCities(land, reach, nodes, rng, want) {
+  /* ---------------- the Seats stand in the corners ----------------
+   * One per corner, inside `C.WORLD.cornerBox` of it and never nearer the edge than `inland`.
+   * Two heirs take a DIAGONAL (the far pair; the adjacent pairs only if no diagonal will bear
+   * two Seats), three take three corners, four take all four. Fairness is what is left to
+   * choose: every quarter holds the same springs by construction, so the Seats are picked for
+   * the ROOM around them — the set whose buildable ground differs least — and the pair or
+   * triple of corners is the one that is fairest first and farthest second. `skew` keeps its
+   * old reading (room spread over 60) so `maxSkew` still rejects a lopsided world. */
+  function placeCities(land, reach, rng, want) {
     const { W, H, cw, terra } = land, n = W * H;
-    const seats = [];
+    const mw = W * cw, mh = H * cw, box = C.WORLD.cornerBox;
+    const byCorner = [[], [], [], []];
     for (let i = 0; i < n; i++) {
       if (!reach.seen[i] || !G.BUILDABLE[terra[i]]) continue;
       const p = cellXY(land, i);
-      /* inland: there must be world on every side to explore */
-      if (p.x < C.WORLD.inland || p.y < C.WORLD.inland ||
-          p.x > W * cw - C.WORLD.inland || p.y > H * cw - C.WORLD.inland) continue;
+      if (p.x < C.WORLD.inland || p.y < C.WORLD.inland || p.x > mw - C.WORLD.inland || p.y > mh - C.WORLD.inland) continue;
+      const qx = p.x < mw / 2 ? 0 : 1, qy = p.y < mh / 2 ? 0 : 1;
+      const dx = qx ? mw - p.x : p.x, dy = qy ? mh - p.y : p.y;
+      if (dx > box || dy > box) continue;
       if (roomAt(land, i, C.CITY.r + 60) < C.WORLD.seatRoom) continue;
-      seats.push(i);
+      byCorner[qx + 2 * qy].push(i);
     }
-    if (seats.length < want) return null;
-
-    const near = (p, r) => {
-      let k = 0, r2 = r * r;
-      for (const q of nodes) if ((p.x - q.x) ** 2 + (p.y - q.y) ** 2 < r2) k++;
-      return k;
-    };
-    /* A spring inside your writ is only worth having if you can actually RAISE A GATE on it:
-     * the Gate must stand within reach of the spring, clear of the Seat's own ground, inside
-     * the writ, and on land that bears a work. A spring lying in the castle's lap counts for
-     * nothing — you can see it and never use it — so it must not count toward fairness either.
-     * Cached per candidate cell: this runs inside the scoring loop. */
-    const cellAt = (x, y) => {
-      const gx = (x / cw) | 0, gy = (y / cw) | 0;
-      if (gx < 0 || gy < 0 || gx >= W || gy >= H) return -1;
-      return gy * W + gx;
-    };
-    const usableCache = new Map();
-    const usable = (i, p) => {
-      if (usableCache.has(i)) return usableCache.get(i);
-      let k = 0;
-      for (const q of nodes) {
-        const dq = Math.hypot(p.x - q.x, p.y - q.y);
-        /* Too close and it is no use: a spring in the castle's lap is cramped ground you can
-         * look at and barely build on, and it crowds the court. Too far and it is outside the
-         * writ you start with. It has to sit at arm's length. */
-        if (dq < C.WORLD.springNear) return (usableCache.set(i, -1), -1);
-        if (dq > C.WORLD.springFar) continue;
-        let ok = false;
-        for (let rr = 18; rr <= C.NODE.r - 8 && !ok; rr += 22)
-          for (let a = 0; a < 16 && !ok; a++) {
-            const th = a / 16 * Math.PI * 2;
-            const gx = q.x + Math.cos(th) * rr, gy = q.y + Math.sin(th) * rr;
-            const ds = Math.hypot(gx - p.x, gy - p.y);
-            if (ds <= C.CITY.seatR + C.BUILD.foot || ds >= C.CLAIM.seat) continue;
-            const ci = cellAt(gx, gy);
-            if (ci >= 0 && G.BUILDABLE[terra[ci]]) ok = true;
-          }
-        if (ok) k++;
+    /* a few dozen candidates a corner, each with the room it would have */
+    const sample = byCorner.map((list) => {
+      const out = [];
+      for (let t = 0; t < 48 && list.length; t++) {
+        const i = list[Math.floor(rng.next() * list.length)];
+        if (out.some((o) => o.i === i)) continue;
+        out.push({ i, p: cellXY(land, i), room: roomAt(land, i, 460) });
       }
-      usableCache.set(i, k);
-      return k;
-    };
-    /* Four Seats cannot stand as far apart as two can on the same ground, so what counts as
-     * "far enough" scales with how many there are. */
-    const apart = C.WORLD.seatApart * (want > 2 ? C.WORLD.seatApartMulti : 1);
-    const apart2 = apart * apart;
-    /* the three things a Seat is judged on, and the one that disqualifies it outright */
-    /* EXACTLY ONE SPRING IN THE STARTING POSITION. Not "at least one": a Seat that opened
-     * with two usable springs began the match with twice the economy and twice the masons of
-     * one that opened with a single spring, and the fairness score could only ever narrow
-     * that, never close it. One each, and the second spring is something you go and take. */
-    const traits = (i, p) => {
-      const u = usable(i, p);
-      /* ONE SPRING IN THE WRIT, not merely one you could gate. A second spring sitting inside
-       * your claim that you cannot raise on is not "one spring in the starting position" — it
-       * is a spring, in your position, that the writ already covers and a rival cannot take
-       * from you. Both counts have to be one. */
-      if (u !== 1 || near(p, C.CLAIM.seat) !== 1) return null;
-      return [u, near(p, 900), roomAt(land, i, 460)];
-    };
-    /* the spring that spring IS, and the spot on its ring a Gate can stand on — the same
-     * search `usable` runs to count it, kept this time instead of thrown away.
-     * The search itself lives at module level (G.homeGateOn) because a board built by HAND
-     * has to answer the same question, and two copies of it would drift — with the drift
-     * showing up only as a realm that cannot open. */
-    placeCities.homeGate = (p) => G.homeGateOn(p, nodes, (x, y) => {
-      const ci = cellAt(x, y);
-      return ci >= 0 && !!G.BUILDABLE[terra[ci]];
+      return out;
     });
-    const spread = (xs) => Math.max(...xs) - Math.min(...xs);
+    /* TWO HEIRS TAKE A DIAGONAL, and nothing else: a world whose diagonals will not bear two
+     * Seats is rerolled (the caller tries another seed) rather than seating them along one
+     * edge — measured, a fallback to the adjacent pairs put two heirs 880 apart on six seeds
+     * in a hundred and twenty. Three take three corners, four take all four. */
+    const sets = want >= 4 ? [[0, 1, 2, 3]]
+               : want === 3 ? [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+               : [[0, 3], [1, 2]];
     let best = null;
-    for (let tries = 0; tries < 900; tries++) {
-      /* Grow a SET greedily from a random first Seat: each next one must stand clear of every
-       * Seat already chosen. Scoring whole sets is what makes four of them fair to each other
-       * rather than merely fair in pairs. */
-      const picked = [], pts = [], fs = [];
-      for (let guard = 0; picked.length < want && guard < 220; guard++) {
-        const i = seats[Math.floor(rng.next() * seats.length)];
-        if (picked.includes(i)) continue;
-        const p = cellXY(land, i);
-        if (pts.some((q) => (p.x - q.x) ** 2 + (p.y - q.y) ** 2 < apart2)) continue;
-        const f = traits(i, p);
-        if (!f) continue;
-        picked.push(i); pts.push(p); fs.push(f);
+    for (const set of sets) {
+      if (set.some((k) => !sample[k].length)) continue;
+      /* the fairest pick per corner: aim every corner at one target room, try each
+       * candidate's room of the first corner as the target, keep the narrowest spread */
+      let pick = null;
+      for (const t of sample[set[0]]) {
+        const chosen = set.map((k) => sample[k].reduce((b2, o) => (!b2 || Math.abs(o.room - t.room) < Math.abs(b2.room - t.room) ? o : b2), null));
+        const rooms = chosen.map((o) => o.room);
+        const skew = (Math.max(...rooms) - Math.min(...rooms)) / 60;
+        if (!pick || skew < pick.skew) pick = { chosen, skew };
       }
-      if (picked.length < want) continue;
-      /* fairness is the SPREAD across all of them, not the gap between two */
-      const skew = spread(fs.map((f) => f[0])) * 3 + spread(fs.map((f) => f[1]))
-                 + spread(fs.map((f) => f[2])) / 60;
+      if (!pick) continue;
+      const pts = pick.chosen.map((o) => o.p);
       let far = Infinity;
-      for (let a = 0; a < pts.length; a++)
-        for (let b = a + 1; b < pts.length; b++)
-          far = Math.min(far, Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y));
-      const score = skew * 10 - far / 260;              // fair first, far second
-      if (!best || score < best.score) best = { score, seats: picked, pts, skew, far };
+      for (let a2 = 0; a2 < pts.length; a2++)
+        for (let b2 = a2 + 1; b2 < pts.length; b2++)
+          far = Math.min(far, Math.hypot(pts[a2].x - pts[b2].x, pts[a2].y - pts[b2].y));
+      /* fair first, far second */
+      const score = pick.skew * 10 - far / 260;
+      if (!best || score < best.score) best = { score, seats: pick.chosen.map((o) => o.i), pts, skew: pick.skew, far, corners: set };
     }
     return best;
   }
@@ -381,11 +385,12 @@
       const reach = mainland(land);
       if (reach.count < land.W * land.H * C.WORLD.minLand) continue;
 
-      const nodes = placeNodes(land, reach, rng);
-      if (nodes.length < C.WORLD.nodesMin) continue;
-      const vants = placeVantages(land, reach, nodes, rng);
-      const seats = placeCities(land, reach, nodes, rng, want);
+      /* the Seats first — in the corners — then the springs dealt by quarter around them */
+      const seats = placeCities(land, reach, rng, want);
       if (!seats || seats.skew > C.WORLD.maxSkew) continue;
+      const nodes = placeNodes(land, reach, rng, seats.pts);
+      if (!nodes) continue;
+      const vants = placeVantages(land, reach, nodes, rng);
 
       /* sites: the Seats, then springs, then high ground */
       const sites = [];
@@ -399,10 +404,15 @@
       for (const p of vants) add(p.x, p.y, 'vantage');
       /* EVERY HEIR OPENS WITH A GATE ON HIS OWN SPRING. Worked out here, where the search
        * that proved the spring usable already lives, rather than re-derived in the sim. */
+      const buildableAt = (x, y) => {
+        const gx = (x / land.cw) | 0, gy = (y / land.cw) | 0;
+        return gx >= 0 && gy >= 0 && gx < land.W && gy < land.H && !!G.BUILDABLE[land.terra[gy * land.W + gx]];
+      };
       const homeGates = seats.pts.map((p) => {
-        const g = placeCities.homeGate(p);
+        const g = G.homeGateOn(p, nodes, buildableAt);
         return g ? { x: g.x, y: g.y, site: nodeSite[g.node] } : null;
       });
+      if (homeGates.some((g) => !g)) continue;
 
       /* the Seats stand on level, open ground whatever the noise said */
       for (const p of seats.pts) flatten(land, p);

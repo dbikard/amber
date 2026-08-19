@@ -18,6 +18,24 @@ touches no balance surface.
       seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
       holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
       (`{t:'hand', as}`) so the host can drive the guest's home court while he commands another.
+- [ ] **The Reach War should still have a FREE-FOR-ALL** (the designer, 2026-08-19). Sides
+      shipped as two banners (`REALM.setup` tidies to A and B; the setup screen and the LAN
+      lobby offer counts for two sides). A free-for-all is every contender his own side —
+      `sides = [[0],[1],[2],[3]]` — and the sim already reads sides generically (`World.lost`,
+      `won` by side, `refound`); what has to learn it is `REALM.setup` (allow N singleton sides),
+      the setup screen (a FREE-FOR-ALL toggle beside the counts), `lanSides` / `#lan-sides`
+      (a third column, or "everyone for himself"), and `warFooting` (no ally branch). The
+      coalition against a walker already works across any number of banners.
+- [ ] **The world's edges should be sea or mountains, never black** (the designer, 2026-08-19,
+      for boards AND countries): the rim of the noise (`CONST.WORLD.rim`, a soft falloff) should
+      resolve to COAST (water with a shoreline) or to a CRAG range, so the limit of the world
+      reads as a natural limit; and the renderer should draw a SKIRT beyond the map — the same
+      sea or the same mountains continuing out of reach — instead of the black ground the camera
+      sees past the edge today (`clampCam` already keeps the view inside the map, but the
+      pitched camera sees past the far edge). Worldgen: bias the rim cells toward `sea` on most
+      edges and `cliff` on some (per seed), keeping `mainland` / `inland` honest; renderer: a
+      ring of water or crag geometry around `worldG` in the base ground's colours, fog-patched
+      like everything else (`R.debugUnpatched` must stay empty).
 - [ ] **The council rows and the court card could carry each court's livery swatch**
       (`R.liveryCanvas` is ready for it) — the men and the Seat's flag say which court now
       (CLAUDE.md "AND THE MEN SAY WHICH COURT"); the roster does not yet.

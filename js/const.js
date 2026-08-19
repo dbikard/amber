@@ -236,11 +236,15 @@
     hill: 0.635,        // above this is high ground
     cliff: 0.755,       // …and above this, impassable crag
     minLand: 0.34,      // a world whose largest landmass is smaller than this is rerolled
-    nodes: 14, nodesMin: 9, nodeGap: 300, springNear: 200, springFar: 400, seatApartMulti: 0.62, springLevel: 58,     // springs: how many, and how far apart
+    /* springs: TWO A QUARTER (the starting springs among them), how far apart, and how far
+     * from a Seat its own spring stands; the Seats stand in the CORNERS, inside `cornerBox`
+     * of one and never nearer the edge than `inland` (the designer's rule, 2026-08-19) */
+    perQuarter: 2, nodeGap: 300, springNear: 200, springFar: 400, springLevel: 58,
+    cornerBox: 520,
     vantages: 8, vantGap: 240,
     inland: 300,        // a Seat may not stand closer than this to the edge of the world
     seatRoom: 300,      // buildable cells required around a Seat
-    seatApart: 1500,    // the two Seats must be at least this far apart
+    seatApart: 1500,    // two Seats on a diagonal are at least this far apart (a suite reads it)
     maxSkew: 6,         // reject a pairing whose two sides differ by more than this
     relief: 150         // world units of height between the lowest water and the highest crag
   };

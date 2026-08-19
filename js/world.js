@@ -552,7 +552,10 @@
    * cannot put two thirds of a crew on anything, and it is the integer that is rationed.
    * Rounding the first up to the second billed every run under WALL.unit as a full one. */
   const wallUnits = (len) => Math.max(0, len) / C.WALL.unit;
-  const wallCrews = (len) => Math.max(1, Math.ceil(wallUnits(len)));
+  /* a hair of tolerance under the ceiling: a run drawn to exactly one unit along a slanted
+   * line measures 150.00000002 by `hypot`, and that rounded up to a second crew — measured,
+   * the moment a rig's Seat moved and its line found a different angle */
+  const wallCrews = (len) => Math.max(1, Math.ceil(wallUnits(len) - 1e-6));
   /* ...AND A MEND IS WORKED BY HOWEVER MANY CREWS WENT TO IT. Raising a run needs one crew per
    * `WALL.unit` and there is no arguing with it — that is what caps the length you may start.
    * A BREACH IS NOT A NEW RUN: the stone is on the ground, the run is standing, and a realm

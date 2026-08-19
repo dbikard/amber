@@ -115,7 +115,10 @@ function wallRig(World, C, { seed = 20260810, crews = 8, runs = 1, len = 200, pl
   w.chaosNext = 1e9;                                  // no weather: this is a rig about stone
   const c = World.cityOf(w, 0), gd = C.BUILDINGS.gate;
   for (let i = 0; i < crews; i++)                     // a crew per Gate — see MASONS
-    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: c.x - 520 - i * 12, y: c.y - 520,
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1,
+                        /* toward the middle of the board: the Seats stand in corners, and a
+                         * Gate pushed 520 the other way stands off the map */
+                        x: c.x + (c.x < C.MAP.W / 2 ? 1 : -1) * (520 + i * 12), y: c.y + (c.y < C.MAP.H / 2 ? 1 : -1) * 520,
                         cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp,
                         lastHurt: -99, node: -1, co: 0 });
   const finish = () => {
@@ -129,6 +132,9 @@ function wallRig(World, C, { seed = 20260810, crews = 8, runs = 1, len = 200, pl
     for (let a = 0; a < 64 && !start; a++) {
       const th = a / 64 * Math.PI * 2;
       const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
+      /* well inside the world: a Seat stands in a corner now, and a curtain against the map's
+       * edge has a face nobody can stand on */
+      if (x < 140 || y < 140 || x + runs * len > C.MAP.W - 140 || y > C.MAP.H - 140) continue;
       let room = true;
       for (let k = 0; k < runs && room; k++)
         if (World.wallError(w, 0, x + k * len, y, x + (k + 1) * len, y)) room = false;

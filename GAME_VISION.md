@@ -50,10 +50,12 @@ rising cost, climbing is charged on top, and the handful of corridors any given 
 wherever the mountains and the water happened to leave them. Units march the land freely;
 fights happen where armies meet.
 
-- **Fairness is chosen, not mirrored.** A point-mirrored map tells you exactly where your
-  rival stands, and a hidden Seat cannot survive that. Hundreds of candidate Seat pairs are
-  scored on what each side actually has in reach — springs, buildable ground — and the least
-  skewed pair wins. The rival's Seat stays hidden until somebody lays eyes on it.
+- **The board is four quarters, and the Seats stand in the corners.** The land is noise, not
+  a template, but what is ON it is dealt evenly: two springs in every quarter of the map, the
+  starting springs among them, and each heir's Seat in a corner — two heirs on a diagonal,
+  three or four each in a corner of their own. What is still chosen is the ROOM: among the
+  corner positions the set whose buildable ground differs least. The rival's Seat is a known
+  quarter and an unknown spot until somebody lays eyes on it.
 - **Sites**: **springs of Shadow** (a Shadow Gate stands on one, and only there — the income,
   and the reason to fight) and **high places** (named hilltops). Chaos rifts tear open at
   both: the ground worth holding is the ground that costs something to hold.
