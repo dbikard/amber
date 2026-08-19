@@ -811,3 +811,17 @@ body {
 /* the one destructive card on a work's sheet, named for what it is */
 .card.demolish { border-color: #ff8a9655; }
 .card.demolish .c-name { color: #ffb3ba; }
+/* the LAN table's sides, in two columns: a chip per heir, a tap moves a human across */
+.ws-cols { display: flex; gap: 8px; width: 100%; }
+.ws-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+          padding: 8px; border: 1px solid #c9a44f55; border-radius: 10px; background: rgba(255,255,255,0.03); }
+.ws-col.foe { border-color: #ff8a9655; }
+.ws-col-title { font-size: 13px; letter-spacing: 2px; color: #ffe9a8; text-align: center; padding-bottom: 4px; border-bottom: 1px solid #c9a44f33; }
+.ws-col.foe .ws-col-title { color: #ffb3ba; }
+.ws-chip { font: inherit; font-size: 14px; color: #f3e6c8; background: rgba(201,164,79,0.12); border: 1px solid #c9a44f66; border-radius: 8px; padding: 6px 8px; text-align: center; }
+button.ws-chip { cursor: pointer; }
+.ws-chip.me { background: rgba(255,217,138,0.22); border-color: #ffd98a; }
+.ws-chip.bot { color: #bfb3a8; font-style: italic; border-style: dashed; }
+.ws-col-bots { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; }
+.ws-col-bots .ws-step { gap: 4px; }
+.ws-col .ws-who { font-size: 12px; text-align: center; }

@@ -3322,8 +3322,11 @@ async function match(browser, base, renderer) {
                cities: hw.cities.length };
     });
     ok('a guest dealt into a war knows he is in one', lanWar.war === true);
+    /* his court stands in a CORNER of the country now (the four heirs' do), and the camera is
+     * held so little of the screen looks past the edge — so it cannot be centred; the claim is
+     * that the opening aim is AT it, not at the far corner (8,721 units off, once) */
     ok('...and opens looking at his own court, not the far corner',
-       lanWar.miss >= 0 && lanWar.miss < 200, `${lanWar.miss} units off`);
+       lanWar.miss >= 0 && lanWar.miss < 1000, `${lanWar.miss} units off`);
     ok('...his memory of the land is cut to the COUNTRY, not to a board',
        !!lanWar.seen && lanWar.seen.spanX >= lanWar.mapW && lanWar.seen.spanY >= lanWar.mapH,
        lanWar.seen ? `${lanWar.seen.spanX}x${lanWar.seen.spanY} for a ${lanWar.mapW}x${lanWar.mapH} land`
@@ -5266,6 +5269,34 @@ async function match(browser, base, renderer) {
     ok('the lobby deals a free-for-all on one tap, and two sides back on the next',
        /v/.test(lanFfa.before) && /every one for himself/.test(lanFfa.during) && lanFfa.after === lanFfa.before,
        JSON.stringify(lanFfa));
+    /* TWO COLUMNS (the designer, 2026-08-19): each side lists who stands in it; a tap on a
+     * human's chip moves him to the other column, and each column adds or removes bots of its
+     * own. Seat 1 starts AGAINST the host; one tap brings him across, and the deal follows. */
+    const cols = await pg.evaluate(async () => {
+      const col = (k) => document.querySelector('#lan-cols .ws-col.' + k);
+      const chips = (k) => [...col(k).querySelectorAll('.ws-chip')].map((c) => c.textContent);
+      const before = { own: chips('own'), foe: chips('foe'), sides: JSON.stringify(window.Game.debugLanSides(2)) };
+      const chip = col('foe').querySelector('button.ws-chip[data-seat="1"]');
+      if (chip) chip.click();
+      await new Promise((r) => setTimeout(r, 50));
+      const moved = { own: chips('own'), foe: chips('foe'), sides: JSON.stringify(window.Game.debugLanSides(2)) };
+      /* a bot added to the enemy column, and the total still four at most */
+      const plus = [...col('foe').querySelectorAll('.ws-col-bots .mbtn')].find((b) => b.textContent === '+');
+      if (plus && !plus.disabled) plus.click();
+      await new Promise((r) => setTimeout(r, 50));
+      const botted = { foeBots: [...col('foe').querySelectorAll('.ws-chip.bot')].length, sides: JSON.stringify(window.Game.debugLanSides(2)) };
+      /* and back, so the rest of the page reads the lobby as it was */
+      const back = col('own').querySelector('button.ws-chip[data-seat="1"]'); if (back) back.click();
+      await new Promise((r) => setTimeout(r, 50));
+      const minus = [...col('foe').querySelectorAll('.ws-col-bots .mbtn')].find((b) => b.textContent === '−'); if (minus && !minus.disabled) minus.click();
+      await new Promise((r) => setTimeout(r, 50));
+      return { before, moved, botted, two: !!col('own') && !!col('foe') };
+    });
+    ok('the lobby is two columns, the host fixed to his own and seat 1 against him',
+       cols.two && cols.before.own.some((t) => /You/.test(t)) && cols.before.foe.some((t) => /⇄/.test(t)), JSON.stringify(cols.before));
+    ok('...a tap on his chip brings him across, and the deal follows',
+       cols.moved.own.some((t) => /⇄/.test(t)) && !cols.moved.foe.some((t) => /⇄/.test(t)) && /\[\[0,1\]/.test(cols.moved.sides), JSON.stringify(cols.moved));
+    ok('...and a bot is added to a column with its own +', cols.botted.foeBots >= 1, JSON.stringify(cols.botted));
     /* THE TAP ITSELF, and it is a real actionable click — a button that cannot be hit is not
      * offered however well it measures. Caught, because a throw here would take the whole
      * FILE's tally down with it: `report()` would never run, every suite above would go
@@ -5530,7 +5561,7 @@ async function match(browser, base, renderer) {
     /* generous against the ground-height correction and a court on a steep slope, and still
      * two orders of magnitude under the failure it is here to catch */
     ok('a country opens looking at your own court',
-       !opened.err && opened.miss < 200,
+       !opened.err && opened.miss < 1000,   // a corner court cannot be centred (the clamp), only aimed at
        opened.err || `${opened.miss} units off — centre ${opened.at}, court ${opened.city}`);
 
     /* ---- THE GROUND YOU STAND ON IS THE GROUND YOU SEE ----

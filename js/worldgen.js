@@ -806,10 +806,25 @@
         const seen = reachFlood(land, p.x, p.y, p.x, p.y, baseReach * baseReach, rivers);
         if (seen) for (let i = 0; i < zone.length; i++) if (seen[i]) zone[i] = 1;
       };
-      const picked = [];
+      /* ---- AMBER IN THE MIDDLE, THE FOUR HEIRS IN THE FOUR CORNERS (the designer, 2026-08-19) ----
+       * The first city is the candidate nearest the centre of the map — it will be AMBER, the
+       * Pattern's city — and the next four are the candidates nearest the four corners, each
+       * inside `cornerBox` of its corner; those four are the contenders' courts, seats 0..3 in
+       * the corner order top-left, top-right, bottom-left, bottom-right. Everything else is
+       * dealt by max-min between them under the connectivity law. A corner with no candidate
+       * inside its box is a country rerolled. */
+      const mw = W * cw, mh = H * cw;
+      const nearestCand = (x, y, maxD) => {
+        let best = null, bd = maxD * maxD;
+        for (const q of cand) { const d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd) { bd = d; best = q; } }
+        return best;
+      };
+      const centre = nearestCand(mw / 2, mh / 2, RW.centreBox || 1600);
+      const corners = [[0, 0], [mw, 0], [0, mh], [mw, mh]].map(([cx2, cy2]) => nearestCand(cx2, cy2, RW.cornerBox || 2400));
+      if (!centre || corners.some((c2) => !c2) || new Set(corners.concat([centre])).size !== 5) { why.cand++; continue; }
+      const picked = [centre].concat(corners);
       const min2 = RW.spacing * RW.spacing;
-      picked.push(cand[Math.floor(rng.next() * cand.length)]);
-      admit(picked[0]);
+      for (const p of picked) admit(p);
       while (picked.length < RW.cities) {
         let best = null, bd = -1;
         for (const q of cand) {
@@ -975,17 +990,21 @@
       /* a city with nobody in reach — or a CLUSTER out of everyone else's — commands further
        * until the country is one. The flattening can still cut what placement joined, which
        * is why this backstop exists beside the placement law. */
+      /* EVERY CITY REACHES AT LEAST TWO OTHERS (the designer, 2026-08-19): a court with one
+       * neighbour is a cul-de-sac — one road in, one way to be pressed, nobody to come to its
+       * aid — so the reach grows until two are in it, as it grew for one */
+      const lonely = (l) => l.length < (RW.minNbrs || 2);
       for (let pass = 0; pass < RW.growPasses; pass++) {
         const { comp, n } = components();
-        if (n === 1 && !nbrs.some((l) => !l.length)) break;
+        if (n === 1 && !nbrs.some(lonely)) break;
         const size = new Array(n).fill(0);
         for (let a = 0; a < picked.length; a++) size[comp[a]]++;
         const biggest = size.indexOf(Math.max(...size));
         for (let a = 0; a < picked.length; a++)
-          if (comp[a] !== biggest || !nbrs[a].length) reaches[a] *= RW.growReach;
+          if (comp[a] !== biggest || lonely(nbrs[a])) reaches[a] *= RW.growReach;
         linkUp();
       }
-      if (nbrs.some((l) => !l.length)) { why.mute++; continue; }   // a mute city cannot play
+      if (nbrs.some(lonely)) { why.mute++; continue; }   // a mute city cannot play
       if (components().n !== 1) { why.cut++; continue; }
 
       /* ---- the Pattern's city is the graph's centre: the endgame converges on it ---- */
@@ -999,18 +1018,9 @@
         }
         return d;
       };
-      let pattern = 0, bestSum = Infinity;
-      for (let a = 0; a < picked.length; a++) {
-        const d = hops(a);
-        let sum = 0;
-        for (let b = 0; b < picked.length; b++) sum += d[b];
-        if (sum < bestSum) { bestSum = sum; pattern = a; }
-      }
+      /* AMBER is the city in the middle of the map — `picked[0]` by construction */
+      const pattern = 0;
 
-      /* ---- the player's start: the strict bar, far from the Pattern ----
-       * Fairness is the PLAYER'S start — lords may be uneven, that is what minors are. His
-       * city holds the board's own opening rule (exactly one usable writ spring, a Gate spot
-       * on it) and at least two roads out, or the war opens as a siege. */
       const cellAt = (x, y) => {
         const gx = (x / cw) | 0, gy = (y / cw) | 0;
         if (gx < 0 || gy < 0 || gx >= W || gy >= H) return -1;
@@ -1021,21 +1031,19 @@
         return ci >= 0 && !!G.BUILDABLE[land.terra[ci]];
       };
       const patternHops = hops(pattern);
-      const order = picked.map((p, i) => i).filter((i) => i !== pattern)
-        .sort((a, b) => patternHops[b] - patternHops[a]);
-      let player = -1;
-      for (const i of order) {
+      /* the four corner courts are the contenders' — every one of them must be able to OPEN
+       * (one spring in its writ with a Gate ring) and reach two others, or the country is
+       * rerolled; the rest follow by distance in hops from AMBER, furthest first */
+      const cornerIdx = [1, 2, 3, 4];
+      const opens = (i) => {
         const p = picked[i];
         const writ = nodes.filter((q) => Math.hypot(p.x - q.x, p.y - q.y) < C.CLAIM.seat);
-        if (writ.length !== 1) continue;
-        if (nbrs[i].length < 2) continue;
-        if (!G.homeGateOn(p, nodes, buildableAt)) continue;
-        player = i;
-        break;
-      }
-      if (player < 0) { why.player++; continue; }
-
-      const seatOrder = [player].concat(order.filter((i) => i !== player), [pattern]);
+        return writ.length === 1 && nbrs[i].length >= 2 && !!G.homeGateOn(p, nodes, buildableAt);
+      };
+      if (!cornerIdx.every(opens)) { why.player++; continue; }
+      const order = picked.map((p, i) => i).filter((i) => i !== pattern && cornerIdx.indexOf(i) < 0)
+        .sort((a, b) => patternHops[b] - patternHops[a]);
+      const seatOrder = cornerIdx.concat(order, [pattern]);
 
       /* ---- sites in the board's own order: cities, springs, high ground ---- */
       const sites = [];
@@ -1057,7 +1065,7 @@
       if (homeGates.some((g) => !g)) { why.gate++; continue; }
 
       /* the post-flatten connectivity check, from the player's own seat */
-      const fin = floodFrom(land, cellAt(picked[player].x, picked[player].y));
+      const fin = floodFrom(land, cellAt(picked[cornerIdx[0]].x, picked[cornerIdx[0]].y));
       let severed = false;
       for (const i of seatOrder) if (!fin.seen[cellAt(picked[i].x, picked[i].y)]) severed = true;
       if (severed) { why.severed++; continue; }

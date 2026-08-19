@@ -553,8 +553,14 @@ the one between — the affordability rule IS the strategic rule. ORDERS are bou
 not: standing, pursuit and combat cross the rim freely. (→ LEDGER: THE COUNTRY IS ONE WORLD)
 
 `WG.buildCountry` grows the land (CONST.REACHWAR: 8000×9600, 16 cities; connectivity is a
-PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an already-placed reach);
-AMBER, the Pattern's city, is the neighbour graph's centre and last in seat order. RIVERS run
+PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an already-placed reach).
+**AMBER STANDS IN THE MIDDLE OF THE MAP AND THE FOUR HEIRS IN THE FOUR CORNERS** (the designer,
+2026-08-19): the first city is the candidate nearest the centre (the Pattern's, last in seat
+order), the next four the candidates nearest the corners inside `cornerBox` — seats 0..3 in the
+order top-left, top-right, bottom-left, bottom-right, each required to OPEN (one writ spring
+with a Gate ring) and to reach two others, or the country is rerolled — and the rest are dealt
+by max-min between them. **And every city reaches at least two others** (`minNbrs`): the reach
+grows until two are in it, as it grew for one; a court with one neighbour is a cul-de-sac. RIVERS run
 from the interior to the sea and ROADS are FOUND over the land's own costs (climb charged
 dearly, reuse half-price so trunks emerge), with BRIDGES where a crossing beats the toll — all
 stamped as real terrain (`WG.T.ROAD/BRIDGE`, cost 1, unbuildable), so columns funnel onto the
@@ -588,7 +594,9 @@ The designer's default is you against three heirs, each contending for AMBER and
 setup screen (`UI.warSetup`) takes COUNTS — heirs at your side, heirs against — and the ally
 courts are dealt BY GEOGRAPHY once the country exists (the contender courts nearest yours); a
 LAN lobby's sides are explicit seats (humans on 0..n-1 in join order, replacing the heirs, bots
-on the seats after; `lanSides`, the `#lan-sides` panel). The sides ride the save (`rec.sides`)
+on the seats after; `lanSides`, the `#lan-sides` panel — TWO COLUMNS, one per side, a chip per
+heir, a tap on a human's chip moves him across and each column adds or removes bots of its own;
+the designer, 2026-08-19, from a photograph of the old stack of rows). The sides ride the save (`rec.sides`)
 and the wire (`{war: {seed, sides}}`), because a guest regenerates the country from the seed
 and must deal the same banners. AN ALLY IS A CONTENDER, NOT A VASSAL: a heir of your side plays
 at the footing with his own initiative and the walk, only does not treat (the founder does), and

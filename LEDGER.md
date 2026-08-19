@@ -812,3 +812,13 @@ read the same (83/83/81) — the share is the INCOME MARGIN's, because a walker 
 starve is one the heirs' answer rarely stops; an earlier and smaller answer (`AMBER_WALKANS=5
 AMBER_WALKARM=5`) read 81% too. The designer chose to ship it (option A, 2026-08-19) and to
 read the band as a statement about the heirs' answer to a walk, which is the next job.
+
+### The country: AMBER in the middle, the heirs in the corners, two roads out of every court
+
+The designer, 2026-08-19, with a photograph of the LAN table: two columns for the sides; the four
+heirs (bots or humans) in the four corners of the country; every city within reach of at least
+two others; AMBER in the middle. Before: AMBER was the neighbour graph's centre by hops (not the
+map's), the contenders the four courts furthest from it by hops, a city could have one
+neighbour. Measured after over 30 seeds: 0 failures, 0 extra attempts, ~310ms a country, AMBER
+within 1600 of the centre on every seed, the corner courts within ~450 of their corners, no city
+under two neighbours.

@@ -2223,83 +2223,89 @@
     /* THE SIDES PANEL of the lobby: which side each guest stands on and how many bot heirs fill
      * the rest, for a NEW war dealt to this table. A saved war's sides are the war's own —
      * humans take its seats in join order — and the panel says so instead of offering knobs. */
+    /* ---- THE SIDES, IN TWO COLUMNS ----
+     * (the designer, 2026-08-19, with a photograph of the old panel: a stack of rows, a WITH
+     * YOU / AGAINST YOU toggle per human and two bot steppers, "a bit confusing"). Two columns,
+     * one per side, each listing who stands in it — the humans by name, the bot heirs as
+     * "a bot heir" — with a tap on a human moving him to the other column and a + / − on each
+     * column adding or removing a bot of its own. The total stays two to four. The shape
+     * toggle above it (TWO SIDES / FREE FOR ALL) keeps its place. */
     const paintSides = (n, has) => {
       const box = $('lan-sides');
       box.innerHTML = '';
-      const row = (cls, name, who, ctl) => {
-        const r = document.createElement('div');
-        r.className = 'ws-side ' + cls;
-        const left = document.createElement('div');
-        left.innerHTML = `<span class="ws-name">${name}</span><span class="ws-who">${who}</span>`;
+      const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+      const side = (cls, name, who, ctl) => {
+        const r = el('div', 'ws-side ' + cls);
+        const left = el('div');
+        left.appendChild(el('span', 'ws-name', name)); left.appendChild(el('span', 'ws-who', who));
         r.appendChild(left);
         if (ctl) r.appendChild(ctl);
         box.appendChild(r);
       };
       if (has) {
-        row('own', 'THE WAR IN YOUR POCKET', 'its sides are set — the heirs at the table take its seats in join order', null);
+        side('own', 'THE WAR IN YOUR POCKET', 'its sides are set — the heirs at the table take its seats in join order', null);
         return;
       }
       /* the shape of the war: two sides, or every heir for himself */
       {
-        const b = document.createElement('button');
-        b.className = 'mbtn small'; b.id = 'lan-ffa';
-        b.textContent = lanTeam.ffa ? 'TWO SIDES' : 'FREE FOR ALL';
+        const b = el('button', 'mbtn small', lanTeam.ffa ? 'TWO SIDES' : 'FREE FOR ALL');
+        b.id = 'lan-ffa';
         b.addEventListener('click', () => { lanTeam.ffa = !lanTeam.ffa; paintSides(n, has); });
-        row(lanTeam.ffa ? 'foe' : 'own', lanTeam.ffa ? 'EVERY HEIR FOR HIMSELF' : 'TWO SIDES',
-            lanTeam.ffa ? 'each human his own banner; tap for two sides' : 'humans and bots in two banners; tap for a free-for-all', b);
+        side(lanTeam.ffa ? 'foe' : 'own', lanTeam.ffa ? 'EVERY HEIR FOR HIMSELF' : 'TWO SIDES',
+             lanTeam.ffa ? 'each human his own banner; tap for two sides' : 'humans and bots in two banners; tap for a free-for-all', b);
       }
-      if (lanTeam.ffa) {
-        const roomF = () => 4 - Math.min(n, 4) - (lanTeam.botsB | 0);
-        while (roomF() < 0) lanTeam.botsB--;
-        const d = document.createElement('div');
-        d.className = 'ws-step';
-        const minus = document.createElement('button'), plus = document.createElement('button'), v = document.createElement('b');
-        minus.className = plus.className = 'mbtn small'; minus.textContent = '−'; plus.textContent = '+';
-        const lo = n < 2 ? 1 : 0;
-        v.textContent = String(Math.max(lo, lanTeam.botsB | 0));
-        minus.disabled = (lanTeam.botsB | 0) <= lo; plus.disabled = roomF() <= 0;
-        minus.addEventListener('click', () => { lanTeam.botsB = Math.max(lo, (lanTeam.botsB | 0) - 1); paintSides(n, has); });
-        plus.addEventListener('click', () => { lanTeam.botsB += 1; paintSides(n, has); });
-        d.appendChild(minus); d.appendChild(v); d.appendChild(plus);
-        row('foe', 'BOT HEIRS', n < 2 ? 'at least one — a war needs an enemy' : 'each his own banner, played by the host', d);
-        const s = lanSides(n);
-        const sum = document.createElement('div');
-        sum.className = 'ws-sum';
-        sum.textContent = s.length + ' banners — ' + s.length + ' contenders, every one for himself';
-        box.appendChild(sum);
-        return;
-      }
-      for (let i = 1; i < n && i < 4; i++) {
-        const b = document.createElement('button');
-        b.className = 'mbtn small';
-        b.dataset.seat = i;
-        b.textContent = lanTeam.with[i] ? 'WITH YOU' : 'AGAINST YOU';
-        b.addEventListener('click', () => { lanTeam.with[i] = !lanTeam.with[i]; paintSides(n, has); });
-        row(lanTeam.with[i] ? 'own' : 'foe', C.SEAT_NAMES[i] || ('heir ' + i), 'a human at the table', b);
-      }
-      const humansB = [1, 2, 3].filter((i) => i < n && !lanTeam.with[i]).length;
-      const room = () => 4 - Math.min(n, 4) - (lanTeam.botsA | 0) - (lanTeam.botsB | 0);
-      const step = (key, lo) => {
-        const d = document.createElement('div');
-        d.className = 'ws-step';
-        const minus = document.createElement('button'), plus = document.createElement('button'), v = document.createElement('b');
-        minus.className = plus.className = 'mbtn small'; minus.textContent = '−'; plus.textContent = '+';
-        v.textContent = String(lanTeam[key] | 0);
-        minus.disabled = (lanTeam[key] | 0) <= lo; plus.disabled = room() <= 0;
+      const step = (key, lo, roomFn) => {
+        const d = el('div', 'ws-step');
+        const minus = el('button', 'mbtn small', '−'), plus = el('button', 'mbtn small', '+'), v = el('b', null, String(Math.max(lo, lanTeam[key] | 0)));
+        minus.disabled = (lanTeam[key] | 0) <= lo; plus.disabled = roomFn() <= 0;
         minus.addEventListener('click', () => { lanTeam[key] = Math.max(lo, (lanTeam[key] | 0) - 1); paintSides(n, has); });
         plus.addEventListener('click', () => { lanTeam[key] += 1; paintSides(n, has); });
         d.appendChild(minus); d.appendChild(v); d.appendChild(plus);
         return d;
       };
-      /* the total stays two to four: bots beyond the room are trimmed on the deal (lanSides) */
+      if (lanTeam.ffa) {
+        const roomF = () => 4 - Math.min(n, 4) - (lanTeam.botsB | 0);
+        while (roomF() < 0) lanTeam.botsB--;
+        const lo = n < 2 ? 1 : 0;
+        side('foe', 'BOT HEIRS', n < 2 ? 'at least one — a war needs an enemy' : 'each his own banner, played by the host', step('botsB', lo, roomF));
+        const s = lanSides(n);
+        box.appendChild(el('div', 'ws-sum', s.length + ' banners — ' + s.length + ' contenders, every one for himself'));
+        return;
+      }
+      /* two columns: who stands where, and how many bots each side gets */
+      const humansB = [1, 2, 3].filter((i) => i < n && !lanTeam.with[i]).length;
+      const room = () => 4 - Math.min(n, 4) - (lanTeam.botsA | 0) - (lanTeam.botsB | 0);
       while (room() < 0) { if ((lanTeam.botsB | 0) > (humansB ? 0 : 1)) lanTeam.botsB--; else if ((lanTeam.botsA | 0) > 0) lanTeam.botsA--; else break; }
-      row('own', 'BOT HEIRS AT YOUR SIDE', 'allies of your banner, played by the host', step('botsA', 0));
-      row('foe', 'BOT HEIRS AGAINST YOU', humansB ? 'beside the humans against you' : 'at least one — a war needs an enemy', step('botsB', humansB ? 0 : 1));
+      const cols = el('div', 'ws-cols');
+      cols.id = 'lan-cols';
+      const column = (kind, title, who) => {
+        const c = el('div', 'ws-col ' + kind);
+        c.dataset.side = kind;
+        c.appendChild(el('div', 'ws-col-title', title));
+        /* the humans of this side; a tap moves one across. The host is fixed to his own. */
+        if (kind === 'own') { const me = el('div', 'ws-chip me', 'You'); c.appendChild(me); }
+        for (let i = 1; i < n && i < 4; i++) {
+          if ((kind === 'own') !== !!lanTeam.with[i]) continue;
+          const chip = el('button', 'ws-chip', (C.SEAT_NAMES[i] || ('heir ' + i)) + ' ⇄');
+          chip.dataset.seat = i;
+          chip.title = 'tap to move to the other side';
+          chip.addEventListener('click', () => { lanTeam.with[i] = !lanTeam.with[i]; paintSides(n, has); });
+          c.appendChild(chip);
+        }
+        const bots = kind === 'own' ? (lanTeam.botsA | 0) : Math.max(humansB ? 0 : 1, lanTeam.botsB | 0);
+        for (let k = 0; k < bots; k++) c.appendChild(el('div', 'ws-chip bot', 'a bot heir'));
+        const ctl = el('div', 'ws-col-bots');
+        ctl.appendChild(el('span', 'ws-who', 'bots'));
+        ctl.appendChild(step(kind === 'own' ? 'botsA' : 'botsB', kind === 'own' ? 0 : (humansB ? 0 : 1), room));
+        c.appendChild(ctl);
+        c.appendChild(el('div', 'ws-who', who));
+        return c;
+      };
+      cols.appendChild(column('own', 'YOUR SIDE', 'one banner, one victory'));
+      cols.appendChild(column('foe', 'AGAINST YOU', 'the enemy banner'));
+      box.appendChild(cols);
       const s = lanSides(n);
-      const sum = document.createElement('div');
-      sum.className = 'ws-sum';
-      sum.textContent = s[0].length + ' v ' + s[1].length + ' — ' + (s[0].length + s[1].length) + ' contenders';
-      box.appendChild(sum);
+      box.appendChild(el('div', 'ws-sum', s[0].length + ' v ' + s[1].length + ' — ' + (s[0].length + s[1].length) + ' contenders'));
     };
     const paintTable = () => {
       const n = Net.seated();

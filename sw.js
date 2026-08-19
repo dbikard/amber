@@ -13,7 +13,7 @@
  *  - cross-origin passes through untouched */
 'use strict';
 
-const VERSION = '0.10.42';
+const VERSION = '0.10.43';
 const CACHE = 'amber-' + VERSION;
 const CORE = [
   './', './index.html', './styles.css', './manifest.json',

@@ -426,6 +426,20 @@ suite('a country is one land');
     ok(`seed ${seed}: the full complement of cities`, g.cities.length === C.REACHWAR.cities,
        String(g.cities.length));
     ok(`seed ${seed}: no city is mute`, g.nbrs.every((l) => l.length >= 1));
+    /* THE DESIGNER'S COUNTRY (2026-08-19): every city within reach of at least two others,
+     * AMBER in the middle of the map, the four heirs' courts in the four corners */
+    ok(`seed ${seed}: every city reaches at least two others`, g.nbrs.every((l) => l.length >= 2),
+       g.nbrs.map((l) => l.length).join(','));
+    {
+      const W2 = C.REACHWAR.dims.W, H2 = C.REACHWAR.dims.H;
+      const amber = g.sites[g.cities[g.pattern]];
+      ok(`seed ${seed}: AMBER stands in the middle of the map`, Math.hypot(amber.x - W2 / 2, amber.y - H2 / 2) < 1600,
+         `${Math.round(amber.x)},${Math.round(amber.y)}`);
+      const corners = [[0, 0], [W2, 0], [0, H2], [W2, H2]];
+      ok(`seed ${seed}: the four heirs open in the four corners, in order`,
+         [0, 1, 2, 3].every((k) => { const c = g.sites[g.cities[k]]; return Math.hypot(c.x - corners[k][0], c.y - corners[k][1]) < 2400; }),
+         [0, 1, 2, 3].map((k) => { const c = g.sites[g.cities[k]]; return Math.round(c.x) + ',' + Math.round(c.y); }).join(' | '));
+    }
     ok(`seed ${seed}: every city opens with a Gate on a spring`, g.homeGates.every((x) => !!x));
     ok(`seed ${seed}: the player has two roads out`, g.nbrs[0].length >= 2, String(g.nbrs[0].length));
     ok(`seed ${seed}: every reach is within its writ`,
