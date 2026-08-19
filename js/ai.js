@@ -204,6 +204,28 @@
   const ownVantages = (v) => nearestOf(v, v.world.map.sites.filter((s) => s.kind === 'vantage')).slice(0, 2);
 
   const held = (v, site) => global.World.nodeHolder(v.world, site) !== -1;
+  /* ---- THE RIVAL'S OUTLYING GATE, TO RAZE ----
+   * (from a chronicle at PRINCE, 2026-08-19: the player raided four of julian's Gates with a
+   * raid company in the first four minutes and julian neither answered at his Gates nor raided
+   * back; he ended with an income of 7 and an army of 3.) The nearest spring a foe holds that
+   * lies beyond HIS OWN writ — his court is not a raid, it is the assault — and that this heir
+   * has laid eyes on, inside the war's own knowledge (`explored`). Economic pressure is the
+   * anti-turtle engine on a board as it is in a war. */
+  const raidAt = (v, heldOff) => {
+    const W = global.World, w = v.world;
+    let best = null, bd = Infinity;
+    for (const s of w.map.sites) {
+      if (s.kind !== 'node' || !v.pl.explored[s.id]) continue;
+      const h = W.nodeHolder(w, s);
+      if (h < 0 || h === v.me || !W.foe(w, v.me, h)) continue;
+      if (heldOff && heldOff(h)) continue;   // the footing's hold covers a raid as it covers a march
+      const hc = W.cityOf(w, h);
+      if (hc && d2(s.x, s.y, hc.x, hc.y) < C.CLAIM.seat * C.CLAIM.seat) continue;   // under his throne's guns: the assault's business
+      const d = d2(s.x, s.y, v.myCity.x, v.myCity.y);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
+  };
   const worksNear = (v, x, y, bt, r) =>
     v.pl.buildings.some((b) => b.bt === bt && d2(b.x, b.y, x, y) < r * r);
 
@@ -531,6 +553,8 @@
    * before he steps on the lines */
   const envNum = (k, d) => { const v = typeof process !== 'undefined' && process.env ? process.env[k] : null; return v != null && v !== '' && isFinite(+v) ? +v : d; };
   const WALK_INCOME = envNum('AMBER_WALKINC', 0.8);
+  /* the army an idle heir raids a rival's outlying Gates with */
+  const RAID_MEN = envNum('AMBER_RAIDMEN', 8);
   const WALK_TOWERS = envNum('AMBER_WALKTOW', 2);
   /* does a walker hold his home (banner home, no assault) — measured: ON, the Pattern decided
    * 97% of contested matches (target 50, tolerate 25-75): a fortified walker whose army stays
@@ -1785,10 +1809,33 @@
        * `defencePost`). Not while a walk is being answered or a Shrine guarded — those aim
        * elsewhere — and not for a stray, which is a flaw about going somewhere else. */
       const post = !stray && want === v.myCity.id && !NO_POST ? defencePost(v) : null;
-      const aim = answer || myShrine || post;
+      /* ---- AN IDLE ARMY ANSWERS A RAIDED WORK, AND RAIDS IN KIND ----
+       * Idle is the doctrine wanting home or its own choke with no assault afoot. A hostile at
+       * a finished work of his beyond the court (`troubleAt`) takes the war body there — a
+       * Gate gnawed or raided is his income — and, with nothing of his touched, an army of
+       * RAID_MEN or more goes for the rival's nearest outlying Gate (`raidAt`): the human's
+       * opening at PRINCE, answered with the same opening. Not while walking, not while the
+       * court itself is threatened (home outranks both), and never while the doctrine has an
+       * assault or a search in hand. War only? No — the war had this in `warOrders` for minor
+       * lords and it was the board that lacked it. */
+      const free = !homeThreat && !v.walking && !striking && !hunting && !stray;
+      /* idle: home, the choke, or an errand that needs no army — a tower on a vantage is the
+       * crew's business; a spring to TAKE needs men standing on it and keeps the banner */
+      const armyIdle = free && (want === v.myCity.id || want === ownChoke(v).id || (mission && mission.bt !== 'gate'));
+      let guard = null, raid = null;
+      if (free) {
+        /* a raided work outranks the errand: the Gate under attack IS the economy the errand
+         * is out to grow */
+        const t = troubleAt(v, v.myCity);
+        if (t && t !== v.myCity) guard = { x: t.x, y: t.y, id: 'g' + t.id };
+        else if (armyIdle && v.army >= RAID_MEN) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
+      }
+      const aim = answer || myShrine || guard || raid || post;
+      if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id });
       if (aim) {
-        if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80 || (post && aimed.id !== post.id)) {
-          aimed = { x: aim.x, y: aim.y, id: post && aim === post ? post.id : undefined };
+        const aimId = aim === post ? post.id : aim.id;
+        if (!aimed || d2(aimed.x, aimed.y, aim.x, aim.y) > 80 * 80 || aimed.id !== aimId) {
+          aimed = { x: aim.x, y: aim.y, id: aimId };
           /* `walk` marks the answer to a walk, so warOrders knows not to turn a minor lord away
            * from the walker's court — the sim ignores the field */
           issue({ c: 'banner', x: aim.x, y: aim.y, walk: answer ? 1 : 0 });

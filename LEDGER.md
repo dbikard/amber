@@ -822,3 +822,18 @@ map's), the contenders the four courts furthest from it by hops, a city could ha
 neighbour. Measured after over 30 seeds: 0 failures, 0 extra attempts, ~310ms a country, AMBER
 within 1600 of the centre on every seed, the corner courts within ~450 of their corners, no city
 under two neighbours.
+
+### AN IDLE ARMY ANSWERS A RAIDED WORK, AND RAIDS IN KIND (2026-08-19)
+
+The designer's second chronicle at PRINCE the same day (julian, toppled at 6:38, "way too easy"):
+the player's raid company razed four of julian's Gates by 4:12, julian's income sat at 7-16 all
+match, his army at 5-20, and his war body never left home nor raided back; the player held seven
+springs to his two. Two clauses in `decide`, on a board as the war had them for minor lords:
+`troubleAt` sends the war body to a work of his under attack (outranking an errand), and `raidAt`
+sends an idle army of `RAID_MEN` (8) or more to the rival's nearest outlying Gate (not under his
+throne's guns, not under the footing's hold). Rig: julian's banner went to his raided Gate inside
+forty seconds and to the rival's Gate when every spring beyond his writ was the rival's.
+`node sim.js`: mirrors 50/55 (bleys 3 timeouts of 20), gradient 95/80/75, contested share 81% →
+87% — the drift the designer's option A already accepted, now wider: raiding armies answer walks
+less, and the heirs' answer to a walk is the next job; convergence greedy 13.7m/0 timeouts; ladder
+`corwin, bleys, julian, benedict, brand`.

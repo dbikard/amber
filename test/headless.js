@@ -9600,6 +9600,68 @@ suite('a hall joins a standard; it does not raise one');
      `${flown.size} standards for ${halls} halls: ${hallList.map((b) => b.bt + ':' + b.co).join(' ')}`);
 }
 
+/* ---------------- AN IDLE ARMY ANSWERS A RAIDED WORK, AND RAIDS IN KIND ----------------
+ * From a chronicle at PRINCE (2026-08-19, julian, toppled at 6:38): the player's raid company
+ * razed four of julian's Gates in four minutes; julian's war body stood at home the whole time
+ * and never raided back; he ended with an income of 7 and three men. Two clauses for an idle
+ * army on a board: a hostile at a finished work of his beyond the court takes the war body
+ * there, and with nothing of his touched and RAID_MEN or more it goes for the rival's nearest
+ * outlying Gate. */
+suite('an idle army answers a raided work, and raids in kind');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const pl = w.players[1], c1 = World.cityOf(w, 1);
+  pl.explored[w.map.cities[0]] = { kind: 'city' };
+  for (const s of w.map.sites) pl.explored[s.id] = { kind: s.kind };   // he has scouted the board
+  /* an outlying Gate of his on the nearest free spring beyond his writ, finished */
+  const springs = w.map.sites.filter((s) => s.kind === 'node' && Math.hypot(s.x - c1.x, s.y - c1.y) > C.CLAIM.seat + 20)
+    .sort((a, b) => Math.hypot(a.x - c1.x, a.y - c1.y) - Math.hypot(b.x - c1.x, b.y - c1.y));
+  const far = springs[0];
+  const gd = C.BUILDINGS.gate;
+  pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: far.x + 30, y: far.y, cd: 0, raise: 0, raiseFor: gd.raise,
+                      hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: far.id, co: 0 });
+  /* a dozen men of his at home; the enemy's raiders at that Gate */
+  for (let i = 0; i < 12; i++) manAt(w, 1, 'soldier', c1.x + 40 + (i % 4) * 14, c1.y + 30 + ((i / 4) | 0) * 14);
+  for (let i = 0; i < 3; i++) { const u = manAt(w, 0, 'outrider', far.x + 60 + i * 12, far.y + 10); u.hp = u.maxHp = 1e5; u.dmg = 0; }
+  pl.essence = 0;
+  const bot = AI.make('julian', {});
+  let guarded = null;
+  for (let i = 0; i < 30 * 40 && guarded == null; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 1, (cmd) => {
+      if (cmd.c === 'banner' && cmd.x != null && Math.hypot(cmd.x - far.x, cmd.y - far.y) < 120) guarded = w.t;
+      return World.applyCommand(w, 1, cmd);
+    }, C.SIM_DT, null);
+  }
+  ok('raiders at an outlying Gate draw the idle war body to it', guarded != null, guarded == null ? 'the banner never went to the Gate' : `at ${guarded.toFixed(0)}s`);
+  /* and with nothing of his touched: a rival Gate on a far spring is raided */
+  const w2 = World.createWorld(1000, 2); w2.chaosNext = 1e9;
+  const p2 = w2.players[1], c2 = World.cityOf(w2, 1), c0 = World.cityOf(w2, 0);
+  for (const s of w2.map.sites) p2.explored[s.id] = { kind: s.kind };
+  /* the rival holds EVERY spring beyond julian's writ — as the player did by minute four — so
+   * there is no free spring for an errand and the war body is idle at home */
+  const theirs = w2.map.sites.filter((s) => s.kind === 'node' && Math.hypot(s.x - c2.x, s.y - c2.y) > C.CLAIM.seat + 20 &&
+                                            !w2.players[0].buildings.some((b) => b.node === s.id))
+    .sort((a, b) => Math.hypot(a.x - c2.x, a.y - c2.y) - Math.hypot(b.x - c2.x, b.y - c2.y));
+  for (const sp of theirs)
+    w2.players[0].buildings.push({ id: w2.nextId++, bt: 'gate', level: 1, x: sp.x + 30, y: sp.y, cd: 0, raise: 0, raiseFor: gd.raise,
+                                   hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: sp.id, co: 0 });
+  const rs = theirs.find((sp) => Math.hypot(sp.x - c0.x, sp.y - c0.y) > C.CLAIM.seat + 20);
+  for (let i = 0; i < 12; i++) manAt(w2, 1, 'soldier', c2.x + 40 + (i % 4) * 14, c2.y + 30 + ((i / 4) | 0) * 14);
+  p2.essence = 0;
+  const bot2 = AI.make('julian', {});
+  let raided = null;
+  for (let i = 0; i < 30 * 40 && raided == null; i++) {
+    World.update(w2, C.SIM_DT); w2.events.length = 0;
+    bot2.step(w2, 1, (cmd) => {
+      if (cmd.c === 'banner' && cmd.x != null && Math.hypot(cmd.x - rs.x, cmd.y - rs.y) < 120) raided = w2.t;
+      return World.applyCommand(w2, 1, cmd);
+    }, C.SIM_DT, null);
+  }
+  ok('the rig is alive: the rival holds a Gate on a far spring', World.nodeHolder(w2, rs) === 0);
+  ok('an idle army of eight or more goes for it', raided != null, raided == null ? 'the banner never went to the rival Gate' : `at ${raided.toFixed(0)}s`);
+}
+
 /* ---------------- A WALKER FORTIFIES FIRST ----------------
  * From a chronicle at PRINCE (2026-08-19): Brand stepped onto the Pattern at 3:57 with a Shrine
  * and nothing beside it, sent his army at the player's court in the same breath, lost it under

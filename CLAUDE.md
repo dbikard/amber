@@ -473,6 +473,16 @@ was built, measured and REJECTED: the Pattern decided 97% of contested matches w
 (target 50, tolerate 25-75); it stays behind `AMBER_WALKHOLD=1` for the referee.
 (→ LEDGER: A WALKER FORTIFIES FIRST)
 
+**AN IDLE ARMY ANSWERS A RAIDED WORK, AND RAIDS IN KIND** (ai.js `troubleAt`/`raidAt` in
+`decide`; from a second chronicle at PRINCE, 2026-08-19: the player's raid company razed four of
+julian's Gates in four minutes, julian's war body stood at home throughout and never raided
+back, and he ended with an income of 7 and three men). On a board as in a war: a hostile at a
+finished work of his beyond the court takes the war body there (outranking an errand — the Gate
+under attack IS the economy), and an army of `RAID_MEN` (8) or more with nothing of his touched
+and nothing but home, the choke or a crew-only errand to go to marches on the rival's nearest
+outlying Gate — never one under his throne's guns (that is the assault), never one the footing's
+`hold` covers. Coordinate banners through the same `aimed` memo as a walk's answer.
+
 **A MOMENT SAYS WHERE** (record.js): the chronicle wrote "the enemy is inside your city" for
 every `hurtcity`, a Gate on a spring four hundred out included (reported from play: the enemy
 never was in the city, only at gates and towers). It names the work, by whom and where, and keeps

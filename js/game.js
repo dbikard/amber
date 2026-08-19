@@ -33,7 +33,7 @@
    * the coasts and ranges at the edges (the same day): benedict 7 wins at the bottom, julian
    * 16 at the top — the order is VOLATILE against the shape of the board at six games a
    * matchup, which is what the principles say it is: a ladder, not a measurement. */
-  const LADDER = ['corwin', 'benedict', 'bleys', 'brand', 'julian'];
+  const LADDER = ['corwin', 'bleys', 'julian', 'benedict', 'brand'];
 
   const game = {
     mode: null, world: null, viewer: 0, bot: null,

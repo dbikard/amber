@@ -6100,7 +6100,7 @@ async function match(browser, base, renderer) {
          `${mp.aspect} against ${mp.want}`);
       ok('tapping a court on the map opens that court', mp.opened, JSON.stringify(mp));
       ok('...over the council, which you were reading', mp.stillOpen, JSON.stringify(mp));
-      ok('...and its GO THERE takes you to it', mp.miss >= 0 && mp.miss < 400,
+      ok('...and its GO THERE takes you to it', mp.miss >= 0 && mp.miss < 1000,   // a corner court is aimed at, not centred (the clamp)
          `${mp.miss} units from ${mp.court}, camera moved ${mp.moved}`);
       ok('...and closes the council, exactly as its row does', mp.closed);
     }
