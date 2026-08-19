@@ -983,7 +983,7 @@
        * expands and it charges. */
       branch: { barracks: () => 'raid' },
       walk: () => false,
-      storm: () => null, trump: () => false
+      storm: () => null, trump: () => false, neverStorms: true
     }
   };
 
@@ -1272,6 +1272,8 @@
     let lastWant = null;   // where the doctrine last meant the banner, to notice a NEW order
     let timer = interval * 0.5, rng = null;
     let mission = null;    // {site, bt, since} — march there, build, move on
+    let gateLost = false;  // a Gate of his has died — from here on, forward Gates get towers
+    let gates0 = 0;        // last think's Gate count, to notice one dying
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
     let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
     /* WHERE THIS BOT'S ARMY WAS LAST SENT IN A WAR — see warOrders. It is remembered HERE, on
@@ -1339,7 +1341,26 @@
        * every one a no-op the referee had to log; a refused order changes nothing, so this
        * cannot move the sim, it only stops asking questions whose answer is known) */
       if (v.powers.storm <= 0 && v.essence >= C.POWERS.storm.cost) {
-        const p = P.storm(v); if (p) issue({ c: 'power', k: 'storm', x: p.x, y: p.y });
+        /* ---- THE JEWEL ANSWERS A RAID AT HIS OWN WORKS ----
+         * Every doctrine's own pick first; when it has none, a cluster of RIVALS standing at
+         * any finished work of his draws the storm. The doctrines' picks all read `v.threats`
+         * — hostiles at the THRONE — so a raid company parked on a forward Gate never drew the
+         * Jewel however long it stayed: from a chronicle at PRINCE (julian, seed 3214443246),
+         * the player's raiders razed nine Gates over eight minutes while julian sat on two
+         * hundred essence with the storm off cooldown, and the chronicle's own author asked why
+         * (2026-08-19, "he could have used the jewel more / better"). Rivals only — a fiend
+         * gnawing a Gate is the weather, and the Gate's own tower's business — and at the
+         * works, not near them, so the storm lands on men who are committed. */
+        /* ...but never for a policy that has RENOUNCED the Jewel (`neverStorms` — greedy, the
+         * referee's ruler): a fallback that overrode a stated no gave the baseline a power it
+         * never had, and the skill gradient read 55% (benedict over greedy, target >65) the
+         * day it shipped — the ruler had been bent, not the heirs weakened. */
+        const p = P.storm(v) || (P.neverStorms ? null : (() => {
+          const atWorks = v.visHostiles.filter((u) => u.owner !== C.CHAOS_ID &&
+            v.pl.buildings.some((b) => !b.raise && d2(u.x, u.y, b.x, b.y) < 200 * 200));
+          return clusterAt(atWorks, 2);
+        })());
+        if (p) issue({ c: 'power', k: 'storm', x: p.x, y: p.y });
       }
       if (v.powers.trump <= 0 && v.essence >= C.POWERS.trump.cost && !v.champion && P.trump(v))
         issue({ c: 'power', k: 'trump' });
@@ -1592,6 +1613,16 @@
        * the gate is the Seat's business; a RIVAL's man there is a column's first man and is
        * answered at once, as are three of anything. */
       const homeThreat = v.threats.length >= 3 || v.atGate >= 3 || v.rivalsAtGate > 0;
+      /* a Gate of his has died (nothing else lowers the count): from here on he defends */
+      if ((v.have.gate || 0) < gates0) gateLost = true;
+      gates0 = Math.max(gates0, v.have.gate || 0);
+      /* ...and a Gate already RAIDED wants its tower at once, not on the next expansion */
+      if (gateLost && !mission && !idle && v.free > 0) {
+        const bare = v.pl.buildings.find((b) => b.bt === 'gate' && !b.raise &&
+          d2(b.x, b.y, v.myCity.x, v.myCity.y) > C.CLAIM.seat * C.CLAIM.seat &&
+          b.node >= 0 && !worksNear(v, b.x, b.y, 'tower', 150));
+        if (bare) mission = { site: bare.node, bt: 'tower', since: v.t };
+      }
       if (mission) {
         const s = world.map.sites[mission.site];
         const done = !s || (mission.bt === 'gate' ? held(v, s) : worksNear(v, s.x, s.y, mission.bt, 130));
@@ -1601,7 +1632,23 @@
          * expanded — measured as Julian sitting on 2 gates at six minutes while Bleys
          * held four. The window now scales with the distance it is asking for. */
         const far = Math.sqrt(d2(v.myCity.x, v.myCity.y, s ? s.x : 0, s ? s.y : 0));
-        if (done || v.t - mission.since > 70 + far / 30) mission = null;   // taken, lost, or stale
+        if (done || v.t - mission.since > 70 + far / 30) {
+          /* ---- A FORWARD GATE IS DEFENDED, OR IT IS TRIBUTE ----
+           * From a chronicle at PRINCE (julian, 2026-08-19, seed 3214443246): the player's raid
+           * company razed NINE of julian's Gates — Cold Cistern twice, Whispering Font twice —
+           * and julian rebuilt each one naked and lost it again: ~900 essence fed to the raid,
+           * his income 28 → 3 while the player's held at 31. A Gate TAKEN at a spring beyond
+           * his own writ is followed by a TOWER at the same spring, as its own mission, before
+           * any further expansion: forward economy is bought with stone or it is rented. */
+          /* ADAPTIVE, not a doctrine: towers after every forward Gate were measured slowing an
+           * unraided julian's expansion to a third (income 17 against 66 over the same eight
+           * minutes) — the stone is bought once somebody has shown they will raid, which is
+           * the moment a Gate of his first dies (`gateLost`, read off his own count dropping). */
+          const fwd = done && gateLost && mission.bt === 'gate' && s &&
+                      d2(s.x, s.y, v.myCity.x, v.myCity.y) > C.CLAIM.seat * C.CLAIM.seat &&
+                      !worksNear(v, s.x, s.y, 'tower', 150);
+          mission = fwd ? { site: mission.site, bt: 'tower', since: v.t } : null;
+        }
         else if (!idle && v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
           const at = spotAt(v, s, mission.bt);
           if (at) {
@@ -1977,9 +2024,25 @@
           const spring = homeThreat ? null
             : reach.filter((s) => !held(v, s) && !heldGround(v, s.x, s.y))[0] ||
               reach.filter((s) => global.World.nodeHolder(v.world, s) === v.me)[0] || null;
+          /* ---- THE GARRISON STANDS AT THE TOWER, NOT BESIDE IT ----
+           * (the designer, 2026-08-19: "watch towers next to gates are good, but better when
+           * manned"). A shooter mans a tower only when his ORDER falls within `TOWER.man` (76)
+           * of it (`postTowers`), and the errand's rally was the SPRING's centre — often just
+           * past that of a tower on the ring. Once a finished tower of his stands at the
+           * errand's spring, the standard is planted ON the tower: the archers and sorcerers
+           * go inside, untouchable until the stone falls, and the fighting men stand around
+           * it. A coordinate rally carries no site, so the memo is the distance. */
           const wantAt = spring ? spring.id : -1;
-          const at = errand.rally && errand.rally.site != null ? errand.rally.site : -1;
-          if (at !== wantAt) issue({ c: 'rally', co: errand.id, site: wantAt });
+          const guardTower = spring ? v.pl.buildings.find((b) => b.bt === 'tower' && !b.raise && !b.work &&
+            d2(b.x, b.y, spring.x, spring.y) < 160 * 160) : null;
+          if (guardTower) {
+            const r0 = errand.rally;
+            if (!r0 || r0.site != null || d2(r0.x, r0.y, guardTower.x, guardTower.y) > 30 * 30)
+              issue({ c: 'rally', co: errand.id, x: guardTower.x, y: guardTower.y });
+          } else {
+            const at = errand.rally && errand.rally.site != null ? errand.rally.site : -1;
+            if (at !== wantAt || (errand.rally && errand.rally.site == null)) issue({ c: 'rally', co: errand.id, site: wantAt });
+          }
         }
       }
 
@@ -2061,6 +2124,7 @@
        * dead control (a picker that reaches nobody) is something a test can see */
       lapses: L, hold, noWalk, noTerms, debug: warSt,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
+                gateLost = false; gates0 = 0;
                 marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k];
                 for (const k of Object.keys(pactAt)) delete pactAt[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for

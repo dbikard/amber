@@ -587,8 +587,12 @@
     /* a ROOK, not the Tokyo Tower: 🗼 is a steel lattice mast and read as modern the moment it
      * sat beside a Seat. ♜ is the medieval silhouette, and being a glyph rather than a colour
      * emoji it sits with ⚔ ⚒ ✚ 🜏 in the dark-and-gold sheet instead of shouting over them. */
-    tower:    { name: 'Watchtower',    icon: '♜', cost: 130, up: [100, 180], hp: 960, raise: 22,
-                dmg: [10, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
+    /* hp 960 → 1150 and the base arrow 10 → 12 (2026-08-19, the designer: "I've been wondering
+     * for a while whether we should make towers a bit stronger") — a raid burning a naked tower
+     * pays three more seconds under its arrows, and a manned one is the answer it should be.
+     * Referee'd the day it shipped; the Seat gun derives from the BRANCHES and is untouched. */
+    tower:    { name: 'Watchtower',    icon: '♜', cost: 130, up: [100, 180], hp: 1150, raise: 22,
+                dmg: [12, 15, 20], range: [250, 275, 300], atk: 1.1, fork: 2, vision: 520,
                 forkHint: 'Rebuild the tower.',
                 blurb: 'Far sight over Shadow, and arrows for trespassers. At level 2 the tower is REBUILT — ballista or cannon, and there is no going back' },
     /* The Shrine does not upgrade. There is one Pattern and one way to walk it, and the walk

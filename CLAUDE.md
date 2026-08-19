@@ -486,6 +486,22 @@ an army at home is not stopped by an equal army in five minutes, whatever it aim
 levers left are the walk's LENGTH (`AMBER_WALKRATE`, the referee's knob on `shrine.rate`) and
 where a Shrine may stand — the designer's to pull. (→ LEDGER: THE ANSWER TO A WALK)
 
+**A FORWARD GATE IS DEFENDED, AND THE JEWEL ANSWERS A RAID** (ai.js; the designer's fourth
+chronicle, julian at PRINCE, seed 3214443246: nine Gates razed and rebuilt naked, income 28 → 3,
+the Jewel never cast — every doctrine's storm clause reads `v.threats`, hostiles at the THRONE —
+and then: "watch towers next to gates are good, but better when manned; should we make towers a
+bit stronger?"). ADAPTIVE: once a Gate of his has died (`gateLost`, his own count dropping —
+nothing else lowers it), every forward Gate gets a Watchtower — bare ones at once, new ones as a
+follow-up mission — because towers-always was measured slowing an unraided expansion to a third
+(income 17 against 66). The errand's standard is planted ON a tower standing at its spring, so
+the shooters garrison it (`postTowers` posts by the ORDER, within `TOWER.man` of the stone). The
+Jewel falls on a cluster of RIVALS at any finished work of his when the doctrine's own pick is
+empty — but NEVER for a policy that renounced it (`neverStorms`, greedy): the fallback gave the
+referee's ruler storms it never had and the skill gradient read 55% before the guard (79% with
+it, n=24). And the Watchtower is a bit stronger: hp 960 → 1150, the level-1 arrow 10 → 12
+(referee'd; the Seat gun derives from the branches and is untouched).
+(→ LEDGER: A FORWARD GATE IS DEFENDED)
+
 **AN IDLE ARMY ANSWERS A RAIDED WORK, AND RAIDS IN KIND** (ai.js `troubleAt`/`raidAt` in
 `decide`; from a second chronicle at PRINCE, 2026-08-19: the player's raid company razed four of
 julian's Gates in four minutes, julian's war body stood at home throughout and never raided

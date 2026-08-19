@@ -864,3 +864,27 @@ Measured with the walk a quarter longer (`AMBER_WALKRATE=0.26`, 6.4 minutes agai
 contested share came back to 71% — inside the band — with mirrors 65/50, gradient 90/70/75,
 convergence clean, ladder `benedict, corwin, bleys, julian, brand`. The walk's LENGTH is the
 lever the answer could not be; it is the designer's to pull, since it is the human's clock too.
+
+### A FORWARD GATE IS DEFENDED, AND THE JEWEL ANSWERS A RAID (2026-08-19/20)
+
+The designer's fourth chronicle (julian at PRINCE, seed 3214443246, toppled 10:04): "better but
+still relatively easy", then "he could have used the jewel or trump more / better", then "watch
+towers next to gates are good, but better when manned with archers or sorcerers. I've also been
+wondering for a while whether we should make towers a bit stronger." The table: nine of julian's
+Gates razed (Cold Cistern and Whispering Font twice each), each rebuilt naked — ~900 essence fed
+to the raid — income 28 → 3, army never past 27 against 126, yet 192 of the player's dead: he
+traded well and lost the economy. And the Jewel: 200 essence banked, storm off cooldown, never
+cast — `stormDefend` reads `v.threats`, the THRONE's radius, and the raiders were at his Gates.
+Shipped: `gateLost` (adaptive towers — towers-always measured income 17 against 66 unraided over
+the same eight minutes); the errand standard planted ON a spring's tower (rig: 10 men garrisoned,
+a full tower); the Jewel's works-raid fallback (rig on the chronicle's seed: every cast on the
+raiders); tower hp 960 → 1150, level-1 arrow 10 → 12. TRAP FOUND BY THE REFEREE: the fallback
+also gave GREEDY — `storm: () => null`, the ruler — a Jewel it had renounced, and benedict over
+greedy read 55% (target >65). `neverStorms` guards it; 79% (n=24) with the guard. The Trump was
+left alone: julian's clause is sound and he was broke by the time it could fire — the economy
+fix is the Trump fix.
+`node sim.js` with all of it (adaptive towers, garrisons, the guarded Jewel, hp 1150 / arrow 12):
+mirrors 60/75 (bleys' mirror runs high and hot — all castle — across today's runs: 50-75 at n=20,
+watch it), gradient 95/95/75, convergence greedy 11.8m clean, contested share 92% (the known red;
+the walk-length lever is the designer's), ladder re-pasted `bleys, benedict, corwin, julian,
+brand`.

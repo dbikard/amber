@@ -9722,6 +9722,76 @@ suite('the answer to a walk: his gates first, the shrine when they are gone');
   ok('an heir raises no run shorter than a gateway', runs.every((L) => L >= C.WALL.gateMin), runs.length ? `runs of ${runs.join(', ')}` : 'no run raised');
 }
 
+/* ---------------- A FORWARD GATE IS DEFENDED, AND THE JEWEL ANSWERS A RAID ----------------
+ * From a chronicle at PRINCE (julian, seed 3214443246, 2026-08-19): the player's raid company
+ * razed NINE of julian's Gates — each rebuilt naked and lost again, ~900 essence fed to the
+ * raid, income 28 → 3 — while julian sat on two hundred essence with the Jewel off cooldown,
+ * because every doctrine's storm clause reads `v.threats`, hostiles at the THRONE. Now: once a
+ * Gate of his has died, forward Gates get towers (adaptive — towers-always was measured slowing
+ * an unraided expansion to a third); the errand's standard is planted ON a tower at its spring
+ * so the shooters garrison it; and the Jewel falls on a cluster of rivals at any work of his —
+ * but never for a policy that RENOUNCED it (greedy, the referee's ruler: the fallback gave it
+ * storms and the skill gradient read 55% before the guard). */
+suite('a forward gate is defended, and the jewel answers a raid');
+{
+  const w = World.createWorld(3214443246 >>> 0, 2); w.chaosNext = 1e9;
+  const pl = w.players[1], c1 = World.cityOf(w, 1);
+  const bot = AI.make('julian', {});
+  let storms = 0, stormAt = null, raiders = [];
+  const razeOne = () => {   // the raid: kill his furthest forward Gate outright, once
+    const fwd = pl.buildings.filter((b) => b.bt === 'gate' && Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+    const g = fwd[fwd.length - 1];
+    if (g) World.hurtBuilding ? World.hurtBuilding(w, 1, g.id, 1e9, 0) : (g.hp = 0);
+    return g;
+  };
+  for (let i = 0; i < 30 * 200; i++) {
+    pl.essence = Math.max(pl.essence, 2000);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 1, (cmd) => World.applyCommand(w, 1, cmd), C.SIM_DT, null);
+  }
+  const fwdGates0 = pl.buildings.filter((b) => b.bt === 'gate' && Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+  const covered0 = fwdGates0.filter((g) => pl.buildings.some((b) => b.bt === 'tower' && Math.hypot(b.x - g.x, b.y - g.y) < 180));
+  ok('the rig is alive: an unraided julian holds forward Gates', fwdGates0.length >= 2, `${fwdGates0.length}`);
+  eq('...and buys no towers for them while nobody raids', covered0.length, 0);
+  /* the raid: one Gate dies; from here on he defends */
+  const lost = razeOne();
+  ok('the rig is alive: a Gate of his died', !!lost && !pl.buildings.some((b) => b.id === lost.id));
+  for (let i = 0; i < 30 * 240; i++) {
+    pl.essence = Math.max(pl.essence, 2000);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 1, (cmd) => {
+      if (cmd.c === 'power' && cmd.k === 'storm') { storms++; stormAt = { x: cmd.x, y: cmd.y }; }
+      return World.applyCommand(w, 1, cmd);
+    }, C.SIM_DT, null);
+    /* raiders appear at a forward Gate of his and stay */
+    if (i === 30 * 60) {
+      const fwd = pl.buildings.filter((b) => b.bt === 'gate' && Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+      const tgt = fwd[0];
+      for (let k = 0; k < 4; k++) { const u = manAt(w, 0, 'outrider', tgt.x + 60 + k * 12, tgt.y + 30); u.hp = u.maxHp = 1e6; u.dmg = 0; raiders.push(u); }
+    }
+  }
+  const fwdGates = pl.buildings.filter((b) => b.bt === 'gate' && Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+  const covered = fwdGates.filter((g) => pl.buildings.some((b) => b.bt === 'tower' && Math.hypot(b.x - g.x, b.y - g.y) < 180));
+  ok('once one has died, his forward Gates get towers', covered.length >= Math.min(2, fwdGates.length),
+     `${covered.length} of ${fwdGates.length}`);
+  ok('the Jewel falls on the raiders at his Gate', storms > 0 && !!stormAt &&
+     raiders.some((u) => Math.hypot(u.x - stormAt.x, u.y - stormAt.y) < C.POWERS.storm.radius + 40),
+     storms ? `storm at ${Math.round(stormAt.x)},${Math.round(stormAt.y)}` : 'no storm cast');
+  /* and greedy, who renounced the Jewel, still never casts it */
+  const w2 = World.createWorld(1000, 2); w2.chaosNext = 1e9;
+  const g2 = AI.make('greedy', {});
+  const cg = World.cityOf(w2, 0);
+  for (let k = 0; k < 4; k++) { const u = manAt(w2, 1, 'soldier', cg.x + 60 + k * 12, cg.y + 40); u.hp = u.maxHp = 1e6; u.dmg = 0; }
+  w2.players[0].essence = 5000;
+  let gStorms = 0;
+  for (let i = 0; i < 30 * 60; i++) {
+    w2.players[0].essence = Math.max(w2.players[0].essence, 500);
+    World.update(w2, C.SIM_DT); w2.events.length = 0;
+    g2.step(w2, 0, (cmd) => { if (cmd.c === 'power' && cmd.k === 'storm') gStorms++; return World.applyCommand(w2, 0, cmd); }, C.SIM_DT, null);
+  }
+  eq('greedy, who renounced the Jewel, still never casts it — the referee\'s ruler is unbent', gStorms, 0);
+}
+
 /* ---------------- A WALKER FORTIFIES FIRST ----------------
  * From a chronicle at PRINCE (2026-08-19): Brand stepped onto the Pattern at 3:57 with a Shrine
  * and nothing beside it, sent his army at the player's court in the same breath, lost it under
