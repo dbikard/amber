@@ -860,3 +860,7 @@ Gates raided and every free spring taken he sat at home with a hundred men and a
 seven for ten minutes (`armyIdle` was false for a gate errand to a spring the rival held); a
 raid now goes out with twice `RAID_MEN` whatever errand stands. Traced against greedy on that
 seed: raids at 8:00, a guard at 9:00, then a walk won at 14:17.
+Measured with the walk a quarter longer (`AMBER_WALKRATE=0.26`, 6.4 minutes against 5.2): the
+contested share came back to 71% — inside the band — with mirrors 65/50, gradient 90/70/75,
+convergence clean, ladder `benedict, corwin, bleys, julian, brand`. The walk's LENGTH is the
+lever the answer could not be; it is the designer's to pull, since it is the human's clock too.
