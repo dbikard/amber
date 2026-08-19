@@ -2725,6 +2725,27 @@
       emit(world, { e: 'razed', pi, id: city.id, x: city.x, y: city.y });
       return { ok: true };
     },
+    /* ---- THROW DOWN YOUR OWN WORK ----
+     * (the designer, 2026-08-19: "you should be able to destroy your own buildings in case of a
+     * mistake, or to build something else there"). Your own work only, by id; a rising shell,
+     * a finished work, a breached run — any of them. It goes through `hurtBuilding`'s own
+     * teardown (the garrison spills, the walls bin and the nav hear it, a Shrine's fall tears
+     * its walker off the Pattern, the standards are pruned), marked so the event is a
+     * DEMOLITION and not a raze; a standing run is marked breached first so the teardown
+     * removes it rather than leaving rubble to mend. Half the stone comes back
+     * (`DEMOLISH_REFUND` of what the work cost, by the foot for a run). Refused while its
+     * masons are mending or raising a level? No — that is exactly when a mistake is caught. */
+    demolish(world, pi, pl, cmd) {
+      const b = bldOf(world, pi, cmd.id);
+      if (!b) return { ok: false, err: 'id' };
+      const def = C.BUILDINGS[b.bt];
+      const paid = isWall(b) ? def.cost * (b.units != null ? b.units : (b.crews || 1)) : def.cost;
+      pl.essence += Math.round(paid * C.DEMOLISH_REFUND);
+      b.demolish = 1;
+      if (isWall(b)) b.breach = 1;
+      hurtBuilding(world, pi, b.id, b.hp + 1e9, null);
+      return { ok: true };
+    },
     flip(world, pi, pl, cmd) {
       const s3 = bldOf(world, pi, cmd.id);
       if (!s3) return { ok: false, err: 'id' };
@@ -3803,7 +3824,10 @@
       return;
     }
     if (b.hp <= 0) {
-      emit(world, { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
+      /* thrown down by its OWNER (the demolish command) is not a raze: the chronicle, the
+       * banner and the flashpoint all read 'raze' as the enemy's doing */
+      emit(world, b.demolish ? { e: 'demolish', pi, id: b.id, bt: b.bt, x: b.x, y: b.y }
+                             : { e: 'raze', pi, id: b.id, bt: b.bt, x: b.x, y: b.y, by: by == null ? null : by });
       /* AND THE GARRISON IS IN THE FIELD AGAIN. They were sheltered by this stone and it is
        * gone, so they come out where it stood, on this tick and not on the next pass — a man
        * left carrying `tow` for a tower that no longer exists is a man nothing can hurt.

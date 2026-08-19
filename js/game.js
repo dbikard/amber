@@ -29,8 +29,11 @@
    * campaign itself is CHAPTERS now (campaign.js), and the rung counter that used to walk this
    * list is gone with them. Re-pasted again the same day for the CORNER boards (the Seats in
    * the corners, two springs a quarter): the diagonal is longer than the old pairs stood
-   * apart, and the walkers — brand first — gained what the marchers lost. */
-  const LADDER = ['bleys', 'corwin', 'julian', 'benedict', 'brand'];
+   * apart, and the walkers — brand first — gained what the marchers lost. And once more for
+   * the coasts and ranges at the edges (the same day): benedict 7 wins at the bottom, julian
+   * 16 at the top — the order is VOLATILE against the shape of the board at six games a
+   * matchup, which is what the principles say it is: a ladder, not a measurement. */
+  const LADDER = ['corwin', 'benedict', 'bleys', 'brand', 'julian'];
 
   const game = {
     mode: null, world: null, viewer: 0, bot: null,
@@ -279,6 +282,7 @@
   function warSides() {
     try {
       const s = JSON.parse(localStorage.getItem('amber_war_sides') || 'null');
+      if (s && s.ffa != null) return { ffa: Math.max(1, Math.min(3, s.ffa | 0)) };
       if (s && s.a != null) return { a: s.a | 0, b: s.b | 0 };
       if (Array.isArray(s)) { const x = REALM.setup(s); return { a: x[0].length - 1, b: x[1].length }; }
     } catch (e) {}
@@ -289,9 +293,19 @@
    * contenders by right; the host says which side each guest stands on (`lanTeam.with`) and how
    * many bot heirs fill each side, and the total stays two to four — humans replace the heirs.
    * Bots take the seats after the humans, side A's first. */
-  const lanTeam = { with: {}, botsA: 0, botsB: 3 };
+  const lanTeam = { with: {}, botsA: 0, botsB: 3, ffa: false };
   function lanSides(seats) {
     const n = Math.max(1, seats | 0);
+    /* EVERY HEIR FOR HIMSELF: each human his own side, and as many bot heirs as the table has
+     * room for, each his own — a war needs an enemy, so a lone human gets at least one */
+    if (lanTeam.ffa) {
+      const sides = [];
+      let next = 0;
+      for (; next < n && next < 4; next++) sides.push([next]);
+      const bots = Math.max(sides.length < 2 ? 1 : 0, Math.min(lanTeam.botsB | 0, 4 - next));
+      for (let i = 0; i < bots && next < 4; i++) sides.push([next++]);
+      return REALM.setup(sides);
+    }
     const a = [0], b = [];
     for (let i = 1; i < n && i < 4; i++) (lanTeam.with[i] ? a : b).push(i);
     let next = Math.min(n, 4), room = 4 - next;
@@ -465,21 +479,44 @@
   /* ---------------- the phone's back button ----------------
    * Installed as a PWA, Android's back gesture leaves the app. It should dismiss whatever is
    * open first — a build sheet, an armed flag, a storm being aimed — and only then leave the
-   * match, and only then the game. ONE history entry is held while a match runs; each back
-   * consumes it, we handle a layer, and we re-arm for the next one. */
+   * match, and only then the game. The designer's rule (2026-08-19): back always goes to the
+   * PREVIOUS SCREEN, and exits the app only from the HOME screen — the menu with nothing open
+   * over it. So ONE history entry is held whenever the page is anywhere but home, and not held
+   * at home: each press consumes it, we peel a layer, and it is put back if we are still not
+   * home. It used to be armed only "while a match runs" plus a hand-kept list of menu layers
+   * (`force`), and a layer nobody remembered to list — the war's setup screen, the LAN table —
+   * left the site on its first press; now the FRAME loop asks `atHome()` every frame and arms
+   * whenever the answer is no, so a new screen is covered the day it is written. */
   let backArmed = false;
-  /* `force` is for a layer that opens while there is no match — the Muster Roll sits over the
-   * MENU, where `game.mode` is null and the ordinary arming deliberately does nothing. Without
-   * it the first back press out of the codex leaves the site. */
   /* what to run when the LAN screen opens: set by the pairing block below, called by ui.js */
   let lanOpened = null;
-  function armBack(force) {
-    if (backArmed || (!game.mode && !force)) return;
+  function armBack() {
+    if (backArmed) return;
     backArmed = true;
     try { history.pushState({ amber: 1 }, ''); } catch (e) { backArmed = false; }
   }
+  /* THE HOME SCREEN: the menu with nothing open over it — no match, no codex, no chapter list,
+   * no war setup, no rivals or LAN table, no chronicle box, no scanner */
+  function atHome() {
+    if (game.mode) return false;
+    const open = (id) => { const e = document.getElementById(id); return !!e && !e.classList.contains('hidden'); };
+    if (UI.rollOpen && UI.rollOpen()) return false;
+    if (UI.chaptersOpen && UI.chaptersOpen()) return false;
+    if (UI.warSetupOpen && UI.warSetupOpen()) return false;
+    if (UI.screensOpen && UI.screensOpen()) return false;
+    if (open('record-box') || open('scanner') || open('end')) return false;
+    return true;
+  }
   function onPopState() {
     backArmed = false;
+    /* whatever this press did: if the page is still not home, the next one must find the entry */
+    try { peelBack(); } finally { if (!atHome()) armBack(); }
+  }
+  function peelBack() {
+    /* the chronicle box and the scanner are layers over whatever opened them */
+    const open = (id) => { const e = document.getElementById(id); return !!e && !e.classList.contains('hidden'); };
+    if (open('record-box')) { document.getElementById('record-box').classList.add('hidden'); return; }
+    if (open('scanner')) { const c = document.getElementById('scan-cancel'); if (c) c.click(); return; }
     /* the codex is a layer over the menu, so it is peeled before the menu's own answer */
     if (UI.rollOpen && UI.rollOpen()) { UI.rollClose(); return; }
     /* the chapter list and its briefing sit over the MENU, where `game.mode` is null — back
@@ -488,7 +525,7 @@
     if (UI.warSetupOpen && UI.warSetupOpen()) { UI.warSetupClose(); return; }
     /* the rivals and the LAN table sit over the menu the same way, and peel the same way */
     if (UI.screensOpen && UI.screensOpen()) { UI.screensClose(); return; }
-    if (!game.mode) return;                       // at the menu: let the browser have it
+    if (!game.mode) return;                       // at home: nothing is re-armed, and the next press leaves the app
     /* THE COUNCIL IS A PLACE YOU GO, so back is the way out of it — and it is peeled FIRST
      * because it is a panel over everything else, including a sheet that may still be open
      * underneath it. It returns to the MATCH and not to the menu: the war is still running
@@ -861,7 +898,13 @@
     return (game.helm = game.helm || { orders: {}, hand: null });
   }
   function hand() {
-    const w = game.world || refWorld;
+    /* THE LIVE BANNERS, on a guest too. This read `refWorld` on a guest — the country as it was
+     * at GENESIS, every lord his own banner — so a court a guest had just conquered was "not of
+     * his banner" here while the council (which reads the snapshot) offered COMMAND for it, and
+     * the tap did nothing. Reported from a LAN war, 2026-08-19: "guest couldn't take command of
+     * cities they conquered". The snapshot carries every player's realm; it is the truth on a
+     * guest, and `refWorld` is only the fallback before the first one lands. */
+    const w = game.world || snapCur || refWorld;
     const h = helm().hand;
     if (h == null || !w || !w.players || !w.players[h]) return game.viewer;
     return World.realmOf(w, h) === World.realmOf(w, game.viewer) ? h : game.viewer;
@@ -1538,6 +1581,8 @@
        * realm emitted four of these, and the corner stack holds three — the useful line was
        * shoved out by the echoes of its own order. */
       else if (ev.e === 'raze') UI.banner(ours(ev.pi) ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ours(ev.pi) ? 'warn' : '');
+      /* a demolition is SILENT — you ordered it — and it is no flashpoint (see routeEvents' reader in render3d) */
+      else if (ev.e === 'demolish') { /* the chronicle has it */ }
       /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
        * read exactly like a rival's assault — and a player watching for the rival never saw
        * the black road taking three quarters of their army. */
@@ -1575,6 +1620,8 @@
     requestAnimationFrame(frame);
     const dtReal = Math.min(0.1, (now - lastFrame) / 1000 || 0);
     lastFrame = now;
+    /* the back button's entry: held whenever the page is anywhere but the home screen */
+    if (!backArmed && !atHome()) armBack();
     Render.targeting = game.targeting;
     /* which standard is armed, one way, exactly as `selected` and `targeting` go — the
      * renderer rings that company's men so it is obvious whom the next tap will move */
@@ -2192,6 +2239,36 @@
         row('own', 'THE WAR IN YOUR POCKET', 'its sides are set — the heirs at the table take its seats in join order', null);
         return;
       }
+      /* the shape of the war: two sides, or every heir for himself */
+      {
+        const b = document.createElement('button');
+        b.className = 'mbtn small'; b.id = 'lan-ffa';
+        b.textContent = lanTeam.ffa ? 'TWO SIDES' : 'FREE FOR ALL';
+        b.addEventListener('click', () => { lanTeam.ffa = !lanTeam.ffa; paintSides(n, has); });
+        row(lanTeam.ffa ? 'foe' : 'own', lanTeam.ffa ? 'EVERY HEIR FOR HIMSELF' : 'TWO SIDES',
+            lanTeam.ffa ? 'each human his own banner; tap for two sides' : 'humans and bots in two banners; tap for a free-for-all', b);
+      }
+      if (lanTeam.ffa) {
+        const roomF = () => 4 - Math.min(n, 4) - (lanTeam.botsB | 0);
+        while (roomF() < 0) lanTeam.botsB--;
+        const d = document.createElement('div');
+        d.className = 'ws-step';
+        const minus = document.createElement('button'), plus = document.createElement('button'), v = document.createElement('b');
+        minus.className = plus.className = 'mbtn small'; minus.textContent = '−'; plus.textContent = '+';
+        const lo = n < 2 ? 1 : 0;
+        v.textContent = String(Math.max(lo, lanTeam.botsB | 0));
+        minus.disabled = (lanTeam.botsB | 0) <= lo; plus.disabled = roomF() <= 0;
+        minus.addEventListener('click', () => { lanTeam.botsB = Math.max(lo, (lanTeam.botsB | 0) - 1); paintSides(n, has); });
+        plus.addEventListener('click', () => { lanTeam.botsB += 1; paintSides(n, has); });
+        d.appendChild(minus); d.appendChild(v); d.appendChild(plus);
+        row('foe', 'BOT HEIRS', n < 2 ? 'at least one — a war needs an enemy' : 'each his own banner, played by the host', d);
+        const s = lanSides(n);
+        const sum = document.createElement('div');
+        sum.className = 'ws-sum';
+        sum.textContent = s.length + ' banners — ' + s.length + ' contenders, every one for himself';
+        box.appendChild(sum);
+        return;
+      }
       for (let i = 1; i < n && i < 4; i++) {
         const b = document.createElement('button');
         b.className = 'mbtn small';
@@ -2573,7 +2650,7 @@
     UI.objective(null); UI.warChip(null);
     UI.toMenuScreens();
     UI.chapters(global.CAMPAIGN, focus);
-    armBack(true);
+    armBack();
   }
 
   /* ---------------- boot ---------------- */
@@ -2606,6 +2683,7 @@
         issue({ c: 'pause', on: !on });
       },
       onFix: (id) => issue({ c: 'fix', id }),
+      onDemolish: (id) => issue({ c: 'demolish', id }),
       /* ---------------- THE REACH WAR ----------------
        * game.js holds a realm for the length of a war exactly as it holds a `CAMPAIGN.run` for
        * the length of a chapter: the layer above answers questions and never writes to a world.
@@ -2803,7 +2881,7 @@
       /* the chapter screen closing with nothing chosen: show the menu it sits over */
       onMenuAgain: () => UI.showMenu(campaignLabel(), campaignNote()),
       /* the codex opens over the menu, where nothing has armed the back button */
-      onRollOpen: () => armBack(true)
+      onRollOpen: () => armBack()
     };
     UI.init(H);
     const cvs = $('game');
@@ -2862,6 +2940,7 @@
                    * seat may still give one — the same function every tap calls */
                   debugIssue: (cmd) => issue(cmd),
                   debugHumans: () => humanSeats(),
+                  debugLanSides: (n) => lanSides(n),
                   debugSeen: () => (guestSeen ? { gw: guestSeen.gw, gh: guestSeen.gh,
                                                   cell: guestSeen.cell, marks: guestSeen.v,
                                                   at: (x, y) => !!guestSeen.g[((y / guestSeen.cell) | 0)

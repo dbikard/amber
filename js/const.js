@@ -56,6 +56,7 @@
    * rise. An unfinished work is a shell — it earns nothing, musters nobody, shoots at nothing
    * and claims no ground — but it can be broken, so an over-reach can be punished. */
   CONST.RAISE = { hpFrom: 0.25 };   // a shell starts at this fraction of its finished hp
+  CONST.DEMOLISH_REFUND = 0.5;      // what comes back when you throw down your own work
   /* THE MASONS FOLLOW THE GATES. One work at a time was a clean rule and a hard ceiling on
    * spending: works absorb at most ~14.6 essence a second, and a realm in full flow earns
    * fifty. A treasury with nowhere to go is a treasury that has stopped being a decision —
@@ -221,9 +222,11 @@
      * own far plane and the world clips to black, and everything on screen is too small to
      * act on anyway. */
     min: 0.80, max: 2.6,
-    overscroll: 0.42,          // how far past the world's edge the camera may run, as a
+    overscroll: 0.06,          // how far past the world's edge the camera may run, as a
                                // fraction of the view — without it a corner Seat is stranded
-                               // small at the top of the screen with nowhere left to scroll
+                               // small at the top of the screen with nowhere left to scroll;
+                               // 0.42 once, cut (the designer, 2026-08-19) so only a small
+                               // part of the screen ever looks past the edge of the world
     /* the 3D rig's height and set-back, in units of the view width. ~50° of pitch: more
      * overhead than the old 36°, so the ground you are acting on reads as a map. */
     camHigh: 1.62, camBack: 1.36
@@ -231,7 +234,13 @@
   CONST.WORLD = {
     freq: 0.030,        // noise frequency in cells — lower makes broader country
     ridge: 0.40,        // how much folded (ridge) noise drives elevation: mountain CHAINS
-    rim: 7,             // cells of soft falloff at the map edge
+    /* THE EDGE OF THE WORLD IS A COAST OR A RANGE (the designer, 2026-08-19): each edge is
+     * dealt sea or crag. A coast's water runs `rim` cells inland on average (swung by noise),
+     * its shore is `shoreW` cells of beach or of cliff (`cliffShore` — how much of a coast is
+     * cliff), and an estuary (`inletOdds`, rarer the higher) cuts `inletDeep` cells further.
+     * A range is crag `rangeW` cells deep; `rangeOdds` is how often an edge is a range. */
+    rim: 7, shoreW: 3, cliffShore: 0.56, inletOdds: 0.84, inletDeep: 8,
+    rangeW: 9, rangeOdds: 0.3,
     sea: 0.33,          // below this elevation is water
     hill: 0.635,        // above this is high ground
     cliff: 0.755,       // …and above this, impassable crag

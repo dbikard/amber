@@ -214,7 +214,9 @@
   };
   UI.warSetup = function (spec, onBegin) {
     const el = $('war-setup'), body = $('war-setup-body');
-    const st = { a: Math.max(0, Math.min(2, (spec && spec.a) | 0)), b: Math.max(1, Math.min(3, spec && spec.b != null ? spec.b | 0 : 3)) };
+    const st = { a: Math.max(0, Math.min(2, (spec && spec.a) | 0)), b: Math.max(1, Math.min(3, spec && spec.b != null ? spec.b | 0 : 3)),
+                 /* FREE FOR ALL: every heir his own banner; `ffa` is how many rivals */
+                 ffa: spec && spec.ffa != null, rivals: Math.max(1, Math.min(3, spec && spec.ffa != null ? spec.ffa | 0 : 3)) };
     while (1 + st.a + st.b > 4) st.b--;
     if (st.b < 1) { st.b = 1; st.a = Math.min(st.a, 2); }
     el.classList.remove('hidden');
@@ -223,10 +225,26 @@
       body.innerHTML = '';
       const p = document.createElement('div');
       p.className = 'ws-blurb';
-      p.textContent = 'One country, sixteen thrones, one Pattern. Two to four heirs contend for it in two ' +
-                      'sides; the rest of the country is minor lords who hold ground and swear to whoever breaks them. ' +
-                      'An heir at your side is your ally — one banner, one victory — not your vassal.';
+      p.textContent = st.ffa
+        ? 'One country, sixteen thrones, one Pattern. Two to four heirs contend for it, every one for ' +
+          'himself; the rest of the country is minor lords who hold ground and swear to whoever breaks them. ' +
+          'Terms may be sworn and broken — and whoever walks the Pattern finds the rest allied against him.'
+        : 'One country, sixteen thrones, one Pattern. Two to four heirs contend for it in two ' +
+          'sides; the rest of the country is minor lords who hold ground and swear to whoever breaks them. ' +
+          'An heir at your side is your ally — one banner, one victory — not your vassal.';
       body.appendChild(p);
+      /* the shape first: two sides, or a free-for-all */
+      const shape = document.createElement('div');
+      shape.className = 'ws-shape';
+      for (const [key, label] of [[false, 'TWO SIDES'], [true, 'FREE FOR ALL']]) {
+        const b = document.createElement('button');
+        b.className = 'mbtn small' + (st.ffa === key ? ' on' : '');
+        b.id = key ? 'ws-ffa' : 'ws-sides';
+        b.textContent = label;
+        b.addEventListener('click', () => { st.ffa = key; paint(); });
+        shape.appendChild(b);
+      }
+      body.appendChild(shape);
       const side = (name, who, cls, val, lo, hi, set) => {
         const row = document.createElement('div');
         row.className = 'ws-side ' + cls;
@@ -244,20 +262,26 @@
         row.appendChild(left); row.appendChild(step);
         return row;
       };
-      const room = 4 - 1 - st.a - st.b;   // seats left at the table
-      body.appendChild(side('YOUR SIDE', 'you' + (st.a ? ' and ' + st.a + (st.a === 1 ? ' heir' : ' heirs') : ', alone'), 'own',
-                            st.a, 0, Math.min(2, st.a + room), (v) => { st.a = v; }));
-      body.appendChild(side('AGAINST YOU', st.b + (st.b === 1 ? ' heir' : ' heirs') + ', one banner', 'foe',
-                            st.b, 1, Math.min(3, st.b + room), (v) => { st.b = v; }));
       const sum = document.createElement('div');
       sum.className = 'ws-sum';
       sum.id = 'ws-sum';
-      sum.textContent = (1 + st.a) + ' v ' + st.b + ' — ' + (1 + st.a + st.b) + ' contenders, ' + (16 - 1 - st.a - st.b) + ' minor lords';
+      if (st.ffa) {
+        body.appendChild(side('RIVAL HEIRS', st.rivals + (st.rivals === 1 ? ' heir' : ' heirs') + ', each his own banner', 'foe',
+                              st.rivals, 1, 3, (v) => { st.rivals = v; }));
+        sum.textContent = 'free for all — ' + (1 + st.rivals) + ' contenders, ' + (16 - 1 - st.rivals) + ' minor lords';
+      } else {
+        const room = 4 - 1 - st.a - st.b;   // seats left at the table
+        body.appendChild(side('YOUR SIDE', 'you' + (st.a ? ' and ' + st.a + (st.a === 1 ? ' heir' : ' heirs') : ', alone'), 'own',
+                              st.a, 0, Math.min(2, st.a + room), (v) => { st.a = v; }));
+        body.appendChild(side('AGAINST YOU', st.b + (st.b === 1 ? ' heir' : ' heirs') + ', one banner', 'foe',
+                              st.b, 1, Math.min(3, st.b + room), (v) => { st.b = v; }));
+        sum.textContent = (1 + st.a) + ' v ' + st.b + ' — ' + (1 + st.a + st.b) + ' contenders, ' + (16 - 1 - st.a - st.b) + ' minor lords';
+      }
       body.appendChild(sum);
       const go = document.createElement('button');
       go.className = 'mbtn'; go.id = 'ws-begin';
       go.textContent = 'BEGIN THE WAR';
-      go.addEventListener('click', () => { el.classList.add('hidden'); onBegin({ a: st.a, b: st.b }); });
+      go.addEventListener('click', () => { el.classList.add('hidden'); onBegin(st.ffa ? { ffa: st.rivals } : { a: st.a, b: st.b }); });
       body.appendChild(go);
     };
     paint();
@@ -1244,6 +1268,38 @@
    * bottom of the sheet — the sheet returns early for scaffolding, and which way a wall faces
    * is exactly the thing worth settling before it is finished. A breach shelters nobody, so it
    * is the one state with nothing to turn about. */
+  /* THROW IT DOWN. Offered on every work of yours, finished or not (the designer, 2026-08-19:
+   * a mistake should be undoable, and the ground wanted for something else freed) — at the
+   * foot of the sheet, below everything constructive, and named for what it is. Half the stone
+   * comes back. */
+  function demolishCard(el, s) {
+    const d = C.BUILDINGS[s.bt];
+    const paid = s.x2 != null ? d.cost * (s.units != null ? s.units : (s.crews || 1)) : d.cost;
+    const back = Math.round(paid * C.DEMOLISH_REFUND);
+    const b = document.createElement('button');
+    b.className = 'card demolish';
+    b.id = 'work-demolish';
+    b.innerHTML = '<span class="c-ico">⚒</span><span class="c-name">Throw it down</span>' +
+                  `<span class="c-blurb">Clear the ground for something else — ${back}◆ of the stone comes back. It cannot be undone.</span>`;
+    b.addEventListener('click', () => { H.onDemolish(s.id); UI.closeSheet(); });
+    el.appendChild(b);
+  }
+  /* WHICH STANDARD, as a card — offered on a finished hall and on one under the masons alike:
+   * a hall being raised or re-tooled is a hall you are deciding about, and which company its
+   * men join is the first of those decisions (the designer, 2026-08-19) */
+  function standardCard(el, s, me, face) {
+    const change = document.createElement('button');
+    change.className = 'card';
+    change.id = 'change-standard';
+    change.innerHTML = '<span class="c-ico">⚐</span><span class="c-name">Change its standard</span>' +
+                       '<span class="c-blurb">Move this hall to another company, or back under the Banner</span>';
+    change.addEventListener('click', () => {
+      el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — under which standard?</div>`;
+      standardCards(el, me, s.co || 0, (want) => { H.onAssign(s.id, want); UI.closeSheet(); });
+      addCancel(el);
+    });
+    el.appendChild(change);
+  }
   function flipCard(el, s) {
     if (s.x2 == null || s.breach) return;
     const b = document.createElement('button');
@@ -1308,7 +1364,9 @@
       el._raising = s;   // counted down live by UI.tick, rather than frozen at the moment it opened
       w.innerHTML = raiseLine(s);
       el.appendChild(w);
+      if (d.spawns && me) standardCard(el, s, me, face);
       flipCard(el, s);
+      demolishCard(el, s);
       showSheet(el);
       return;
     }
@@ -1320,6 +1378,7 @@
                      blurb: 'Half the stone, and as many crews as you can spare — fewer crews, ' +
                             'longer work. It shelters nobody until they are done.' },
                () => { H.onFix(s.id); UI.closeSheet(); });
+      demolishCard(el, s);
       showSheet(el, essence);
       return;
     }
@@ -1356,23 +1415,10 @@
                      above: rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '' },
                () => { H.onUp(s.id, s.br); UI.closeSheet(); });
     }
-    if (d.spawns && me) {
-      const co = (me.companies || []).find((q) => q.id === s.co) || null;
-      /* (the standard AND its muster valve are in the HEADER now — see the top of this
-       * function. The valve was the one order here given in a hurry, and it was third card
-       * down and absent while the masons were on the hall.) */
-      const change = document.createElement('button');
-      change.className = 'card';
-      change.id = 'change-standard';
-      change.innerHTML = '<span class="c-ico">⚐</span><span class="c-name">Change its standard</span>' +
-                         '<span class="c-blurb">Move this hall to another company, or back under the Banner</span>';
-      change.addEventListener('click', () => {
-        el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — under which standard?</div>`;
-        standardCards(el, me, s.co || 0, (want) => { H.onAssign(s.id, want); UI.closeSheet(); });
-        addCancel(el);
-      });
-      el.appendChild(change);
-    }
+    /* (the standard AND its muster valve are in the HEADER — see the top of this function.
+     * The valve was the one order here given in a hurry, and it was third card down and absent
+     * while the masons were on the hall.) */
+    if (d.spawns && me) standardCard(el, s, me, face);
     flipCard(el, s);
     if (s.bt === 'shrine') {
       /* A WALK CANNOT BE CALLED OFF. `{c:'walk',on:false}` is refused with 'committed', so the
@@ -1394,6 +1440,7 @@
       }
       el.appendChild(b);
     }
+    demolishCard(el, s);   // last, below everything constructive
     showSheet(el, essence);
   };
 

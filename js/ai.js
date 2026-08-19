@@ -468,6 +468,14 @@
   /* Where to march when you do not know where the enemy IS. Scout the nearest unseen place;
    * failing that, hold the nearest ground worth holding. */
   const seek = (v) => (v.frontier ? v.frontier.id : ownChoke(v).id);
+  /* IS THE SEARCH STILL WORTH A MARCH. Every doctrine gated its scouting on "enough left to
+   * look at" — `unexplored > 2` or `> 3` — written when a board carried twenty-four sites and
+   * the rival Seat was found long before the last two. On a board of four quarters (eighteen
+   * sites, the rival in the far corner) the last two unexplored ARE the rival's Seat and the
+   * spring beside it, and benedict gave up looking on three seeds of five, 89 men strong and
+   * never once laying eyes on the man he meant to fight — measured, 2026-08-19. A Seat unfound
+   * is always worth a march; the count is only for a board where there is nothing left to find. */
+  const unseen = (v, n) => !v.enCity || v.unexplored > n;
   /* THE ASSAULT — against a Seat that has been found, and only with men who can break it.
    * Sending shooters at a Seat is not a weak attack, it is no attack: they will stand in front
    * of the walls with nothing to shoot until somebody comes out. An heir who cannot finish
@@ -518,6 +526,17 @@
    * over it. A shooter throws 105 and a Ballista Tower 350, so anything inside this is either
    * already hitting it or one march from it. */
   const SHRINE_GUARD = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SHGUARD) || 500;
+  /* the walk's two new gates (2026-08-19): the share of INCOME the affordability sum may count
+   * (a raid takes income away, never the bank), and the finished towers a walker wants at home
+   * before he steps on the lines */
+  const envNum = (k, d) => { const v = typeof process !== 'undefined' && process.env ? process.env[k] : null; return v != null && v !== '' && isFinite(+v) ? +v : d; };
+  const WALK_INCOME = envNum('AMBER_WALKINC', 0.8);
+  const WALK_TOWERS = envNum('AMBER_WALKTOW', 2);
+  /* does a walker hold his home (banner home, no assault) — measured: ON, the Pattern decided
+   * 97% of contested matches (target 50, tolerate 25-75): a fortified walker whose army stays
+   * on his walls cannot be stopped by the heirs' answer; so OFF by default, and the referee's
+   * switch keeps the measurement reproducible */
+  const WALK_HOLD = (typeof process !== 'undefined' && process.env && process.env.AMBER_WALKHOLD) === '1';
   /* the referee's switch for `defencePost` (the home banner on the defences), so its effect can
    * be measured apart from anything shipped beside it */
   const NO_POST = !!(typeof process !== 'undefined' && process.env && process.env.AMBER_NOPOST);
@@ -609,7 +628,7 @@
                 spire: () => 'warden', siege: () => 'bombard' },
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(2)],
       /* a revealed walk MUST be answered — pillar 3 — and late, the hammer falls anyway */
-      banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (v.unexplored > 2 && v.army >= 4 ? seek(v) : v.myCity.id),
+      banner: (v) => (v.enemyWalking && v.army >= 5) || v.army >= 9 ? strike(v) : (unseen(v, 2) && v.army >= 4 ? seek(v) : v.myCity.id),
       /* the LAST resort, and it has to be genuinely last: at eight minutes he was simply
        * out-walking Brand, which is greed's whole job.
        * BUT "LAST" IS AN HOUR OF THE MATCH, NOT A NUMBER. Fifteen minutes was late when the
@@ -677,7 +696,7 @@
        * measured: it starves him (2 wins across the field) because the walk's drain has to
        * come from somewhere, and under the new economy that somewhere is the springs. */
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2)],
-      banner: (v) => (v.unexplored > 3 && v.army >= 5 ? seek(v) : v.myCity.id),   // the army buys him time, but must still find the springs
+      banner: (v) => (unseen(v, 3) && v.army >= 5 ? seek(v) : v.myCity.id),   // the army buys him time, but must still find the springs
       walk: (v) => v.have.shrine && v.mySprings >= 3 && v.essence > CHEST,
       storm: stormDefend(2),
       trump: (v) => v.threats.length >= 3
@@ -696,7 +715,7 @@
       missions: (v) => [wantGates('own', 2), wantGates('mid', 2), wantWatch(1)],
       banner: (v) => (v.enCity && (v.army - v.enemyArmy >= 5 || v.enemyCastle < v.myCastle))
         ? v.enCityId
-        : (v.unexplored > 2 ? seek(v) : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id),
+        : (unseen(v, 2) ? seek(v) : (nearestOf(v, v.nodes.mid)[0] || ownChoke(v)).id),
       /* "nobody at the door" was `rivals === 0`, and against an heir who now actually marches
        * that is a condition that occurs between engagements and nowhere else. A scout or two
        * in sight of the court is not a reason to give up the throne. */
@@ -749,7 +768,7 @@
       banner: (v) => {
         if (v.enCity && v.enemyWalking && (v.enemyArmy < 2 || v.army >= 6)) return v.enCityId;
         if (v.enCity && v.army >= 6) return v.enCityId;
-        return v.unexplored > 2 && v.army >= 4 ? seek(v) : ownChoke(v).id;
+        return unseen(v, 2) && v.army >= 4 ? seek(v) : ownChoke(v).id;
       },
       /* and the same loosening: one rival in sight was the bar, which in a war that is now
        * actually fought is almost never met */
@@ -1325,7 +1344,21 @@
        * a timeout. */
       const shr = C.BUILDINGS.shrine;
       const secs = 100 / shr.rate[0], full = shr.drain[0] * secs;
-      const canFinish = v.essence + v.income * secs >= full * 1.1;
+      /* WITH A MARGIN ON THE INCOME. From a chronicle at PRINCE (2026-08-19): Brand stepped on
+       * at 3:57 with 151 in the bank and 28 a second — the sum was just over the bar — and the
+       * player razed three of his Gates in the next minute; his income fell to 14, his purse
+       * was at nought by 5:00, he mustered nobody, and his army went from fifty-one to one
+       * before the Shrine was thrown down at 52%. Income is the part of the sum a raid can take
+       * away, so only four fifths of it is counted: the bank has to carry the rest. */
+      const canFinish = v.essence + v.income * secs * WALK_INCOME >= full * 1.1;
+      /* AND A WALKER FORTIFIES FIRST. He never did: the same chronicle shows a Shrine with
+       * nothing but the throne's gun beside it. Two finished towers (or a curtain) at home
+       * before the lines are a want the crew takes up the moment the doctrine wishes to walk
+       * (`fortify`, prepended to the missions below); until they stand, the walk waits —
+       * except past the hour, when the stall-breaker outranks it. */
+      const fortified = (v.pl.buildings.filter((b) => b.bt === 'tower' && !b.raise && !b.work &&
+                          d2(b.x, b.y, v.myCity.x, v.myCity.y) < C.CLAIM.seat * C.CLAIM.seat).length >= WALK_TOWERS) ||
+                        !!v.have.wall;
       /* AND A RACE YOU HAVE ALREADY LOST IS NOT WORTH ENTERING. Every heir walks at the same
        * `rate` — the Shrine has one, not one per level — so a rival who set foot on the lines
        * first reaches a hundred first, always. Before the walk became a commitment this cost
@@ -1345,9 +1378,16 @@
        * nothing to do with what was asked. Reported from play. It is not a handicap — the heir
        * fights exactly as hard — it is the scenario saying which of the two roads this chapter
        * is about, which is the whole point of a chapter having a win condition of its own. */
-      if (!v.walking && !noWalk && !raced && (P.walk(v) || (late && v.have.shrine)) && (canFinish || late)) {
+      const walkWish = !v.walking && !noWalk && !raced && (P.walk(v) || (late && v.have.shrine));
+      if (walkWish && (canFinish || late) && (fortified || late)) {
         issue({ c: 'walk', on: true });
       }
+      /* the towers the walk is waiting on: wanted before any errand, while the wish stands — on
+       * the vantages near home first, and failing those beside the throne and the home spring,
+       * so a court with no high ground of its own can still fortify and still walk */
+      const fortify = walkWish && !fortified && !late ? [{ bt: 'tower', pick: (v2) =>
+        wantWatch(WALK_TOWERS).pick(v2) ||
+        [v2.myCity].concat(v2.nodes.own.slice(0, 1)).filter((s2) => s2 && !worksNear(v2, s2.x, s2.y, 'tower', 130))[0] || null }] : [];
 
       /* THE CITY. Two standing wants that no plan lists come first — a spring under his feet
        * and, when the muster is behind, one more hall — and then the plan itself.
@@ -1569,7 +1609,12 @@
        * recruit left the yard — hysteresis: the assault SETS OUT at the floor and goes on down to
        * two thirds of it, so a column that has taken losses on the road finishes the road. */
       const ready = v.army >= (marching ? Math.max(4, Math.round(commit * 2 / 3)) : commit);
-      const striking = !homeThreat && wantsWar && ready;
+      /* A WALKER DOES NOT MARCH ON THE RIVAL'S SEAT: the walk IS his assault, and the army's
+       * job while he is on the lines is the Shrine behind him. The same chronicle: Brand walked
+       * and sent his fifty-one men at the player's court in the same breath; they died under
+       * towers and storms, and the Shrine stood alone when the player came for it. The answer to
+       * a rival's walk (`answer`, below) still goes out — two walkers is a race, not a siege. */
+      const striking = !homeThreat && wantsWar && ready && !(WALK_HOLD && v.walking);
       marching = striking;
       /* THE SEARCH OUTRANKS THE ERRAND, because it is the war's first move. Every doctrine
        * already says "go and look" — that is what `seek` is — and not one of them had ever
@@ -1643,7 +1688,7 @@
         /* the `gates` lapse overlooks his OWN errands and never his liege's: a lazy lord still
          * goes where he is sent, which is what makes the order worth giving him */
         const own = lazyGates ? P.missions(v).filter((w) => !C.BUILDINGS[w.bt].claim) : P.missions(v);
-        for (const w of (led ? led.concat(own) : own)) {
+        for (const w of fortify.concat(led ? led.concat(own) : own)) {
           const site = w.pick(v);
           if (site && heldGround(v, site.x, site.y)) continue;   // the hold covers the writ, see heldGround
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
@@ -1655,8 +1700,10 @@
        * with the army away, since a spring needs troops standing on it, and that is the honest
        * price of marching. */
 
-      /* the banner: defend home > the assault > the search for the man > errand > the call */
-      let want = homeThreat ? v.myCity.id
+      /* the banner: defend home > the assault > the search for the man > errand > the call —
+       * and a WALKER's banner is home (the defences, see `defencePost`), whatever the doctrine
+       * would otherwise call for; only the answer to a rival's walk overrides it (`aim`) */
+      let want = homeThreat || (WALK_HOLD && v.walking) ? v.myCity.id
                : (striking || hunting ? call : (mission ? mission.site : call));
       /* AN EASIER FOOTING IS ALSO A LATER ONE. Income alone could not do this job: measured
        * against the weakest baseline we ship, an heir at eco 0.8 still had an army on the
@@ -1923,7 +1970,7 @@
       kind, title: P.title,
       /* what footing actually reached this seat, READ-ONLY — the suites and a rig ask it, so a
        * dead control (a picker that reaches nobody) is something a test can see */
-      lapses: L, hold, noWalk, debug: warSt,
+      lapses: L, hold, noWalk, noTerms, debug: warSt,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
                 marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k];
                 for (const k of Object.keys(pactAt)) delete pactAt[k]; },

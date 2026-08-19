@@ -129,8 +129,15 @@ Every balance question is answered with data:
     target, and the design's words for it are: *someone who sets out on the walk should get there
     about half the time.* So aim at **50%** and read 25–75 as the width of the tolerance, not as
     the goal — pinned at either edge the walk is a formality or a trap, and only the middle makes
-    the choice between the roads a real one. Currently 55%: 12 committed walks finished, 10 were
-    stopped and the match went to force.
+    the choice between the roads a real one. It read 55% once (12 committed walks finished, 10
+    stopped). **It reads 81% since 2026-08-19** (10 by force, 43 by the Pattern), on the
+    designer's call: the strongest heir was walking broke and unfortified and losing to a human
+    for it, so a walker now fortifies first and counts only four fifths of his income before
+    stepping on — and a walker who does not starve is one the heirs' ANSWER rarely stops. The
+    number is therefore a statement about the answer as much as about the walk, and the next
+    job on the Pattern is that answer (bring breakers, commit the whole army), not cheapening
+    the walk back down. Measured and rejected on the way: the walker's army held at home (97%),
+    an earlier and smaller answer (`WALK_ANSWER` 5, `WALK_ARMY` 5: 81%, unchanged).
   Why the distinction was worth writing down: the field share sat at 18% and three separate
   content numbers were swept looking for it — shrine `rate` to 0.40, `drain` to 16,
   `CASTLE_HP` to 3600 — and each moved it four points or less, because the matches were not

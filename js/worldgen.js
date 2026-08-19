@@ -68,6 +68,18 @@
     const sd = (seed >>> 0) || 1;
     const elev = new Float32Array(n), terra = new Uint8Array(n);
 
+    /* ---- THE EDGE OF THE WORLD IS A COAST OR A RANGE, never a line ----
+     * (the designer, 2026-08-19, for boards and countries alike) Each of the four edges is
+     * dealt SEA or a RANGE, by the seed (`rangeOdds`). A sea edge is a COAST: the water runs
+     * inland by a depth that wanders along the edge (`coastDepth` cells, swung by noise), the
+     * shore is a BEACH (a low band of marsh and sand) on some stretches and a CLIFF (crag
+     * standing straight out of the water) on others, and here and there an ESTUARY cuts a
+     * narrow inlet deeper inland. A range edge is foothills rising to crag over `rangeW`
+     * cells, its foot swung along the edge too. A corner takes whichever is nearer. The last
+     * cell of every edge is water or crag whatever the noise said, so the renderer's skirt
+     * continues a sea or a range and never a meadow. */
+    const edgeKind = [0, 1, 2, 3].map((k) => (vnoise(sd + 31, k * 7, 0) < N.rangeOdds ? 1 : 0));   // L, T, R, B: 1 = range (a lattice value: uniform)
+    const rangeW = N.rangeW;
     for (let gy = 0; gy < H; gy++) {
       for (let gx = 0; gx < W; gx++) {
         const i = gy * W + gx, fx = gx * N.freq, fy = gy * N.freq;
@@ -75,12 +87,43 @@
         /* folded noise → ridge lines, so high ground forms chains and passes */
         const ridge = 1 - Math.abs(fbm(sd + 977, fx * 1.4, fy * 1.4, 3, 0.55) * 2 - 1);
         let e = base * (1 - N.ridge) + ridge * N.ridge;
-        /* a soft rim so the world fades into Shadow instead of ending in a wall of cliff */
-        const edge = Math.min(gx, gy, W - 1 - gx, H - 1 - gy) / N.rim;
-        e *= Math.min(1, 0.45 + 0.55 * Math.min(1, edge));
+        const d4 = [gx, gy, W - 1 - gx, H - 1 - gy];
+        let dSea = Infinity, dRange = Infinity, alongR = 0, alongS = 0, kS = 0;
+        for (let k = 0; k < 4; k++) {
+          if (edgeKind[k]) { if (d4[k] < dRange) { dRange = d4[k]; alongR = (k & 1) ? gx : gy; } }
+          else if (d4[k] < dSea) { dSea = d4[k]; alongS = (k & 1) ? gx : gy; kS = k; }
+        }
+        if (dRange <= dSea) {
+          /* a range: its foot wanders along the edge, its crest is crag */
+          const wob = 0.7 + 0.6 * vnoise(sd + 59, alongR * 0.11, dRange * 0.05);
+          const t = 1 - dRange / (rangeW * wob);
+          if (t > 0) {
+            const tt = t * t * (3 - 2 * t);
+            const target = N.hill - 0.04 + (N.cliff + 0.12 - (N.hill - 0.04)) * tt;
+            e = Math.max(e, target);
+          }
+        } else {
+          /* a coast: the water's depth inland wanders along the edge... */
+          let depth = N.rim * (0.3 + 1.6 * vnoise(sd + 71, alongS * 0.05 + kS * 13.7, 0.3)
+                                   + 0.5 * vnoise(sd + 73, alongS * 0.17 + kS * 5.1, 0.6));
+          /* ...an estuary cuts a narrow inlet deeper, here and there... */
+          const inlet = vnoise(sd + 97, alongS * 0.19 + kS * 41.1, 0.7);
+          if (inlet > N.inletOdds) depth += N.inletDeep * ((inlet - N.inletOdds) / (1 - N.inletOdds));
+          /* ...and the shore is a beach or a cliff, in long stretches */
+          const cliffy = vnoise(sd + 83, alongS * 0.03 + kS * 29.3, 0.1) > N.cliffShore;
+          if (dSea < depth) {
+            e = Math.min(e, N.sea - 0.03 - 0.06 * (1 - dSea / depth));
+          } else if (dSea < depth + N.shoreW) {
+            const t = 1 - (dSea - depth) / N.shoreW;    // 1 at the water's edge, 0 inland
+            if (cliffy) e = Math.max(e, N.hill + 0.02 + (N.cliff + 0.02 - (N.hill + 0.02)) * t * t);
+            else e = Math.min(e, N.sea + 0.015 + 0.04 * (1 - t));
+          }
+        }
         elev[i] = e;
       }
     }
+    /* what the edges were dealt, for the renderer's skirt and the suites */
+    G.lastEdges = edgeKind.slice();
     for (let gy = 0; gy < H; gy++) {
       for (let gx = 0; gx < W; gx++) {
         const i = gy * W + gx, e = elev[i];
@@ -94,7 +137,7 @@
           : T.PLAIN;
       }
     }
-    return { W, H, cw, elev, terra };
+    return { W, H, cw, elev, terra, edges: edgeKind };
   };
 
   /* ---------------- reachability over the land ---------------- */
@@ -165,7 +208,10 @@
     const lvl = k ? sum / k : 0.5;
     for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) {
       const nx = gx + dx, ny = gy + dy;
-      if (nx < 0 || ny < 0 || nx >= land.W || ny >= land.H) continue;
+      /* THE SHORE AND THE RANGE ARE NOT LEVELLED: the last two cells of the world stay what
+       * the edge was dealt — a spring in a hollow beside the sea levelled the beach into plain
+       * (measured: five border cells of PLAIN at 0.38 on a sea edge) */
+      if (nx < 2 || ny < 2 || nx >= land.W - 2 || ny >= land.H - 2) continue;
       if (dx * dx + dy * dy > rc * rc) continue;
       const i = ny * land.W + nx;
       land.elev[i] = lvl; land.terra[i] = T.PLAIN;
@@ -456,6 +502,7 @@
         W: land.W, H: land.H, cw: land.cw, elev: land.elev, terra: land.terra,
         nodes: kept.filter((x) => x.kind === 'node').map((x) => x.id),
         homeGates,
+        edges: land.edges,   // what each edge was dealt — L, T, R, B; 1 = a range, 0 = a coast
         seed: s, skew: seats.skew, apart: Math.round(seats.far), attempt
       };
     }
@@ -1053,6 +1100,7 @@
         reaches: seatOrder.map((i) => reaches[i]),
         nbrs: seatOrder.map((i) => nbrs[i].map((b) => seatOrder.indexOf(b))),
         pattern: seatOrder.indexOf(pattern),
+        edges: land.edges,
         seed: s, skew: 0, apart: RW.spacing, attempt, country: true
       };
     }

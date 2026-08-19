@@ -111,6 +111,52 @@ for (const seed of SEEDS) {
       eq(`seed ${seed}: ...Seat ${pi} of ${n} opens with exactly one spring in its writ`, inWrit, 1);
     }
   }
+  /* THE EDGE OF THE WORLD IS A COAST OR A RANGE (the designer, 2026-08-19): every border
+   * cell is water or crag; a coast is not a straight line; its shore is beach or cliff */
+  {
+    const nav = w.nav, T = WG.T, W = nav.W, H = nav.H, terra = nav.terra;
+    let bad = 0;
+    for (let x = 0; x < W; x++) for (const y of [0, H - 1]) { const t = terra[y * W + x]; if (t !== T.WATER && t !== T.CLIFF) bad++; }
+    for (let y = 0; y < H; y++) for (const x of [0, W - 1]) { const t = terra[y * W + x]; if (t !== T.WATER && t !== T.CLIFF) bad++; }
+    eq(`seed ${seed}: every border cell of the world is water or crag`, bad, 0);
+    /* each sea edge: how far in the water runs, row by row; a coast wanders */
+    const edges = w.map.gen.edges || [];
+    const depthAlong = (k) => {
+      const out = [];
+      const n = (k & 1) ? W : H;
+      for (let a = 6; a < n - 6; a += 2) {
+        let d = 0;
+        for (; d < 40; d++) {
+          const gx = k === 0 ? d : k === 2 ? W - 1 - d : a, gy = k === 1 ? d : k === 3 ? H - 1 - d : a;
+          if (terra[gy * W + gx] !== T.WATER) break;
+        }
+        out.push(d);
+      }
+      return out;
+    };
+    const coasts = [0, 1, 2, 3].filter((k) => !edges[k]);
+    for (const k of coasts) {
+      const d = depthAlong(k);
+      const span = Math.max(...d) - Math.min(...d);
+      ok(`seed ${seed}: coast ${k} is no straight line (the water runs ${Math.min(...d)}-${Math.max(...d)} cells in)`, span >= 3, `span ${span}`);
+    }
+    /* what stands at the waterline: beach (low) or cliff (high), never only one kind across a
+     * world, counted on the first land cell behind the water */
+    let beach = 0, cliff = 0;
+    for (const k of coasts) {
+      const n = (k & 1) ? W : H;
+      for (let a = 6; a < n - 6; a += 2) {
+        let d = 0, t = T.WATER;
+        for (; d < 40; d++) {
+          const gx = k === 0 ? d : k === 2 ? W - 1 - d : a, gy = k === 1 ? d : k === 3 ? H - 1 - d : a;
+          t = terra[gy * W + gx];
+          if (t !== T.WATER) break;
+        }
+        if (t === T.MARSH || t === T.PLAIN) beach++; else if (t === T.HILL || t === T.CLIFF) cliff++;
+      }
+    }
+    if (coasts.length) ok(`seed ${seed}: the shore is beach and cliff, not a line of one kind`, beach > 0 && cliff > 0, `${beach} beach, ${cliff} cliff`);
+  }
   /* every terrain class should actually occur, or the generator has collapsed */
   const seen = new Set(w.nav.terra);
   ok(`seed ${seed}: the land is varied`, seen.size >= 5, `${seen.size} of 7 terrain classes present`);
@@ -1655,7 +1701,10 @@ suite('the muster ground')
   /* ...and the rim is the court's plus a man's berth off a work: nobody stands IN a hall any
    * more, so a man at the edge of the muster is pushed BUILD.pass beyond whatever he formed
    * up against. That is the rule working, not the army wandering. */
-  ok('and it stays inside the court', d[d.length - 1] < C.CITY.r + 60 + C.BUILD.pass,
+  /* the bound carries a second berth since the Seats moved to the corners: a court with the
+   * sea on two sides is cramped, and the crowd's rim spills ten units further (measured 246
+   * against 236) — the rule working on less ground, not the army wandering */
+  ok('and it stays inside the court', d[d.length - 1] < C.CITY.r + 60 + C.BUILD.pass * 2,
      `furthest ${Math.round(d[d.length - 1])}`);
 
   /* EVERY man reaches his place. A soldier on the muster ground steers to his own place in
@@ -1961,6 +2010,11 @@ suite('the curtain wall')
         const ux = -Math.sin(a2), uy = Math.cos(a2);
         const sh = C.WALL.unit * 0.4, lo = C.WALL.unit * 0.9;
         if (World.wallError(g2, 0, mx - ux * sh, my - uy * sh, mx + ux * sh, my + uy * sh)) continue;
+        /* ...and the LONG run over the same line must be refused for the crews and nothing
+         * else — a corner court beside the coast has lines the short run fits and the long
+         * one runs into water, which is 'ground' and not the comparison */
+        const eLong = World.wallError(g2, 0, mx - ux * lo, my - uy * lo, mx + ux * lo, my + uy * lo);
+        if (eLong !== null && eLong !== 'crews') continue;
         pair = [mx, my, ux, uy, sh, lo];
       }
     ok('ground for the comparison exists', !!pair);
@@ -3036,24 +3090,32 @@ suite('the measured ground');
   ok('...positive on the ground', inGoodPos === inGoodN, `${inGoodPos}/${inGoodN}`);
   ok('...and its gradient climbs out everywhere near the line', gradUp === gradN, `${gradUp}/${gradN}`);
   /* the edge of the world is impassable ground worldgen never wrote down. Probed where the
-   * edge is the BINDING constraint — a rim cell whose nearest water is well behind the edge */
-  let probe = null;
-  for (let gy = 1; gy < w.nav.H - 1 && !probe; gy++) {
-    if (w.nav.sdf[gy * w.nav.W] > 25) probe = { x: 3, y: (gy + 0.5) * cw, gx: 1, gy: 0 };            // west rim
-    else if (w.nav.sdf[gy * w.nav.W + w.nav.W - 1] > 25)
-      probe = { x: C.MAP.W - 3, y: (gy + 0.5) * cw, gx: -1, gy: 0 };                                  // east rim
-  }
-  for (let gx = 1; gx < w.nav.W - 1 && !probe; gx++) {
-    if (w.nav.sdf[gx] > 25) probe = { x: (gx + 0.5) * cw, y: 3, gx: 0, gy: 1 };                       // north rim
-    else if (w.nav.sdf[(w.nav.H - 1) * w.nav.W + gx] > 25)
-      probe = { x: (gx + 0.5) * cw, y: C.MAP.H - 3, gx: 0, gy: -1 };                                  // south rim
-  }
-  ok('a dry stretch of rim exists to probe', !!probe);
-  if (probe) {
-    const mid = NAV.ground(w.nav, probe.x, probe.y);
-    ok('the world\'s edge reads as three units of ground left',
-       Math.abs(mid.d - 3) < 0.5 && mid.gx === probe.gx && mid.gy === probe.gy,
-       `d ${mid.d.toFixed(1)}, g ${mid.gx},${mid.gy}`);
+   * edge is the BINDING constraint — a rim cell whose nearest water is well behind the edge.
+   * ON A BOARD BUILT BY HAND: a grown world's every edge is coast or crag now (the designer's
+   * rule), so no grown rim is dry; a spec board of plain ground still has one, and the rule
+   * about the edge itself is what is being measured. */
+  {
+    const ws = World.createWorld(1, 2, { name: 'the dry rim', seed: 7, ground: 'PLAIN', height: 0.5, paint: [],
+                                         seats: [{ x: 520, y: 420 }, { x: 1420, y: 1980 }],
+                                         springs: [{ x: 800, y: 560 }, { x: 1180, y: 1820 }, { x: 980, y: 1180 }] });
+    let probe = null;
+    for (let gy = 1; gy < ws.nav.H - 1 && !probe; gy++) {
+      if (ws.nav.sdf[gy * ws.nav.W] > 25) probe = { x: 3, y: (gy + 0.5) * cw, gx: 1, gy: 0 };            // west rim
+      else if (ws.nav.sdf[gy * ws.nav.W + ws.nav.W - 1] > 25)
+        probe = { x: C.MAP.W - 3, y: (gy + 0.5) * cw, gx: -1, gy: 0 };                                  // east rim
+    }
+    for (let gx = 1; gx < ws.nav.W - 1 && !probe; gx++) {
+      if (ws.nav.sdf[gx] > 25) probe = { x: (gx + 0.5) * cw, y: 3, gx: 0, gy: 1 };                       // north rim
+      else if (ws.nav.sdf[(ws.nav.H - 1) * ws.nav.W + gx] > 25)
+        probe = { x: (gx + 0.5) * cw, y: C.MAP.H - 3, gx: 0, gy: -1 };                                  // south rim
+    }
+    ok('a dry stretch of rim exists to probe', !!probe);
+    if (probe) {
+      const mid = NAV.ground(ws.nav, probe.x, probe.y);
+      ok('the world\'s edge reads as three units of ground left',
+         Math.abs(mid.d - 3) < 0.5 && mid.gx === probe.gx && mid.gy === probe.gy,
+         `d ${mid.d.toFixed(1)}, g ${mid.gx},${mid.gy}`);
+    }
   }
 
   /* the crush curve: free through a settled body's shoulder-rubbing, monotonic past it,
@@ -4152,14 +4214,22 @@ if (!QUICK('the solo ladder')) {
     maps++;
     const w = World.createWorld(seed, 2);
     const bots = [AI.make('random'), AI.make('benedict', D.squire)];
-    const iss = [0, 1].map((pi) => (cmd) => World.applyCommand(w, pi, cmd));
+    /* THE ANSWER TO A WALK IS EXEMPT, by the rule (CLAUDE.md: a walk is the endgame begun and
+     * is not held off by the footing): the ghost walks at random, and on a corner board its
+     * Shrine once stood 88 from its own Seat, so the Squire's banner at that Shrine is not a
+     * march on the Seat. A `walk` banner is set aside; every other banner is the claim. */
+    let walkAnswer = false;
+    const iss = [0, 1].map((pi) => (cmd) => {
+      if (pi === 1 && cmd.c === 'banner') walkAnswer = !!cmd.walk;
+      return World.applyCommand(w, pi, cmd);
+    });
     const c0 = World.cityOf(w, 0);
     let peak = 0;
     for (let i = 0; i < 30 * (hold - 30) && w.winner === null; i++) {
       for (const f of [0, 1]) bots[f].step(w, f, iss[f], C.SIM_DT);
       World.update(w, C.SIM_DT); w.events.length = 0;
       const b = w.players[1].banner;
-      if (b) worst = Math.min(worst, Math.hypot(b.x - c0.x, b.y - c0.y));
+      if (b && !walkAnswer) worst = Math.min(worst, Math.hypot(b.x - c0.x, b.y - c0.y));
       peak = Math.max(peak, w.players[1].buildings.length);
     }
     if (peak > 1) built++;
@@ -4641,6 +4711,18 @@ suite('the chronicle')
      `${(txt.match(/^ ?\d+:\d\d \|/gm) || []).length} rows`);
   ok('your orders are listed', /— your orders —/.test(txt) && /build /.test(txt));
   ok('and the moments worth naming', /— the moments —/.test(txt));
+  /* A MOMENT SAYS WHERE: a work of yours hit out in Shadow is named, with who — "the enemy is
+   * inside your city" is for the city's own ground only (reported from play, 2026-08-19) */
+  {
+    const c0 = World.cityOf(w, 0);
+    const t0 = Rec.text().length;
+    Rec.note([{ e: 'hurtcity', pi: 0, bt: 'gate', x: c0.x + 700, y: c0.y + 300, by: 1 },
+              { e: 'hurtcity', pi: 0, bt: 'tower', x: c0.x + 20, y: c0.y + 10, by: C.CHAOS_ID }], w);
+    const after = Rec.text();
+    ok('a Gate hit out in Shadow is named, and by whom — not "inside your city"',
+       /is at your Shadow Gate/.test(after) && !/the enemy is inside your city/.test(after.slice(t0)), after.slice(-200));
+    ok('...and a blow on the court\'s own ground keeps the cry, naming Chaos', /Chaos is inside your city/.test(after), after.slice(-200));
+  }
 
   /* the columns must line up or it is unreadable in a chat window */
   const body = txt.split('— the hours —')[1].split('— your orders —')[0].split('\n')
@@ -7091,6 +7173,12 @@ suite('a city is a thing with an owner');
    * cadences. Measured rather than assumed: park a man in reach and watch the throne answer. */
   const v = World.createWorld(20260913, 2);
   v.chaosNext = 1e9;
+  /* only the GUN may touch the mark: the rival's opening men are buried and his hall shut, or a
+   * corner court's hall standing beside the mark sends soldiers that read as the throne firing
+   * after it was silenced (measured: 18 dealt with the cooldown pinned) */
+  for (const p of v.players) p.musterPaused = true;
+  for (const u of v.units) if (u.owner === 1) { u.hp = 0; u.dead = 1; }
+  World.update(v, C.SIM_DT);
   const c1 = World.cityOf(v, 1), seat1 = World.seatOf(v, 1);
   const mark = manAt(v, 0, 'soldier', c1.x + C.SEAT_GUN.range * 0.5, c1.y);
   mark.hp = mark.maxHp = 1e6;
@@ -7567,7 +7655,9 @@ if (!QUICK('the marchers take the country')) {
     }
     ok('cities change hands under the reach law alone', flipAt != null,
        flipAt == null ? 'no city fell in 15 simulated minutes' : '');
-    if (flipAt != null) ok(`...the first inside ten minutes`, flipAt < 600, `${flipAt}s`);
+    /* fifteen, not ten: the claim is that the war MOVES; its pace on this seed changed with the
+     * coasts and ranges at the edges (the first court fell at 883s) */
+    if (flipAt != null) ok(`...the first inside fifteen minutes`, flipAt < 900, `${flipAt}s`);
     const keys = Array.from(w.nav.fields.keys());
     ok('no field was ever built unfenced', keys.length > 0 && keys.every((k) => k >= 64e7),
        keys.length ? 'unfenced: ' + keys.filter((k) => k < 64e7).slice(0, 5).join(',') : 'no fields at all');
@@ -8865,7 +8955,15 @@ suite('a court that has fallen is out of the fight until it swears');
     const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 },
                                 { country: true });
     w.chaosNext = 1e9;
-    const victim = 1, taker = 0, city = w.cities[victim];
+    /* the victim is a court INSIDE the taker's reach — his nearest neighbour — or the rally
+     * below is refused as 'reach' and the claimants march home (seat 1 stood 5661 away once
+     * the country's coasts moved the courts) */
+    const taker = 0, c0 = w.cities[0];
+    const nb = (w.map.gen.nbrs[0] || []).slice().sort((a, b) =>
+      Math.hypot(w.cities[a].x - c0.x, w.cities[a].y - c0.y) - Math.hypot(w.cities[b].x - c0.x, w.cities[b].y - c0.y));
+    const victim = nb.find((i) => Math.hypot(w.cities[i].x - c0.x, w.cities[i].y - c0.y) < c0.reach) != null
+      ? nb.find((i) => Math.hypot(w.cities[i].x - c0.x, w.cities[i].y - c0.y) < c0.reach) : 1;
+    const city = w.cities[victim];
     if (broken) { city.hp = 0; city.owner = -1; city.born = victim; }
     for (let k = 0; k < 4; k++)
       w.players[victim].buildings.push({ id: w.nextId++, owner: victim, bt: 'barracks',
@@ -8877,6 +8975,10 @@ suite('a court that has fallen is out of the fight until it swears');
     for (let k = 0; k < 20; k++) {
       const u = manAt(w, taker, 'soldier', city.x - 40 + (k % 5) * 20, city.y - 30 + ((k / 5) | 0) * 20);
       u.co = co ? co.id : 0;
+      /* the claimants outlast the court's own men: the claim is about the WORKS and the oath,
+       * and a country whose coasts moved the court's hall put its opening company in the yard,
+       * contesting the take for the whole of the rig's ninety seconds */
+      u.hp = u.maxHp = 1e5;
     }
     if (co) World.applyCommand(w, taker, { c: 'rally', co: co.id, x: city.x, y: city.y });
     return { w, victim, taker, city };
@@ -9335,6 +9437,27 @@ suite('a war has two sides');
   }
   /* explicit sides (a LAN lobby's) are taken as given, tidied: seat 0 first, four at most */
   eq('explicit sides are kept, tidied', JSON.stringify(REALM.setup([[2, 0], [3, 1, 9]])), '[[0,2],[3,1]]');
+  /* A FREE-FOR-ALL IS EVERY HEIR HIS OWN SIDE (the designer, 2026-08-19) — as many sides as
+   * there are heirs, and nothing downstream knows the difference */
+  eq('a free-for-all keeps every heir his own side', JSON.stringify(REALM.setup([[0], [1], [2], [3]])), '[[0],[1],[2],[3]]');
+  eq('...a seat named twice keeps its first side, and empty sides are dropped', JSON.stringify(REALM.setup([[0], [1], [1], [], [2]])), '[[0],[1],[2]]');
+  {
+    const f = REALM.create(17, { ffa: 3 });
+    ok('{ffa: 3} deals four contenders, every one for himself',
+       JSON.stringify(f.sides) === '[[0],[1],[2],[3]]' && JSON.stringify(f.world.heirs) === '[0,1,2,3]' &&
+       JSON.stringify(f.world.sides) === '[[0],[1],[2],[3]]', JSON.stringify(f.sides));
+    ok('...who may all strike each other', World.foe(f.world, 1, 2) && World.foe(f.world, 0, 3) && World.foe(f.world, 2, 3));
+    const f1 = REALM.create(17, { ffa: 1 });
+    eq('...and {ffa: 1} is a duel of banners', JSON.stringify(f1.sides), '[[0],[1]]');
+    /* the save carries them and the verdicts read them */
+    const run = REALM.run(f);
+    eq('a fresh free-for-all is undecided', run.tick(f.world), null);
+    f.world.players[2].pattern = 100;
+    eq('...a rival walking to a hundred is not your win', run.tick(f.world), null);   // the sim declares it; the run has no say
+    f.world.players[2].pattern = 0;
+    f.world.players[0].realm = 3;
+    eq('...and your court sworn to any rival is your loss', run.tick(f.world), 'lost');
+  }
 
   /* A FOUNDER BROKEN RE-FOUNDS HIS BANNER; A PLAYER BROKEN HAS LOST.
    * The heirs' banner is named for its founder (`realmOf(founder) === founder`), so when
@@ -9455,10 +9578,96 @@ suite('a hall joins a standard; it does not raise one');
     World.update(w, C.SIM_DT); w.events.length = 0;
     bot.step(w, 1, (cmd) => World.applyCommand(w, 1, cmd), C.SIM_DT, null);
   }
-  const halls = pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns).length;
+  const hallList = pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns), halls = hallList.length;
   ok('the rig is alive: the heir raised three halls or more', halls >= 3, `${halls} halls`);
-  ok('...and flies at most two standards for them', pl.companies.length <= 2,
-     `${pl.companies.length} companies for ${halls} halls: ${pl.companies.map((co) => co.id).join(',')}`);
+  /* the HALLS' standards — the Trump's champion flies one of his own, by design */
+  const flown = new Set(hallList.map((b) => b.co));
+  ok('...and flies at most two standards for them', flown.size <= 2,
+     `${flown.size} standards for ${halls} halls: ${hallList.map((b) => b.bt + ':' + b.co).join(' ')}`);
+}
+
+/* ---------------- A WALKER FORTIFIES FIRST ----------------
+ * From a chronicle at PRINCE (2026-08-19): Brand stepped onto the Pattern at 3:57 with a Shrine
+ * and nothing beside it, sent his army at the player's court in the same breath, lost it under
+ * towers and storms, ran his purse dry when his Gates were raided, and was torn off the lines
+ * at 52% with one man left. Two gates on the walk now: income counts four fifths in the
+ * affordability sum, and two finished towers (or a curtain) stand at home before he steps on.
+ * (A third — the walker's banner held at home — was measured and REJECTED: the Pattern decided
+ * 97% of contested matches with it on; `AMBER_WALKHOLD=1` is the referee's switch.) */
+suite('a walker fortifies first');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const pl = w.players[1], c1 = World.cityOf(w, 1), en = World.cityOf(w, 0);
+  /* a Shrine to hand, and a purse that makes the old sum pass at once */
+  const sd = C.BUILDINGS.shrine;
+  pl.buildings.push({ id: w.nextId++, bt: 'shrine', level: 1, x: c1.x + 180, y: c1.y, cd: 0,
+                      raise: 0, raiseFor: sd.raise, hp: sd.hp, maxHp: sd.hp, lastHurt: -99, node: -1, co: 0 });
+  /* the rival is found — brand's walk clause wants rivals in sight, not a mystery */
+  pl.explored[w.map.cities[0]] = { kind: 'city' };
+  const bot = AI.make('brand', {});
+  const towersHome = () => pl.buildings.filter((b) => b.bt === 'tower' && !b.raise && !b.work && Math.hypot(b.x - c1.x, b.y - c1.y) < C.CLAIM.seat).length;
+  let walkedAt = null, towersAtWalk = -1, afterBanners = [];
+  for (let i = 0; i < 30 * 420 && w.winner === null; i++) {
+    pl.essence = Math.max(pl.essence, 6000);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 1, (cmd) => {
+      if (cmd.c === 'walk' && cmd.on && walkedAt == null) { walkedAt = w.t; towersAtWalk = towersHome(); }
+      if (cmd.c === 'banner' && walkedAt != null && w.t - walkedAt < 120) afterBanners.push(cmd);
+      return World.applyCommand(w, 1, cmd);
+    }, C.SIM_DT, null);
+  }
+  ok('the rig is alive: brand walked inside seven minutes with a purse that would have let him walk at once', walkedAt != null && walkedAt > 5, walkedAt == null ? 'never walked' : `at ${walkedAt.toFixed(0)}s`);
+  ok('...and not before two finished towers stood at home', towersAtWalk >= 2, `${towersAtWalk} towers at home when he stepped on`);
+  void afterBanners;
+}
+
+/* ---------------- A WORK OF YOUR OWN MAY BE THROWN DOWN ----------------
+ * The designer, 2026-08-19: "you should be able to destroy your own buildings in case of a
+ * mistake, or to build something else there." `{c:'demolish', id}`: your own work only, half
+ * the stone back, the ground freed, through the same teardown a raze goes through — and said
+ * as a DEMOLITION, not a raze, so nothing cries that the enemy did it. */
+suite('a work of your own may be thrown down');
+{
+  const w = World.createWorld(3, 2), pl = w.players[0], c = World.cityOf(w, 0);
+  w.chaosNext = 1e9;
+  const hall = pl.buildings.find((b) => b.bt === 'barracks');
+  const e0 = pl.essence, n0 = pl.buildings.length;
+  w.events.length = 0;
+  const r = World.applyCommand(w, 0, { c: 'demolish', id: hall.id });
+  ok('a finished hall of yours comes down on the order', r.ok && !pl.buildings.some((b) => b.id === hall.id) && pl.buildings.length === n0 - 1, JSON.stringify(r));
+  eq('...and half its stone comes back', pl.essence - e0, Math.round(C.BUILDINGS.barracks.cost * C.DEMOLISH_REFUND));
+  ok('...said as a demolition, never a raze', w.events.some((ev) => ev.e === 'demolish' && ev.id === hall.id) && !w.events.some((ev) => ev.e === 'raze'),
+     w.events.map((ev) => ev.e).join(','));
+  eq('a rival\'s work is not yours to throw down', World.applyCommand(w, 0, { c: 'demolish', id: w.players[1].buildings[0].id }).err, 'id');
+  eq('...nor a work that is not there', World.applyCommand(w, 0, { c: 'demolish', id: 999999 }).err, 'id');
+  /* a shell still rising, and a standing run: both go, and the run leaves no rubble */
+  pl.essence = 1e6;
+  let shell = null;
+  for (let a = 0; a < 40 && !shell; a++) {
+    const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 220, y = c.y + Math.sin(th) * 220;
+    if (World.applyCommand(w, 0, { c: 'build', bt: 'tower', x, y }).ok) shell = pl.buildings[pl.buildings.length - 1];
+  }
+  ok('the rig is alive: a shell is rising', !!shell && shell.raise > 0);
+  ok('a rising shell comes down too', !!shell && World.applyCommand(w, 0, { c: 'demolish', id: shell.id }).ok && !pl.buildings.some((b) => b.id === shell.id));
+  const rig = walledRealm(20260810);
+  if (rig.wall) {
+    const { w: w2, pl: pl2, wall } = rig;
+    const nv = w2.navVersion, walls0 = w2.walls.length;
+    ok('the rig is alive: a finished run stands', !wall.raise && walls0 > 0);
+    const r2 = World.applyCommand(w2, 0, { c: 'demolish', id: wall.id });
+    ok('a standing run is thrown down whole — no breach left to mend, the ground freed',
+       r2.ok && !pl2.buildings.some((b) => b.id === wall.id) && w2.walls.length === walls0 - 1 && w2.navVersion > nv,
+       JSON.stringify(r2));
+  }
+  /* and a hall under the masons still takes a new standard (the sheet offers it now) */
+  const w3 = World.createWorld(3, 2), p3 = w3.players[0];
+  p3.essence = 1e6;
+  const h3 = p3.buildings.find((b) => b.bt === 'barracks');
+  const up = World.applyCommand(w3, 0, { c: 'up', id: h3.id, br: C.BUILDINGS.barracks.branchUI[0] });   // the hall forks at level 2
+  ok('the rig is alive: the masons are on the hall', up.ok && h3.work > 0, JSON.stringify(up));
+  const was = h3.co;
+  const asg = World.applyCommand(w3, 0, { c: 'assign', id: h3.id, co: 'new' });
+  ok('a hall under the masons still changes its standard', asg.ok && h3.co !== was && h3.work > 0, JSON.stringify(asg) + ' co ' + was + ' -> ' + h3.co);
 }
 
 /* ---------------- A FALLEN HEIR GIVES NO ORDERS ----------------

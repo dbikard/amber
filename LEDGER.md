@@ -723,3 +723,92 @@ Pattern share 72% → 70%; convergence greedy mirror `med 24.5m [castle:6 timeou
 14.2m → 14.3m. The LADDER turned over — `bleys, corwin, julian, benedict, brand` — the walkers
 (brand 11 → 17) gained what the marchers (bleys 15 → 7) lost on a board where the Seats stand
 further apart than the old pairs did; re-pasted, not adjusted.
+
+### A WAR HAS TWO SIDES — OR AS MANY AS IT HAS HEIRS (2026-08-19)
+
+The designer's TODO: "the reach war should also still have a free for all mode". Nothing in the
+sim knew the word "team" — `World.lost`, the verdict at `endMatch`, `refound` and the coalition
+against a walker all read `world.sides` as a list — so a free-for-all is `REALM.setup` accepting
+any number of sides (seat 0 leads the first, a seat named twice keeps its first side, empty
+sides dropped, a lone side given an enemy), `{ffa: n}` as a setup spec, a TWO SIDES / FREE FOR
+ALL toggle on the setup screen and `#lan-ffa` in the lobby. Held by six headless checks and the
+setup and lobby flows in the browser.
+
+### THE EDGE OF THE WORLD IS A COAST OR A RANGE
+
+The designer's TODO and then his correction while it was being built: "game maps should have
+their edges be either oceans (with a coastline) or large mountain ranges, so that the limits feel
+more natural (no black space beyond the world limit)"; then "the coastline shouldn't be a
+straight line and should have cliffs or beaches, it can have estuaries with rivers going to the
+oceans. don't allow panning too much past the edge so that we don't need to provide texture —
+our work should only be needed for a small fraction of the screen when at a corner or edge."
+The first cut held the last two cells of a sea edge under the waterline and let the old soft
+rim do the rest — a straight coast; the second deals the water's depth along the edge by noise
+(2-13 cells, two octaves), a beach or a cliff at the waterline in long stretches
+(`cliffShore`), and estuaries where a narrow noise peak cuts `inletDeep` cells further.
+Measured over 450 builds: 0 failures, every border cell water or crag, the water's run along a
+coast spanning a median of 5 cells and never under 3, both beach and cliff on every world with
+a coast.
+The renderer's skirt went through three pictures before it was right: (1) the ground texture
+with clamped UVs past 0..1 — every row of the skirt one edge texel, a barcode; (2) vertex
+colours averaged along the bake's border rows — a smooth sea, but a range painted BLACK,
+because the bake paints crag ground near-black (10,8,16) and it is the instanced rocks that
+read as stone on the map; (3) the rock palette for a range, ridged by folded value noise and
+strewn with instanced rocks where it climbs (a flat rise read as a lit shelf; a 120-unit lattice
+flattened 190-unit ridges; the slope arm's strata painted the first climb near-black — all
+measured on screenshots). And the camera: `overscroll` 0.42 → 0.06 was not enough, because the
+scroll box is not the picture — a pitched camera on a landscape screen sees ~2.9 `viewW` across
+the aim row and 40% of the screen lay past the right edge with the box flush against it — so
+`clampCam` asks the real frustum's aim row where its ends fall and walks the camera back, or
+centres a world narrower than the screen. A phone at the home corner shows the Seat in the
+upper third with a sliver of sea beside it.
+`node sim.js` on the coast/range boards (against the corner boards before): mirrors 40/45 →
+60/60; gradient 80/85/95 → 100/80/80 (monotone still); contested Pattern share 70% → 77% —
+TWO POINTS OVER the 25-75 tolerance (n≈62 committed walks, σ≈5): read as the lip rather than a
+breach, flagged for the designer rather than tuned blind — the three content numbers the
+principles name moved the share four points or less when they were swept; convergence greedy
+mirror 35.4m/2 timeouts → 15.8m/1; ladder re-pasted `benedict, corwin, brand, bleys, julian`
+(benedict 13 → 7, julian 12 → 16) — the order is volatile against the board's shape at six games
+a matchup, which is what the principles say a ladder is.
+Found by the gate on the coast boards: **benedict gave up looking for the man.** Every doctrine
+gated its scouting on `unexplored > 2` (or `> 3`), written for a board of twenty-four sites where
+the rival Seat was found long before the last two; on a board of four quarters (eighteen sites,
+the rival in the far corner) the last two unexplored ARE the rival's Seat and the spring beside
+it, and benedict — 89 men strong — stopped seeking and never laid eyes on him on three seeds of
+five. `unseen(v, n)` keeps the search alive while the Seat is unfound; found at 115s on seed 1
+after. Twelve more rigs were made to ask their questions on the new ground (a muster that spills
+ten units further in a cramped corner court; a rim probe moved to a spec board, since no grown
+rim is dry any more; the three-run curtain's home found with a finer sweep; the Squire's hold
+measured without the answer to a walk, which is exempt by rule; a marker at a throne with the
+rival's opening men buried first).
+`node sim.js` with the search kept alive (`unseen`): mirrors 45/60; gradient 95/75/80;
+contested Pattern share 74% — back inside the band; convergence greedy 15.8m/1 timeout; ladder
+`corwin, benedict, brand, bleys, julian` (re-pasted).
+
+### A WALKER FORTIFIES FIRST, AND HOLDS HIS HOME (2026-08-19)
+
+The designer's chronicle at PRINCE (seed 3090875189, 16:34, won by castle): "this was supposed to
+be the hardest but it was too easy. I think he tried to walk too early and didn't even fortify
+before walking." The table says it exactly: Brand stepped on at 3:57 with 10 works, 43 men, 151
+in the bank and 28 a second — the old sum (bank + income × the walk's length ≥ 1.1 × the drain)
+was just met; the player razed three of his Gates by 4:56, his income fell to 14, his purse was
+nought from 5:00, he mustered nobody for the rest of the walk, his army went 51 → 9 → 1 by 6:40
+while assaulting the player's court, and the player walked into an empty yard and threw the
+Shrine down at 52%. Three gates now: `WALK_INCOME` 0.8 on the income half of the sum (which
+alone would have refused that 3:57 walk: 28 × 0.8 × secs < 1.1 × 22 × secs), `WALK_TOWERS` two
+finished towers at home (a `fortify` want the crew takes up the moment the doctrine wishes to
+walk; on the rig, brand stepped on with one tower before and two after), and a walker's banner
+is home with `striking` off. Held by 'a walker fortifies first, and holds his home' (fails on
+the old doctrine at the towers).
+The third gate — the walker's banner home, his assault off — measured on the full run: contested
+Pattern share 97% (2 by force of 58), mirrors 55/60, gradient 100/85/80: a fortified walker whose
+army stays on his walls cannot be stopped by the heirs' answer, which is the Pattern as a
+formality. REJECTED; kept behind `AMBER_WALKHOLD=1`. The two gates that stay were measured
+alone next (see below).
+The two gates that ship (`WALK_INCOME` 0.8, `WALK_TOWERS` 2), on the full run: mirrors 65/60,
+gradient 100/80/80, contested share 81% (10 by force, 43 by the Pattern), convergence greedy
+15.8m/1 timeout, ladder `corwin, benedict, bleys, brand, julian`. Isolated: towers 0, 1 and 2
+read the same (83/83/81) — the share is the INCOME MARGIN's, because a walker who does not
+starve is one the heirs' answer rarely stops; an earlier and smaller answer (`AMBER_WALKANS=5
+AMBER_WALKARM=5`) read 81% too. The designer chose to ship it (option A, 2026-08-19) and to
+read the band as a statement about the heirs' answer to a walk, which is the next job.

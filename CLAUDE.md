@@ -77,15 +77,37 @@ in order.
   `placeNodes`; the old scatter-and-score is gone, and worldgen runs in ~10ms against 60-100).
   A guest's renderer mirrors nothing: its camera simply starts over its own Seat
   (`js/render3d.js`).
+  **AND THE EDGE OF THE WORLD IS A COAST OR A RANGE, NEVER A LINE** (the designer,
+  2026-08-19, boards and countries alike; `G.generate`, `CONST.WORLD` `rim/shoreW/cliffShore/
+  inletOdds/inletDeep/rangeW/rangeOdds`). Each edge is dealt sea or crag by the seed. A coast's
+  water runs inland by a depth that wanders along the edge, its shore is BEACH (marsh and sand)
+  on some stretches and CLIFF (crag out of the water) on others, and an ESTUARY cuts a narrow
+  inlet deeper here and there; a range is foothills rising to crag, its foot wandering too.
+  The last cell of every edge is water or crag whatever the noise said, and `flatten` leaves the
+  last two cells of the world alone (a spring's hollow once levelled a beach into plain).
+  `gen.edges` says what each edge was dealt. In the renderer the same sea or the same stone
+  CONTINUES past the map (the `skirt`: four strips, vertex-coloured from the bake's border
+  rows for water and from the rock palette for a range, ridged and rock-strewn as it recedes,
+  fog-patched like everything in `worldG`), so nothing past the limit of the world is black;
+  and the camera is held so only a little of the screen ever looks past the edge —
+  `VIEW.overscroll` 0.06 (it was 0.42) on the scroll box, and `clampCam` then asks the AIM ROW
+  of the real frustum where its ends fall and walks the camera back until they sit inside the
+  map (or centres a world narrower than the screen). The far side of the screen sees past the
+  top edge whatever is done — that is what the skirt and the distance fog are for.
+  (→ LEDGER: THE EDGE OF THE WORLD IS A COAST OR A RANGE)
 - `world.events` is an append-only queue for the renderer/UI (shots, deaths, rifts, alerts);
   the sim never reads it. Consumers drain it each frame.
-- Thirteen commands, all validated in `applyCommand(world, playerIdx, cmd)`. None carries a
+- Fourteen commands, all validated in `applyCommand(world, playerIdx, cmd)`. None carries a
   slot — a work is named by `id` and ground by `x`/`y`: `{c:'pause',on}`,
   `{c:'build',x,y,bt,co}` (a wall adds `x2,y2`), `{c:'up',id,br}` (`br` read at the fork level
   only), `{c:'fix',id}`, `{c:'flip',id,on}`, `{c:'walk',on}`, `{c:'muster',pause[,co]}`,
   `{c:'rally',co,x,y}`, `{c:'assign',id,co}`, `{c:'banner',x,y}`, `{c:'power',k,x,y}`,
-  `{c:'pact',p,on}` (a standing offer of terms; war only) and `{c:'raze',id}` (throw down a
-  yielded court you are standing in; war only, and issued by nothing yet — see TODO).
+  `{c:'pact',p,on}` (a standing offer of terms; war only), `{c:'raze',id}` (throw down a
+  yielded court you are standing in; war only, and issued by nothing yet — see TODO) and
+  `{c:'demolish',id}` (throw down a work of your OWN — any of them, finished or not, half the
+  stone back; through `hurtBuilding`'s own teardown, said as a `demolish` event and never a
+  raze, so nothing cries that the enemy did it. The designer, 2026-08-19: a mistake must be
+  undoable and the ground wanted for something else freed).
 - **The halt** is world state (`world.paused = {by, at}`), not a session flag, so it is
   host-authoritative and rides the snapshot to every seat. `update()` returns early and
   `applyCommand` refuses everything but `{c:'pause',on}` — a pause you can build through is a
@@ -344,6 +366,21 @@ sounding the Recall, halting the muster and cancelling a placement are all SILEN
 (`r.err`, in `issue`) always speaks, and so does anything a rival or Chaos did. Orders are in
 the chronicle (`record.js`). (→ LEDGER: A BANNER IS FOR A REFUSAL OR A SURPRISE)
 
+**A HALL UNDER THE MASONS STILL TAKES A NEW STANDARD, AND ANY WORK OF YOURS MAY BE THROWN
+DOWN** (the designer, 2026-08-19). The sheet's scaffolding branch returned with nothing but the
+countdown; it offers the standard card (`standardCard`) and the demolish card (`demolishCard`,
+LAST, below everything constructive, on every work's sheet) now. The sim allowed `assign` under
+`work` all along; only the sheet hid it.
+
+**BACK GOES TO THE PREVIOUS SCREEN, AND EXITS ONLY FROM THE HOME SCREEN** (the designer,
+2026-08-19). One history entry is held whenever the page is anywhere but HOME (`atHome`: the
+menu with nothing over it — no match, codex, chapters, war setup, rivals, LAN table, chronicle
+box or scanner) and not held at home: the FRAME loop arms it whenever `atHome()` is false, so a
+screen nobody listed is covered the day it is written (the war setup and the LAN table once
+left the site on their first press), `onPopState` peels one layer and re-arms only if still not
+home, and at home the next press leaves the app. The old `force`/"while a match runs" arming
+is gone.
+
 The mason readout must mirror `World.rising` EXACTLY: a crew is busy when `raise > 0` **or**
 `work > 0` (an upgrade or a mend). It once counted only `raise` and cheerfully reported a free
 crew that every order then bounced off as 'busy'.
@@ -422,6 +459,24 @@ Watchtower's 250 and every branch and level above it — a gun that shelled ston
 tower left a defender no counter. It still out-reaches the Seat's own gun (200), and its
 `aggro` (200) stays under its reach so it remains the one kind the rule can be seen on.
 (→ LEDGER: NO GUN OUT-REACHES THE TOWERS)
+
+**A WALKER FORTIFIES FIRST** (ai.js, the walk clause; the designer, 2026-08-19, from a
+chronicle at PRINCE in which Brand walked at 3:57 with nothing beside his Shrine, sent his army
+at the player's court in the same breath, had his Gates raided, ran dry and was torn off the
+lines at 52%). Two gates on the walk: the affordability sum counts only `WALK_INCOME` (0.8) of
+the income — a raid takes income away, never the bank; and `WALK_TOWERS` (two) finished towers
+within `CLAIM.seat` of the Seat (or a curtain) must stand before he steps on, and while the
+doctrine wishes to walk the crew WANTS them (`fortify`, prepended to the missions — on the
+vantages near home, else beside the throne and the home spring). Past the hour (`late`) the
+stall-breaker outranks both. A third gate — the walker's banner held at home with no assault —
+was built, measured and REJECTED: the Pattern decided 97% of contested matches with it on
+(target 50, tolerate 25-75); it stays behind `AMBER_WALKHOLD=1` for the referee.
+(→ LEDGER: A WALKER FORTIFIES FIRST)
+
+**A MOMENT SAYS WHERE** (record.js): the chronicle wrote "the enemy is inside your city" for
+every `hurtcity`, a Gate on a spring four hundred out included (reported from play: the enemy
+never was in the city, only at gates and towers). It names the work, by whom and where, and keeps
+the cry for the court's own ground — the same test the banner makes.
 
 **THE ARMY AT HOME STANDS ON ITS WALLS, AND A HALL JOINS A STANDARD** (ai.js `defencePost`,
 `hallCo`; the designer, 2026-08-18). A man is posted to a wall or a tower by his ORDER
@@ -519,9 +574,14 @@ of the country (a guest regenerates the ground from the seed; history rides the 
 absolute snapshots), humans take the contender seats in join order, and the host's lords play
 the rest.
 
-**A WAR HAS TWO SIDES** (`REALM.create(seed, spec)`, `REALM.setup`, createWorld `opts.sides`).
-Two to four CONTENDERS in two sides — seat 0, the human at the table, always first on side A —
-and the rest of the country minor lords. A side is ONE BANNER FROM GENESIS: every member's
+**A WAR HAS TWO SIDES — OR AS MANY AS IT HAS HEIRS** (`REALM.create(seed, spec)`, `REALM.setup`,
+createWorld `opts.sides`). Two to four CONTENDERS in two sides — seat 0, the human at the table,
+always first on side A — and the rest of the country minor lords. A FREE-FOR-ALL (the designer,
+2026-08-19) is every contender his own side (`{ffa: n}` on the setup screen, `[[0],[1],[2],[3]]`
+as sides; the LAN lobby's `#lan-ffa`), and nothing downstream knows the difference: `World.lost`,
+`endMatch`'s verdict, `refound` and the coalition against a walker all read `world.sides` as a
+list, and `REALM.setup` tidies any number of sides (seat 0 leads the first, a seat named twice
+keeps its first side, empty sides are dropped, a lone side is given an enemy). A side is ONE BANNER FROM GENESIS: every member's
 `realm` is the side's first seat, so wins and losses (the run judges by banner), sight,
 hostility and terms all follow from the realm code and nothing in the sim knows the word "team".
 The designer's default is you against three heirs, each contending for AMBER and the walk. The
@@ -819,6 +879,10 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
 - **A guest plays a REALM.** `mine` in `Net.snapFor` and in `hostView` is same-realm, not
   same-seat; `realm` and `heirs` ride the wire; a guest's command carries `as` (the lord it is
   for) and the host vets it against the seat it arrived on, which is the only unforgeable thing.
+  **And `hand()` reads the SNAPSHOT's banners on a guest**, never `refWorld` — the country as it
+  was at genesis, every lord his own banner — or a court a guest has just conquered is "not of
+  his banner" at the hand while the council offers COMMAND for it, and the tap does nothing
+  (reported from a LAN war, 2026-08-19; held by the guest's-half suite).
 - **A LAN TABLE HAS TWO BEGINNINGS, and the button says which.** `lan-start` deals a board;
   `lan-start-war` appears only when there is an undecided war and deals the table into it. Every
   `Net.send` in the deal is guarded: one channel throwing takes the whole handler down, which

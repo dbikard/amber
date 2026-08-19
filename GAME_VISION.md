@@ -50,6 +50,9 @@ rising cost, climbing is charged on top, and the handful of corridors any given 
 wherever the mountains and the water happened to leave them. Units march the land freely;
 fights happen where armies meet.
 
+- **The world ends in a coast or a range.** Every edge of the map is sea — a wandering
+  shoreline of beaches and cliffs, cut by the odd estuary — or a range of crag; the same sea
+  or stone continues past the edge, and the camera never looks far beyond it.
 - **The board is four quarters, and the Seats stand in the corners.** The land is noise, not
   a template, but what is ON it is dealt evenly: two springs in every quarter of the map, the
   starting springs among them, and each heir's Seat in a corner — two heirs on a diagonal,
@@ -169,11 +172,13 @@ the strategic rule. Orders are bounded; violence is not.
   instant either is withdrawn. Nobody keeps terms with a man on the lines.
 - **One Pattern, in one city.** Holding AMBER is not winning — it is being *allowed to walk*,
   and the walk is slower on a country so it can be answered.
-- **Two sides, two to four heirs.** You against three heirs by default — each contending for
-  AMBER and the walk — or an ally at your side against two, or two against two: the setup
-  screen offers every shape, and at a LAN table humans replace the heirs, each placed on a side.
-  A side is one banner and one victory. The other lords run the same doctrines with more
-  lapses, and expand rather than conquer.
+- **Two sides, two to four heirs — or every heir for himself.** You against three heirs by
+  default — each contending for AMBER and the walk — or an ally at your side against two, or
+  two against two: the setup screen offers every shape, and at a LAN table humans replace the
+  heirs, each placed on a side. A side is one banner and one victory. Or a FREE-FOR-ALL: each
+  heir his own banner, terms sworn and broken between them, and whoever walks the Pattern finds
+  the rest allied against him. The other lords run the same doctrines with more lapses, and
+  expand rather than conquer.
 - **Put it down, pick it up.** The country regenerates from its seed; the save writes down only
   what was done. A LAN table is dealt into the host's war; guests regenerate the ground.
 

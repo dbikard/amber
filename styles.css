@@ -803,3 +803,11 @@ body {
 /* 👁 a seat that has lost watches: the hand's controls go, the map and the readouts stay */
 #hud.watching #hud-bottom, #hud.watching #war-chip, #hud.watching #terms, #hud.watching #sheet { display: none !important; }
 #hud.watching #objective { display: block; }
+
+/* the shape of a war: two sides, or a free-for-all */
+.ws-shape { display: flex; gap: 8px; justify-content: center; margin: 6px 0 10px; }
+.ws-shape .mbtn.on { background: rgba(255,217,138,0.22); border-color: #ffd98a; color: #ffe9b0; }
+
+/* the one destructive card on a work's sheet, named for what it is */
+.card.demolish { border-color: #ff8a9655; }
+.card.demolish .c-name { color: #ffb3ba; }

@@ -738,8 +738,12 @@ async function match(browser, base, renderer) {
       const s = R.project(60, 60);
       return { sx: Math.round(s.x), sy: Math.round(s.y) };
     });
-    ok(`a Seat in the corner can be brought to the middle`,
-       corner.sx > 60 && corner.sx < 360 && corner.sy > 80 && corner.sy < 780,
+    /* ON SCREEN, as near the middle as the edge of the world allows: the camera is held so
+     * only a little of the screen looks past the edge (VIEW.overscroll, the frustum clamp —
+     * the designer, 2026-08-19), so a point sixty from a corner sits toward the screen's own
+     * corner rather than its middle, and that is the rule working */
+    ok(`a Seat in the corner can be brought onto the screen`,
+       corner.sx > 2 && corner.sx < 418 && corner.sy > 40 && corner.sy < 820,
        `lookAt(60,60) -> screen ${corner.sx},${corner.sy}`);
     const far = await pg.evaluate(() => {
       const R = window.Render, C = window.CONST;
@@ -747,7 +751,7 @@ async function match(browser, base, renderer) {
       const s = R.project(C.MAP.W - 60, C.MAP.H - 60);
       return { sx: Math.round(s.x), sy: Math.round(s.y) };
     });
-    ok('and so can the opposite corner', far.sx > 60 && far.sx < 360 && far.sy > 80 && far.sy < 780,
+    ok('and so can the opposite corner', far.sx > 2 && far.sx < 418 && far.sy > 40 && far.sy < 820,
        `-> screen ${far.sx},${far.sy}`);
 
     /* measure how big a fixed stretch of ground looks — unambiguous under perspective,
@@ -786,7 +790,13 @@ async function match(browser, base, renderer) {
         R.setZoom(zm); R.lookAt(bx, by);
         const c = R.toWorld(window.innerWidth / 2, window.innerHeight / 2);
         const v = R.viewRect();
+        /* the clamp may hold the camera short of the aim — the edge of the world is near on a
+         * tall screen zoomed out — and then the claim is that it stopped AT the clamp with the
+         * x right, not that it reached an aim the rule forbids */
+        const vs = R.viewSize();
+        const held = R.camY <= -vs.h * C.VIEW.overscroll * 0.98 || R.camX <= -vs.w * C.VIEW.overscroll * 0.98;
         out.push({ zm, off: c ? Math.round(Math.hypot(c.x - bx, c.y - by)) : -1,
+                   offX: c ? Math.round(Math.abs(c.x - bx)) : -1, held,
                    w: Math.round(v.x1 - v.x0),
                    inside: !!c && bx >= v.x0 && bx <= v.x1 && by >= v.y0 && by <= v.y1 });
       }
@@ -794,8 +804,8 @@ async function match(browser, base, renderer) {
       return { out, elev: Math.round(best) };
     });
     for (const v of centred.out) {
-      ok(`lookAt centres its target at zoom ${v.zm}`, v.off >= 0 && v.off < 60,
-         `off by ${v.off} world units (on ground ${centred.elev} high)`);
+      ok(`lookAt centres its target at zoom ${v.zm}`, v.off >= 0 && (v.off < 60 || (v.held && v.offX < 60)),
+         `off by ${v.off} world units (on ground ${centred.elev} high)${v.held ? ', held at the edge of the world' : ''}`);
       ok(`the viewfinder contains what is on screen at zoom ${v.zm}`, v.inside);
     }
     ok('the viewfinder narrows as you zoom in',
@@ -1982,7 +1992,13 @@ async function match(browser, base, renderer) {
                  aboveEveryCard: cards.every((c) => c.getBoundingClientRect().top >= fy),
                  valve: !!valve,
                  /* the ONE order on this sheet given in a hurry: it must be the first card */
-                 valveFirst: !!valve && cards.length > 0 && cards[0] === valve };
+                 valveFirst: !!valve && cards.length > 0 && cards[0] === valve,
+                 /* the standard may be changed under the masons, and any work of yours may
+                  * be thrown down — last card, named for what it is */
+                 change: !!document.getElementById('change-standard'),
+                 demolish: !!document.getElementById('work-demolish'),
+                 /* below everything constructive: after the standard's card, if both are there */
+                 demolishLast: cards.findIndex((c2) => c2.id === 'work-demolish') > cards.findIndex((c2) => c2.id === 'change-standard') };
       };
       window.UI.upSheet(hall, pl.essence, false, pl);
       const idle = seen('idle');
@@ -2007,6 +2023,34 @@ async function match(browser, base, renderer) {
     ok('the muster valve rides with it, first card and present under the masons',
        !!(hf.idle && hf.idle.valveFirst && hf.busy && hf.busy.valve),
        `idle ${JSON.stringify(hf.idle && hf.idle.valveFirst)}, busy ${JSON.stringify(hf.busy && hf.busy.valve)}`);
+    /* THE DESIGNER, 2026-08-19: a hall under the masons still takes a new standard, and any
+     * work of yours may be thrown down — the last card on the sheet, idle or busy */
+    ok('the standard may be changed while the masons are on the hall',
+       !!(hf.idle && hf.idle.change && hf.busy && hf.busy.change), JSON.stringify({ idle: hf.idle && hf.idle.change, busy: hf.busy && hf.busy.change }));
+    ok('and THROW IT DOWN is offered on both, as the last card',
+       !!(hf.idle && hf.idle.demolish && hf.idle.demolishLast && hf.busy && hf.busy.demolish && hf.busy.demolishLast),
+       JSON.stringify({ idle: hf.idle && [hf.idle.demolish, hf.idle.demolishLast], busy: hf.busy && [hf.busy.demolish, hf.busy.demolishLast] }));
+    /* ...and pressing it throws the work down, through the real handler */
+    const thrown = await pg.evaluate(async () => {
+      const g = window.Game.game, pl = g.world.players[0];
+      pl.essence = 1e6;
+      const c = window.World.cityOf(g.world, 0);
+      let t = null;
+      for (let a = 0; a < 40 && !t; a++) {
+        const th = a / 40 * Math.PI * 2;
+        if (window.World.applyCommand(g.world, 0, { c: 'build', bt: 'tower', x: c.x + Math.cos(th) * 230, y: c.y + Math.sin(th) * 230 }).ok) t = pl.buildings[pl.buildings.length - 1];
+      }
+      if (!t) return { err: 'no ground for a tower' };
+      window.UI.upSheet(t, pl.essence, false, pl);
+      await new Promise((r2) => setTimeout(r2, 400));   // past the sheet's fat-finger guard
+      const btn = document.getElementById('work-demolish');
+      const e0 = pl.essence;
+      if (btn) btn.click();
+      await new Promise((r2) => setTimeout(r2, 100));
+      return { had: !!btn, gone: !pl.buildings.some((b) => b.id === t.id), back: pl.essence - e0,
+               sheetShut: document.getElementById('sheet').classList.contains('hidden') };
+    });
+    ok('pressing it throws the work down and shuts the sheet', !thrown.err && thrown.had && thrown.gone && thrown.back > 0 && thrown.sheetShut, JSON.stringify(thrown));
 
     suite(`${r} · the sheet stays live`);
     await pg.evaluate(() => { window.UI.closeSheet(); window.Game.game.armedFlag = null; });
@@ -2748,9 +2792,16 @@ async function match(browser, base, renderer) {
       if (!made) return { err: 'no legal run long enough for a gateway' };
       /* the masons out of it: a rising run is a shell and hangs no doors */
       made.raise = 0; made.hp = made.maxHp;
+      /* and NOBODY near the doorway while its resting state is read: on a corner board the
+       * opening company stands where the run went up and swung the leaf before it was asked
+       * (measured: angle 0.83 at the first read) — the men are put back for the rest */
+      const parked = g.world.units.map((u) => [u, u.x, u.y]);
+      for (const u of g.world.units) { u.x = c.x - 2000; u.y = c.y - 2000; }
       W.update(g.world, C.SIM_DT);
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-      return { id: made.id, gated: !!made.gated, shut: R.debugGate(made.id), gates: R.debugGates().length };
+      const shut = R.debugGate(made.id);
+      for (const [u, x, y] of parked) { u.x = x; u.y = y; }
+      return { id: made.id, gated: !!made.gated, shut, gates: R.debugGates().length };
     });
     ok('a run long enough to spare a gateway can be raised', !gate.err, gate.err || `wall ${gate.id}`);
     if (!gate.err) {
@@ -2971,6 +3022,22 @@ async function match(browser, base, renderer) {
     ok('back with nothing open returns to the menu', !(await inMatch()));
     ok('and the game itself is still open',
        await pg.evaluate(() => !document.getElementById('menu').classList.contains('hidden')));
+    /* THE DESIGNER, 2026-08-19: back goes to the previous screen, and exits the app only from
+     * the HOME screen. So at the menu with nothing open NO entry is held (the next press leaves
+     * the app), and the moment a layer opens over it — the codex here — one is, within a frame,
+     * without the layer having to say so. */
+    await pg.waitForTimeout(150);
+    const home = await pg.evaluate(() => ({ armed: !!(history.state && history.state.amber) }));
+    ok('at home no back entry is held: the next press leaves the app', !home.armed, JSON.stringify(home));
+    await pg.evaluate(() => document.getElementById('btn-roll').click());
+    await until(pg, () => !document.getElementById('roll').classList.contains('hidden'));
+    await pg.waitForTimeout(150);
+    const layered = await pg.evaluate(() => ({ armed: !!(history.state && history.state.amber) }));
+    ok('...and a layer over the menu arms one within a frame', layered.armed, JSON.stringify(layered));
+    await pg.goBack(); await until(pg, () => document.getElementById('roll').classList.contains('hidden'));
+    await pg.waitForTimeout(150);
+    const homeAgain = await pg.evaluate(() => ({ armed: !!(history.state && history.state.amber), menu: !document.getElementById('menu').classList.contains('hidden') }));
+    ok('...back peels it to the menu and holds nothing again', !homeAgain.armed && homeAgain.menu, JSON.stringify(homeAgain));
 
     /* ---------------- the scanner is not "away" ---------------- *
      * Pairing is the one place the player is blind: the camera covers the screen, and every
@@ -4877,6 +4944,11 @@ async function match(browser, base, renderer) {
     ok('...and it hangs below the walkers, not over them', war.below, 'the two boards overlap');
     ok('...and nothing is sealed yet', war.pact === false, String(war.pact));
 
+    /* THE WARDEN IS HELD STILL FOR THE TAP ITSELF: the claim is that a tap OFFERS and seals
+     * nothing on its own, and his doctrine answers an offer on its next think — which on the
+     * corner boards came inside the quarter second the rig waited (measured: sealed at the
+     * first read). He is given his voice back for the claim that is about him. */
+    await pg.evaluate(() => { window.__warden = window.Game.game.bot; window.Game.game.bot = { step() {}, reset() {} }; });
     await pg.click('#terms .term');
     await pg.waitForTimeout(250);
     const asked = await read();
@@ -4885,6 +4957,7 @@ async function match(browser, base, renderer) {
 
     /* the Warden takes them — let his own doctrine answer, which is the whole point of having
      * one, rather than reaching into the world and setting the bit */
+    await pg.evaluate(() => { window.Game.game.bot = window.__warden; });
     await pg.evaluate(() => new Promise((r) => setTimeout(r, 0)));
     await pg.waitForFunction(() => window.World.pactOn(window.Game.game.world, 0, 1), { timeout: 15000 });
     await pg.waitForTimeout(300);
@@ -5014,14 +5087,31 @@ async function match(browser, base, renderer) {
     const still = await pg.evaluate(() => window.Game.game.mode);
     ok('...and the war still stands', still === null, String(still));
     await pg.click('#realm-new');
-    /* a NEW war is set up before it is grown: the sides screen, then BEGIN */
+    /* a NEW war is set up before it is grown: the sides screen, then BEGIN — and this time a
+     * FREE-FOR-ALL: every heir his own banner (the designer, 2026-08-19) */
     await until(pg, () => !document.getElementById('war-setup').classList.contains('hidden'));
+    const ffa = await pg.evaluate(async () => {
+      document.getElementById('ws-ffa').click();
+      await new Promise((r) => setTimeout(r, 50));
+      return { sum: document.getElementById('ws-sum').textContent,
+               sidesGone: !document.querySelector('#war-setup-body .ws-side.own'),
+               rivals: !!document.querySelector('#war-setup-body .ws-side.foe') };
+    });
+    ok('the setup screen offers a FREE FOR ALL: one stepper of rivals, no sides', /free for all/.test(ffa.sum) && ffa.sidesGone && ffa.rivals, JSON.stringify(ffa));
     await pg.click('#ws-begin');
     await inMatchNow(pg);
-    const fresh = await pg.evaluate(() => ({ seed: window.Game.game.world ? window.Game.game.world.seed : null,
-                                             war: window.Game.game.war === true }));
+    const fresh = await pg.evaluate(() => {
+      const g = window.Game.game, w = g.world, W = window.World;
+      return { seed: w ? w.seed : null, war: g.war === true, sides: JSON.stringify(w && w.sides),
+               allFoes: !!w && [1, 2, 3].every((i) => W.foe(w, 0, i)) && W.foe(w, 1, 2) && W.foe(w, 2, 3),
+               /* every rival heir plays at the footing with the walk and terms of his own: no
+                * ally branch took any of them */
+               noAllies: !!w && g.bots.every((b, i) => !b || w.heirs.indexOf(i) < 0 || i === 0 || !b.noTerms) };
+    });
     ok('the second tap deals a NEW country', fresh.war && fresh.seed !== mark.seed,
        `seed ${fresh.seed} vs old ${mark.seed}`);
+    ok('...a free-for-all: four banners, every heir for himself', fresh.sides === '[[0],[1],[2],[3]]' && fresh.allFoes, fresh.sides);
+    ok('...and no heir is anybody\'s ally', fresh.noAllies);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }
@@ -5160,6 +5250,22 @@ async function match(browser, base, renderer) {
        /skirmish/i.test(cold.start.text) && /war/i.test(cold.war.text) &&
        cold.start.text !== cold.war.text, `${cold.start.text} // ${cold.war.text}`);
     ok('...the new war saying it is new', /new/i.test(cold.war.text), cold.war.text);
+    /* THE LOBBY CAN DEAL A FREE-FOR-ALL TOO: one tap, and every human and every bot heir is a
+     * banner of his own; a second tap puts the two sides back */
+    const lanFfa = await pg.evaluate(async () => {
+      const sumOf = () => (document.querySelector('#lan-sides .ws-sum') || {}).textContent || '';
+      const before = sumOf();
+      document.getElementById('lan-ffa').click();
+      await new Promise((r) => setTimeout(r, 50));
+      const during = sumOf();
+      const sides = window.Game.debugLanSides ? window.Game.debugLanSides(2) : null;
+      document.getElementById('lan-ffa').click();
+      await new Promise((r) => setTimeout(r, 50));
+      return { before, during, after: sumOf(), sides: JSON.stringify(sides) };
+    });
+    ok('the lobby deals a free-for-all on one tap, and two sides back on the next',
+       /v/.test(lanFfa.before) && /every one for himself/.test(lanFfa.during) && lanFfa.after === lanFfa.before,
+       JSON.stringify(lanFfa));
     /* THE TAP ITSELF, and it is a real actionable click — a button that cannot be hit is not
      * offered however well it measures. Caught, because a throw here would take the whole
      * FILE's tally down with it: `report()` would never run, every suite above would go
@@ -6356,18 +6462,109 @@ async function match(browser, base, renderer) {
                       fogOn: window.Render.debugFogOn(), fogBefore,
                       refused: Game.debugIssue({ c: 'walk', on: true }).err,
                       controls: document.getElementById('hud-bottom').getBoundingClientRect().height };
+      /* A GUEST COMMANDS THE COURTS HE CONQUERS. A lord swears to the guest on the host; the
+       * next snapshot carries it; the council offers COMMAND for that court — and the tap must
+       * take it: `hand()` read the country as it was at genesis on a guest, where every lord
+       * was his own banner, and refused (reported from a LAN war, 2026-08-19). */
+      const lord = hw.players.findIndex((p, i) => i > 3 && hw.cities[i] && hw.cities[i].owner === i);
+      hw.players[lord].realm = World.realmOf(hw, 1);
+      Net.onSnap(JSON.parse(JSON.stringify(Net.snapFor(hw, 1, []))));   // the seat plays again: no allSeen
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      document.getElementById('war-chip').click();
+      await new Promise((res) => setTimeout(res, 250));
+      const acts = [...document.querySelectorAll('#council .cc-acts')];
+      let cmdBtn = null;
+      for (const a of acts) { const row = a.previousElementSibling; if (row && Number(row.dataset.ci) === lord) cmdBtn = [...a.querySelectorAll('.mbtn')].find((b) => /COMMAND/.test(b.textContent)); }
+      if (cmdBtn) cmdBtn.click();
+      await new Promise((res) => setTimeout(res, 100));
+      const command = { lord, offered: !!cmdBtn, hand: Game.game.handOf() };
       Net.active = false; Net.peers = [];
       return { mode: Game.game.mode, seats: names.length, snapSeats,
-               amber: names.includes('AMBER'), war: !!Game.game.lanWar, watch };
+               amber: names.includes('AMBER'), war: !!Game.game.lanWar, watch, command };
     });
     ok('the guest sits at a ten-throne table', lan.mode === 'guest' && lan.seats >= 8,
        JSON.stringify(lan));
     ok('...on the war\'s own ground, AMBER among the seats', lan.amber === true, lan.seats + ' names');
     ok('...and a snapshot serves every one of them', lan.snapSeats === lan.seats,
        `${lan.snapSeats} of ${lan.seats}`);
+    ok('a guest takes COMMAND of a court sworn to him, off the snapshot\'s banners',
+       lan.command && lan.command.offered && lan.command.hand === lan.command.lord, JSON.stringify(lan.command));
     ok('a snapshot that says this seat watches lifts the guest\'s veil and takes his hand',
        lan.watch.watching && lan.watch.hud && lan.watch.fogOn === false && lan.watch.fogBefore === true &&
        lan.watch.refused === 'out' && lan.watch.controls === 0, JSON.stringify(lan.watch));
+    ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+  }
+
+  /* ---------------- THE WORLD DOES NOT END IN BLACK ----------------
+   * Worldgen deals every edge a shore or a range; the renderer continues the same sea or the
+   * same crag past the map (`skirt`), so the pitched camera looking past the far edge sees
+   * water or mountains and never the dark plane under the board. Measured at the pixels, with
+   * the veil lifted (a watcher's seat) so the colour is the skirt's and not the shroud's. */
+  {
+    suite('the world does not end in black');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 7 }));
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    const edge = await pg.evaluate(async () => {
+      const R = window.Render, W = window.World, w = window.Game.game.world, C = window.CONST, T = window.WorldGen.T;
+      const nav = w.nav, mapW = nav.W * nav.cw, mapH = nav.H * nav.cw;
+      /* every border cell of the land is water or crag — what worldgen promised */
+      let bad = 0;
+      for (let x = 0; x < nav.W; x++) for (const y of [0, nav.H - 1]) { const t = nav.terra[y * nav.W + x]; if (t !== T.WATER && t !== T.CLIFF) bad++; }
+      for (let y = 0; y < nav.H; y++) for (const x of [0, nav.W - 1]) { const t = nav.terra[y * nav.W + x]; if (t !== T.WATER && t !== T.CLIFF) bad++; }
+      const sk = R.debugSkirt();
+      /* continuity: just past each edge the skirt stands where the ground's rim stands */
+      const probes = [[mapW + 24, mapH / 2, mapW - 8, mapH / 2], [-24, mapH / 2, 8, mapH / 2], [mapW / 2, -24, mapW / 2, 8], [mapW / 2, mapH + 24, mapW / 2, mapH - 8]];
+      const gaps = probes.map(([sx, sz, gx, gz]) => { const a = sk.at(sx, sz); return a == null ? null : Math.abs(a - R.groundH(gx, gz)); });
+      /* the pixels: the veil lifted, the camera on the right edge, looking past it */
+      window.Game.game.spect.add(0);
+      R.lookAt(mapW - 60, mapH / 2);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const cv = document.querySelector('canvas');
+      const gl = cv.getContext('webgl2') || cv.getContext('webgl');
+      const dpr = cv.width / cv.clientWidth;
+      const buf = new Uint8Array(cv.width * cv.height * 4);
+      gl.readPixels(0, 0, cv.width, cv.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      const lumaAt = (x, z) => {
+        const q = R.project(x, z);
+        if (!q || !q.ok) return null;
+        const px = Math.round(q.x * dpr), py = Math.round(q.y * dpr);
+        if (px < 2 || py < 2 || px >= cv.width - 2 || py >= cv.height - 2) return null;
+        const i = ((cv.height - py) * cv.width + px) * 4;
+        return { l: 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2], rgb: [buf[i], buf[i + 1], buf[i + 2]], sx: q.x, sy: q.y };
+      };
+      /* the camera is held so little of the screen looks past the edge (the clamp), so the
+       * samples are a fine sweep of the ground just beyond it, wherever that lands on screen */
+      const sweep = () => { const out = []; for (let dx = 20; dx <= 700; dx += 20) for (let dz = -900; dz <= 900; dz += 150) { const v = lumaAt(mapW + dx, mapH / 2 + dz); if (v) out.push(v); } return out; };
+      const beyond = sweep();
+      /* THE CONTROL: take the skirt away and the same pixels are the dark plane — so the claim
+       * above is about the skirt and not about a bright backdrop */
+      const strips = [];
+      R.debugScene().scene.traverse((o) => { if (o.name === 'skirt' || o.name === 'skirt-rock') strips.push(o); });
+      for (const o of strips) o.visible = false;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      gl.readPixels(0, 0, cv.width, cv.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      const bare = sweep();
+      for (const o of strips) o.visible = true;
+      window.Game.game.spect.delete(0);
+      return { bad, strips: sk.n, gaps, beyond: beyond.length, dark: beyond.filter((v) => v.l < 14).length,
+               bareDark: bare.filter((v) => v.l < 14).length, bareN: bare.length,
+               sample: beyond.slice(0, 3).map((v) => v.rgb.join(',')) };
+    });
+    ok('the rig is alive: every border cell of the land is water or crag', edge.bad === 0, `${edge.bad} border cells of something else`);
+    ok('four strips of skirt lie past the edges of the world', edge.strips === 4, String(edge.strips));
+    ok('...each continuous with the ground\'s own rim', edge.gaps.every((g) => g != null && g < 10), JSON.stringify(edge.gaps));
+    ok('...and the ground past the far edge is drawn, not black', edge.beyond >= 3 && edge.dark === 0,
+       `${edge.dark} dark of ${edge.beyond} samples; ${edge.sample.join(' | ')}`);
+    ok('the rig is alive: without the skirt those same pixels are the dark plane', edge.bareDark > edge.bareN / 2,
+       `${edge.bareDark} dark of ${edge.bareN}`);
     ok('the page raised no errors', errs.length === 0, errs.slice(0, 3).join(' | '));
     await pg.close();
   }

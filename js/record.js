@@ -153,6 +153,9 @@
           : (ev.by != null && ev.by !== me && head.names[ev.by] ? ' — ' + head.names[ev.by] : '');
         notes.push([t, (mine ? 'YOUR ' + nm + ' is razed' + hand : 'you raze a rival ' + nm) +
                        (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
+      } else if (ev.e === 'demolish') {
+        const nm = C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : ev.bt;
+        if (mine) notes.push([t, 'you throw down your own ' + nm + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
       } else if (ev.e === 'walk') {
         if (mine && tally.walkStarted == null) tally.walkStarted = t;
         notes.push([t, (mine ? 'you set' : head.names[ev.pi] + ' sets') + ' foot upon the Pattern']);
@@ -180,7 +183,19 @@
         lastRift = t;
         notes.push([t, 'Chaos tears a rift' + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
       } else if (ev.e === 'fall') notes.push([t, head.names[ev.pi] + ' is toppled']);
-      else if (ev.e === 'hurtcity' && mine) notes.push([t, 'the enemy is inside your city']);
+      else if (ev.e === 'hurtcity' && mine) {
+        /* SAY WHERE, as the banner does: the event fires for ANY work of yours being hit, and
+         * "the enemy is inside your city" was written into the chronicle for a Gate on a spring
+         * four hundred out gnawed by one fiend — reported from play, 2026-08-19: "the enemy
+         * never was actually in my city, only at gates and watchtowers". The city's own ground
+         * keeps the old cry; anything else names the work, and who, and where. */
+        const c = world && world.map && world.map.sites[world.map.cities[me]];
+        const home = c && ev.x != null && Math.hypot(ev.x - c.x, ev.y - c.y) < C.CITY.r;
+        const what = (C.BUILDINGS[ev.bt] || {}).name || 'works';
+        const who = ev.by === C.CHAOS_ID ? 'Chaos' : (ev.by != null && ev.by !== me && head.names[ev.by]) ? head.names[ev.by] : 'the enemy';
+        notes.push([t, home ? who + ' is inside your city'
+                          : who + ' is at your ' + what + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
+      }
     }
   };
 

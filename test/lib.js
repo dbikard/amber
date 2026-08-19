@@ -128,13 +128,16 @@ function wallRig(World, C, { seed = 20260810, crews = 8, runs = 1, len = 200, pl
     }
   };
   let start = null;
-  for (let rad = 190; rad < 460 && !start; rad += 20)
-    for (let a = 0; a < 64 && !start; a++) {
-      const th = a / 64 * Math.PI * 2;
+  /* finer than it was (64 angles at 20-unit steps): a corner Seat with the sea on two sides
+   * has fewer straight lines in its writ, and a three-run curtain's home on the rig's seed is
+   * one the coarse sweep stepped over (measured: rad 420 at a 10-unit step, none at 20) */
+  for (let rad = 150; rad < 460 && !start; rad += 10)
+    for (let a = 0; a < 96 && !start; a++) {
+      const th = a / 96 * Math.PI * 2;
       const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;
       /* well inside the world: a Seat stands in a corner now, and a curtain against the map's
        * edge has a face nobody can stand on */
-      if (x < 140 || y < 140 || x + runs * len > C.MAP.W - 140 || y > C.MAP.H - 140) continue;
+      if (x < 60 || y < 60 || x + runs * len > C.MAP.W - 60 || y > C.MAP.H - 60) continue;
       let room = true;
       for (let k = 0; k < runs && room; k++)
         if (World.wallError(w, 0, x + k * len, y, x + (k + 1) * len, y)) room = false;

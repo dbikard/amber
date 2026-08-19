@@ -1122,6 +1122,9 @@
     R.clampCam();
   };
   R.setZoom = function (z) { R.zoom = z; R.applyZoom(); };
+  /* the scroll box's size in world units, read-only — the camera suite asks whether the clamp
+   * was what held the aim short */
+  R.viewSize = () => ({ w: viewW, h: viewH });
   /* the camera may run PAST the world's edge by a margin, so a corner Seat can still be
    * brought to the middle of the screen instead of being stranded small at the top */
   const margX = () => viewW * C.VIEW.overscroll, margY = () => viewH * C.VIEW.overscroll;
@@ -1129,6 +1132,29 @@
     R.camX = Math.max(-margX(), Math.min(R.maxCamX() + margX(), R.camX));
     R.camY = Math.max(-margY(), Math.min(R.maxCamY() + margY(), R.camY));
     syncRig();
+    /* ...AND THEN THE FRUSTUM, WHICH IS WHAT THE EYE SEES. The box above is the scroll unit,
+     * not the picture: a pitched camera on a wide screen sees two or three `viewW` across the
+     * aim row, so with the box held inside the map the screen still looked a long way past the
+     * edge of the world (measured: 40% of a landscape screen beyond the right edge with the box
+     * flush against it). The designer's rule (2026-08-19): only a small part of the screen ever
+     * looks past the edge. So the AIM ROW is asked where its ends fall on the ground and the
+     * camera is walked back until they sit inside the map plus the overscroll margin — or, on
+     * a screen wider than the world, until the world is centred. The near row (the bottom of
+     * the screen) is held the same way against the bottom edge. The far side of the screen
+     * sees past the top edge whatever is done here — that is what the skirt and the distance
+     * fog are for. */
+    if (!cam || !R.toWorld || !mapW) return;
+    const yA = H * 0.62;
+    const L = R.toWorld(0, yA), Rr = R.toWorld(W, yA);
+    if (L && Rr && isFinite(L.x) && isFinite(Rr.x) && Rr.x > L.x) {
+      const m = margX(), span = Rr.x - L.x;
+      if (span >= mapW + 2 * m) R.camX += (mapW / 2 - span / 2) - L.x;
+      else if (L.x < -m) R.camX += (-m - L.x);
+      else if (Rr.x > mapW + m) R.camX -= (Rr.x - (mapW + m));
+      syncRig();
+    }
+    const B = R.toWorld(W / 2, H);
+    if (B && isFinite(B.y) && B.y > mapH + margY()) { R.camY -= B.y - (mapH + margY()); syncRig(); }
   };
   /* Move the rig the moment the camera moves. It used to be set only inside frame(), so a
    * lookAt followed by a project or a toWorld read a camera that was still one frame behind
@@ -1725,6 +1751,18 @@
   /* is the shader veil switched on this frame — the watcher suite asks it, since a spectator's
    * "no veil" and a stale veil left on look identical from a pixel far from anything */
   R.debugFogOn = () => !!FOGU.uFogOn.value;
+  /* the skirt past the edge of the world: how many strips, and its height just past an edge
+   * against the ground's height just inside it — continuity is the claim */
+  R.debugSkirt = () => {
+    const strips = [];
+    worldG.traverse((o) => { if (o.name === 'skirt') strips.push(o); });
+    const at = (x, z) => {
+      const ray = new THREE.Raycaster(new THREE.Vector3(x, 5000, z), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObjects(strips, false)[0];
+      return hit ? hit.point.y : null;
+    };
+    return { n: strips.length, at };
+  };
   R.debugUnpatched = () => {
     const out = [];
     if (worldG) worldG.traverse((o) => {
@@ -2013,6 +2051,139 @@
     tex2.colorSpace = THREE.SRGBColorSpace;
     ground = new THREE.Mesh(geo, fogPatch(new THREE.MeshLambertMaterial({ map: tex2 }), 'slope'));
     worldG.add(ground);
+
+    /* ---- THE SKIRT: the world does not end in black ----
+     * (the designer, 2026-08-19) Worldgen deals every edge of the world a SHORE or a RANGE,
+     * and the pitched camera sees past the far edge from anywhere near it — onto `underM`,
+     * the dark plane under the board. So the same sea and the same crag are continued past
+     * the map: four strips round it, `PAD` deep, each vertex standing at the height of the
+     * edge cell it faces (`hFn` clamps to the edge, so the surface is continuous with the
+     * ground's own rim), a range rising a little further as it recedes, a sea lying flat. The
+     * texture is the ground's own, with UVs past 0..1 — ClampToEdge hands back the edge texel,
+     * which is water on a shore and crag on a range. Fog-patched like everything else in
+     * worldG; the mask is clamped too, so the skirt is veiled as the edge beside it is.
+     * `clampCam` still holds the AIM inside the map; this is about what lies beyond it. */
+    {
+      /* a third of the land past each edge: the camera may run only a little past the rim
+       * (VIEW.overscroll) and the distance fog takes the rest, so the skirt is a margin, not a
+       * second world */
+      const PAD = Math.max(mapW, mapH) * 0.35;
+      const hillH = (C.WORLD.hill - lo) / span * relief;
+      /* smooth value noise, folded into ridges — a range past the edge is PEAKS, not a shelf
+       * (a flat rise was tried and read as a lit plateau) */
+      const hash2 = (ix, iz) => { let h = (ix * 374761393 + iz * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+      const vn = (x, z) => {
+        const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+        const sx = xf * xf * (3 - 2 * xf), sz = zf * zf * (3 - 2 * zf);
+        const a = hash2(xi, zi), b = hash2(xi + 1, zi), c = hash2(xi, zi + 1), d = hash2(xi + 1, zi + 1);
+        const t1 = a + (b - a) * sx;
+        return t1 + ((c + (d - c) * sx) - t1) * sz;
+      };
+      const ridge = (x, z) => {
+        const n1 = 1 - Math.abs(vn(x / 190, z / 190) * 2 - 1), n2 = 1 - Math.abs(vn(x / 80 + 7.3, z / 80 + 2.1) * 2 - 1);
+        return Math.pow(n1 * 0.7 + n2 * 0.3, 1.4);
+      };
+      const skirtH = (x, z) => {
+        const hE = hFn(x, z);   // clamped to the edge cell
+        const out = Math.max(0, -x, x - mapW, -z, z - mapH);
+        if (hE <= hillH) return hE;                          // the sea lies flat
+        const t = Math.max(0, Math.min(1, (out - 40) / (PAD * 0.45)));
+        /* continuous with the rim at the edge, climbing into ridges as it recedes */
+        return hE + relief * (0.2 + 1.3 * ridge(x, z)) * t;
+      };
+      /* THE COLOUR IS THE EDGE'S OWN, SMOOTHED ALONG IT. Clamped texture UVs were tried first
+       * and streaked: every row of the skirt wore exactly one edge texel, and a hundred rows
+       * of slightly different water read as a barcode. So the four border rows of the bake are
+       * read once and each skirt vertex takes the edge pixel facing it, averaged over a window
+       * along the edge — a sea is a smooth sea, a range a smooth grey the slope arm's strata
+       * then break up where it rises. Vertex colours; no map. */
+      const bc = bake.canvas, bctx = bc.getContext('2d');
+      const bw = bc.width, bh = bc.height;
+      const rows = { top: bctx.getImageData(0, 0, bw, 1).data, bottom: bctx.getImageData(0, bh - 1, bw, 1).data,
+                     left: bctx.getImageData(0, 0, 1, bh).data, right: bctx.getImageData(bw - 1, 0, 1, bh).data };
+      const WIN = Math.max(4, Math.round(Math.max(bw, bh) / 60));
+      const edgeColor = (x, z) => {
+        /* which edge faces this vertex: the one it lies beyond (a corner takes the nearer) */
+        const dl = -x, dr = x - mapW, dt = -z, db = z - mapH;
+        const m = Math.max(dl, dr, dt, db);
+        let data, n, at;
+        if (m === dl || m === dr) { data = m === dl ? rows.left : rows.right; n = bh; at = Math.round(Math.max(0, Math.min(1, z / mapH)) * (bh - 1)); }
+        else { data = m === dt ? rows.top : rows.bottom; n = bw; at = Math.round(Math.max(0, Math.min(1, x / mapW)) * (bw - 1)); }
+        let r = 0, g = 0, b = 0, k = 0;
+        for (let j = Math.max(0, at - WIN); j <= Math.min(n - 1, at + WIN); j++) { r += data[j * 4]; g += data[j * 4 + 1]; b += data[j * 4 + 2]; k++; }
+        return [r / k / 255, g / k / 255, b / k / 255];
+      };
+      const strips = [
+        [-PAD, mapW + PAD, -PAD, 0], [-PAD, mapW + PAD, mapH, mapH + PAD],
+        [-PAD, 0, 0, mapH], [mapW, mapW + PAD, 0, mapH]
+      ];
+      /* no slope arm: its strata paint a steep face near-black, and the first climb of a range
+       * past the edge is steep by construction — measured as a black band between the rim and
+       * the peaks */
+      const skirtMat = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }));
+      for (const [x0, x1, z0, z1] of strips) {
+        const w2 = x1 - x0, h2 = z1 - z0;
+        /* forty units a segment: the ridges are ~190 across and a coarser lattice flattened
+         * them to a shelf (measured at 120) */
+        const sx = Math.max(2, Math.round(w2 / 40)), sz = Math.max(2, Math.round(h2 / 40));
+        const sg = new THREE.PlaneGeometry(w2, h2, sx, sz);
+        sg.rotateX(-Math.PI / 2);
+        sg.translate(x0 + w2 / 2, 0, z0 + h2 / 2);
+        const sp = sg.attributes.position;
+        const col = new Float32Array(sp.count * 3);
+        /* a RANGE is the rock's colour, not the bake's: the bake paints crag ground near-black
+         * (10,8,16 — it is the instanced rocks that read as stone on the map), so a range past
+         * the edge painted from the bake was a black shelf. The skirt's stone wears the rock
+         * palette, greyer as it climbs; a sea keeps the bake's own water. */
+        const rockC = new THREE.Color(0x564c62).convertSRGBToLinear();
+        const stoneC = new THREE.Color(0x7d7389).convertSRGBToLinear();
+        for (let i = 0; i < sp.count; i++) {
+          const x = sp.getX(i), z = sp.getZ(i);
+          const y = skirtH(x, z);
+          sp.setY(i, y);
+          const hE = hFn(x, z);
+          let c;
+          if (hE > hillH) {
+            const k = Math.max(0, Math.min(1, (y - hE) / (relief * 0.9)));
+            c = [rockC.r + (stoneC.r - rockC.r) * k, rockC.g + (stoneC.g - rockC.g) * k, rockC.b + (stoneC.b - rockC.b) * k];
+          } else {
+            /* sRGB pixels into a linear vertex colour, as the bake's own texture is read */
+            c = edgeColor(x, z).map((v) => Math.pow(v, 2.2));
+          }
+          col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
+        }
+        sg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        sg.computeVertexNormals();
+        const sm = new THREE.Mesh(sg, skirtMat);
+        sm.name = 'skirt';
+        worldG.add(sm);
+        /* AND THE CRAGS WEAR ROCK: the map's own high ground is read through its instanced
+         * rocks, and a range past the edge with none read as a lit plateau. Seated on the
+         * ridges only, sized by how high they climb. */
+        const rocks = [];
+        for (let z = z0 + 30; z < z1; z += 58) for (let x = x0 + 30; x < x1; x += 58) {
+          const hE = hFn(x, z);
+          if (hE <= hillH) continue;
+          const jx = x + (hash2(x | 0, z | 0) - 0.5) * 40, jz = z + (hash2(z | 0, x | 0) - 0.5) * 40;
+          const h = skirtH(jx, jz), rise = h - hE;
+          if (rise < relief * 0.12) continue;
+          rocks.push([jx, jz, h, rise]);
+        }
+        if (rocks.length) {
+          const im = new THREE.InstancedMesh(rockGeo(), MAT, rocks.length);
+          rocks.forEach(([rx, rz, h, rise], i) => {
+            const s2 = 0.9 + Math.min(2.2, rise / relief * 2.4);
+            dum.position.set(rx, h - 2, rz);
+            dum.rotation.set(0, hash2(rx | 0, rz | 0) * Math.PI * 2, 0);
+            dum.scale.set(s2, s2 * 1.3, s2);
+            dum.updateMatrix();
+            im.setMatrixAt(i, dum.matrix);
+          });
+          im.name = 'skirt-rock';
+          worldG.add(im);
+        }
+      }
+    }
 
     /* forests: 3 instanced palettes (display-space bands → world positions) */
     const pals = { gold: [0x3c4416, 0x5f6626, 0x8f9838], mid: [0x232840, 0x333a5c, 0x4c5680], ash: [0x3c2020, 0x553030, 0x6f4444] };

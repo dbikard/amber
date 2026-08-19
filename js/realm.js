@@ -49,27 +49,47 @@
    * and they ride the save and the wire, because a guest regenerates the country from the seed
    * and must deal the same banners. */
   REALM.SIDES_DEFAULT = [[0], [1, 2, 3]];
+  /* TWO SIDES, OR AS MANY AS THERE ARE HEIRS. A side is a list of contender seats; the first is
+   * the player's and seat 0 leads it. A FREE-FOR-ALL (the designer, 2026-08-19) is every
+   * contender his own side — `[[0],[1],[2],[3]]` — and nothing downstream has to know the
+   * difference: `World.lost`, `endMatch`'s verdict, `refound` and the coalition against a walker
+   * all read `world.sides` as a list. Tidied: contenders are the country's four courts furthest
+   * from AMBER — seats 0..3 by worldgen's order — so a side may only name those; a seat named
+   * twice keeps its first side; empty sides are dropped; and a war needs an enemy, so a single
+   * side is given one from the first contender seat it left free. */
   REALM.setup = function (sides) {
-    /* contenders are the country's four courts furthest from AMBER — seats 0..3 by worldgen's
-     * order — so a side may only name those; anything else is dropped, not guessed at */
     const ok = (x) => x >= 0 && x < 4;
-    let a = (sides && sides[0] || []).map((x) => x | 0).filter(ok);
-    let b = (sides && sides[1] || []).map((x) => x | 0).filter(ok);
-    a = [0].concat(a.filter((x, i) => x !== 0 && a.indexOf(x) === i));
-    b = b.filter((x, i) => x !== 0 && a.indexOf(x) < 0 && b.indexOf(x) === i);
-    if (!b.length) {   // a war needs an enemy: the first contender seat side A left free
-      const free = [1, 2, 3].find((x) => a.indexOf(x) < 0);
-      if (free == null) a = a.slice(0, 3);
-      b = [free != null ? free : 3];
+    const seen = new Set([0]);
+    const out = [];
+    (sides || []).forEach((side, k) => {
+      const list = [];
+      if (k === 0) list.push(0);
+      for (const x0 of side || []) {
+        const x = x0 | 0;
+        if (!ok(x) || seen.has(x)) continue;
+        seen.add(x); list.push(x);
+      }
+      if (list.length) out.push(list);
+    });
+    if (!out.length || out[0][0] !== 0) out.unshift([0]);
+    if (out.length < 2) {   // a war needs an enemy: the first contender seat side A left free
+      const free = [1, 2, 3].find((x) => !seen.has(x));
+      if (free == null) { out[0] = out[0].slice(0, 3); out.push([3]); }
+      else out.push([free]);
     }
-    return [a, b];
+    return out;
   };
-  const heirsOf = (sides) => sides[0].concat(sides[1]);
+  const heirsOf = (sides) => sides.reduce((acc, sd) => acc.concat(sd), []);
   /* `spec` is either explicit sides (a LAN lobby's, a record's) or COUNTS `{a, b}` from the
    * setup screen — heirs at your side and against you — in which case the ally seats are dealt
    * BY GEOGRAPHY once the country exists: of the contender courts, the ones nearest yours stand
    * with you, so a side reads as a side on the map and not as a lottery of seat numbers. */
   REALM.create = function (seed, spec) {
+    /* `{ffa: n}` is a free-for-all against n heirs (one to three), each his own banner */
+    if (spec && spec.ffa != null) {
+      const n = Math.max(1, Math.min(3, spec.ffa | 0));
+      spec = Array.from({ length: 1 + n }, (_, i) => [i]);
+    }
     const counts = spec && spec.a != null;
     const s0 = counts ? null : REALM.setup(spec || REALM.SIDES_DEFAULT);
     const k = counts ? Math.max(2, Math.min(4, 1 + (spec.a | 0) + Math.max(1, spec.b | 0))) : heirsOf(s0).length;
