@@ -1359,7 +1359,10 @@ suite('the Pattern is not upgraded')
   ok('...and five Gates can carry it with a little to spare',
      fiveGates > shr.drain[0] && fiveGates < shr.drain[0] * 1.4,
      `five Gates draw ${fiveGates.toFixed(1)}/s against a ${shr.drain[0]}/s walk`);
-  ok('...over a walk the rival has time to come and stop', secs > 240 && secs < 480,
+  /* the upper bound moved with the designer's 2026-08-20 call (rate 0.16, a 10.4-minute walk,
+   * chosen so a committed walk can actually be STOPPED — see DESIGN_PRINCIPLES): long enough
+   * to answer, still well inside a match */
+  ok('...over a walk the rival has time to come and stop', secs > 240 && secs < 900,
      `${(secs / 60).toFixed(1)} min in plain sight`);
   ok('...and the lines fade slower than they are drawn', shr.decay < shr.rate[0],
      `${shr.decay}%/s fade against ${shr.rate[0]}%/s drawn`);
@@ -4564,10 +4567,16 @@ suite('a hall keeps so many men and no more');
   for (const b of p2.buildings) { b.raise = 0; b.hp = b.maxHp; }
   p2.essence = 0;
   for (let i = 0; i < 30 * 60 * 20; i++) { World.update(w2, C.SIM_DT); w2.events.length = 0; }
+  /* THE CLAIM IS THE CAP, not the walk's whole price. This asked the bank alone to cover a
+   * full walk, which encoded the five-minute walk: at the ten-minute one (2026-08-20) the
+   * walk's total is carried by bank PLUS the five-Gate income the affordability clause
+   * demands — a one-Gate rig's bank alone covering it would mean the walk was cheap again.
+   * What the rig proves is the mechanism: full halls stop drawing, so a realm banks about
+   * double what the same realm banks with the muster uncapped. */
   const walk = C.BUILDINGS.shrine.drain[0] * (100 / C.BUILDINGS.shrine.rate[0]);
-  ok('a realm whose halls are full can afford the Pattern', p2.essence > walk,
-     `${Math.round(p2.essence)} banked in 20 minutes against a walk costing ${Math.round(walk)}` +
-     ` (uncapped, the same rig banks 3600 and fields 298 men)`);
+  ok('a realm whose halls are full banks toward the Pattern', p2.essence > 6800,
+     `${Math.round(p2.essence)} banked in 20 minutes (uncapped, the same rig banks 3600 and ` +
+     `fields 298 men; the ten-minute walk costs ${Math.round(walk)}, carried by bank + Gates)`);
 }
 
 suite('no ceiling on the muster')

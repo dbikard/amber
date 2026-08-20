@@ -640,7 +640,7 @@
                  * anyone can afford to start — so the Pattern decided about one skilled match
                  * in five and force decided the rest. It is meant to be one of two ways to
                  * take the throne, not the consolation for failing at the other. At 0.30 the
-                 * walk is five and a half minutes: begun around minute seven, when a realm can
+                 * walk is over ten minutes: begun around minute seven, when a realm can
                  * carry the drain, it lands inside the 5-20 band and leaves the rival a real
                  * window to come and stop it. Swept against the referee at 0.175 / 0.26 / 0.36
                  * — the share of skilled matches decided by the Pattern went 19% / 23% / 38%.
@@ -650,9 +650,18 @@
                  * what he had paid for. At 0.035 the lines fade slower than they are drawn, so
                  * committing and then defending is a plan rather than a waste. That rewards
                  * holding the ground you walk from, which is the shape the walk should have. */
-                /* `AMBER_WALKRATE` is the referee's knob for the walk's length — the lever the
-                 * contested-share band turns on (see DESIGN_PRINCIPLES) — and nothing else reads it */
-                drain: [22], rate: [(typeof process !== 'undefined' && process.env && +process.env.AMBER_WALKRATE) || 0.32], decay: 0.035, breakLoss: 22,
+                /* THE WALK IS 10.4 MINUTES (rate 0.16; it was 0.32, 5.2). The designer's call,
+                 * 2026-08-20 — "make the walk longer to reach 50% chance of stopping the walk":
+                 * with a walker who fortifies first and does not starve, no answer we could
+                 * teach the heirs stopped a committed walk (87-97% against a band of 25-75),
+                 * and the length is the one lever that measured back inside it. The curve was
+                 * shallow — 0.32→92%, 0.26→88, 0.20→81, 0.16→65 — because conditioning on
+                 * "reached halfway" selects for the fortified walks; 65% is the closest length
+                 * alone gets to 50, and past it the walk stops being attempted at all (the
+                 * field's share halved to 30% on the way). It is the human's clock too: a walk
+                 * is a ten-minute commitment now, defended, not dashed. `AMBER_WALKRATE` stays
+                 * as the referee's override. */
+                drain: [22], rate: [(typeof process !== 'undefined' && process.env && +process.env.AMBER_WALKRATE) || 0.16], decay: 0.035, breakLoss: 22,
                 blurb: 'Channel Essence to walk the Pattern. 100% claims the throne. The walk is REVEALED, it CANNOT be called off, and it is paid before your halls are — a walker who cannot carry the drain musters nobody.' }
   };
   CONST.BUILD_ORDER_UI = ['gate', 'wall', 'barracks', 'tower', 'spire', 'siege', 'shrine'];

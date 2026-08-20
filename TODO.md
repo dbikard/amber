@@ -363,3 +363,13 @@ to four, and bots on every seat nobody holds — including one a heir walks out 
 - Pattern walk is an *instant win at 100%* but revealed at start — the anti-stall keystone.
 - Portrait-first; the world pans on both axes at a fixed visible width (`CONST.VIEW_W`) —
   the one-screen, no-pan MVP board is long gone.
+
+- [ ] **The referee's probe floors julian and benedict fail** (the player's openings, first
+      run): under a standing raid at natural economy both end with income 7 and 8-9 Gates lost —
+      the adaptive towers are not enough when the purse is real (they arrive too late to pay for
+      them). The named next AI work: earlier tower-with-gate pairing for the exposed doctrines,
+      or a cheaper first answer (a garrisoned company posted at the most raided spring). [REF]
+- [ ] **Where a Shrine may stand** — the design lever left on the walk: it hides behind the
+      throne inside the court's guns, which is why no bot answer stops a fortified walker and
+      the contested share cannot reach 50 by length alone (65% at a 10.4-minute walk). E.g. a
+      Shrine must stand outside `CITY.seatR + margin`, or on a spring. The designer's call.

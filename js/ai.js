@@ -545,8 +545,8 @@
    * not eaten yet — but the errand PREFERS a body that can stand there. */
   const ERRAND_MEN = +(typeof process !== 'undefined' && process.env && process.env.AMBER_ERRAND) || 4;
   /* WHEN A RIVAL'S WALK BECOMES THE ONLY THING ON THE BOARD. A full walk is a hundred points at
-   * the Shrine's one `rate`, which is a little over five minutes — so a rival at ten points has
-   * about five minutes left and the march across a 2000x2400 board is a minute of it. Answering
+   * the Shrine's one `rate`, which is over ten minutes now — and the march across a 2000x2400
+   * board is a minute of it. Answering
    * early is the whole value: a walk cannot be called off, so there is no feint to be drawn by
    * and nothing is wasted by setting out. `WALK_ARMY` is the floor that stops him sending four
    * men across the world — a Shrine is 900 hit points behind whatever its owner left at home. */

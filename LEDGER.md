@@ -888,3 +888,35 @@ mirrors 60/75 (bleys' mirror runs high and hot — all castle — across today's
 watch it), gradient 95/95/75, convergence greedy 11.8m clean, contested share 92% (the known red;
 the walk-length lever is the designer's), ladder re-pasted `bleys, benedict, corwin, julian,
 brand`.
+
+### THE GRADIENT WAS TRIMMED, AND THE PLAYER'S OPENINGS REPLACED IT (2026-08-20)
+
+The designer's challenge, verbatim: "Benedict vs. Random doesnt sound worth measuring and
+Benedict vs. greedy is a sanity check more than anything. greedy vs. random might have been
+helpful in early stages of game development, but doesnt sound so useful now." The evidence
+agreed: four chronicles in two days beat the strongest heir easily while every gradient number
+read green — the construct the gradient measures (bot-vs-bot competence) failed to predict the
+thing that matters (hard for a human). benedict-vs-random read 90-100 on every run this file
+records; its one catch (scouting) is a dedicated suite. Kept: benedict-over-greedy at full
+weight (the tripwire — it fired a true positive that same week, the Jewel leak, 55%);
+greedy-vs-random at six games. The freed third became `playProbe`: the standing-raid rig from
+the chronicles, run against every heir with floors. THE FIRST RUN PAID FOR IT: julian failed at
+the chronicle's own numbers (9 Gates lost, income 7 — at his natural economy the adaptive
+towers are not enough), benedict failed beside him (8 lost, income 7), bleys and corwin passed
+(3 and 6 lost, income 30 and 26), and brand exposed a corner (0 casts — his kept Gates never
+showed him the raiders; the floor forgives an heir the raid never bit). julian's and benedict's
+floors are the next AI work, by name.
+
+### THE WALK IS LONGER (2026-08-20)
+
+The designer: "make the walk longer as proposed to reach 50% chance of stopping the walk."
+`shrine.rate` 0.32 → 0.26 (5.2 → 6.4 minutes) as the game's number; `AMBER_WALKRATE` stays the
+referee's override. The contested share on the full run that shipped it is recorded below.
+The new suite's first full run (rate still 0.26 then): mirrors 60/75, tripwire 85%, smoke 67%,
+probes julian FAIL (9 lost, income 7) / benedict FAIL (8, 7) / bleys ok (3, 30) / brand ok /
+corwin ok. The rate search that followed, full runs each: 0.26→88%, 0.20→81%, 0.16→65% — INSIDE
+the band — with the price on the same table: the field walks in 30% of matches (was ~48) and
+medians run 15-19 minutes. Shipped 0.16 (a 10.4-minute walk; the designer asked for 50% and 65
+is the closest length alone reaches — conditioning on "reached halfway" selects for fortified
+walks, so the curve flattens). The next lever if 50 exactly is wanted: where a Shrine may stand.
+Ladder re-pasted `benedict, corwin, bleys, brand, julian` from the 0.16 run.

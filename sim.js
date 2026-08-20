@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* sim.js — the referee. Headless bot-vs-bot matches over the SAME update() the browser runs.
- * Default: full suite (mirror / gradient / round-robin / durations).
+ * Default: full suite (mirror / tripwire / the player's openings / round-robin / convergence).
  * One matchup:  node sim.js --a=brand --b=julian --n=40 [--seed=1] [--verbose]
  *
  * THE FULL SUITE IS ~470 MATCHES, and a match is up to 80,000 ticks of the real simulation —
@@ -81,6 +81,66 @@ function series(aKind, bKind, n, baseSeed, opts) {
   return r;
 }
 
+/* ---------------- THE PLAYER'S OPENINGS ----------------
+ * Scripted exploits, one rig per heir, derived from the designer's own chronicles (2026-08-19:
+ * four matches at PRINCE won easily, every one with the same opening — a raid company parked on
+ * the heir's forward Gates, starving the economy the walk and the muster both drink from). The
+ * gradient's bot opponents never apply it, which is how the referee read healthy while a human
+ * walked over the field. FLOORS, not races: an heir under a standing raid must keep most of his
+ * Gates, keep earning, and actually SPEND his Jewel on the raiders. The raid party is spawned
+ * (a rig, not a match — the heir's response is the measurement, not the raiders' economy). */
+function playProbe(heirKind, seed) {
+  const world = World.createWorld(seed);
+  const bot = AI.make(heirKind, {});
+  const issue = (cmd) => {
+    if (cmd.c === 'power' && cmd.k === 'storm') {
+      r.storms++;
+      if (raiders.some((u) => u.hp > 0 && Math.hypot(u.x - cmd.x, u.y - cmd.y) < C.POWERS.storm.radius + 20)) r.stormsOnRaid++;
+    }
+    return World.applyCommand(world, 1, cmd);
+  };
+  const c1 = World.cityOf(world, 1);
+  const r = { razed: 0, storms: 0, stormsOnRaid: 0, income: 0, army: 0 };
+  let raiders = [];
+  const outrider = C.UNITS.outrider;
+  for (let i = 0; i < 30 * 480; i++) {
+    World.update(world, DT);
+    for (const ev of world.events) if (ev.e === 'raze' && ev.pi === 1 && ev.bt === 'gate') r.razed++;
+    world.events.length = 0;
+    bot.step(world, 1, issue, DT);
+    /* the raid: from minute two, a party of six kept alive at his furthest forward Gate */
+    if (world.t > 120 && i % 60 === 0) {
+      raiders = raiders.filter((u) => u.hp > 0);
+      while (raiders.length < 6) {
+        const fwd = world.players[1].buildings.filter((b) => b.bt === 'gate' &&
+          Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+        const tgt = fwd[fwd.length - 1];
+        if (!tgt) break;
+        const u = { id: world.nextId++, owner: 0, kind: 'outrider', tier: 1,
+                    x: tgt.x + 120, y: tgt.y + 60, ox: 0, oy: 0, hp: outrider.hp, maxHp: outrider.hp,
+                    dmg: outrider.dmg, cd: 0, goal: null, co: 0, from: -1 };
+        world.units.push(u);
+        raiders.push(u);
+      }
+    }
+  }
+  r.income = Math.round(world.players[1].incomeRate);
+  r.army = world.units.filter((u) => u.owner === 1 && u.hp > 0).length;
+  return r;
+}
+function fmtProbe(heir, r) {
+  const checks = [
+    ['gates lost ' + r.razed, r.razed <= 6],
+    ['income ' + r.income, r.income >= 10],
+    /* an heir who simply never let the raid bite (two Gates or fewer) owes no Jewel */
+    ['jewel on the raiders ' + r.stormsOnRaid + '/' + r.storms, r.stormsOnRaid >= 1 || r.razed <= 2],
+    ['army ' + r.army, r.army >= 15]
+  ];
+  const bad = checks.filter(([, ok2]) => !ok2);
+  return `raid vs ${heir.padEnd(9)}  ` + checks.map(([t2]) => t2).join(' · ') +
+         (bad.length ? '   FAILS: ' + bad.map(([t2]) => t2).join(', ') : '   ok');
+}
+
 function fmt(aKind, bKind, r, n) {
   const med = (r.median / 60).toFixed(1);
   const reasons = Object.entries(r.reasons).map(([k, v]) => k + ':' + v).join(' ');
@@ -90,7 +150,9 @@ function fmt(aKind, bKind, r, n) {
 
 /* ---------------- a worker is one series ---------------- */
 if (!isMainThread) {
-  parentPort.postMessage(series(workerData.a, workerData.b, workerData.n, workerData.seed));
+  parentPort.postMessage(workerData.probe
+    ? playProbe(workerData.probe, workerData.seed)
+    : series(workerData.a, workerData.b, workerData.n, workerData.seed));
   return;
 }
 
@@ -134,10 +196,20 @@ const jobs = [];
 jobs.push({ head: `Amber sim — ${N} games/matchup, seed ${SEED}\n\n— mirror symmetry (target ≈50%) —`,
             a: 'benedict', b: 'benedict', n: N, seed: SEED, skilled: true });
 jobs.push({ a: 'bleys', b: 'bleys', n: N, seed: SEED, skilled: true });
-jobs.push({ head: '\n— skill gradient (skilled > greedy > random) —',
-            a: 'benedict', b: 'random', n: N, seed: SEED + 100 });
-jobs.push({ a: 'benedict', b: 'greedy', n: N, seed: SEED + 200 });
-jobs.push({ a: 'greedy', b: 'random', n: N, seed: SEED + 300 });
+/* THE GRADIENT, TRIMMED (the designer, 2026-08-20). benedict-vs-random read 90-100 always — a
+ * test that never fails carries no information, and its one great catch (the ghost out-scouting
+ * the heirs) is a dedicated headless suite now. greedy-vs-random ("expansion pays at all") was a
+ * foundational question, answered and frozen: smoke tier, six games. What stays at full weight
+ * is the TRIPWIRE — benedict over greedy is the one automated check that judgment beats macro,
+ * and it fired a true positive the week it earned this comment (the Jewel leaking into the
+ * baseline read 55%). The freed third of the run is the player's openings below. */
+jobs.push({ head: '\n— the tripwire (judgment > macro: benedict over greedy, target >65%) —',
+            a: 'benedict', b: 'greedy', n: N, seed: SEED + 200 });
+jobs.push({ head: '\n— smoke (expansion pays: greedy over random) —',
+            a: 'greedy', b: 'random', n: QUICK ? 3 : 6, seed: SEED + 300 });
+jobs.push({ head: '\n— the player\'s openings (a standing raid on the forward Gates; floors, not races) —',
+            probe: heirs[0], seed: SEED + 400 });
+for (let i = 1; i < heirs.length; i++) jobs.push({ probe: heirs[i], seed: SEED + 400 + i });
 let first = true;
 for (let i = 0; i < heirs.length; i++) for (let j = i + 1; j < heirs.length; j++) {
   jobs.push({ head: first ? '\n— the ladder (heirs need not be equal; the campaign faces the weakest first) —' : null,
@@ -156,7 +228,7 @@ for (const j of jobs) j.maxT = CAP;   // ...and every worker is handed it with i
 
 const order = jobs.map((_, i) => i);
 const WEIGHT = { julian: 3, brand: 2, corwin: 2, benedict: 2, random: 1, greedy: 1, bleys: 1 };
-const cost = (j) => j.n * ((WEIGHT[j.a] || 2) + (WEIGHT[j.b] || 2));
+const cost = (j) => j.probe ? 6 : j.n * ((WEIGHT[j.a] || 2) + (WEIGHT[j.b] || 2));
 order.sort((x, y) => cost(jobs[y]) - cost(jobs[x]));
 
 const POOL = Math.max(1, Math.min(+args.jobs || os.cpus().length, jobs.length));
@@ -169,7 +241,7 @@ function flush() {
   while (printed < jobs.length && done[printed]) {
     const j = jobs[printed], r = done[printed];
     if (j.head) console.log(j.head);
-    console.log(fmt(j.a, j.b, r, j.n));
+    console.log(j.probe ? fmtProbe(j.probe, r) : fmt(j.a, j.b, r, j.n));
     printed++;
     if (printed === rrEnd) {
       const table = {};

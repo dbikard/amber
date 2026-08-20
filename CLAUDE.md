@@ -482,9 +482,10 @@ RAISES NO STUB**: `spanFor` refuses a run under `WALL.gateMin + 16` — a shorte
 gateway and bars its OWNER; benedict's thirty-eight-unit piece across his own muster ground
 jammed ninety men at home for the rest of a match (measured, seed 7). The contested Pattern
 share did not come back inside the band for any of it (90%): a fortified, funded walker with
-an army at home is not stopped by an equal army in five minutes, whatever it aims at; the
-levers left are the walk's LENGTH (`AMBER_WALKRATE`, the referee's knob on `shrine.rate`) and
-where a Shrine may stand — the designer's to pull. (→ LEDGER: THE ANSWER TO A WALK)
+an army at home is not stopped by an equal army in five minutes, whatever it aims at. **The
+walk is 10.4 minutes now** (`shrine.rate` 0.16; the designer pulled the length lever 2026-08-20
+— contested share 65%, inside the band; the curve and the price are in the ledger). The lever
+left for 50% exactly is where a Shrine may stand. (→ LEDGER: THE ANSWER TO A WALK)
 
 **A FORWARD GATE IS DEFENDED, AND THE JEWEL ANSWERS A RAID** (ai.js; the designer's fourth
 chronicle, julian at PRINCE, seed 3214443246: nine Gates razed and rebuilt naked, income 28 → 3,
@@ -1240,7 +1241,12 @@ the cheapest work in the game would switch the throne's guns off from outside th
   forking building) + menu entry in `ui.js`.
 - **A work with a LENGTH**, manning, towers, gates, breaches, the Seat gun: see "The Curtain
   Wall" above.
-- **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes.
+- **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes. Its full run
+  is mirror / THE TRIPWIRE (benedict over greedy, >65% — the one automated judgment-beats-macro
+  check) / THE PLAYER'S OPENINGS (scripted exploits from the designer's chronicles, floors per
+  heir — a failed floor is the next AI work by name) / the ladder / convergence. The old
+  three-matchup gradient was trimmed 2026-08-20 (→ LEDGER: THE GRADIENT WAS TRIMMED); a new
+  exploit found in play should become a new probe (`playProbe`).
 - **The Muster Roll is a GRID, and a man belongs to one place in it.** Small cards — emblem,
   name, what raises him, price, three numbers — under the hall that musters him, and the
   remainder (`Champion`, `Fiend`) under one last section computed as *what no hall raised*, so

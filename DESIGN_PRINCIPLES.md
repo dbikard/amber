@@ -96,8 +96,23 @@ holding the shape.
 Every balance question is answered with data:
 
 - **Mirror symmetry** — identical bots must win ≈50/50. Skew = board/spawn bias bug.
-- **Skill gradient** — Random < Greedy < Skilled with clear separation (Skilled beats Random
-  >85%, beats Greedy >65%). Proves decisions matter.
+- **The gradient was trimmed to a tripwire, and the player's openings replaced it**
+  (the designer, 2026-08-20). Four chronicles in two days beat the "hardest" heir easily while
+  every gradient number read green: the gradient measures bot-vs-bot competence, and its bot
+  opponents never apply what a human does. So: benedict-vs-random is GONE (it read 90-100
+  always — a test that never fails carries no information, and its one great catch, the ghost
+  out-scouting the heirs, is a dedicated headless suite now); greedy-vs-random is smoke tier
+  (six games — "expansion pays" was foundational, answered, frozen); **benedict over greedy
+  stays at full weight as THE TRIPWIRE** (target >65%) — the one automated check that judgment
+  beats macro, and it fired a true positive the week it earned the name (a Jewel fallback
+  leaking into the baseline read 55%: the ruler bent, not the heirs weakened).
+- **The player's openings** — scripted exploits from the designer's own chronicles, one rig per
+  heir, with FLOORS, not races: a standing raid party of six kept alive on the heir's forward
+  Gates from minute two to minute eight, and the heir must keep most of his Gates (≤6 lost),
+  keep earning (income ≥10), spend the Jewel on the raiders (unless the raid never bit), and
+  still field an army (≥15). A floor a doctrine fails is the next piece of AI work BY NAME —
+  the first run failed julian and benedict on exactly the chronicle's numbers — never a target
+  to tune the probe around. A new exploit found in play should become a new probe.
 - **The heirs are NOT balanced against each other, on purpose.** They were, and the
   round-robin that policed it cost three hundred of this runner's four hundred and seventy
   matches — spent proving something the game does not want. Five heirs tuned to 50% are five
@@ -133,11 +148,21 @@ Every balance question is answered with data:
     stopped). **It reads 81% since 2026-08-19** (10 by force, 43 by the Pattern), on the
     designer's call: the strongest heir was walking broke and unfortified and losing to a human
     for it, so a walker now fortifies first and counts only four fifths of his income before
-    stepping on — and a walker who does not starve is one the heirs' ANSWER rarely stops. The
-    number is therefore a statement about the answer as much as about the walk, and the next
-    job on the Pattern is that answer (bring breakers, commit the whole army), not cheapening
-    the walk back down. Measured and rejected on the way: the walker's army held at home (97%),
-    an earlier and smaller answer (`WALK_ANSWER` 5, `WALK_ARMY` 5: 81%, unchanged).
+    stepping on — and a walker who does not starve is one the heirs' ANSWER rarely stops. Every
+    answer we could teach was tried and measured (the answer at the walk's first tick, a smaller
+    army starving the walker's Gates, the walker's army held at home — 87-97%, none inside the
+    band): when the walker is the bigger army, nothing an equal one aims at stops him inside the
+    old five minutes. **So the WALK IS LONGER since 2026-08-20** (shrine `rate` 0.32 → 0.16, 5.2
+    → 10.4 minutes, the designer's call — "to reach 50% chance of stopping the walk"): the
+    lever that measured back inside the band is the clock itself. The curve was shallow
+    (0.32→92%, 0.26→88, 0.20→81, 0.16→65) because conditioning on "reached halfway" selects
+    for the fortified walks; 65% is the closest length alone gets to 50, and the price is on
+    the same table — the field attempts the walk in 30% of matches (was ~48) and medians run
+    to 15-19 minutes. If 50% exactly is wanted, the next lever is WHERE A SHRINE MAY STAND
+    (today it hides behind the throne inside the court's guns), which is a design change, not
+    a number. `AMBER_WALKRATE` is the referee's override.
+    Measured and rejected on the way: the walker's army held at home (97%), an earlier and
+    smaller answer (`WALK_ANSWER` 5, `WALK_ARMY` 5: 81%, unchanged).
   Why the distinction was worth writing down: the field share sat at 18% and three separate
   content numbers were swept looking for it — shrine `rate` to 0.40, `drain` to 16,
   `CASTLE_HP` to 3600 — and each moved it four points or less, because the matches were not
