@@ -23,6 +23,7 @@
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
   const REALM = {};
   const World = () => global.World;
+  const WG = () => global.WorldGen;
 
   /* the rules of a war, all of them off in every other mode. The walk runs at two-fifths a
    * board's pace — a war-scale clock a rival can ANSWER with the war's own verbs: conquer
@@ -207,7 +208,7 @@
   function pack(realm) {
     const w = realm.world;
     return {
-      v: 2, seed: realm.seed, t: w.t, tick: w.tick, nextId: w.nextId,
+      v: 2, gen: WG().COUNTRY_GEN, seed: realm.seed, t: w.t, tick: w.tick, nextId: w.nextId,
       chaosNext: w.chaosNext, chaosParity: w.chaosParity, heirs: w.heirs, sides: w.sides || null,
       cities: w.cities.map((c) => [c.owner, Math.round(c.hp), c.level, c.razed ? 1 : 0,
                                    c.fell != null ? c.fell : -1]),
@@ -369,6 +370,11 @@
     /* the old region war cannot be poured into a continuous country: lost, and said once */
     if (p && p.v === 1) { REALM.lost = true; return null; }
     if (!p || p.v !== 2 || p.seed == null) return null;
+    /* a save from another GENERATION of the generator would be laid over a country its
+     * record was never played on (the seed now deals different ground): lost, same idiom.
+     * A record from before the stamp carries none and is read as generation 2, the last
+     * one shipped without it. */
+    if ((p.gen || 2) !== WG().COUNTRY_GEN) { REALM.lost = true; return null; }
     try {
       const world = unpack(p);
       return { v: 2, seed: p.seed >>> 0, sides: world.sides || null, world, helm: p.helm || null,
@@ -380,7 +386,11 @@
   REALM.saved = function () {
     try {
       const raw = global.localStorage && global.localStorage.getItem(KEY);
-      return !!raw && JSON.parse(raw).v === 2;
+      if (!raw) return false;
+      const p = JSON.parse(raw);
+      /* held to the same generation guard as load(), or the menu offers a resume that
+       * loads as null — a dead button */
+      return p.v === 2 && (p.gen || 2) === WG().COUNTRY_GEN;
     } catch (e) { return false; }
   };
 

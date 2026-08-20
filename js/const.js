@@ -372,9 +372,14 @@
      * renderer was, and it is answered by a two-layer ground (a cheap flat base at any size,
      * painterly DETAIL TILES near the camera) and a fog veil eased only where the camera is
      * looking. Measured on this box's software GL, the pessimistic case throughout. */
-    dims: { W: 8000, H: 9600 },
+    /* SMALLER (the designer, 2026-08-20, from a played war's council map: "cities completely
+     * disconnected due to how far men can be sent... worth making the world a bit smaller"):
+     * 6600x7900 against the old 8000x9600 — two thirds the area, the same sixteen cities, so
+     * every court sits that much nearer its neighbours and the reach discs overlap instead of
+     * kissing. */
+    dims: { W: 6600, H: 7900 },
     cities: 16,
-    spacing: 900,
+    spacing: 850,
     /* a city's reach is sized from ITS OWN nearest neighbour — the nominal spacing lied:
      * max-min placement actually seats neighbours 1300-2400 apart, so a reach cut from the
      * 900 put a rival's court barely inside and his springs safely out. At 1.6 times the

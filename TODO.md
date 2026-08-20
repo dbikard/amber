@@ -17,6 +17,11 @@ touches no balance surface.
 - [ ] **A LAN guest who takes command of a vassal leaves his own seat unrun.** The host's own
       seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
       holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
+
+- LAN version skew: the wire carries no GAME_VERSION and a guest REGENERATES the war's
+  country from the seed — a stale PWA on either side deals DIFFERENT ground from the same
+  seed (any worldgen change does this; COUNTRY_GEN now guards saves but nothing guards the
+  wire). A one-field version check in the pairing hello, refuse with a plain banner.
       (`{t:'hand', as}`) so the host can drive the guest's home court while he commands another.
 - [ ] **The heirs' ANSWER to a walk is the next balance job.** With a walker who fortifies
       first and does not starve (2026-08-19), the contested Pattern share reads 81% (band 25-75)
@@ -382,6 +387,12 @@ to four, and bots on every seat nobody holds — including one a heir walks out 
     - REOPENED (2026-08-21): after the gated-springs set-diff fix the contested share reads
       89% at rate 0.16 (5 by force, 39 by the Pattern) — heirs who defend their Gates are
       harder to starve mid-walk, so the walk decides even more. The band (25-75) is red
-      again; next levers are a slower rate still (0.12 measured next) or the 'where a
-      Shrine may stand' design lever. Corwin now PASSES his raid floor (was a named
+      again; 0.12 was then measured (2026-08-21, full run): contested 84%, walk 13.9 min,
+      median match 17.6m — four percentage points for three and a half minutes of drag.
+      LENGTH IS SATURATED; the rate stays 0.16. The levers that remain are the 'where a
+      Shrine may stand' design lever (designer's call) and the answer itself — the
+      HYPOTHESIS (unmeasured this round) is that the walker's fortify-first doctrine and
+      Shrine guard now beat the answering army, so the next probe is to trace an answered
+      walk (does the answer reach the Shrine? die on stone? arrive without breakers?)
+      before touching any constant. Corwin now PASSES his raid floor (was a named
       failure); julian and benedict still fail theirs (8 gates lost against a floor of 6).

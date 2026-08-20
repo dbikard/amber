@@ -609,15 +609,27 @@ today's board however large the land grows. To strike a city two hops away you m
 the one between — the affordability rule IS the strategic rule. ORDERS are bounded; violence is
 not: standing, pursuit and combat cross the rim freely. (→ LEDGER: THE COUNTRY IS ONE WORLD)
 
-`WG.buildCountry` grows the land (CONST.REACHWAR: 8000×9600, 16 cities; connectivity is a
-PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an already-placed reach).
+`WG.buildCountry` grows the land (CONST.REACHWAR: 6600×7900, 16 cities — two thirds the old
+area, same cities, the designer's call from a played war whose courts sat past any march;
+connectivity is a PLACEMENT LAW, not a reroll — a candidate city must be pathable inside an
+already-placed reach).
 **AMBER STANDS IN THE MIDDLE OF THE MAP AND THE FOUR HEIRS IN THE FOUR CORNERS** (the designer,
 2026-08-19): the first city is the candidate nearest the centre (the Pattern's, last in seat
 order), the next four the candidates nearest the corners inside `cornerBox` — seats 0..3 in the
 order top-left, top-right, bottom-left, bottom-right, each required to OPEN (one writ spring
 with a Gate ring) and to reach two others, or the country is rerolled — and the rest are dealt
-by max-min between them. **And every city reaches at least two others** (`minNbrs`): the reach
-grows until two are in it, as it grew for one; a court with one neighbour is a cul-de-sac. RIVERS run
+by max-min between them, SERVING THE STARVING ANCHOR first: whoever has fewest fellows inside
+the cap gets the next city inside cap−writ of him, because max-min alone pushes the corner
+contenders past any legal reach (measured: every mute reroll was a corner).
+**And every city reaches at least two others, MUTUALLY, under a cap that HOLDS** (`minNbrs`,
+`reachCap`): a one-way edge — a big city covering a small one whose own disc falls short — read
+as connected at genesis and played as a court that could be struck and never answer back; and
+growth past the cap satisfied connectivity with discs covering half the country, which repeals
+the reach law's whole point. A candidate set that cannot reach mutual-two inside the cap is
+rerolled. `WG.COUNTRY_GEN` stamps every save; a record from another generation of the
+generator loads as LOST, the v1 idiom, because its seed now deals different ground (`realm.js`
+load AND saved, or the menu offers a resume that loads as null — a dead button).
+(→ LEDGER: THE COUNTRY IS SMALLER, AND EVERY ROAD RUNS BOTH WAYS) RIVERS run
 from the interior to the sea and ROADS are FOUND over the land's own costs (climb charged
 dearly, reuse half-price so trunks emerge), with BRIDGES where a crossing beats the toll — all
 stamped as real terrain (`WG.T.ROAD/BRIDGE`, cost 1, unbuildable), so columns funnel onto the

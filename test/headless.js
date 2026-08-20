@@ -414,7 +414,10 @@ suite('a country is one land');
     g.reaches.map(Math.round), g.nbrs, g.pattern, roadCount(g)
   ]);
   const base = C.REACHWAR.spacing * C.REACHWAR.reachMul;
-  const roof = (C.REACHWAR.reachCap || 3000) * Math.pow(C.REACHWAR.growReach, C.REACHWAR.growPasses) + 1;
+  /* the cap HOLDS now: growth is clamped to reachCap (2026-08-21) — grown past it,
+   * connectivity was satisfied with discs covering half the country, which repeals the
+   * reach law's point (two hops must need the middle) */
+  const roof = (C.REACHWAR.reachCap || 3000) + 1;
   let failed = 0, bestMs = Infinity, totalBridges = 0;
   for (let seed = 1; seed <= 50; seed++) {
     const t0 = Date.now();
@@ -430,6 +433,12 @@ suite('a country is one land');
      * AMBER in the middle of the map, the four heirs' courts in the four corners */
     ok(`seed ${seed}: every city reaches at least two others`, g.nbrs.every((l) => l.length >= 2),
        g.nbrs.map((l) => l.length).join(','));
+    /* ...MUTUALLY (the designer, 2026-08-20, from a played war): a one-way edge — a big
+     * city covering a small one whose own disc falls short — read as connected at genesis
+     * and played as a court that could be struck and never answer back */
+    ok(`seed ${seed}: ...and each of the two reaches it back`,
+       g.nbrs.every((l, a) => l.filter((b) => g.nbrs[b].includes(a)).length >= 2),
+       g.nbrs.map((l, a) => l.filter((b) => g.nbrs[b].includes(a)).length).join(','));
     {
       const W2 = C.REACHWAR.dims.W, H2 = C.REACHWAR.dims.H;
       const amber = g.sites[g.cities[g.pattern]];
@@ -7994,6 +8003,21 @@ suite('a war fits in a pocket');
     eq('a v1 record loads as nothing', REALM.load(), null);
     ok('...and the loss is sayable', REALM.lost === true);
     eq('...and does not read as a saved war', REALM.saved(), false);
+    /* --- and so is a war from another GENERATION of the generator: the seed now deals
+     * different ground, so the record would be laid over a country it was never played on
+     * (works in the sea, courts renamed) — lost, same idiom, said once --- */
+    {
+      REALM.lost = false;
+      const r4 = REALM.create(31339);
+      REALM.save(r4);
+      const p4 = JSON.parse(store.amber_realm);
+      eq('a fresh save is stamped with the generation', p4.gen, WG.COUNTRY_GEN);
+      delete p4.gen;                       // a record from before the stamp reads as gen 2
+      store.amber_realm = JSON.stringify(p4);
+      eq('a save from another generation loads as nothing', REALM.load(), null);
+      ok('...and the loss is sayable', REALM.lost === true);
+      eq('...and does not read as a saved war', REALM.saved(), false);
+    }
     REALM.forget();
     ok('forgotten is forgotten', !('amber_realm' in store) && REALM.saved() === false);
   } finally {
@@ -8424,7 +8448,12 @@ suite('a lord behind the lines is a reserve');
       u.co = co.id;
     }
     const seat = World.seatOf(w, pi), def = C.BUILDINGS.gate;
-    const gx = seat.x + 700, gy = seat.y + 120;
+    /* TOWARD THE MIDDLE, never a fixed bearing: `seat.x + 700` walked off the east edge the
+     * day the country shrank (seed 17 seats this lord at x 6010 on a 6600-wide map), and a
+     * Gate beyond the map is ground no vision covers — the rig read as the doctrine ignoring
+     * the attack when the instrument was pointing off the world. */
+    const ang = Math.atan2(w.mapH / 2 - seat.y, w.mapW / 2 - seat.x);
+    const gx = seat.x + Math.cos(ang) * 700, gy = seat.y + Math.sin(ang) * 700;
     w.players[pi].buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: gx, y: gy, cd: 0,
       raise: 0, raiseFor: 0, hp: def.hp, maxHp: def.hp, lastHurt: -99, node: -1, co: 0 });
     for (let k = 0; k < 3; k++) {
@@ -9074,8 +9103,17 @@ suite('an order biases the crew, not only the column');
       if (i % 30 === 0) bot.step(r.w, r.me, (cmd) => World.applyCommand(r.w, r.me, cmd), 1.0, order);
       World.update(r.w, C.SIM_DT); r.w.events.length = 0;
     }
+    /* a spring is SPOKEN FOR the moment a Gate shell stands on it: `nodeHolder` rightly
+     * answers -1 while the masons are still up (holding needs a finished Gate), but this
+     * claim is about the ORDER working, and an heir who stormed a rival's Gate and is
+     * raising his own on the spring has taken it in every sense the order means. Measured
+     * (2026-08-21, the smaller country): he took TWO springs in the 180s and the claim
+     * still read 3-free-before, 3-after, because the second Gate was scaffolding at the
+     * bell. */
+    const spokenFor = (s) => r.w.players.some((p) => (p.buildings || []).some((b) =>
+      b.bt === 'gate' && !b.gone && b.node === s.id));
     return { gained: r.w.players[r.me].buildings.filter((b) => b.bt === 'gate').length - g0,
-             freeLeft: r.inReach.filter((s) => World.nodeHolder(r.w, s) === -1).length };
+             freeLeft: r.inReach.filter((s) => World.nodeHolder(r.w, s) === -1 && !spokenFor(s)).length };
   };
   const r0 = rig();
   ok('the rig is alive: every spring his doctrine would want is already held',

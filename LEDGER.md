@@ -593,6 +593,61 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### THE COUNTRY IS SMALLER, AND EVERY ROAD RUNS BOTH WAYS (2026-08-21)
+
+From a played war's council map (the designer, with screenshot): "cities completely
+disconnected from each other due to how far men can be sent... it might be worth making the
+world a bit smaller. Amber should be in the middle." AMBER and the corners were already law;
+the disconnection was real and had three causes, found in this order:
+
+- **The one-way edge.** `nbrs[a]` says a's men may be ORDERED to b — nothing said b could
+  answer. A big city covering a small one whose own disc fell short read as connected at the
+  genesis gate and played as a court that could be struck and never strike back. The law is
+  MUTUAL now: a neighbour counts only when each reaches the other.
+- **Growth without a cap.** The first fix grew reaches until mutual-two held — and satisfied
+  it with discs of 5000-8100 on a 6600-wide map, covering half the country, which repeals the
+  reach law's whole point ("to strike a city two hops away you must first hold the one
+  between"). The cap HOLDS now (`Math.min(reachCap, ...)` in the grow pass) and a candidate
+  set that cannot reach mutual-two inside it is rerolled. Growing the lonely PAIR (the city
+  and its nearest non-mutual partner) was tried against growing the suitor alone: no change
+  in fails — growth speed was never the binder.
+- **Max-min starves the corners.** With the cap holding, 5 of 40 seeds failed all 24 attempts
+  and the mute rate was ~93% per attempt. Instrumented (`buildCountry.lastMute`): every lonely
+  city was a CORNER CONTENDER, nearest fellow 3300-3600 out — past any legal reach BY
+  DISTANCE, not by path. Max-min placement pushes cities as far apart as the land allows,
+  the exact opposite of what the mutual gate wants; a first attempt at "prefer ground two
+  anchors can reach" made it WORSE (8.89 attempts, the corners are precisely where only one
+  anchor reaches). The fix is to SERVE THE STARVING ANCHOR: each round the picker asks who
+  has fewest fellows inside the cap and fences the candidates to that city's disc — at
+  cap−`CLAIM.seat`, not the bare cap, or the served reach covers the throne and never the
+  springs (the anti-turtle raid claim in the suite would fail at nd 2850 + writ 430 > cap
+  3000). Max-min against everybody still keeps the spread inside the fence.
+
+Dims 8000×9600 → 6600×7900 (two thirds the area, same 16 cities), spacing 900 → 850.
+Measured over 40 seeds, before → after: fails 5 → 0, mean attempts 8.89 → 0.07, mean build
+654ms (old dims) → 891ms, worst mutual count 2 everywhere, every reach ≤ cap, raid claim
+green on all 640 cities. The suite's roof claim tightened from cap×growth^passes to cap+1 —
+the cap holding is now an assertion, not a hope.
+
+**Two rigs the smaller country broke, both instrument lessons.** The reserve suite planted
+its probe Gate at `seat.x + 700` — a fixed EAST bearing, which walked off the world the day
+the map shrank (seed 17 seats that lord at x 6010 of 6600) and read as "the doctrine ignores
+the attack" while the instrument pointed off the map; it aims toward the middle now. And the
+crew suite's "free ground is taken" counted a spring free while a Gate SHELL stood on it:
+measured, the ordered lord took TWO springs in his 180 seconds — one held, one stormed off a
+rival and re-raising at the bell — and the claim read 3-free-before, 3-after, a sim behaving
+BETTER than its test could count. A spring with a standing shell is spoken for. (A third
+lesson en route: the first repro hand-rolled `manAt` without `dmg`, and fourteen men who do
+no damage die to a man and read as "the march is stuck" — prove the control is alive.)
+
+**The save is stamped.** A saved war regenerates its country from its seed, so a generator
+that deals different ground orphans every record made before it — works in the sea, courts
+renamed. `WG.COUNTRY_GEN` (3) rides every save; `REALM.load` AND `REALM.saved` refuse a
+mismatch the way they refuse a v1 — lost, said once. A record from before the stamp reads as
+generation 2. Held in 'a war fits in a pocket' beside the v1 claim, both directions: a fresh
+save carries the stamp and round-trips; a stamp-stripped save loads as nothing, says so, and
+does not read as a saved war (the dead-resume-button failure).
+
 ## The Reach War — sides, and what a chronicle showed (2026-08-17/18)
 
 ### From one chronicle: a minor lord walked, terms churned, the heirs took no courts

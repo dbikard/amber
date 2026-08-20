@@ -733,6 +733,13 @@
     return total;
   }
 
+  /* THE COUNTRY'S GENERATION: bumped whenever a change to buildCountry would deal a
+   * DIFFERENT country from the same seed (dims, placement law, reach law...). A saved war
+   * regenerates its ground from its seed, so a save stamped with another generation would be
+   * laid over a country its record was never played on — works in the sea, courts renamed.
+   * `realm.js` refuses such a save the way it refuses a v1: lost, and said once. */
+  G.COUNTRY_GEN = 3;
+
   /* G.buildCountry(seed, RNG, opts) -> a gen in exactly G.build's shape, plus `reaches[]`,
    * `nbrs[][]` and `pattern` (a seat index). Seat order: the PLAYER first — his is the one
    * start held to the board's own fairness bar (one usable writ spring, room, two roads out),
@@ -825,14 +832,40 @@
       const picked = [centre].concat(corners);
       const min2 = RW.spacing * RW.spacing;
       for (const p of picked) admit(p);
+      /* THE MUTUAL LAW IS CHEAPEST AT PLACEMENT (2026-08-20): max-min pushes cities as far
+       * apart as the land allows, which is the exact opposite of what the mutual-two gate
+       * below wants — and the CORNER CONTENDERS are the ones it starves, anchored first with
+       * their nearest neighbour 3300-3600 out on the smaller map, past any reach the cap
+       * allows (measured: every mute reroll was a corner). So each round the picker asks who
+       * is STARVING — a placed city with fewer than two placed inside the cap — and serves
+       * the hungriest first: candidates are fenced to the starving city's cap disc, max-min
+       * against everybody keeps the spread inside it. Only when nobody starves does the free
+       * max-min run. The gate below still holds (the fence is distance; the land may still
+       * cut a path), but it decides pass/reroll instead of doing the placement's job. */
+      /* the fence is the cap LESS the writ: a reach must run past the nearest rival's
+       * springs (court + CLAIM.seat — the anti-turtle law below in the reach sizing), so a
+       * city served at the bare cap could knock on the throne and never raid the economy */
+      const capD2 = (() => { const c2 = (RW.reachCap || 3000) - C.CLAIM.seat; return c2 * c2; })();
       while (picked.length < RW.cities) {
-        let best = null, bd = -1;
+        let hungry = -1, hn = 2;
+        for (let a = 0; a < picked.length; a++) {
+          let n2 = 0;
+          for (let b = 0; b < picked.length; b++)
+            if (b !== a && (picked[b].x - picked[a].x) ** 2
+                         + (picked[b].y - picked[a].y) ** 2 < capD2) n2++;
+          if (n2 < hn) { hn = n2; hungry = a; }
+        }
+        let best = null, bd = -1, best1 = null, bd1 = -1;
         for (const q of cand) {
           if (!zone[q.i]) continue;              // nobody's reach can path here: not a city
           let near2 = Infinity;
           for (const p of picked) near2 = Math.min(near2, (q.x - p.x) ** 2 + (q.y - p.y) ** 2);
-          if (near2 > bd) { bd = near2; best = q; }
+          const fed = hungry < 0 || (q.x - picked[hungry].x) ** 2
+                                  + (q.y - picked[hungry].y) ** 2 < capD2;
+          if (fed) { if (near2 > bd) { bd = near2; best = q; } }
+          else if (near2 > bd1) { bd1 = near2; best1 = q; }
         }
+        if (!best) { best = best1; bd = bd1; }
         /* crowding is tolerated before disconnection is: past the floor the land simply
          * holds fewer cities worth the name, and the attempt is rerolled */
         if (!best || bd < min2 * 0.3) break;
@@ -993,18 +1026,48 @@
       /* EVERY CITY REACHES AT LEAST TWO OTHERS (the designer, 2026-08-19): a court with one
        * neighbour is a cul-de-sac — one road in, one way to be pressed, nobody to come to its
        * aid — so the reach grows until two are in it, as it grew for one */
-      const lonely = (l) => l.length < (RW.minNbrs || 2);
+      /* ...and the reach law is MUTUAL (the designer, 2026-08-20, from a played war: "cities
+       * completely disconnected due to how far men can be sent"): `nbrs[a]` says a's men may
+       * be ORDERED to b, and a one-way edge — a big city covering a small one whose own disc
+       * falls short — read as connected at genesis and played as a court that could be struck
+       * and never answer. A neighbour counts only when EACH reaches the other; a lonely court
+       * grows, and so does the one it is trying to reach back. */
+      const mutual = (a) => nbrs[a].filter((b) => nbrs[b].includes(a));
+      const lonely = (a) => mutual(a).length < (RW.minNbrs || 2);
       for (let pass = 0; pass < RW.growPasses; pass++) {
         const { comp, n } = components();
-        if (n === 1 && !nbrs.some(lonely)) break;
+        if (n === 1 && !picked.some((_, a) => lonely(a))) break;
         const size = new Array(n).fill(0);
         for (let a = 0; a < picked.length; a++) size[comp[a]]++;
         const biggest = size.indexOf(Math.max(...size));
         for (let a = 0; a < picked.length; a++)
-          if (comp[a] !== biggest || lonely(nbrs[a])) reaches[a] *= RW.growReach;
+          if (comp[a] !== biggest || lonely(a)) {
+            /* grown UNDER THE CAP: growth past `reachCap` once satisfied connectivity with
+             * discs covering half the country, which repeals the reach law's whole point
+             * ("to strike a city two hops away you must first hold the one between") — a
+             * candidate set that cannot reach mutual-2 inside the cap is REROLLED instead.
+             * And the PAIR grows, not the suitor: the partner a lonely city needs only
+             * learned to grow once the lonely disc already covered it, which spent the
+             * passes twice over — every reroll at this gate was that (measured, 244 mute
+             * rerolls in 20 seeds). The nearest city not yet mutual grows WITH it. */
+            const cap = RW.reachCap || 3000;
+            reaches[a] = Math.min(cap, reaches[a] * RW.growReach);
+            const mut = mutual(a);
+            let c = -1, cd = Infinity;
+            for (let b = 0; b < picked.length; b++) {
+              if (b === a || mut.includes(b)) continue;
+              const d = (picked[b].x - picked[a].x) ** 2 + (picked[b].y - picked[a].y) ** 2;
+              if (d < cd) { cd = d; c = b; }
+            }
+            if (c >= 0) reaches[c] = Math.min(cap, reaches[c] * RW.growReach);
+          }
         linkUp();
       }
-      if (nbrs.some(lonely)) { why.mute++; continue; }   // a mute city cannot play
+      if (picked.some((_, a) => lonely(a))) { why.mute++;
+        /* diagnostics for the rig: who is lonely, and is it distance or the land */
+        G.buildCountry.lastMute = { picked: picked.map((p2) => ({ x: p2.x, y: p2.y })),
+                                    reaches: reaches.slice(), nbrs: nbrs.map((l) => l.slice()) };
+        continue; }   // a mute city cannot play
       if (components().n !== 1) { why.cut++; continue; }
 
       /* ---- the Pattern's city is the graph's centre: the endgame converges on it ---- */
