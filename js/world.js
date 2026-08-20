@@ -2531,7 +2531,17 @@
        * means what it looks like it means. */
       if (cmd.bt === 'tower') {
         const near2 = wallUnder(world, pi, x, y);
-        if (near2) { const q = segNear(near2, x, y); x = q.x; y = q.y; }
+        /* ...but the snap is a CONVENIENCE, not a law: snapping and THEN judging placement
+         * refused spots `placementError` had blessed — an heir's tower beside a wall junction
+         * was re-aimed onto crowded stone and bounced as 'crowded' every think, wedging his
+         * mission slot for the rest of the match (found 2026-08-20 through the adaptive-tower
+         * rig; the AI's spot pickers ask `placementError`, which never snaps — two spellings
+         * of one rule). The snapped spot is taken only when it is itself legal; otherwise the
+         * tap means the ground it landed on. */
+        if (near2) {
+          const q = segNear(near2, x, y);
+          if (!placementError(world, pi, q.x, q.y, 'tower')) { x = q.x; y = q.y; }
+        }
       }
       /* A GATE STANDS ON THE SPRING, not beside it. It may be raised anywhere within NODE.r of
        * one, and it was left wherever the finger landed — so the work that draws Shadow out of

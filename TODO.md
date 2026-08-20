@@ -373,3 +373,15 @@ to four, and bots on every seat nobody holds — including one a heir walks out 
       throne inside the court's guns, which is why no bot answer stops a fortified walker and
       the contested share cannot reach 50 by length alone (65% at a 10.4-minute walk). E.g. a
       Shrine must stand outside `CITY.seatR + margin`, or on a spring. The designer's call.
+- [ ] **Batched reinforcements** — the honest fix for the trickle a human farms (fifth
+      chronicle: fourteen minutes of 10-20-man packets into a 120-man army). Newly-mustered men
+      should POOL at their hall/court until a body of ~8 forms, then march to the standard
+      together; the standing army is untouched. Needs sim support (a per-company staging rule in
+      the muster, not an AI clause — `AMBER_CONSOL=1` shows why: recalling the ARMY to pool
+      loses the map, tripwire 40-46% vs 63%). [REF]
+    - REOPENED (2026-08-21): after the gated-springs set-diff fix the contested share reads
+      89% at rate 0.16 (5 by force, 39 by the Pattern) — heirs who defend their Gates are
+      harder to starve mid-walk, so the walk decides even more. The band (25-75) is red
+      again; next levers are a slower rate still (0.12 measured next) or the 'where a
+      Shrine may stand' design lever. Corwin now PASSES his raid floor (was a named
+      failure); julian and benedict still fail theirs (8 gates lost against a floor of 6).

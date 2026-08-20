@@ -487,6 +487,21 @@ walk is 10.4 minutes now** (`shrine.rate` 0.16; the designer pulled the length l
 — contested share 65%, inside the band; the curve and the price are in the ledger). The lever
 left for 50% exactly is where a Shrine may stand. (→ LEDGER: THE ANSWER TO A WALK)
 
+**A SPRING LOST TWICE IS WRITTEN OFF — AND THE GRINDER FIX WAS REJECTED BY THE TRIPWIRE**
+(ai.js `lostAt`/`writtenOff`, `CONSOL`; the fifth chronicle — julian, seed 619490457, PRINCE:
+dead even with the player at minute 3, then his men died in packets of 10-20 for fourteen
+minutes, 356 kills that changed nothing). What shipped: a spring where TWO of his Gates have
+died is nobody's to rebuild (the set-diff of gated springs names which died — a bare count
+missed a loss masked by a gain), so he expands away from the farm instead of feeding gate and
+tower into it; A/B at n=24, identical seeds: costs nothing against the baselines. What did NOT
+ship: consolidation (outnumbered → army home, muster pools to the commit floor) — the tripwire
+read 40% as first written and 46% refined, against HEAD's 63% on the same seeds, because
+against a MASSING bot ceding the map to pool loses more than the trickle ever did; benedict's
+trades were never his problem, production was. It sits behind `AMBER_CONSOL=1` for the rig. The
+real trickle-vs-human fix is BATCHED REINFORCEMENTS (new men pool at home until a body forms,
+the standing army untouched), in TODO — it needs the muster's own support, not this seam.
+(→ LEDGER: DON'T FEED THE GRINDER)
+
 **A FORWARD GATE IS DEFENDED, AND THE JEWEL ANSWERS A RAID** (ai.js; the designer's fourth
 chronicle, julian at PRINCE, seed 3214443246: nine Gates razed and rebuilt naked, income 28 → 3,
 the Jewel never cast — every doctrine's storm clause reads `v.threats`, hostiles at the THRONE —

@@ -920,3 +920,28 @@ medians run 15-19 minutes. Shipped 0.16 (a 10.4-minute walk; the designer asked 
 is the closest length alone reaches — conditioning on "reached halfway" selects for fortified
 walks, so the curve flattens). The next lever if 50 exactly is wanted: where a Shrine may stand.
 Ladder re-pasted `benedict, corwin, bleys, brand, julian` from the 0.16 run.
+
+### DON'T FEED THE GRINDER, AND A SPRING LOST TWICE IS WRITTEN OFF (2026-08-20)
+
+The fifth chronicle (julian, seed 619490457, PRINCE, won by castle at 17:25, "more interesting
+but still a relatively easy win"). The table: julian DEAD EVEN at minute 3 (21 income / 13 works
+/ 30 army against the player's 21 / 13 / 35), then flat while the player tripled — army never
+past 38, income 21 → 3, works 15 → 9 — yet 356 of the player's 375 dead were his: he traded
+superbly in packets of 10-20 for fourteen minutes and it changed nothing, because the commit
+floor (22) was never alive at once after minute five, so `striking` never fired, so the player
+banked 14,818 essence unpressured. And the springs: Singing Spring, Glass Rill and Salt Spring
+rebuilt into the player's farm repeatedly, now at gate-AND-tower prices. Shipped: `lostAt`/`writtenOff` only —
+two Gate deaths at one spring write it off (the set-diff of gated springs names which died), and
+an A/B at n=24 on identical seeds shows it costs nothing against the baselines. CONSOLIDATION
+WAS REJECTED BY THE TRIPWIRE, and this entry is the record: as first written (outnumbered
+1.5x+4 → army home, muster pools, guard/raid/errand suspended) benedict-over-greedy read 40%;
+refined (a dozen seen required, the errand running through) 46%; HEAD on the same 24 seeds 63%.
+Against a MASSING bot, ceding the map to pool at a fixed floor loses more than the trickle ever
+did — benedict's old behaviour was TRADING at the choke, and his trades were never the problem;
+production was. Grinder rig for the record (40 campers, 200 hp): dead 217 → 191, army at ten
+40 → 53 — a modest rig gain that did not survive the matchup. `AMBER_CONSOL=1` keeps it for the
+rig. The honest trickle-vs-human fix is BATCHED REINFORCEMENTS — men pooling at home until a
+body of eight or so forms, the STANDING army untouched — which needs the muster's own support
+and is in TODO. The raid probe after this batch: benedict passes income (7 → 21); julian still
+fails (9 lost, income 7 — the probe's raiders are an infinite spawner chasing his newest Gate,
+deliberately adversarial) and stays the named work.

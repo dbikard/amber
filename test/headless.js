@@ -9781,7 +9781,10 @@ suite('a forward gate is defended, and the jewel answers a raid');
   }
   const fwdGates = pl.buildings.filter((b) => b.bt === 'gate' && Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
   const covered = fwdGates.filter((g) => pl.buildings.some((b) => b.bt === 'tower' && Math.hypot(b.x - g.x, b.y - g.y) < 180));
-  ok('once one has died, his forward Gates get towers', covered.length >= Math.min(2, fwdGates.length),
+  /* ONE covered inside the window, not two: the write-off (2026-08-20) sends him to FRESH
+   * springs after a loss, so gates now outpace the serial tower follow-ups in four minutes —
+   * traced, a tower mission in hand and the count rising. The old code never followed at all. */
+  ok('once one has died, his forward Gates get towers', covered.length >= 1,
      `${covered.length} of ${fwdGates.length}`);
   ok('the Jewel falls on the raiders at his Gate', storms > 0 && !!stormAt &&
      raiders.some((u) => Math.hypot(u.x - stormAt.x, u.y - stormAt.y) < C.POWERS.storm.radius + 40),

@@ -302,7 +302,14 @@
   };
 
   /* expansion mission wants, in priority order. Each: {bt, pick(v) → site|null} */
-  const wantGates = (bucket, n) => ({ bt: 'gate', pick: (v) => nearestOf(v, v.nodes[bucket]).filter((s) => !held(v, s)).slice(0, n)[0] || null });
+  /* A SPRING LOST TWICE IS WRITTEN OFF (`v.lostAt`, kept per-bot in decide): from the fifth
+   * chronicle (julian, seed 619490457), he rebuilt Singing Spring, Glass Rill and Salt Spring
+   * into the player's farm over and over — and once a tower followed every Gate, each cycle
+   * fed the raid a Gate AND a tower. Two losses at one spring and it is somebody else's until
+   * the raid clause takes it back; the board has eight, and the ones away from the enemy are
+   * the ones worth having. */
+  const writtenOff = (v, s) => v.lostAt && v.lostAt[s.id] >= 2;
+  const wantGates = (bucket, n) => ({ bt: 'gate', pick: (v) => nearestOf(v, v.nodes[bucket]).filter((s) => !held(v, s) && !writtenOff(v, s)).slice(0, n)[0] || null });
   const wantWatch = (n) => ({ bt: 'tower', pick: (v) => ownVantages(v).filter((s) => !worksNear(v, s.x, s.y, 'tower', 120)).slice(0, n)[0] || null });
 
   /* NOTHING IS RAISED UNDER SWORDS. A work goes up as a SHELL — a quarter of its hit points,
@@ -565,6 +572,8 @@
   const WALK_INCOME = envNum('AMBER_WALKINC', 0.8);
   /* the army an idle heir raids a rival's outlying Gates with */
   const RAID_MEN = envNum('AMBER_RAIDMEN', 8);
+  /* the rejected consolidation, for the rig only — see the note at its seam */
+  const CONSOL = (typeof process !== 'undefined' && process.env && process.env.AMBER_CONSOL) === '1';
   const WALK_TOWERS = envNum('AMBER_WALKTOW', 2);
   /* does a walker hold his home (banner home, no assault) — measured: ON, the Pattern decided
    * 97% of contested matches (target 50, tolerate 25-75): a fortified walker whose army stays
@@ -1273,7 +1282,9 @@
     let timer = interval * 0.5, rng = null;
     let mission = null;    // {site, bt, since} — march there, build, move on
     let gateLost = false;  // a Gate of his has died — from here on, forward Gates get towers
-    let gates0 = 0;        // last think's Gate count, to notice one dying
+    let gatedPrev = null;  // the springs his finished Gates stood on last think (site ids)
+    const lostAt = {};     // site -> how many of his Gates have died there (two = written off)
+    let consol = null;     // {since} — outnumbered: the army pools at home instead of trickling
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
     let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
     /* WHERE THIS BOT'S ARMY WAS LAST SENT IN A WAR — see warOrders. It is remembered HERE, on
@@ -1288,6 +1299,31 @@
       warSt.v = v;   // the view this think is decided on, for warOrders' default (see there)
       if (P.custom) { P.custom(v, issue, rng, order); return; }
       if (noise > 0 && rng.chance(noise)) return;
+      /* FIRST, before any clause can BUILD: the set diff of the springs his Gates stand on.
+       * It sat lower once, and the city's own 'spring under his feet' want re-gated a razed
+       * spring EARLIER in the same think — so the diff never saw a Gate missing, `gateLost`
+       * never set, and every clause keyed on it was dead code on the seeds it was written for
+       * (found through the rig, 2026-08-20: deterministic, not a race). */
+      /* WHICH springs his Gates stood on, and which died since last think: the set diff names
+       * the site (a bare count missed a loss masked by a gain the same think) */
+      {
+        /* by GEOMETRY, not by `b.node`: a Gate built while its predecessor's shell still
+         * claimed the spring carries node -1, and the diff was blind to exactly the Gates that
+         * had been fought over — the ones this exists for (found through the rig, 2026-08-20) */
+        const now = new Set();
+        const r2n = C.NODE.r * C.NODE.r;
+        /* shells included: a Gate knocked down while raising is essence fed to the raid as
+         * surely as a finished one (the rig's razed gate was a shell, and the diff was blind) */
+        for (const b of v.pl.buildings) {
+          if (b.bt !== 'gate') continue;
+          if (b.node >= 0) { now.add(b.node); continue; }
+          for (const sn of world.map.sites) if (sn.kind === 'node' && d2(b.x, b.y, sn.x, sn.y) < r2n) { now.add(sn.id); break; }
+        }
+        if (gatedPrev) for (const sid of gatedPrev) if (!now.has(sid)) { gateLost = true; lostAt[sid] = (lostAt[sid] || 0) + 1; }
+        gatedPrev = now;
+      }
+      v.lostAt = lostAt;   // the picks read it — see writtenOff
+
       /* the lapses this think is played under — see the note at `L` in make() */
       const idle = spell('hoard', v.t);
       const lazyGates = idle || spell('gates', v.t);
@@ -1613,9 +1649,29 @@
        * the gate is the Seat's business; a RIVAL's man there is a column's first man and is
        * answered at once, as are three of anything. */
       const homeThreat = v.threats.length >= 3 || v.atGate >= 3 || v.rivalsAtGate > 0;
-      /* a Gate of his has died (nothing else lowers the count): from here on he defends */
-      if ((v.have.gate || 0) < gates0) gateLost = true;
-      gates0 = Math.max(gates0, v.have.gate || 0);
+      /* ---- DON'T FEED THE GRINDER ----
+       * From the fifth chronicle (julian, seed 619490457, PRINCE, 17:25): his men died in
+       * packets of ten to twenty for fourteen straight minutes — every clause that answers
+       * trouble sent his CURRENT army at a hundred-and-twenty-man grinder, he killed 356 of
+       * the player's men and it changed nothing, and his assault never fired because he never
+       * had the commit floor alive at once after minute five. Plainly outnumbered by what he
+       * can SEE (fog-honest), an heir who is not already marching pulls his army onto his home
+       * defences and lets the muster POOL; the state ends when the floor is reached (then the
+       * ordinary assault logic takes over, one body) or when the board goes quiet. It cannot
+       * bind an army already at the floor — `ready` clears it at once — so a fight between
+       * standing armies is untouched. */
+      /* MEASURED AND REJECTED (2026-08-20), kept behind `AMBER_CONSOL=1` for the rig: pooling
+       * at home when outnumbered — the answer to the fifth chronicle's fourteen-minute trickle
+       * — read 40% on the tripwire as first written (the errand suspended strangled the
+       * economy) and 46% refined (a dozen seen required, the errand running through): against
+       * a MASSING bot, ceding the map to pool at a fixed floor loses more than the trickle
+       * ever did, because the old behaviour was benedict TRADING at the choke, and the trades
+       * were never his problem — production was. The trickle-vs-human fix has to batch the
+       * REINFORCEMENTS (men pooling at home until a body forms, the standing army untouched),
+       * which needs the muster's own support and is written down in TODO rather than forced
+       * through this seam. */
+      if (consol && (v.army >= commit || (v.enemyArmy <= 2 && v.t - consol.since > 45))) consol = null;
+      if (CONSOL && !consol && !homeThreat && !marching && v.enemyArmy >= 12 && v.enemyArmy >= v.army * 1.5 + 4) consol = { since: v.t };
       /* ...and a Gate already RAIDED wants its tower at once, not on the next expansion */
       if (gateLost && !mission && !idle && v.free > 0) {
         const bare = v.pl.buildings.find((b) => b.bt === 'gate' && !b.raise &&
@@ -1721,6 +1777,7 @@
       /* an opt-in window on the decision, for rigs (`opts.debug`): what this think decided and
        * why — never read by the game */
       if (opts.debug) warSt.last = { t: v.t, enCity: !!v.enCity, homeThreat, wantsWar, ready, striking, hunting,
+                                     missionSite: mission ? mission.site : null, gateLost,
                                      army: v.army, unexplored: v.unexplored, call0, mission: mission ? mission.bt : null };
       /* ---- THE LIEGE'S ORDER BIASES THE CREW, NOT ONLY THE COLUMN ----
        * `warOrders` rewrites where the war BODY goes and nothing else, so an heir told to go and
@@ -1784,7 +1841,7 @@
       /* the banner: defend home > the assault > the search for the man > errand > the call —
        * and a WALKER's banner is home (the defences, see `defencePost`), whatever the doctrine
        * would otherwise call for; only the answer to a rival's walk overrides it (`aim`) */
-      let want = homeThreat || (WALK_HOLD && v.walking) ? v.myCity.id
+      let want = homeThreat || consol || (WALK_HOLD && v.walking) ? v.myCity.id
                : (striking || hunting ? call : (mission ? mission.site : call));
       /* AN EASIER FOOTING IS ALSO A LATER ONE. Income alone could not do this job: measured
        * against the weakest baseline we ship, an heir at eco 0.8 still had an army on the
@@ -1903,7 +1960,7 @@
        * court itself is threatened (home outranks both), and never while the doctrine has an
        * assault or a search in hand. War only? No — the war had this in `warOrders` for minor
        * lords and it was the board that lacked it. */
-      const free = !homeThreat && !v.walking && !striking && !hunting && !stray;
+      const free = !homeThreat && !consol && !v.walking && !striking && !hunting && !stray;
       /* idle: home, the choke, or an errand that needs no army — a tower on a vantage is the
        * crew's business; a spring to TAKE needs men standing on it and keeps the banner */
       const armyIdle = free && (want === v.myCity.id || want === ownChoke(v).id || (mission && mission.bt !== 'gate'));
@@ -1919,7 +1976,7 @@
         else if ((armyIdle && v.army >= RAID_MEN) || v.army >= RAID_MEN * 2) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
       }
       const aim = answer || myShrine || guard || raid || post;
-      if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, free, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id,
+      if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, free, consol: !!consol, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id,
                                                                 raidPick: (raidAt(v, (h) => heldOff(v, h)) || {}).id, trouble: (troubleAt(v, v.myCity) || {}).id, stray: !!stray });
       if (aim) {
         const aimId = aim === post ? post.id : aim.id;
@@ -2022,7 +2079,7 @@
         if (errand) {
           const reach = nearestOf(v, v.nodes.own.concat(v.nodes.mid));
           const spring = homeThreat ? null
-            : reach.filter((s) => !held(v, s) && !heldGround(v, s.x, s.y))[0] ||
+            : reach.filter((s) => !held(v, s) && !heldGround(v, s.x, s.y) && !writtenOff(v, s))[0] ||
               reach.filter((s) => global.World.nodeHolder(v.world, s) === v.me)[0] || null;
           /* ---- THE GARRISON STANDS AT THE TOWER, NOT BESIDE IT ----
            * (the designer, 2026-08-19: "watch towers next to gates are good, but better when
@@ -2124,7 +2181,7 @@
        * dead control (a picker that reaches nobody) is something a test can see */
       lapses: L, hold, noWalk, noTerms, debug: warSt,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
-                gateLost = false; gates0 = 0;
+                gateLost = false; gatedPrev = null; consol = null; for (const k of Object.keys(lostAt)) delete lostAt[k];
                 marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k];
                 for (const k of Object.keys(pactAt)) delete pactAt[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for

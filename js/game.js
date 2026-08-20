@@ -32,8 +32,11 @@
    * apart, and the walkers — brand first — gained what the marchers lost. And once more for
    * the coasts and ranges at the edges (the same day): benedict 7 wins at the bottom, julian
    * 16 at the top — the order is VOLATILE against the shape of the board at six games a
-   * matchup, which is what the principles say it is: a ladder, not a measurement. */
-  const LADDER = ['benedict', 'corwin', 'bleys', 'brand', 'julian'];
+   * matchup, which is what the principles say it is: a ladder, not a measurement. Re-pasted
+   * 2026-08-21 after the gated-springs set-diff fix (gateLost was dead code): julian fell to
+   * the bottom and brand took the top — an heir who finally NOTICES his Gates razed spends
+   * the war answering julian's raids instead of losing to them. */
+  const LADDER = ['julian', 'corwin', 'bleys', 'benedict', 'brand'];
 
   const game = {
     mode: null, world: null, viewer: 0, bot: null,
