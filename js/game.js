@@ -2857,6 +2857,19 @@
       },
       onMuster: (pause) => issue({ c: 'muster', pause }),
       onMusterCo: (co, pause) => issue({ c: 'muster', co, pause }),
+      /* RESUME MEANS RESUME (reported from play, 2026-08-21: a player halted a standard at
+       * its hall and could not find the way back on — the Seat's valve read "Halt" because
+       * ITS layer was open, and pressing it twice left the standard still silent). The
+       * Seat's master resume clears EVERY layer: the realm valve and each standard's own
+       * pause. The master halt sets only the realm valve — one state, cleanly reversible. */
+      onMusterAll: (pause) => {
+        const view = game.mode === 'guest' ? snapCur : game.world;
+        const me = view && view.players[game.viewer];
+        if (pause) { issue({ c: 'muster', pause: true }); return; }
+        issue({ c: 'muster', pause: false });
+        for (const co of (me && me.companies) || [])
+          if (co.paused) issue({ c: 'muster', co: co.id, pause: false });
+      },
       onPower: (k) => {
         const view = game.mode === 'guest' ? snapCur : game.world;
         if (!view) return;

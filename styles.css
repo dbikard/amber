@@ -755,15 +755,19 @@ body {
 /* the roster under the armed standard: what is in the company, beside the flag that commands
    it. A pill rather than bare text — the tray sits over the board, and a count you cannot read
    against a lit meadow is a count you do not have. */
-/* IT WRAPS RATHER THAN TRUNCATES. The row has about 190 pixels on a 420-wide phone and a
-   company of five kinds wants 145 of them for its roster alone — held to one line that lost
-   two kinds behind an ellipsis, which is exactly the information the readout exists to give.
-   Two lines beside the flag cost a few pixels of height on ONE row and lose nothing. */
+/* IT WRAPS RATHER THAN TRUNCATES — ALL THE WAY (reported from play, 2026-08-21, with a
+   screenshot of a pill showing one and a half kinds: a seven-hall company of eight kinds
+   wants three lines, and the old `max-height: 40px; overflow: hidden` held exactly two —
+   the third line of kinds sat behind the clip, which is exactly the information the
+   readout exists to give. Measured: scrollHeight 46 against a clientHeight of 38.) The
+   pill now grows to its full wrap; it is one pill on ONE row of a tray that already
+   scrolls at 300px, so the height is bounded by the army's own variety and nothing is
+   ever hidden. */
 #flag-roster {
-  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  flex: 1 1 auto; min-width: 0;
   padding: 4px 9px; border-radius: 12px;
   background: rgba(10, 8, 18, 0.78); border: 1px solid rgba(200, 164, 79, 0.42);
-  color: #ffe9a8; font-size: 14px; line-height: 1.35; max-height: 40px;
+  color: #ffe9a8; font-size: 14px; line-height: 1.35;
   white-space: normal; word-spacing: 2px;
   text-shadow: 0 1px 2px #000; pointer-events: none;
 }

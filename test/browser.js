@@ -1088,6 +1088,152 @@ async function match(browser, base, renderer) {
        tray.right <= tray.w + 1 && tray.left >= 0,
        `${tray.n} chips, powers span ${tray.left}..${tray.right} of ${tray.w}`);
 
+    /* ---- THE ROSTER SHOWS EVERY KIND, HOWEVER MANY THERE ARE ----
+     * Reported from play (2026-08-21, with a screenshot of a pill showing one and a half
+     * kinds): an eight-kind company wraps its roster to three lines, and the old two-line
+     * clip hid the rest - exactly the information the readout exists to give. The claim is
+     * the box's own arithmetic: nothing scrolled away, every icon in the text. */
+    {
+      const ro = await pg.evaluate(() => {
+        const g = window.Game.game, w = g.world, C2 = window.CONST;
+        const co = w.players[0].companies[0];
+        const kinds = ['soldier', 'shieldman', 'archer', 'sorcerer', 'outrider', 'ram', 'engine', 'bombard'];
+        const ids = [];
+        let n = 0;
+        for (const k of kinds) for (let i = 0; i < 12; i++) {
+          const d = C2.UNITS[k];
+          const u = { id: w.nextId++, owner: 0, kind: k, tier: 1, x: 300 + (n % 10) * 14, y: 300 + ((n / 10) | 0) * 14,
+                      ox: 0, oy: 0, hp: d.hp, maxHp: d.hp, dmg: d.dmg, cd: 0, goal: null, co: co.id, from: -1 };
+          w.units.push(u); ids.push(u.id); n++;
+        }
+        g.armedFlag = co.id;
+        window.__rosterRig = { ids, co: co.id };
+        return kinds.map((k) => C2.UNITS[k].icon);
+      });
+      await pg.waitForTimeout(300);
+      const m = await pg.evaluate(() => {
+        const el = document.getElementById('flag-roster');
+        return el ? { sh: el.scrollHeight, ch: el.clientHeight, text: el.textContent } : null;
+      });
+      ok('the rig is alive: the armed roster pill is on the glass', !!m && m.text.length > 10,
+         m ? m.text : 'no pill');
+      ok('an eight-kind roster hides nothing behind a clip', !!m && m.sh <= m.ch + 1,
+         m ? `scrollHeight ${m.sh} against clientHeight ${m.ch}` : '');
+      ok('...and every kind is in it', !!m && ro.every((ic) => m.text.includes(ic)),
+         m ? m.text : '');
+      /* put the world back: the men were never mustered and later suites count the army */
+      await pg.evaluate(() => {
+        const g = window.Game.game, w = g.world, rig = window.__rosterRig;
+        w.units = w.units.filter((u) => !rig.ids.includes(u.id));
+        g.armedFlag = null;
+        delete window.__rosterRig;
+      });
+      await pg.waitForTimeout(150);
+    }
+
+    /* ---- THE MUSTER HAS ONE HOME, AND RESUME MEANS RESUME ----
+     * Reported from play (2026-08-21): a player halted a standard at its hall and could not
+     * find the way back on. Two valves wore one name — the Seat's realm-wide one and each
+     * standard's own — and the Seat's card read "Halt the Muster" while a standard sat
+     * silent, because only ITS layer was consulted. The rig is the report: halt a standard
+     * the way the hall does, open the Seat, and the sheet must tell the truth and the
+     * master resume must clear EVERY layer. */
+    {
+      const trap = await pg.evaluate(() => {
+        const g = window.Game.game, w = g.world, W = window.World;
+        const co = w.players[0].companies[0];
+        W.applyCommand(w, 0, { c: 'muster', co: co.id, pause: true });   // the hall's own button
+        return { co: co.id, paused: !!co.paused, realm: !!w.players[0].musterPaused };
+      });
+      ok('the rig is alive: a standard is halted, the realm valve open', trap.paused && !trap.realm);
+      /* THE TAP MUST LAND ON THE SEAT, VERIFIED BY THE RENDERER'S OWN HIT TEST - a blind tap
+       * at the projected throne can land on a work beside it ("a work under the finger always
+       * wins"), whose sheet has no master card, and a throw here discards every buffered
+       * claim of this whole runRenderer (the abort-at-51 failure, twice). The sweep asks
+       * hitBuilding/hitSite before clicking, and every card click below is guarded. */
+      const openSeat = async () => {
+        await pg.evaluate(() => {
+          if (window.UI.sheetOpen()) window.UI.closeSheet();
+          const R = window.Render, g = window.Game.game;
+          /* an armed standard turns a tap into a PLANT, a placement into a build - both
+           * leave the sheet shut and read as "the tap never reached the throne" */
+          g.armedFlag = null; g.placing = null; g.targeting = false;
+          const seat = g.world.map.sites[g.world.map.cities[0]];
+          R.setZoom(1); R.lookAt(seat.x, seat.y);
+        });
+        /* a frame between the aim and the sweep: `project` answers from the drawn frame's
+         * matrices, and a sweep in the same evaluate as the lookAt reads the OLD camera */
+        await pg.waitForTimeout(250);
+        const at = await pg.evaluate(() => {
+          const R = window.Render, g = window.Game.game, C2 = window.CONST;
+          const seat = g.world.map.sites[g.world.map.cities[0]];
+          /* CLEAR THE COURT OF YOUR OWN MEN first, the `nearSeat` precedent: a man under the
+           * finger picks up his standard instead of opening the sheet, and a court that has
+           * been mustering for a minute is FULL of them - the first sweep found no clear
+           * point on two full runs */
+          for (let i = g.world.units.length - 1; i >= 0; i--) {
+            const u = g.world.units[i];
+            if (u.owner === 0 && Math.hypot(u.x - seat.x, u.y - seat.y) < C2.CITY.r + 40) g.world.units.splice(i, 1);
+          }
+          for (let r = 0; r < C2.CITY.r - 16; r += 14) for (let t = 0; t < (r ? 8 : 1); t++) {
+            const a = t * Math.PI / 4;
+            const q = R.project(seat.x + Math.cos(a) * r, seat.y + Math.sin(a) * r);
+            if (q.y < 90 || q.y > window.innerHeight - 240) continue;
+            if (R.hitBuilding(q.x, q.y) < 0 && R.hitUnit(q.x, q.y, 0) === 0 &&
+                R.hitSite(q.x, q.y, g.world, 0) === g.world.map.cities[0]) return q;
+          }
+          return null;
+        });
+        if (!at) return false;
+        await pg.mouse.click(at.x, at.y);
+        try { await until(pg, () => window.UI.sheetOpen(), 4000); } catch (e) { return false; }
+        return pg.evaluate(() => [...document.querySelectorAll('#sheet .card')]
+          .some((c) => /Resume the Muster|Halt the Muster/.test(c.textContent)));
+      };
+      const seat1 = await openSeat();
+      ok('the rig is alive: the Seat sheet is open', seat1, 'the tap never reached the throne');
+      const face = await pg.evaluate(() => {
+        const cards = [...document.querySelectorAll('#sheet .card')].map((c) => c.textContent);
+        return { master: cards.find((t) => /Resume the Muster|Halt the Muster/.test(t)) || '',
+                 rows: document.querySelectorAll('#sheet .co-muster-row').length };
+      });
+      ok('the Seat tells the truth: a halted standard reads as RESUME', /Resume the Muster/.test(face.master), face.master);
+      ok('...and every mustering standard has a row of its own', face.rows >= 1, `${face.rows} rows`);
+      await pg.evaluate(() => { const c = [...document.querySelectorAll('#sheet .card')]
+        .find((c2) => /Resume the Muster/.test(c2.textContent)); if (c) c.click(); });
+      await pg.waitForTimeout(200);
+      const after = await pg.evaluate(() => ({
+        realm: !!window.Game.game.world.players[0].musterPaused,
+        anyCo: window.Game.game.world.players[0].companies.some((q) => q.paused)
+      }));
+      ok('the master resume clears EVERY layer', !after.realm && !after.anyCo, JSON.stringify(after));
+      /* and the master halt sets only the realm valve — one state, cleanly reversible */
+      const seat2 = await openSeat();
+      await pg.evaluate(() => { const c = [...document.querySelectorAll('#sheet .card')]
+        .find((c2) => /Halt the Muster/.test(c2.textContent)); if (c) c.click(); });
+      await pg.waitForTimeout(200);
+      const halted = await pg.evaluate(() => ({
+        realm: !!window.Game.game.world.players[0].musterPaused,
+        anyCo: window.Game.game.world.players[0].companies.some((q) => q.paused)
+      }));
+      ok('the master halt is the realm valve alone', seat2 && halted.realm && !halted.anyCo, JSON.stringify(halted));
+      /* a standard's own row toggles that standard and nothing else */
+      const seat3 = await openSeat();
+      await pg.evaluate(() => { const r2 = document.querySelector('#sheet .co-muster-row'); if (r2) r2.click(); });
+      await pg.waitForTimeout(200);
+      const one = await pg.evaluate(() => ({
+        co0: !!window.Game.game.world.players[0].companies[0].paused,
+        realm: !!window.Game.game.world.players[0].musterPaused
+      }));
+      ok('a standard row halts that standard alone', seat3 && one.co0 && one.realm, JSON.stringify(one));
+      /* put the world back for the suites that follow */
+      await pg.evaluate(() => {
+        const w = window.Game.game.world, W = window.World;
+        W.applyCommand(w, 0, { c: 'muster', pause: false });
+        for (const q of w.players[0].companies) if (q.paused) W.applyCommand(w, 0, { c: 'muster', co: q.id, pause: false });
+      });
+    }
+
     /* ---------------- a level you can see ---------------- *
      * The point of moving the upgrade from throughput to rank is that rank is VISIBLE. If a
      * veteran draws with the recruits' geometry, or a raised hall keeps last level's stones,

@@ -1508,14 +1508,42 @@
                        '<span class="c-blurb">Every standard is struck and the whole army turns for home — defend the city</span>';
         rc.addEventListener('click', () => { H.onRecall(); UI.closeSheet(); });
         el.appendChild(rc);
-        /* the muster valve */
+        /* ---- THE MUSTER, WHOLE (reported from play, 2026-08-21) ----
+         * Two valves wore one name: the Seat's realm-wide one and each standard's own, and
+         * neither surface showed the other's state — so a player who halted a standard at
+         * its hall came HERE, read "Halt the Muster" (this layer was open, so it looked like
+         * nothing was halted), pressed it twice and left with the standard still silent.
+         * The Seat is the muster panel now: the master card tells the truth about EVERY
+         * layer and its resume clears them all; a row per mustering standard toggles one.
+         * The hall keeps its own halt — the order you give in a hurry — because the failure
+         * was never halting there, it was finding the resume later. */
+        const cos = (pinfo.companies || []).filter((q) => !q.trump &&
+          (pinfo.buildings || []).some((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.co === q.id));
+        const quietCos = cos.filter((q) => q.paused);
+        const anyHalt = pinfo.musterPaused || quietCos.length > 0;
         const mu = document.createElement('button');
         mu.className = 'card';
-        mu.innerHTML = pinfo.musterPaused
-          ? '<span class="c-name">▶ Resume the Muster</span><span class="c-blurb">Barracks and spires pay for troops again</span>'
+        mu.innerHTML = anyHalt
+          ? '<span class="c-name">▶ Resume the Muster</span><span class="c-blurb">' +
+            (pinfo.musterPaused && quietCos.length
+              ? `The realm valve and ${quietCos.length} halted standard${quietCos.length > 1 ? 's' : ''} — everything pays for troops again`
+              : pinfo.musterPaused ? 'Barracks and spires pay for troops again'
+              : `${quietCos.length} halted standard${quietCos.length > 1 ? 's' : ''} pay${quietCos.length > 1 ? '' : 's'} for troops again`) + '</span>'
           : '<span class="c-name">⏸ Halt the Muster</span><span class="c-blurb">Stop paying for new troops while the treasury gathers</span>';
-        mu.addEventListener('click', () => { H.onMuster(!pinfo.musterPaused); UI.closeSheet(); });
+        mu.addEventListener('click', () => { H.onMusterAll(!anyHalt); UI.closeSheet(); });
         el.appendChild(mu);
+        /* one row per mustering standard: the same toggle its hall offers, all in one place */
+        for (const co of cos) {
+          const halls = (pinfo.buildings || []).filter((b) => C.BUILDINGS[b.bt] && C.BUILDINGS[b.bt].spawns && b.co === co.id).length;
+          const row = document.createElement('button');
+          row.className = 'card co-muster-row';
+          row.dataset.co = co.id;
+          row.innerHTML = `<span class="c-ico">${co.paused ? '▶' : '⏸'}</span>` +
+            `<span class="c-name"><span class="sf-pip" style="background:${UI.coColor(co.id)}"></span> Standard ${co.id}</span>` +
+            `<span class="c-blurb">${halls} hall${halls > 1 ? 's' : ''} — ${co.paused ? 'mustering nobody: resume this standard' : 'mustering: halt this standard'}</span>`;
+          row.addEventListener('click', () => { H.onMusterCo(co.id, !co.paused); UI.closeSheet(); });
+          el.appendChild(row);
+        }
       }
       /* ---- THE WAR'S COMMAND OF A CITY ----
        * A held court that is not the seat of command offers two things: TAKE COMMAND (the
