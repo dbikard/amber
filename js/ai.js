@@ -213,6 +213,39 @@
    * anti-turtle engine on a board as it is in a war. */
   const NO_CURTAIN = (typeof process !== 'undefined' && process.env && process.env.AMBER_NOCURTAIN) === '1';
   const NO_VALVE = (typeof process !== 'undefined' && process.env && process.env.AMBER_NOVALVE) === '1';
+  const NO_STAGE = (typeof process !== 'undefined' && process.env && process.env.AMBER_NOSTAGE) === '1';
+  /* the staging doctrine's numbers: `back` is how far short of a defended target the army
+   * assembles (outside every tower's reach and any man's aggro); `near` is the band that
+   * counts as "at the fight"; `gather` the band that counts as assembled at the flag;
+   * `retreat` the fraction of the commit floor below which a committed assault breaks off. */
+  const STAGE = { back: 450, near: 340, gather: 200, retreat: 0.45 };
+  const menNear = (v, x, y, r) => {
+    let n = 0;
+    for (const u of v.myUnits) if (d2(u.x, u.y, x, y) < r * r) n++;
+    return n;
+  };
+  /* is this ground defended by standing enemy stone - a finished tower in covering reach, an
+   * unbreached run, or a rival court's own gun? The same world-truth standard `raidAt` sets. */
+  const stoneAt = (v, x, y) => {
+    const W = global.World, w = v.world;
+    for (let q = 0; q < w.players.length; q++) {
+      if (!W.foe(w, v.me, q)) continue;
+      const c = W.cityOf(w, q);
+      if (c && d2(x, y, c.x, c.y) < (C.CITY.r + 60) * (C.CITY.r + 60)) return true;
+      for (const b of w.players[q].buildings) {
+        if (b.gone || b.raise > 0) continue;
+        if (b.bt === 'tower' && d2(b.x, b.y, x, y) < 280 * 280) return true;
+        if (b.bt === 'wall' && !b.breach) {
+          const e = W.wallEnds(b);
+          const ex = e[2] - e[0], ey = e[3] - e[1], LL = ex * ex + ey * ey || 1;
+          let t = ((x - e[0]) * ex + (y - e[1]) * ey) / LL;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          if (d2(x, y, e[0] + ex * t, e[1] + ey * t) < 240 * 240) return true;
+        }
+      }
+    }
+    return false;
+  };
   const raidAt = (v, heldOff) => {
     const W = global.World, w = v.world;
     /* ---- AND A RAID GOES WHERE THE STONE IS NOT ----
@@ -1307,6 +1340,7 @@
     const lostAt = {};     // site -> how many of his Gates have died there (two = written off)
     let consol = null;     // {since} — outnumbered: the army pools at home instead of trickling
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
+    let stage = null;      // {dx,dy, sx,sy, phase:'muster'|'commit', pulled:[]} — see THE ASSAULT STAGES
     let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
     /* WHERE THIS BOT'S ARMY WAS LAST SENT IN A WAR — see warOrders. It is remembered HERE, on
      * the bot, because the sim cannot remember it for us: under `rules.reach` a banner command
@@ -1710,7 +1744,8 @@
        * a MASSING bot, ceding the map to pool at a fixed floor loses more than the trickle
        * ever did, because the old behaviour was benedict TRADING at the choke, and the trades
        * were never his problem — production was. The trickle-vs-human fix has to batch the
-       * REINFORCEMENTS (men pooling at home until a body forms, the standing army untouched),
+       * REINFORCEMENTS — since answered by THE ASSAULT STAGES (see the machine below; the
+       * muster-side pooling was tried and measured wrong),
        * which needs the muster's own support and is written down in TODO rather than forced
        * through this seam. */
       if (consol && (v.army >= commit || (v.enemyArmy <= 2 && v.t - consol.since > 45))) consol = null;
@@ -2050,8 +2085,99 @@
          * spring the rival had already taken (the chronicle of 2026-08-19, seed 1443391195) */
         else if ((armyIdle && v.army >= RAID_MEN) || v.army >= RAID_MEN * 2) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
       }
-      const aim = answer || myShrine || guard || raid || post;
+      /* ---- THE ASSAULT STAGES, COMMITS AS A BODY, AND BREAKS OFF WHEN MAULED ----
+       * (the designer, 2026-08-21, on the third trickle report: "the AI should know to stop
+       * fighting and even retreat men with a double tap, until a sufficient force is
+       * assembled. troops can be grouped by planting a flag not far but out of reach of the
+       * enemy, and when ready, starting the fight.")
+       * The muster-side pooling was built first and MEASURED WRONG: it lifted the tripwire
+       * seventeen points and lost every raid probe, because the trickle it stopped was also
+       * the defence arriving. This is the same idea at the right layer - the DOCTRINE, which
+       * can tell an attack from a defence. Only an attack on ground defended by standing
+       * enemy stone stages (`stoneAt`); the defence of his own works, the errand and every
+       * naked target keep the old immediacy. The flag goes `STAGE.back` short of the target
+       * - out of every tower's reach - the trickle accumulates THERE, and the banner moves
+       * onto the target when the commit floor stands at the flag. Committed and mauled below
+       * `retreat` of the floor, the companies at the fight are pulled back HARD (the forced
+       * march, so engaged men break off) and the army rebuilds. An heir too small to ever
+       * commit (army under the floor) does not stage - parking him at a flag he can never
+       * leave is the consolidation failure again. */
+      let answer2 = answer, raid2 = raid, stageAim = null;
+      if (!NO_STAGE) {
+        /* THE ASSAULT DOES NOT STAGE - the raid and the walk's answer do. An assault
+         * already leaves home as a body (the commit floor gates its departure at 22), so
+         * staging it again only donated tempo to a massing defender: measured at n=40,
+         * benedict over greedy fell 55 -> 35 with the assault arm in, and the two REPORTED
+         * grinders - the raid dribbling into a walled gate, the answer dribbling into a
+         * fortified Shrine - are both here. (Dropping the court case also closes the war
+         * minor-lord hole by construction: a flag short of a court warOrders' turning
+         * could not see.) */
+        const atk = answer ? { x: answer.x, y: answer.y, k: 'answer' }
+                  : raid ? { x: raid.x, y: raid.y, k: 'raid' } : null;
+        /* the flag goes `back` short of the target toward home - and for a target nearer
+         * than that, at home itself (the first rig's nearest towered gate sat 520 out,
+         * inside a far-enough gate, and the whole machine never engaged) */
+        const nearFight = atk && d2(atk.x, atk.y, v.myCity.x, v.myCity.y) < 250 * 250;
+        /* the body to assemble: three quarters of the army he actually has, capped by the
+         * commit floor - a 14-man realm stages 10, a 40-man realm the full 22. Always
+         * reachable, so the flag can never become the place he waits forever (the
+         * consolidation trap); armies under RAID_MEN pass through - a scout is not a wave. */
+        const floorF = Math.min(commit, Math.max(RAID_MEN, Math.floor(v.army * 0.75)));
+        if (atk && !nearFight && v.army >= RAID_MEN && stoneAt(v, atk.x, atk.y)) {
+          if (!stage || d2(stage.dx, stage.dy, atk.x, atk.y) > 300 * 300) {
+            const dxh = v.myCity.x - atk.x, dyh = v.myCity.y - atk.y, L2 = Math.hypot(dxh, dyh) || 1;
+            const off = Math.min(STAGE.back, Math.max(0, L2 - 40));
+            stage = { dx: atk.x, dy: atk.y, k: atk.k,
+                      sx: atk.x + dxh / L2 * off, sy: atk.y + dyh / L2 * off,
+                      phase: menNear(v, atk.x, atk.y, STAGE.near) >= floorF ? 'commit' : 'muster',
+                      pulled: [] };
+          }
+          const atFight = menNear(v, stage.dx, stage.dy, STAGE.near);
+          const atFlag = menNear(v, stage.sx, stage.sy, STAGE.gather);
+          if (stage.phase === 'muster' && (atFlag >= floorF || atFight >= floorF)) {
+            stage.phase = 'commit'; stage.hi = 0;
+            for (const co of stage.pulled) issue({ c: 'rally', co });   // rejoin the banner
+            stage.pulled = [];
+          }
+          if (stage.phase === 'commit') stage.hi = Math.max(stage.hi || 0, atFight);
+          /* mauled is judged against the wave that ARRIVED, not the vanguard on the road:
+           * without the watermark the first two men to enter the band read as the survivors
+           * of a wipe and the whole column was recalled while still marching in (measured -
+           * commit at 5s, "retreat" at 7s, forever) */
+          if (stage.phase === 'commit' && (stage.hi || 0) >= Math.max(3, Math.round(floorF * 0.8)) &&
+                     atFight < Math.max(2, (stage.hi || 0) * STAGE.retreat)) {
+            /* mauled: break the engaged companies off with the forced march */
+            stage.phase = 'muster';
+            const at = new Set();
+            for (const u of v.myUnits) if (u.co && d2(u.x, u.y, stage.dx, stage.dy) < STAGE.near * STAGE.near) at.add(u.co);
+            for (const coId of at) { issue({ c: 'rally', co: coId, x: stage.sx, y: stage.sy, hard: 1 }); stage.pulled.push(coId); }
+          }
+          if (stage.phase === 'muster') {
+            stageAim = { x: stage.sx, y: stage.sy, id: 'stage' };
+            if (atk.k === 'answer') answer2 = null;      // the aim below is the flag, not the fight
+            if (atk.k === 'raid') raid2 = null;
+          }
+        } else if (stage) {
+          /* the want has moved on or the army fell under the raid floor - but men still AT
+           * the fight are engaged, and `acquire` will hold them there until they die (the
+           * rig: mauled to two, the raid clause went null, the machine dissolved and the
+           * survivors stood under the tower). A committed stage dissolves THROUGH the
+           * break-off: the engaged companies are pulled hard to the flag first. */
+          if (stage.phase === 'commit') {
+            const atF = menNear(v, stage.dx, stage.dy, STAGE.near);
+            if (atF > 0) {
+              const at = new Set();
+              for (const u of v.myUnits) if (u.co && d2(u.x, u.y, stage.dx, stage.dy) < STAGE.near * STAGE.near) at.add(u.co);
+              for (const coId of at) issue({ c: 'rally', co: coId, x: stage.sx, y: stage.sy, hard: 1 });
+            }
+          }
+          for (const co of stage.pulled) issue({ c: 'rally', co });
+          stage = null;
+        }
+      }
+      const aim = answer2 || myShrine || guard || raid2 || stageAim || post;
       if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, free, consol: !!consol, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id,
+                                                                stage: stage ? stage.phase + '@' + Math.round(stage.dx) + ',' + Math.round(stage.dy) + ' hi' + (stage.hi || 0) + ' atF' + menNear(v, stage.dx, stage.dy, STAGE.near) : null,
                                                                 raidPick: (raidAt(v, (h) => heldOff(v, h)) || {}).id, trouble: (troubleAt(v, v.myCity) || {}).id, stray: !!stray });
       if (aim) {
         const aimId = aim === post ? post.id : aim.id;

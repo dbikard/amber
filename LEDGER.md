@@ -593,6 +593,69 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### THE SEVENTH CHRONICLE — the assault stages, and the pooling that measured wrong (2026-08-21)
+
+The designer's report after the sixth-chronicle fixes: "better, but he made the mistake of
+protecting gates only with a tower and no troops. he also lost a lot of men sending them one
+by one against my wall, and attacked without siege weapons." The trickle was now a THIRD
+report. The first answer built was MUSTER-SIDE POOLING (a sim rule: recruits of a far-fighting
+company wait at the court and release as a batch) - it worked mechanically (waves of five
+marching together, the rally body growing 12 -> 24) and the referee split on it: tripwire up
+seventeen points (48 -> 65, waves fight better) and EVERY raid probe lost (bleys 3 -> 9 gates,
+corwin 6 -> 9, floors of 6), because the trickle it stopped was also the DEFENCE arriving
+continuously at a raided gate. The designer then named the right answer before the patch-fix
+landed: "the AI should know to stop fighting and even retreat men, until a sufficient force
+is assembled. troops can be grouped by planting a flag not far but out of reach of the enemy,
+and when ready, starting the fight." Pooling was REVERTED whole, and the staging machine
+shipped at the DOCTRINE layer - which can tell an attack from a defence, the distinction the
+muster never had. (Instrument lesson from the pooling rig, kept for the file: it planted its
+rally at `seat.x + 700` on a seat 310 from the map's edge; the order folded back to the bank,
+the "rally" stood 200 from the throne, and the trace read "everyone walked home" until the
+radii were checked against the geometry.)
+
+**The staging machine, and the three traps its rig walked into.** Only an attack on ground
+defended by standing enemy stone stages; the flag goes `back` (450) short of the target
+toward home; commit at `floorF` = three quarters of the army capped by the commit floor
+(always reachable - an absolute floor of 22 parked every 14-man realm, and a far-enough
+entry gate skipped the nearest towered gate, 520 out, entirely); mauled is judged against
+the ARRIVED wave's watermark, twice over - the plain body-count read the two-man vanguard on
+the road as the survivors of a wipe and recalled the column at 7s forever, and the absolute
+threshold was then held PERMANENTLY above the retreat line by the trickle itself refilling
+the band. Wiped outright, the machine re-stages: the rig's towered gates (indestructible, so
+the doctrine and not the fight is measured) see the banner go flag -> gate -> flag again,
+and the suite holds all three legs. Against breakable defences the wave RAZES them: four
+towered gates down in 150 seconds where the trickle had fed the same kill zone for ten
+minutes.
+
+**And the tripwire caught the assault arm.** With courts staged too, benedict over greedy
+read 35% at n=40 against HEAD's 55: an assault already leaves home as a BODY (the commit
+floor gates its departure), so staging it again only paused the better attacker 450 out
+while the masser's defence grew. The machine keeps exactly the two attacks that dribble -
+the raid and the walk's answer - and the assault goes straight in as it always did.
+
+**And the war suites caught a hole the rigs could not.** A war MINOR LORD is turned away
+from rival courts at the warOrders seam — but the seam reads the banner's DESTINATION, and
+a staging flag 450 short of a court is bare ground it cannot recognise: the lord would
+besiege-by-inches the court he is forbidden to conquer, and the ordered-gates suite read
+his war body parked at a court's approach instead of on the spring his liege named. The
+machine now skips `assault` staging for exactly the seats warOrders turns (`noCourts` —
+not a contender, or under `obey`), and four suites restate "marches on" as "on, or staged
+at" for the seats that may.
+
+The same session shipped the WALL-BUILDING FINGER (the designer: labelled marks for what
+different mason counts can build; snapping onto towers, endpoint or middle, both ways):
+the sim needed nothing - `wallError` has exempted own towers since the corner-tower fix and
+`noteWalls` deals `onWall` by geometry in both directions (now held by a through-tower claim
+in 'a curtain turns at its bastion') - so the work was input and preview: `snapWallTo` in
+game.js (one spelling for the tap and the live preview via `Render.span.snap`), endpoint
+snap at 52, mid-run swing about the anchor at 36 with the endpoint band excluded, a ring on
+the snapped tower, and a labelled tick at every crew-length up to the idle masons' reach.
+Rig lessons, each a dead instrument first: a fresh player holds ONE crew (110) so every
+180-unit test run refused 'crews'; a rising shell HOLDS a crew, so two shells left one crew
+free and the wall refused again; and the browser tap must clear the court of men and disarm
+the flag, or the tap arms a company / plants a standard and reads as "the sheet never
+opened".
+
 ### THE SIXTH CHRONICLE — brand starves, trickles into a wall, and never lays stone (2026-08-21)
 
 Seed 2003661296, brand at PRINCE, lost by castle at 15:07 with the player never walking. The

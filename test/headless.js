@@ -3996,6 +3996,38 @@ suite('a curtain turns at its bastion');
   ok('the masons can put one back', fx.ok, fx.err);
   for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
   eq('...and the bastion is on the curtain again', tw.onWall, wallA.id);
+
+  /* ---- AND THE OTHER WAY ROUND: A RUN DRAWN THROUGH A FREE-STANDING TOWER ----
+   * (the designer, 2026-08-21, with the input snap: "snapping should work regardless of
+   * whether the tower is at an endpoint or in the middle"). The tower goes up FIRST, on
+   * open ground, on no wall at all; the run is then drawn straight through its centre.
+   * `wallError` must not call it crowded (an own tower is a bastion, not an obstacle) and
+   * `noteWalls` must deal it onto the new run the moment the run stands. */
+  {
+    let spot = null;
+    for (let rad = 190; rad < 430 && !spot; rad += 20)
+      for (let a2 = 0; a2 < 48 && !spot; a2++) {
+        const th = a2 / 48 * Math.PI * 2;
+        const mx = c.x + Math.cos(th) * rad, my = c.y + Math.sin(th) * rad;
+        if (World.placementError(w, 0, mx, my, 'tower')) continue;
+        if (World.wallError(w, 0, mx - 90, my, mx + 90, my)) continue;
+        spot = { mx, my };
+      }
+    ok('open ground for a tower with room for a run through it', !!spot);
+    const rt2 = World.applyCommand(w, 0, { c: 'build', bt: 'tower', x: spot.mx, y: spot.my });
+    ok('the free-standing tower goes up', rt2.ok, rt2.err);
+    const tw2 = pl.buildings.filter((q) => q.bt === 'tower').pop();
+    ok('...on no wall at all', !tw2.onWall, String(tw2.onWall));
+    for (let i = 0; i < 60 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    const mid = World.wallError(w, 0, spot.mx - 90, spot.my, spot.mx + 90, spot.my);
+    eq('a run through its centre is not crowded', mid, null);
+    const rw = World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: spot.mx - 90, y: spot.my, x2: spot.mx + 90, y2: spot.my });
+    ok('...and is drawn', rw.ok, rw.err);
+    const wallC = pl.buildings.filter((q) => q.bt === 'wall').pop();
+    for (let i = 0; i < 90 * 30; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+    eq('the run stands', wallC.raise, 0);
+    eq('and the tower it was drawn through is its bastion', tw2.onWall, wallC.id);
+  }
 }
 
 /* A LEVEL MAKES BETTER MEN, NOT MORE OF THEM. Halls used to buy THROUGHPUT — the same
@@ -8880,6 +8912,67 @@ suite('a lord who cannot afford his plans stops buying men');
      `purse ${Math.round(calm.w.players[calm.me].essence)}`);
 }
 
+/* ---------------- THE ASSAULT STAGES, COMMITS AS A BODY, AND RE-STAGES WHEN BROKEN ----------------
+ * The third trickle report, and the designer's own design (2026-08-21): "the AI should know
+ * to stop fighting and even retreat men, until a sufficient force is assembled. troops can
+ * be grouped by planting a flag not far but out of reach of the enemy, and when ready,
+ * starting the fight." The muster-side pooling was built first and MEASURED WRONG (tripwire
+ * +17, every raid probe lost - the trickle it stopped was also the defence arriving); this
+ * is the same idea at the doctrine layer, which can tell an attack from a defence. Only an
+ * attack on ground defended by standing enemy stone stages (`stoneAt`); the defence of his
+ * own works and every naked target keep the old immediacy. */
+suite('the assault stages, commits as a body, and re-stages when broken');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const p1 = w.players[1], c1 = World.cityOf(w, 1), c0 = World.cityOf(w, 0);
+  for (const s2 of w.map.sites) p1.explored[s2.id] = { kind: s2.kind };
+  const gd = C.BUILDINGS.gate, td = C.BUILDINGS.tower;
+  /* the rival holds every far spring, every gate TOWERED - the sixth chronicle's kill zone,
+   * indestructible so the rig measures the doctrine and not the outcome of the fight */
+  const theirs = w.map.sites.filter((s2) => s2.kind === 'node' && Math.hypot(s2.x - c1.x, s2.y - c1.y) > C.CLAIM.seat + 20 &&
+                                            !w.players[0].buildings.some((b) => b.node === s2.id))
+    .sort((a, b) => Math.hypot(a.x - c1.x, a.y - c1.y) - Math.hypot(b.x - c1.x, b.y - c1.y));
+  for (const sp of theirs) {
+    w.players[0].buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: sp.x + 30, y: sp.y, cd: 0, raise: 0, raiseFor: gd.raise,
+                                  hp: 1e9, maxHp: 1e9, lastHurt: -99, node: sp.id, co: 0 });
+    w.players[0].buildings.push({ id: w.nextId++, bt: 'tower', level: 1, x: sp.x + 90, y: sp.y + 40, cd: 0, raise: 0, raiseFor: td.raise,
+                                  hp: 1e9, maxHp: 1e9, lastHurt: -99, node: -1, co: 0 });
+  }
+  const co = p1.companies[0];
+  for (let i = 0; i < 14; i++) manAt(w, 1, 'soldier', c1.x + 40 + (i % 4) * 14, c1.y + 30 + ((i / 4) | 0) * 14).co = co.id;
+  p1.essence = 200;
+  const bot = AI.make('julian', {});
+  const eligible = theirs.filter((sp) => Math.hypot(sp.x - c0.x, sp.y - c0.y) > C.CLAIM.seat + 20);
+  const tgt = { x: eligible[0].x + 30, y: eligible[0].y };
+  ok('the rig is alive: every rival Gate is under a tower', theirs.length >= 3);
+  const banners = [];
+  let wiped = false;
+  for (let i = 0; i < 30 * 90; i++) {
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    bot.step(w, 1, (cmd) => {
+      if (cmd.c === 'banner' && cmd.x != null) banners.push({ t: w.t, x: cmd.x, y: cmd.y });
+      return World.applyCommand(w, 1, cmd);
+    }, C.SIM_DT, null);
+    if (!wiped) {
+      const atF = w.units.filter((u) => u.owner === 1 && u.hp > 0 && Math.hypot(u.x - tgt.x, u.y - tgt.y) < 340);
+      if (atF.length >= 9)  { wiped = true;
+        w.units.filter((u) => u.owner === 1 && Math.hypot(u.x - tgt.x, u.y - tgt.y) < 700).forEach((u) => { u.hp = 0; }); }
+    }
+  }
+  ok('the rig is alive: the wave arrived and was wiped', wiped);
+  const dTgt = (b) => Math.hypot(b.x - tgt.x, b.y - tgt.y);
+  ok('the first banner is the FLAG, short of the towered gate, out of its reach',
+     banners.length >= 2 && dTgt(banners[0]) > 320 && dTgt(banners[0]) < 620,
+     banners[0] ? `${Math.round(dTgt(banners[0]))} from the gate` : 'no banner');
+  ok('...and the second is the gate itself, once the body has gathered',
+     banners.length >= 2 && dTgt(banners[1]) < 120,
+     banners[1] ? `${Math.round(dTgt(banners[1]))} from the gate` : '');
+  const after = banners.filter((b) => wiped && b.t > 12);
+  ok('after the wipe the army RE-STAGES at the flag rather than feeding the grinder',
+     after.length >= 1 && after.every((b) => dTgt(b) > 320),
+     after.map((b) => Math.round(dTgt(b))).join(',') || 'no banner after the wipe');
+}
+
 /* ---------------- A HOSTILE IS SOMEBODY I MAY STRIKE ----------------
  * Reported from play: *"a lord with whom I'm at terms still unleashes the jewel storm on me."*
  * The damage was never the bug — `hurt` refuses a blow between heirs at peace, and the storm
@@ -8994,24 +9087,32 @@ suite('every court is named, and a minor lord does not conquer');
     /* he has to have SEEN a rival court to want it */
     for (const c of w.cities) w.players[me].explored[c.site] = { kind: 'city' };
     const bot = AI.make('benedict', contends ? {} : Object.assign({}, C.MINOR));
-    let atCourt = 0;
+    /* a contender's assault STAGES now: the banner goes to a flag ~STAGE-back short of the
+     * court and moves onto it once the body gathers, so "marches on a rival court" is a
+     * rally ON the court or AT its staging approach. The minor-lord control keeps the
+     * strict radius - he must never plant on a court at all, and his machine skips courts
+     * (`noCourts`), so his errand near a court cannot read as a siege. */
+    let atCourt = 0, nearCourt = 0;
     for (let k = 0; k < 60; k++) {
       bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
       for (const q of w.players[me].companies) {
         if (!q.rally) continue;
         for (const c of w.cities) {
           if (c.owner < 0 || World.realmOf(w, c.owner) === World.realmOf(w, me)) continue;
-          if ((q.rally.x - c.x) ** 2 + (q.rally.y - c.y) ** 2 < C.CITY.r * C.CITY.r) { atCourt++; break; }
+          const dd = (q.rally.x - c.x) ** 2 + (q.rally.y - c.y) ** 2;
+          if (dd < C.CITY.r * C.CITY.r) { atCourt++; break; }
+          if (dd < 620 * 620) { nearCourt++; break; }
         }
       }
     }
-    return atCourt;
+    return { atCourt, nearCourt };
   };
   const heir = march(true), lord = march(false);
-  ok('the rig is alive: a CONTENDER on that seat marches on a rival court', heir > 0,
-     `${heir} standards planted on one`);
-  ok('...and the same seat as a minor lord never does', lord === 0,
-     `${lord} standards planted on a rival court`);
+  ok('the rig is alive: a CONTENDER on that seat marches on a rival court, or stages at one',
+     heir.atCourt + heir.nearCourt > 0,
+     `${heir.atCourt} on a court, ${heir.nearCourt} staged at one`);
+  ok('...and the same seat as a minor lord never plants on one', lord.atCourt === 0,
+     `${lord.atCourt} standards planted on a rival court`);
 }
 
 /* ---------------- A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS ----------------
@@ -9221,7 +9322,13 @@ suite('a lesser heir decides worse, he is not poorer');
     const marched = (lapses) => {
       const bot = AI.make('benedict', { noise: 0, lapses });
       let hit = false;
-      const iss = (cmd) => { const r = World.applyCommand(w, 1, cmd); if (r.ok && cmd.c === 'banner' && cmd.site === en) hit = true; return r; };
+      const enS = w.map.sites[en];
+      /* the assault STAGES now: a trickler's banner goes to the flag short of the Seat
+       * first, so "marches on a Seat" is the site itself or its staging approach */
+      const iss = (cmd) => { const r = World.applyCommand(w, 1, cmd);
+        if (r.ok && cmd.c === 'banner' &&
+            (cmd.site === en || (cmd.x != null && Math.hypot(cmd.x - enS.x, cmd.y - enS.y) < 620))) hit = true;
+        return r; };
       for (let i = 0; i < 30 * 20; i++) { bot.step(w, 1, iss, C.SIM_DT); World.update(w, C.SIM_DT); w.events.length = 0; }
       return hit;
     };
@@ -9870,8 +9977,12 @@ suite('the answer to a walk: his gates first, the shrine when they are gone');
     World.update(w, C.SIM_DT); w.events.length = 0;
     bot2.step(w, 0, (cmd) => { if (cmd.c === 'banner' && cmd.walk && !big) big = { x: cmd.x, y: cmd.y }; return World.applyCommand(w, 0, cmd); }, C.SIM_DT, null);
   }
-  ok('...while a plainly bigger army goes straight for the Shrine', !!big && Math.hypot(big.x - shrine.x, big.y - shrine.y) < 60,
-     big ? `aimed ${Math.round(big.x)},${Math.round(big.y)}` : 'no answer');
+  /* the answer STAGES too: a fortified Shrine is exactly the ground the machine exists
+   * for, so the banner goes to the flag on the Shrine's approach and commits as a body */
+  ok('...while a plainly bigger army goes for the Shrine or its staging approach',
+     !!big && Math.hypot(big.x - shrine.x, big.y - shrine.y) < 620 &&
+     Math.hypot(big.x - sp.x, big.y - sp.y) > 60,
+     big ? `aimed ${Math.round(big.x)},${Math.round(big.y)}; shrine ${Math.round(shrine.x)},${Math.round(shrine.y)}` : 'no answer');
   /* no stub: an heir short of essence under threat raises no run shorter than a gateway */
   const w3 = World.createWorld(7, 2); w3.chaosNext = 1e9;
   const p3 = w3.players[0], c3 = World.cityOf(w3, 0);

@@ -337,6 +337,29 @@ fighting men on the flag, the shooters set back by the depth of both plus a bert
 the way the body is MARCHING, remembered in `world._face` while the order stands — recomputed at
 rest it would swing the back line round the flag. A body of one kind is one disc on the flag.
 
+**THE RAID AND THE WALK'S ANSWER STAGE, COMMIT AS A BODY, AND RE-STAGE WHEN BROKEN — THE
+ASSAULT DOES NOT** (ai.js `STAGE`, `stoneAt`, the machine in decide; the designer's own
+design after the third trickle report, 2026-08-21: "troops can be grouped by planting a flag
+not far but out of reach of the enemy, and when ready, starting the fight"). Muster-side
+pooling was built FIRST and measured wrong — tripwire +17 but every raid probe lost, because
+the trickle it stopped was also the defence arriving — so the answer lives at the DOCTRINE
+layer, which can tell an attack from a defence. And the machine covers exactly the two
+attacks that DRIBBLE — the raid (whoever is idle) and the answer to a walk — never the
+assault, which already leaves home as a body under the commit floor: staging it too was
+measured donating tempo to a massing defender (benedict over greedy 55 → 35 at n=40), and
+dropping the court case also closes by construction the war minor-lord hole (a flag short of
+a court that warOrders' turning cannot see). Only an attack on ground defended by standing
+enemy stone stages (`stoneAt`: a finished rival tower in reach, an unbreached run, a court's
+own gun — the raidAt standard); the defence of his own works, the errand and every naked
+target keep the old immediacy. The flag goes `STAGE.back` short of the target toward home
+(clamped for near targets); the trickle accumulates THERE; the banner moves onto the target
+at `floorF` (three quarters of the army, capped by the commit floor — always reachable, so
+the flag can never become the consolidation trap); mauled below `retreat` of the ARRIVED
+wave's watermark (`stage.hi` — judged against the vanguard-on-the-road it is not), the
+engaged companies are pulled back HARD (the forced march breaks men off) and it re-stages.
+A dissolving committed stage breaks its engaged men off the same way. `AMBER_NOSTAGE=1`
+for the rig.
+
 **AND THE PACING IS ASKED LOCALLY — that is the whole difficulty of the rule.** The column
 steers at the ORDER, so faster shooters walk through the line. Do NOT hold every shooter behind
 his company's average: a hall NEVER STOPS MUSTERING, so late recruits drag the average and the
@@ -1227,6 +1250,19 @@ the field routes a garrison out one gate and back in the next on a dogleg.
 and `station` (and the renderer's parapet facing) negate the normal, per run, at the point of
 use. It asks for a STATE, not a toggle, takes no crew and no stone, and may be given while the
 masons are still on the run.
+**A WALL SNAPS TO THE STONE THAT IS STANDING, AND EVERY CREW'S REACH IS A LABELLED TICK**
+(the designer, 2026-08-21). The sim has always let a run begin at, end at or pass through an
+own tower (`wallError` exempts them; `noteWalls` deals `onWall` by geometry, both directions
+— held by 'a curtain turns at its bastion'); what was missing was the FINGER: `snapWallTo` in
+game.js (one spelling, used by the tap and fed to the preview via `Render.span.snap` each
+frame) snaps an endpoint within `SNAP_END` to an own tower's centre, else swings the run
+about its anchor to pass through a tower near its middle (same length, `SNAP_RUN`, the
+endpoints' band excluded), and the snapped tower wears a ring. The span preview draws a tick
+and a crew count at every crew-length up to the idle masons' reach — "what would two crews
+cover?" answered on the ground — with the cap circle still the hard end. Towers snap onto
+walls at the SIM (the build command re-seats them, only when the snapped spot is itself
+legal), so that direction needs no input work.
+
 **A wall bars its OWNER too, except at his gate** — the middle of the run, `WALL.gate` wide,
 punched out of his nav layer alone. A rival is stopped everywhere including the gateway.
 **AND THE DOOR DECIDES WHO PASSES.** Coming from OUTSIDE an heir's own troops always pass;

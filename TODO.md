@@ -20,11 +20,15 @@ touches no balance surface.
 
 - THE TRIPWIRE'S FLOOR LIED: benedict over greedy reads 55% at HEAD on n=40 (seed 1000)
   against a stated floor of 65 — the 75/70 readings that set the floor were n=20. The
-  2026-08-21 econ batch bisect ran everything against the honest 55: final config reads
-  48% (n=40, within noise of 55). Either benedict has genuinely thinned against greedy
-  (worth its own investigation — greedy gained neverStorms and the muster-answers want
-  since the floor was set) or the floor needs restating at n=40. Do not chase 65 with
-  balance changes until the floor itself is re-measured.
+  2026-08-21 econ batch bisect ran everything against the honest 55: the econ config read
+  48%, and the staging config (raid + walk-answer only, after the assault arm was measured
+  at 35 and dropped) reads 43% — a 12-point drift from HEAD across the day that is inside
+  single-run noise (SE ~11 for a difference of two n=40 runs) but consistent in direction.
+  Either benedict has genuinely thinned against greedy (worth its own investigation —
+  greedy gained neverStorms, the muster-answers want, and now stages its raids too) or the
+  floor needs restating at n=40 with more seeds. Do not chase 65 with balance changes until
+  the floor itself is re-measured; the next honest step is n=100 on HEAD and on the shipped
+  config, once, overnight.
 - brand's raid probe flaked 'jewel on the raiders 0/1' once (2026-08-21; 0/0 and 0/2 ok
   before): the probe is one scripted game, and brand held gates lost to 3 — the floor
   fires only when >2 lost, so his first loss put him one cast under. Watch, don't tune.
@@ -388,12 +392,24 @@ to four, and bots on every seat nobody holds — including one a heir walks out 
       throne inside the court's guns, which is why no bot answer stops a fortified walker and
       the contested share cannot reach 50 by length alone (65% at a 10.4-minute walk). E.g. a
       Shrine must stand outside `CITY.seatR + margin`, or on a spring. The designer's call.
-- [ ] **Batched reinforcements** — the honest fix for the trickle a human farms (fifth
-      chronicle: fourteen minutes of 10-20-man packets into a 120-man army). Newly-mustered men
-      should POOL at their hall/court until a body of ~8 forms, then march to the standard
-      together; the standing army is untouched. Needs sim support (a per-company staging rule in
-      the muster, not an AI clause — `AMBER_CONSOL=1` shows why: recalling the ARMY to pool
-      loses the map, tripwire 40-46% vs 63%). [REF]
+- [x] **The trickle** — CLOSED 2026-08-21, at the doctrine layer: THE ASSAULT STAGES
+      (ai.js STAGE machine; the designer's own design). Muster-side pooling was built first,
+      measured wrong (tripwire +17, every raid probe lost) and reverted whole — the LEDGER
+      has both halves. Held by 'the assault stages, commits as a body, and re-stages when
+      broken'.
+- [ ] **Forward towers stand empty** (the seventh chronicle: "he made the mistake of
+      protecting gates only with a tower and no troops"). The adaptive tower goes up but the
+      errand's standard moves on with the errand, so no shooter garrisons it. Wants a small
+      standing WATCH: when a forward tower stands at a gated spring after gateLost, keep or
+      deal 2-3 shooters whose order stays at the tower (a dedicated pennant, or the errand
+      leaves a detachment — needs the muster's support, design first). [REF]
+- [ ] **The assault still walks into stone** (the seventh chronicle: "he lost a lot of men
+      against my wall, attacked without siege weapons; he should rather have attacked gates
+      not protected by a wall"). Two candidate levers, referee'd separately: (1) the WAR
+      BODY's search/assault target prefers unfortified ground the way `raidAt` now does;
+      (2) an assault at a walled position wants breakers marched WITH it (the Works want
+      exists and the valve can now fund it — trace the new chronicle's seed first to see
+      why brand still had no rams at minute 8). [REF]
     - REOPENED (2026-08-21): after the gated-springs set-diff fix the contested share reads
       89% at rate 0.16 (5 by force, 39 by the Pattern) — heirs who defend their Gates are
       harder to starve mid-walk, so the walk decides even more. The band (25-75) is red

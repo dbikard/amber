@@ -1151,7 +1151,11 @@ async function match(browser, base, renderer) {
        * wins"), whose sheet has no master card, and a throw here discards every buffered
        * claim of this whole runRenderer (the abort-at-51 failure, twice). The sweep asks
        * hitBuilding/hitSite before clicking, and every card click below is guarded. */
-      const openSeat = async () => {
+      /* RETRIED: the match runs LIVE under this block, so a recruit can walk out of the
+       * hall and onto the chosen point between the clearing evaluate and the click - the
+       * tap then arms his company instead of opening the sheet (flaked one full run in
+       * three). Each attempt re-clears the court. */
+      const openSeatOnce = async () => {
         await pg.evaluate(() => {
           if (window.UI.sheetOpen()) window.UI.closeSheet();
           const R = window.Render, g = window.Game.game;
@@ -1189,6 +1193,10 @@ async function match(browser, base, renderer) {
         try { await until(pg, () => window.UI.sheetOpen(), 4000); } catch (e) { return false; }
         return pg.evaluate(() => [...document.querySelectorAll('#sheet .card')]
           .some((c) => /Resume the Muster|Halt the Muster/.test(c.textContent)));
+      };
+      const openSeat = async () => {
+        for (let att = 0; att < 3; att++) if (await openSeatOnce()) return true;
+        return false;
       };
       const seat1 = await openSeat();
       ok('the rig is alive: the Seat sheet is open', seat1, 'the tap never reached the throne');
@@ -1232,6 +1240,102 @@ async function match(browser, base, renderer) {
         W.applyCommand(w, 0, { c: 'muster', pause: false });
         for (const q of w.players[0].companies) if (q.paused) W.applyCommand(w, 0, { c: 'muster', co: q.id, pause: false });
       });
+    }
+
+    /* ---- A WALL SNAPS TO THE STONE THAT IS STANDING (the designer, 2026-08-21) ----
+     * The sim has always let a run begin at, end at or pass through an own tower; the taps
+     * were not magnetic, so hitting the tolerance was finger-luck. Two towers go up, the
+     * anchor is tapped a finger-width OFF the first, the far end a finger-width off the
+     * second — and the run that gets ISSUED must have both ends on the towers' own centres. */
+    {
+      const rig = await pg.evaluate(() => {
+        const g = window.Game.game, w = g.world, W = window.World, R = window.Render, C2 = window.CONST;
+        const seat = w.map.sites[w.map.cities[0]];
+        w.players[0].essence = 9000;
+        /* the masons: a fresh player holds ONE crew (the opening Gate), which reaches 110 -
+         * less than the 180 run this rig draws - so every sweep died on 'crews'. Two more
+         * finished Gates deal two more crews, the same arithmetic the game uses. */
+        window.__snapRigGates = [];
+        { const gd = C2.BUILDINGS ? C2.BUILDINGS.gate : window.CONST.BUILDINGS.gate;
+          for (let k = 0; k < 2; k++) {
+            const g2 = { id: w.nextId++, bt: 'gate', level: 1, x: seat.x + 300 + k * 60, y: seat.y - 300,
+              cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: -1, co: 0 };
+            w.players[0].buildings.push(g2); window.__snapRigGates.push(g2.id);
+          } }
+        /* two legal tower spots with a legal run between them, swept off the court */
+        let pair = null;
+        for (let rad = 200; rad < 420 && !pair; rad += 24)
+          for (let a = 0; a < 40 && !pair; a++) {
+            const th = a / 40 * Math.PI * 2;
+            const ax = seat.x + Math.cos(th) * rad, ay = seat.y + Math.sin(th) * rad;
+            if (W.placementError(w, 0, ax, ay, 'tower')) continue;
+            for (let f = 0; f < 8 && !pair; f++) {
+              const ph = f / 8 * Math.PI * 2;
+              const bx2 = ax + Math.cos(ph) * 180, by2 = ay + Math.sin(ph) * 180;
+              if (W.placementError(w, 0, bx2, by2, 'tower')) continue;
+              if (W.wallError(w, 0, ax, ay, bx2, by2)) continue;
+              pair = { ax, ay, bx: bx2, by: by2 };
+            }
+          }
+        if (!pair) return null;
+        const ra = W.applyCommand(w, 0, { c: 'build', bt: 'tower', x: pair.ax, y: pair.ay });
+        const rb = W.applyCommand(w, 0, { c: 'build', bt: 'tower', x: pair.bx, y: pair.by });
+        /* finished on the spot: a rising shell HOLDS a crew, and two shells left one crew
+         * free against the run's two - every wall refused 'crews' and the rig read as a
+         * broken snap */
+        for (const b of w.players[0].buildings.filter((q) => q.bt === 'tower').slice(-2)) { b.raise = 0; b.hp = b.maxHp; }
+        if (!ra.ok || !rb.ok) return { fail: 'towers refused' };
+        const ta = w.players[0].buildings.filter((b) => b.bt === 'tower').slice(-2);
+        /* clear the ground of men - a man under the finger arms his company instead */
+        for (let i = w.units.length - 1; i >= 0; i--) {
+          const u = w.units[i];
+          if (u.owner === 0 && (Math.hypot(u.x - pair.ax, u.y - pair.ay) < 120 ||
+                                Math.hypot(u.x - pair.bx, u.y - pair.by) < 120)) w.units.splice(i, 1);
+        }
+        g.placing = { bt: 'wall', co: 0 }; g.span = null; R.span = null; g.armedFlag = null;
+        R.setZoom(1); R.lookAt((pair.ax + pair.bx) / 2, (pair.ay + pair.by) / 2);
+        return { pair, ta: ta.map((b) => ({ id: b.id, x: b.x, y: b.y })) };
+      });
+      ok('the rig is alive: two towers stand with a legal run between them', !!(rig && rig.pair),
+         rig && rig.fail ? rig.fail : (rig ? 'ok' : 'no ground found'));
+      if (rig && rig.pair) {
+        await pg.waitForTimeout(250);
+        /* the anchor: a finger-width off tower A */
+        const pa = await pg.evaluate(([x, y]) => window.Render.project(x, y), [rig.pair.ax + 34, rig.pair.ay + 20]);
+        await pg.mouse.click(pa.x, pa.y);
+        await pg.waitForTimeout(150);
+        const anchor = await pg.evaluate(() => window.Game.game.span && { x: window.Game.game.span.x, y: window.Game.game.span.y });
+        ok('the anchor snaps to the tower it was tapped beside', !!anchor &&
+           Math.hypot(anchor.x - rig.pair.ax, anchor.y - rig.pair.ay) < 1,
+           anchor ? `anchor ${Math.round(anchor.x)},${Math.round(anchor.y)} vs tower ${Math.round(rig.pair.ax)},${Math.round(rig.pair.ay)}` : 'no span');
+        /* the far end: a finger-width off tower B */
+        const pb = await pg.evaluate(([x, y]) => window.Render.project(x, y), [rig.pair.bx + 30, rig.pair.by - 24]);
+        await pg.mouse.click(pb.x, pb.y);
+        await pg.waitForTimeout(200);
+        const wall = await pg.evaluate(() => {
+          const b = window.Game.game.world.players[0].buildings.filter((q) => q.bt === 'wall').pop();
+          return b ? { ends: window.World.wallEnds(b), id: b.id } : null;
+        });
+        ok('the run is issued with both ends on the towers', !!wall && (() => {
+          const e = wall.ends;
+          const onA = Math.min(Math.hypot(e[0] - rig.pair.ax, e[1] - rig.pair.ay), Math.hypot(e[2] - rig.pair.ax, e[3] - rig.pair.ay)) < 1;
+          const onB = Math.min(Math.hypot(e[0] - rig.pair.bx, e[1] - rig.pair.by), Math.hypot(e[2] - rig.pair.bx, e[3] - rig.pair.by)) < 1;
+          return onA && onB;
+        })(), wall ? `ends ${wall.ends.map(Math.round).join(',')}` : 'no wall issued');
+        /* put the ground back: the shells were never finished and later suites count works.
+         * THE RIG'S CREW-GATES GO TOO - left standing, the two-tap wall suite downstream
+         * chose a run beside one and was refused 'crowded', and its unguarded read then
+         * aborted the whole buffered runRenderer (gate41). */
+        await pg.evaluate((ids) => {
+          const g = window.Game.game, w = g.world, pl = w.players[0];
+          const gone = ids.concat(window.__snapRigGates || []);
+          for (let i = pl.buildings.length - 1; i >= 0; i--)
+            if ((pl.buildings[i].bt === 'wall' && pl.buildings[i].raise > 0) || gone.includes(pl.buildings[i].id))
+              pl.buildings.splice(i, 1);
+          delete window.__snapRigGates;
+          g.placing = null; g.span = null; window.Render.span = null;
+        }, (rig.ta || []).map((t) => t.id));
+      }
     }
 
     /* ---------------- a level you can see ---------------- *
@@ -1739,9 +1843,12 @@ async function match(browser, base, renderer) {
       const mid = await pg.evaluate(([r2]) => {
         const w = window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall');
         const b = w[w.length - 1];
-        return Math.hypot(b.x - (r2.wax + r2.wbx) / 2, b.y - (r2.way + r2.wby) / 2);
+        /* soft on no-wall: a refused run already failed the claim above, and a throw here
+         * discards every buffered claim of the whole runRenderer (the gate41 abort) */
+        return b ? Math.hypot(b.x - (r2.wax + r2.wbx) / 2, b.y - (r2.way + r2.wby) / 2) : -1;
       }, [run]);
-      ok('the run lands where the two fingers did', mid < 60, `midpoint off by ${Math.round(mid)}`);
+      ok('the run lands where the two fingers did', mid >= 0 && mid < 60,
+         mid < 0 ? 'no wall stood to measure' : `midpoint off by ${Math.round(mid)}`);
       /* it must also DRAW: a work the renderer has no case for is a black screen, not a
        * silent omission — so give it frames and check the page stayed quiet */
       await pg.evaluate(() => new Promise((res) => {
