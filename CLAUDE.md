@@ -528,7 +528,24 @@ and nothing but home, the choke or a crew-only errand to go to marches on the ri
 outlying Gate — or with twice `RAID_MEN` whatever errand stands (brand sat at home with a hundred
 men and an income of seven while his errand wanted a spring the rival had taken: the chronicle of
 seed 1443391195) — never one under his throne's guns (that is the assault), never one the
-footing's `hold` covers. Coordinate banners through the same `aimed` memo as a walk's answer.
+footing's `hold` covers — **and a raid goes where the stone is NOT** (the sixth chronicle,
+2026-08-21: the nearest gate was towered and walled, and thirty men fed that kill zone in
+packets for ten minutes while two naked Gates stood a spring away; `raidAt` prefers an
+unguarded Gate now, nearest-defended as the fallback). Coordinate banners through the same
+`aimed` memo as a walk's answer.
+
+**A COURT THAT HAS BEEN RAIDED RAISES A CURTAIN — A STANDING WANT, FROM SURPLUS — AND A WORK
+WITH A LENGTH CANNOT BE PLACED BY A POINT** (the designer, 2026-08-21: "I never see bots
+building large walls"). The `gateLost` trigger the adaptive towers use also raises a curtain
+by the court: a STANDING CITY WANT beside the breach-mend (the run stands AT the court, so
+the march-then-build errand machinery is the wrong vehicle — measured sitting behind a
+cross-map gate errand for 150 seconds of solvency), and FROM SURPLUS ONLY (three crews'
+worth in hand): a wall bought out of the war chest against a masser is men traded for stone,
+the tripwire's verdict on the first cut. `spanFor` draws up to THREE crews' length now,
+purse and idle crews still capping. And the errand-mission build path composed
+`{c:'build', x, y}` for every work, so any wall MISSION issued a zero-length run and was
+refused 'short' every think until it lapsed — a spanned work routes through `spotFor` and
+its far end rides the command. (→ LEDGER: THE SIXTH CHRONICLE)
 
 **A MOMENT SAYS WHERE** (record.js): the chronicle wrote "the enemy is inside your city" for
 every `hurtcity`, a Gate on a spring four hundred out included (reported from play: the enemy
@@ -755,8 +772,16 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   (`opts.eco`, a story's feeble tutorial rival); nothing else writes it below 1.
   (→ LEDGER: EVERYONE AT THE TABLE EARNS BY THE SAME ECONOMY)
 - **AND A LORD WHO CANNOT AFFORD HIS PLANS STOPS BUYING MEN.** A doctrine issues `{c:'muster'}`
-  so a lord whose halls drink everything he earns can save for the Gate. WAR ONLY
-  (`rules.reach`), like `warOrders`: the duel economy is tuned against a referee. It asks for a
+  so a lord whose halls drink everything he earns can save for the Gate. ON A BOARD ONLY FOR A
+  RAIDED ECONOMY LEFT IN PEACE (2026-08-21, the sixth chronicle: brand at PRINCE sat at
+  essence 0-60 from minute eight on an income of 12 — `saving` guards only the upgrade scan,
+  so the Works, the re-gating and the stone all starved together). The board valve is gated on
+  `gateLost && !homeThreat && enemyArmy < army`, and every clause was bought with a
+  measurement: halls out-drinking income is the NORMAL mid-game state, so the wide valve fired
+  through every ordinary save (tripwire 35% against HEAD's 55); `gateLost` alone still paused
+  the muster while greedy's own CHARGE was razing the gate (30%); with the threat guards the
+  tripwire is HEAD to the point (55%). A war keeps the wider valve (a country lord's
+  halls-to-ground ratio makes it rare, and its own suites referee it). It asks for a
   STATE and only when that state differs, and the test is the WANT rather than the wallet — he
   shuts it only with something he means to build and cannot, and opens it the moment he can pay.
   **Judged on what his halls WOULD drink (`musterCap`), never on the live `drainRate`**, which

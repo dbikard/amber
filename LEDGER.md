@@ -593,6 +593,66 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### THE SIXTH CHRONICLE — brand starves, trickles into a wall, and never lays stone (2026-08-21)
+
+Seed 2003661296, brand at PRINCE, lost by castle at 15:07 with the player never walking. The
+designer's own reading was exact on all three counts: "he didn't build / maintain enough
+gates, and was sending troops one by one against my wall without siege weapons. I also never
+see bots building large walls."
+
+The table: brand's income decays 21 -> 12 by minute nine and NEVER recovers; from 8:00 his
+essence sits at 0-60 to the end. The player razed the Amber Rill and Glass Rill Gates twice
+each — both written off, correctly — and brand never re-expanded because every remaining
+spring was the player's, and never afforded the answer because of the keystone defect:
+
+- **`saving` guards only the upgrade scan.** The Works want fired (`v.breakers < BREAKERS`,
+  army 30+), set `saving = true`... and the muster went on drinking the whole income, so the
+  purse never grew and the Works, the re-gating and the stone starved together. The muster
+  valve existed and answered exactly this — WAR ONLY, because the duel economy was
+  referee-tuned. Extended to boards: starved = (`saving` || the mission want unaffordable)
+  && income - walkDrain - musterCap <= 0. Measured on the rig (brand, seed 42, five outlying
+  Gates razed at 150s, purse cut to 10): valve flips at 160s, purse saw-tooths 10-120 as he
+  buys his way back, **Gates 1 -> 7 in seven minutes** and the walk resumes. A healthy solo
+  game shows ZERO flips in ten minutes — the valve is for the starved case only.
+- **`raidAt` picked the NEAREST rival Gate**, which was the Cold Cistern — towered, then
+  walled. His thirty-man body fed that kill zone in packets for ten minutes ("Brand the
+  Unmaker is at your Watchtower" x3 in the moments) while the player's naked Gates at the
+  Whispering Font and Silver Tarn were touched only by Chaos. `raidAt` prefers an unguarded
+  Gate now (no finished rival tower within 260, no unbreached wall within 220 — world-truth
+  works gated on the spring being explored, the same standard `nodeHolder` already sets in
+  that function), nearest-defended as the fallback.
+- **No bot could ever build a wall from a MISSION.** The mission build path composed
+  `{c:'build', x, y, bt}` — no far end — so a wall mission issued a zero-length run and was
+  refused 'short' every think until the mission lapsed. Measured: twenty-four 'short'
+  refusals in seventy seconds while the purse sat at 300. Only the PLAN path carried
+  `x2/y2`, and only two heirs' plans ever asked for stone. A spanned work now routes through
+  `spotFor` (= `spanFor`'s geometry: across the enemy approach by the court, sized to the
+  purse) and the far end rides the command. With it: a raided-court wall want on `fortify`
+  under the `gateLost` trigger, and `spanFor` draws up to three crews' length (was two).
+  Rig: the raided brand raises a 148-unit curtain, one build, zero refusals.
+
+**And the tripwire caught the first cut of the valve — then taught the second and third.**
+The bisect, all at n=40 on the same seeds: HEAD reads **55%** (the 75/70 readings were n=20);
+the wide valve (`saving` && income under the halls' thirst) read **35%** — halls out-drinking
+income is the NORMAL mid-game state, so it fired through every ordinary save; narrowed to
+`gateLost` alone it read **30%** — greedy's own CHARGE razes a gate on the way in, so
+benedict paused his muster with the army at his door; with the threat guards
+(`!homeThreat && enemyArmy < army`) it reads **55%**, HEAD to the point — the valve is free
+once it fires only for the raided-and-left case it was built for; the shipping config (the
+surplus-gated curtain live on top) reads **48%**, within noise of the same 55 (19/40 against
+22/40), and the full run's own n=20 section reads 60. The curtain want went
+through its own wringer: on `fortify` it rode the errand-mission machinery and NEVER BUILT
+(the run stands AT the court; the mission slot sat behind a cross-map gate errand and the
+upgrade scan's crews through 150 seconds of solvency) — it is a STANDING CITY WANT now,
+surplus-gated, and the chronicle rig raises its 149-unit curtain during the recovery itself.
+The first full referee run (wide valve) also put the contested-Pattern share at **53%**
+(21 by force, 24 by the Pattern; target 50): the stone, the valve and the naked-Gate raids
+are what an answering army needed — re-measured with the final config in the shipping run.
+
+The remaining half of "one by one against my wall" is BATCHED REINFORCEMENTS (TODO) — the
+valve makes the Works affordable and the rams follow, but new men still walk to the standard
+alone as they muster.
+
 ### THE COUNTRY IS SMALLER, AND EVERY ROAD RUNS BOTH WAYS (2026-08-21)
 
 From a played war's council map (the designer, with screenshot): "cities completely

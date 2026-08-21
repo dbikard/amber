@@ -211,9 +211,26 @@
    * lies beyond HIS OWN writ — his court is not a raid, it is the assault — and that this heir
    * has laid eyes on, inside the war's own knowledge (`explored`). Economic pressure is the
    * anti-turtle engine on a board as it is in a war. */
+  const NO_CURTAIN = (typeof process !== 'undefined' && process.env && process.env.AMBER_NOCURTAIN) === '1';
+  const NO_VALVE = (typeof process !== 'undefined' && process.env && process.env.AMBER_NOVALVE) === '1';
   const raidAt = (v, heldOff) => {
     const W = global.World, w = v.world;
-    let best = null, bd = Infinity;
+    /* ---- AND A RAID GOES WHERE THE STONE IS NOT ----
+     * (the designer's sixth chronicle, 2026-08-21, brand at PRINCE, seed 2003661296: the
+     * nearest gate of the player's was the Cold Cistern — towered, then walled — and the raid
+     * clause marched thirty men into that kill zone in packets for ten minutes while two naked
+     * Gates stood a spring away.) The HUMAN's raid picks the undefended Gate; so does this one
+     * now: a Gate with a finished rival tower or a curtain within covering distance is
+     * DEFENDED, preferred only when no naked one is known. Works are read the way `nodeHolder`
+     * already is in this function - the world's answer, gated on the spring being explored. */
+    const guarded = (s, h) => {
+      const op = w.players[h];
+      if (!op) return false;
+      return (op.buildings || []).some((b) => !b.gone && !b.raise &&
+        ((b.bt === 'tower' && d2(b.x, b.y, s.x, s.y) < 260 * 260) ||
+         (b.bt === 'wall' && !b.breach && d2(b.x, b.y, s.x, s.y) < 220 * 220)));
+    };
+    let naked = null, nd = Infinity, best = null, bd = Infinity;
     for (const s of w.map.sites) {
       if (s.kind !== 'node' || !v.pl.explored[s.id]) continue;
       const h = W.nodeHolder(w, s);
@@ -223,8 +240,9 @@
       if (hc && d2(s.x, s.y, hc.x, hc.y) < C.CLAIM.seat * C.CLAIM.seat) continue;   // under his throne's guns: the assault's business
       const d = d2(s.x, s.y, v.myCity.x, v.myCity.y);
       if (d < bd) { bd = d; best = s; }
+      if (d < nd && !guarded(s, h)) { nd = d; naked = s; }
     }
-    return best;
+    return naked || best;
   };
   const worksNear = (v, x, y, bt, r) =>
     v.pl.buildings.some((b) => b.bt === bt && d2(b.x, b.y, x, y) < r * r);
@@ -422,7 +440,10 @@
      * under it is exactly when an heir should be saving. The 0.99 is for the arithmetic — a
      * run of exactly `unit` length can round to two crews on the far side of a hypot. */
     const purse = Math.floor(v.essence / def.cost) * C.WALL.unit;
-    const half = Math.min(reach, C.WALL.unit * 2, purse) * 0.99 / 2;
+    /* three crews' length, up from two (2026-08-21, "I never see bots building large
+     * walls"): the reach and the purse still cap it, so only an heir with idle crews and a
+     * real treasury draws the long run - which the muster valve now makes possible */
+    const half = Math.min(reach, C.WALL.unit * 3, purse) * 0.99 / 2;
     /* NEVER A STUB. A run under `WALL.gateMin` is solid stone with no gateway, and it bars its
      * OWNER as surely as anyone: benedict, short of essence, raised a thirty-eight-unit piece
      * across his own muster ground at arm's length from the throne, and ninety men with a
@@ -1480,6 +1501,7 @@
         wantWatch(WALK_TOWERS).pick(v2) ||
         [v2.myCity].concat(v2.nodes.own.slice(0, 1)).filter((s2) => s2 && !worksNear(v2, s2.x, s2.y, 'tower', 130))[0] || null }] : [];
 
+
       /* THE CITY. Two standing wants that no plan lists come first — a spring under his feet
        * and, when the muster is behind, one more hall — and then the plan itself.
        *
@@ -1560,6 +1582,27 @@
           handled = true;
           break;
         }
+      }
+
+      /* ---- A COURT THAT HAS BEEN RAIDED RAISES A CURTAIN, FROM SURPLUS ----
+       * (the designer, 2026-08-21: "I also never see bots building large walls. such walls
+       * are very effective to defend large areas with just a few companies.") The machinery
+       * has existed since the curtain shipped - `spanFor` faces the enemy, stands the run
+       * across the approach and sizes it to the purse - but only two heirs' plans ever asked
+       * for stone, and brand's never did. The trigger is the adaptive towers' own: `gateLost`.
+       * A STANDING WANT, not an errand mission: the run stands AT the court, so the
+       * march-then-build machinery is the wrong vehicle (measured: the want sat behind a
+       * cross-map gate errand and the upgrade scan's crews for a hundred and fifty seconds
+       * of solvency and never laid a foot). FROM SURPLUS ONLY - three crews' worth in hand -
+       * because a wall bought out of the war chest against a masser is men traded for stone:
+       * the tripwire read 30-35% against HEAD's 55 on the first cut, the consolidation
+       * lesson again. An heir under pressure keeps mustering; a raided-but-solvent one lays
+       * the stone the raids argue for. */
+      if (!handled && !idle && !NO_CURTAIN && gateLost && v.free > 0 &&
+          v.essence >= C.BUILDINGS.wall.cost * 3 &&
+          !worksNear(v, v.myCity.x, v.myCity.y, 'wall', 340)) {
+        const at = spotFor(v, 'wall');
+        if (at) { issue({ c: 'build', x: at.x, y: at.y, x2: at.x2, y2: at.y2, bt: 'wall' }); handled = true; }
       }
 
       /* the second standing want is ONE MORE HALL THAN HE HOLDS — never a count of its own, or
@@ -1706,9 +1749,16 @@
           mission = fwd ? { site: mission.site, bt: 'tower', since: v.t } : null;
         }
         else if (!idle && v.free > 0 && v.essence >= C.BUILDINGS[mission.bt].cost) {
-          const at = spotAt(v, s, mission.bt);
+          /* A WORK WITH A LENGTH CANNOT BE PLACED BY A POINT. This path composed
+           * `{c:'build', x, y}` for every mission - a wall mission issued a zero-length run
+           * and was refused 'short' every think until the mission lapsed (measured: twenty-
+           * four refusals in seventy seconds while the purse sat at 300). A spanned work goes
+           * through `spotFor`, which is `spanFor`'s geometry - the run across the enemy
+           * approach by the court, sized to the purse - and its far end rides the command. */
+          const at = C.BUILDINGS[mission.bt].span ? spotFor(v, mission.bt) : spotAt(v, s, mission.bt);
           if (at) {
             const cmd = { c: 'build', x: at.x, y: at.y, bt: mission.bt };
+            if (at.x2 != null) { cmd.x2 = at.x2; cmd.y2 = at.y2; }
             if (C.BUILDINGS[mission.bt].spawns) cmd.co = hallCo(v, at);
             const r = issue(cmd); if (r && r.ok) mission = null;
           }
@@ -1816,10 +1866,35 @@
        * a shut muster drains nothing, so the same lord read as solvent on the very next think,
        * opened the valve, drained, and shut it again. `musterCap` is the halls' thirst at full
        * flow whatever the valve says, so the answer holds still while the purse fills. */
-      if (world.rules && world.rules.reach) {
+      /* ...AND ON A BOARD AS IN A WAR (2026-08-21, the designer's sixth chronicle: brand at
+       * PRINCE sat at essence 0-60 from minute eight to the end on an income of 12, because
+       * his halls drank everything he earned - the Works want fired, set `saving`, and
+       * `saving` guards only the upgrade scan, so the purse never grew and the Works, the
+       * re-gating and the stone all starved together. The valve was WAR ONLY because the duel
+       * economy is referee-tuned; the referee has now judged the duel case too.) `saving` is
+       * the board's own word for "something I mean to build and cannot" - the same test the
+       * war's mission want makes. */
+      /* ON A BOARD the valve opens only for a RAIDED economy (`gateLost`): halls out-drinking
+       * income is the NORMAL mid-game state (the muster-answers-the-muster want builds halls
+       * up to income), so a valve on `saving` alone paused the muster through every ordinary
+       * save - measured on the tripwire, benedict over greedy fell to 35% against a floor of
+       * 65, the consolidation lesson again: against a masser, trading men for a purse loses
+       * more than the poverty did. A lord whose Gates have DIED is the chronicle's case, and
+       * the only one the board valve answers. A war keeps the wider valve - refereed by its
+       * own suites, and a country lord's halls-to-ground ratio makes it rare. */
+      /* ...AND NEVER UNDER THE ENEMY'S SWORDS. The gateLost narrowing alone still lost the
+       * tripwire (30% against HEAD's 55 on the same forty seeds): greedy's own CHARGE razes a
+       * gate on its way in, `gateLost` set, and benedict paused his muster with the army at
+       * his door - men he would have mustered in the minutes the assault took. The board
+       * valve is for the raided-and-left economy, so it waits while the court is threatened
+       * or the enemy in sight outnumbers him. */
+      {
         const want = mission ? C.BUILDINGS[mission.bt] : null;
         const need = want ? want.cost : 0;
-        const starved = need > 0 && v.essence < need && v.income - walkDrain - musterCap <= 0;
+        const starved = (saving || (need > 0 && v.essence < need)) &&
+                        v.income - walkDrain - musterCap <= 0 &&
+                        ((world.rules && world.rules.reach) ||
+                         (gateLost && !NO_VALVE && !homeThreat && v.enemyArmy < v.army));
         if (!!v.pl.musterPaused !== starved) issue({ c: 'muster', pause: starved });
       }
       if (!mission && !homeThreat) {

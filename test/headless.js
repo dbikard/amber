@@ -8850,9 +8850,34 @@ suite('a lord who cannot afford his plans stops buying men');
   war.w.players[war.me].essence = 5000;
   ok('...and opens it the moment he can pay', !drive(war, 6),
      `purse ${Math.round(war.w.players[war.me].essence)}`);
-  /* A BOARD NEVER SEES IT — the duel's economy is the referee's, and this is not part of it */
+  /* ...AND A BOARD SEES IT ONLY WHEN THE ECONOMY HAS BEEN RAIDED (2026-08-21, the sixth
+   * chronicle: brand at PRINCE sat at essence 0-60 from minute eight with a Works he meant
+   * to build - `saving` guards only the upgrade scan, so the muster drank the purse the
+   * Works needed). The board valve is gated on `gateLost` - halls out-drinking income is the
+   * NORMAL mid-game state, and the wide valve was measured dropping the tripwire to 35%
+   * (the consolidation lesson: against a masser, trading men for a purse loses). So the rig
+   * makes the chronicle: a finished outlying Gate the bot has SEEN itself hold, then razed. */
   const board = rig(null, null);
-  ok('a duel is untouched: no doctrine touches the valve on a board', !drive(board, 30));
+  {
+    const bw = board.w, bp = bw.players[board.me], seat = World.seatOf(bw, board.me);
+    const gd2 = C.BUILDINGS.gate;
+    const far2 = bw.map.sites.filter((s2) => s2.kind === 'node' &&
+        Math.hypot(s2.x - seat.x, s2.y - seat.y) > C.CLAIM.seat + 20)[0];
+    const g2 = { id: bw.nextId++, bt: 'gate', level: 1, x: far2.x, y: far2.y, cd: 0, raise: 0,
+                 raiseFor: gd2.raise, hp: gd2.hp, maxHp: gd2.hp, lastHurt: -99, node: far2.id, co: 0 };
+    bp.buildings.push(g2);
+    drive(board, 3);                                  // a think sees the Gate standing
+    g2.gone = 1; bp.buildings.splice(bp.buildings.indexOf(g2), 1);   // the raid takes it
+  }
+  ok('a raided, starved duel lord shuts the muster too', drive(board, 30),
+     `purse ${Math.round(board.w.players[board.me].essence)}`);
+  board.w.players[board.me].essence = 5000;
+  ok('...and opens it the moment he can pay, on a board as in a war', !drive(board, 6),
+     `purse ${Math.round(board.w.players[board.me].essence)}`);
+  /* AND AN UNRAIDED BOARD NEVER SEES IT - the ordinary mid-game save must not shut a hall */
+  const calm = rig(null, null);
+  ok('a merely-saving duel lord keeps mustering', !drive(calm, 30),
+     `purse ${Math.round(calm.w.players[calm.me].essence)}`);
 }
 
 /* ---------------- A HOSTILE IS SOMEBODY I MAY STRIKE ----------------
@@ -9707,6 +9732,98 @@ suite('an idle army answers a raided work, and raids in kind');
   }
   ok('the rig is alive: the rival holds a Gate on a far spring', World.nodeHolder(w2, rs) === 0);
   ok('an idle army of eight or more goes for it', raided != null, raided == null ? 'the banner never went to the rival Gate' : `at ${raided.toFixed(0)}s`);
+
+  /* ---- AND A RAID GOES WHERE THE STONE IS NOT (the sixth chronicle, 2026-08-21) ----
+   * The nearest rival Gate was towered and walled and the raid fed that kill zone in packets
+   * for ten minutes while naked Gates stood a spring away. Same rig as above, one change: a
+   * finished rival tower beside the nearest eligible Gate. The raid must pass it over for the
+   * next naked one - and the towered Gate stays the FALLBACK, so a board with no naked Gate
+   * still raids rather than idling (asserted by the guard being the only difference). */
+  {
+    const w3 = World.createWorld(1000, 2); w3.chaosNext = 1e9;
+    const p3 = w3.players[1], c3 = World.cityOf(w3, 1), c03 = World.cityOf(w3, 0);
+    for (const s of w3.map.sites) p3.explored[s.id] = { kind: s.kind };
+    const theirs3 = w3.map.sites.filter((s) => s.kind === 'node' && Math.hypot(s.x - c3.x, s.y - c3.y) > C.CLAIM.seat + 20 &&
+                                               !w3.players[0].buildings.some((b) => b.node === s.id))
+      .sort((a, b) => Math.hypot(a.x - c3.x, a.y - c3.y) - Math.hypot(b.x - c3.x, b.y - c3.y));
+    for (const sp of theirs3)
+      w3.players[0].buildings.push({ id: w3.nextId++, bt: 'gate', level: 1, x: sp.x + 30, y: sp.y, cd: 0, raise: 0, raiseFor: gd.raise,
+                                     hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: sp.id, co: 0 });
+    const eligible = theirs3.filter((sp) => Math.hypot(sp.x - c03.x, sp.y - c03.y) > C.CLAIM.seat + 20);
+    const towered = eligible[0], naked = eligible[1];
+    const td = C.BUILDINGS.tower;
+    w3.players[0].buildings.push({ id: w3.nextId++, bt: 'tower', level: 1, x: towered.x + 80, y: towered.y + 40, cd: 0,
+                                   raise: 0, raiseFor: td.raise, hp: td.hp, maxHp: td.hp, lastHurt: -99, node: -1, co: 0 });
+    for (let i = 0; i < 12; i++) manAt(w3, 1, 'soldier', c3.x + 40 + (i % 4) * 14, c3.y + 30 + ((i / 4) | 0) * 14);
+    p3.essence = 0;
+    const bot3 = AI.make('julian', {});
+    let at3 = null;
+    for (let i = 0; i < 30 * 40 && at3 == null; i++) {
+      World.update(w3, C.SIM_DT); w3.events.length = 0;
+      bot3.step(w3, 1, (cmd) => {
+        if (cmd.c === 'banner' && cmd.x != null) at3 = { x: cmd.x, y: cmd.y };
+        return World.applyCommand(w3, 1, cmd);
+      }, C.SIM_DT, null);
+    }
+    ok('the rig is alive: a naked Gate exists beyond the towered one', !!naked);
+    ok('a raid passes a towered Gate over for a naked one', !!at3 && naked &&
+       Math.hypot(at3.x - naked.x, at3.y - naked.y) < 120 &&
+       Math.hypot(at3.x - towered.x, at3.y - towered.y) >= 120,
+       at3 ? `banner at ${Math.round(at3.x)},${Math.round(at3.y)} - towered ${Math.round(towered.x)},${Math.round(towered.y)}, naked ${Math.round(naked.x)},${Math.round(naked.y)}` : 'no banner');
+  }
+}
+
+/* ---------------- A COURT THAT HAS BEEN RAIDED RAISES A CURTAIN ----------------
+ * The sixth chronicle (2026-08-21): brand at PRINCE never laid a foot of stone while raided
+ * to an income of 12, for three stacked reasons - `saving` never stopped the muster (the
+ * valve, held above), no plan of his ever asked for a wall (the `gateLost` want on `fortify`
+ * now does), and the MISSION build path composed `{c:'build', x, y}` with no far end, so a
+ * wall mission issued a zero-length run and was refused 'short' every think until it lapsed.
+ * The rig is the chronicle's shape: brand develops, his outlying Gates are razed in one blow,
+ * and within seven simulated minutes a curtain of his must stand by the court - with not one
+ * 'short' refusal on the way, which is the span fix asserted directly. */
+suite('a court that has been raided raises a curtain');
+if (!QUICK('a court that has been raided raises a curtain')) {
+  const w = World.createWorld(42, 2); w.chaosNext = 1e9;
+  const me = 1, pl = w.players[me];
+  const bot = AI.make('brand', {});
+  for (let i = 0; i < 30 * 150; i++) {
+    if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  const seat = World.seatOf(w, me);
+  let razed = 0;
+  for (const b of [...pl.buildings])
+    if (b.bt === 'gate' && Math.hypot(b.x - seat.x, b.y - seat.y) > C.CLAIM.seat) {
+      b.gone = 1; pl.buildings.splice(pl.buildings.indexOf(b), 1); razed++;
+    }
+  ok('the rig is alive: the raid took real Gates', razed >= 2, `${razed} razed`);
+  pl.essence = 10;
+  let short = 0, wallOk = 0;
+  const watch = (cmd) => {
+    const r = World.applyCommand(w, me, cmd);
+    if (cmd.c === 'build' && cmd.bt === 'wall') { if (r && r.err === 'short') short++; else if (r && r.ok) wallOk++; }
+    return r;
+  };
+  for (let i = 0; i < 30 * 420; i++) {
+    if (i % 30 === 0) bot.step(w, me, watch, 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  ok('the economy comes back first: his Gates are rebuilt', pl.buildings.filter((b) => b.bt === 'gate').length >= 4,
+     `${pl.buildings.filter((b) => b.bt === 'gate').length} gates`);
+  /* THE STONE COMES FROM SURPLUS (the tripwire's verdict on the first cut: a wall bought out
+   * of the war chest against a masser is men traded for stone) - so the rig grants the
+   * surplus the recovered economy would earn and asserts the want spends it on the curtain */
+  pl.essence = Math.max(pl.essence, 700);
+  for (let i = 0; i < 30 * 150; i++) {
+    if (i % 30 === 0) bot.step(w, me, watch, 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  const walls = pl.buildings.filter((b) => b.bt === 'wall');
+  ok('a curtain of his stands by the court once the purse allows', walls.length >= 1 &&
+     walls.some((b) => Math.hypot(b.x - seat.x, b.y - seat.y) < 600),
+     `${walls.length} runs, ${wallOk} raised, purse ${Math.round(pl.essence)}`);
+  eq('and not one wall order was refused as a zero-length run', short, 0);
 }
 
 /* ---------------- THE ANSWER TO A WALK: HIS GATES FIRST, THE SHRINE WHEN THEY ARE GONE ----------------

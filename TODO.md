@@ -18,6 +18,16 @@ touches no balance surface.
       seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
       holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
 
+- THE TRIPWIRE'S FLOOR LIED: benedict over greedy reads 55% at HEAD on n=40 (seed 1000)
+  against a stated floor of 65 — the 75/70 readings that set the floor were n=20. The
+  2026-08-21 econ batch bisect ran everything against the honest 55: final config reads
+  48% (n=40, within noise of 55). Either benedict has genuinely thinned against greedy
+  (worth its own investigation — greedy gained neverStorms and the muster-answers want
+  since the floor was set) or the floor needs restating at n=40. Do not chase 65 with
+  balance changes until the floor itself is re-measured.
+- brand's raid probe flaked 'jewel on the raiders 0/1' once (2026-08-21; 0/0 and 0/2 ok
+  before): the probe is one scripted game, and brand held gates lost to 3 — the floor
+  fires only when >2 lost, so his first loss put him one cast under. Watch, don't tune.
 - LAN version skew: the wire carries no GAME_VERSION and a guest REGENERATES the war's
   country from the seed — a stale PWA on either side deals DIFFERENT ground from the same
   seed (any worldgen change does this; COUNTRY_GEN now guards saves but nothing guards the
