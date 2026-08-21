@@ -1538,8 +1538,11 @@
           const row = document.createElement('button');
           row.className = 'card co-muster-row';
           row.dataset.co = co.id;
+          /* THE FLAG'S COLOUR IS THE ROW'S NAME (the designer, 2026-08-21: "the flags colors
+           * should show on the control panel of the city tower") — the pip AND the name wear
+           * the company's colour, the same answer the tray and the hall sheet give */
           row.innerHTML = `<span class="c-ico">${co.paused ? '▶' : '⏸'}</span>` +
-            `<span class="c-name"><span class="sf-pip" style="background:${UI.coColor(co.id)}"></span> Standard ${co.id}</span>` +
+            `<span class="c-name" style="color:${UI.coColor(co.id)}"><span class="sf-pip" style="background:${UI.coColor(co.id)}"></span>Standard ${co.id}</span>` +
             `<span class="c-blurb">${halls} hall${halls > 1 ? 's' : ''} — ${co.paused ? 'mustering nobody: resume this standard' : 'mustering: halt this standard'}</span>`;
           row.addEventListener('click', () => { H.onMusterCo(co.id, !co.paused); UI.closeSheet(); });
           el.appendChild(row);

@@ -315,6 +315,16 @@ body {
 .c-blurb { grid-column: 2 / 4; font-size: 11px; color: #b8a878; font-style: italic; }
 /* an empty blurb collapses its row: that is what makes a one-line card one line */
 .c-blurb:empty { display: none; }
+/* a card with no icon still reads as a card: without this the NAME auto-places into the
+   34px icon column and squeezes three words into a finger's width beside its own blurb —
+   reported from play, 2026-08-21, with a screenshot of "Sound the Recall" doing exactly
+   that on the Seat sheet */
+.card .c-name:first-child { grid-column: 1 / 4; }
+.card .c-name:first-child + .c-blurb { grid-column: 1 / 4; }
+/* the company pip inside a card row (the Seat's muster panel): the sheet-flag rule is
+   scoped to the flag header, so the pip rendered as nothing at all */
+.card .sf-pip { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+                margin-right: 6px; }
 
 /* ---------------- menu ---------------- */
 #menu, #end, #roll, #chapters, #rivals, #lan-screen, #war-setup {
