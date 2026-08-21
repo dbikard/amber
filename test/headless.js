@@ -1827,14 +1827,24 @@ suite('the curtain wall')
   const pl = w.players[0];
   pl.essence = 100000;
   const build = (ax, ay, bx, by) => World.applyCommand(w, 0, { c: 'build', bt: 'wall', x: ax, y: ay, x2: bx, y2: by });
-  eq('a run of no length is refused', build(c.x + 90, c.y, c.x + 92, c.y).err, 'short');
+  /* outside the CITY CIRCLE: a run inside `CITY.r` is refused for the COURT now (the
+   * designer, 2026-08-21), and this suite is about the CREWS refusal - swept for ground the
+   * run can actually stand on (a fixed offset landed on a hill and read 'ground') */
+  let wx = c.x + C.CITY.r + 60, wy = c.y;
+  for (let a9 = 0; a9 < 32; a9++) {
+    const th = a9 / 32 * Math.PI * 2;
+    const tx = c.x + Math.cos(th) * (C.CITY.r + 60), ty = c.y + Math.sin(th) * (C.CITY.r + 60);
+    const e9 = World.wallError(w, 0, tx, ty - C.WALL.unit, tx, ty + C.WALL.unit);
+    if (e9 === 'crews') { wx = tx; wy = ty; break; }
+  }
+  eq('a run of no length is refused', build(wx, wy, wx + 2, wy).err, 'short');
   /* THERE IS NO LONGEST RUN — there is only how many crews you can put on one. A run past
    * what the idle masons cover is refused for THAT, which is a different problem with a
    * different fix: draw a shorter one, or hold more Gates. */
   eq('one mason covers one crew of wall', World.masons(w, 0), 1);
   eq('...so the reach starts at one crew', World.wallReach(w, 0), C.WALL.unit);
   eq('a run past the crews is refused for the crews, not for a span',
-     build(c.x + 90, c.y - C.WALL.unit, c.x + 90, c.y + C.WALL.unit).err, 'crews');
+     build(wx, wy - C.WALL.unit, wx, wy + C.WALL.unit).err, 'crews');
   eq('the crews needed follow the length', World.wallCrews(C.WALL.unit * 2.5), 3);
   eq('a run reaching outside your writ is refused',
      build(c.x + C.CLAIM.seat + 40, c.y - 60, c.x + C.CLAIM.seat + 40, c.y + 60).err, 'claim');
@@ -8971,6 +8981,82 @@ suite('the assault stages, commits as a body, and re-stages when broken');
   ok('after the wipe the army RE-STAGES at the flag rather than feeding the grinder',
      after.length >= 1 && after.every((b) => dTgt(b) > 320),
      after.map((b) => Math.round(dTgt(b))).join(',') || 'no banner after the wipe');
+}
+
+/* ---------------- A FORWARD TOWER IS MANNED: THE WATCH ----------------
+ * Two chronicles running (the designer, 2026-08-21): "protecting gates only with a tower and
+ * no troops... he didn't assign companies of archers or sorcerers to the towers defending
+ * gates, making gates easy to take down with a single company." A garrison is posted by its
+ * company's ORDER, and no standard ever stayed at the spring - so the adaptive tower stood
+ * empty. The WATCH: one shooters hall (never his last hall) is assigned to a company of its
+ * own and rallied at the forward tower nearest the enemy; its men climb into the stone. */
+suite('a forward tower is manned: the watch');
+{
+  const w = World.createWorld(42, 2); w.chaosNext = 1e9;
+  const me = 1, pl = w.players[me];
+  const bot = AI.make('brand', {});
+  for (let i = 0; i < 30 * 240; i++) {
+    if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  const seat = World.seatOf(w, me);
+  const out = pl.buildings.filter((b) => b.bt === 'gate' &&
+    Math.hypot(b.x - seat.x, b.y - seat.y) > C.CLAIM.seat);
+  ok('the rig is alive: he holds outlying Gates to raid', out.length >= 1, `${out.length}`);
+  const g = out[0]; g.gone = 1; pl.buildings.splice(pl.buildings.indexOf(g), 1);
+  const cos0 = pl.companies.length, halls0 = pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns).length;
+  for (let i = 0; i < 30 * 360; i++) {
+    if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  const posts = pl.buildings.filter((t) => t.bt === 'tower' && !(t.raise > 0) && !(t.work > 0) &&
+    Math.hypot(t.x - seat.x, t.y - seat.y) > C.CLAIM.seat &&
+    pl.buildings.some((gg) => gg.bt === 'gate' && !(gg.raise > 0) &&
+      Math.hypot(gg.x - t.x, gg.y - t.y) < 200));
+  ok('the rig is alive: forward towers stand at his gated springs', posts.length >= 1, `${posts.length}`);
+  const watch = pl.companies.filter((co) => co.rally && posts.some((t) =>
+    Math.hypot(co.rally.x - t.x, co.rally.y - t.y) < C.TOWER.man));
+  ok('a WATCH standard is rallied at a forward tower', watch.length >= 1,
+     `${pl.companies.length} companies (${cos0} before)`);
+  ok('...a new standard, not the army\'s', pl.companies.length > cos0);
+  const men = watch.length ? w.units.filter((u) => u.owner === me && u.co === watch[0].id && u.hp > 0) : [];
+  ok('...of SHOOTERS', men.length >= 2 && men.every((u) => C.UNITS[u.kind].shoots),
+     [...new Set(men.map((u) => u.kind))].join(',') || 'no men');
+  ok('...and they are IN the stone', w.units.filter((u) => u.owner === me && u.tow != null).length >= 2,
+     `${w.units.filter((u) => u.owner === me && u.tow != null).length} garrisoned`);
+  ok('and he never gave up his last hall',
+     pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns).length >= 2, `${halls0} halls before`);
+}
+
+/* ---------------- A CURTAIN STANDS OUTSIDE THE CITY CIRCLE ----------------
+ * (the designer, 2026-08-21: "walls shouldn't be built within the city circle - too close,
+ * doesn't leave enough space for other buildings, and walls are then too small to place
+ * enough troops on them.") The old rule spared only the throne's own footprint. */
+suite('a curtain stands outside the city circle');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const pl = w.players[0], seat = World.seatOf(w, 0);
+  pl.essence = 1e6;
+  const gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 4; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: seat.x + 400 + i * 20, y: seat.y - 400,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: -1, co: 0 });
+  /* a run whose midpoint crosses the court: refused for the COURT, not for crowding */
+  const inside = World.wallError(w, 0, seat.x - 80, seat.y + C.CITY.r - 30, seat.x + 80, seat.y + C.CITY.r - 30);
+  eq('a run inside the circle is refused, and says why', inside, 'court');
+  /* the same run pushed outside the circle stands (swept for ground) */
+  let legal = null;
+  for (let rad = C.CITY.r + 40; rad < 420 && !legal; rad += 20)
+    for (let a = 0; a < 32 && !legal; a++) {
+      const th = a / 32 * Math.PI * 2;
+      const mx = seat.x + Math.cos(th) * rad, my = seat.y + Math.sin(th) * rad;
+      const px = -Math.sin(th), py = Math.cos(th);
+      if (!World.wallError(w, 0, mx - px * 90, my - py * 90, mx + px * 90, my + py * 90))
+        legal = { ax: mx - px * 90, ay: my - py * 90, bx: mx + px * 90, by: my + py * 90 };
+    }
+  ok('...and outside it the same length stands', !!legal);
+  if (legal) ok('the sim takes it', World.applyCommand(w, 0, { c: 'build', bt: 'wall',
+    x: legal.ax, y: legal.ay, x2: legal.bx, y2: legal.by }).ok);
 }
 
 /* ---------------- A HOSTILE IS SOMEBODY I MAY STRIKE ----------------

@@ -131,7 +131,9 @@ function wallRig(World, C, { seed = 20260810, crews = 8, runs = 1, len = 200, pl
   /* finer than it was (64 angles at 20-unit steps): a corner Seat with the sea on two sides
    * has fewer straight lines in its writ, and a three-run curtain's home on the rig's seed is
    * one the coarse sweep stepped over (measured: rad 420 at a 10-unit step, none at 20) */
-  for (let rad = 150; rad < 460 && !start; rad += 10)
+  /* outside the CITY CIRCLE (the court-clearance rule, 2026-08-21) and further out than it
+   * used to look: three straight runs need 600 of clear ground */
+  for (let rad = C.CITY.r + 20; rad < 560 && !start; rad += 10)
     for (let a = 0; a < 96 && !start; a++) {
       const th = a / 96 * Math.PI * 2;
       const x = c.x + Math.cos(th) * rad, y = c.y + Math.sin(th) * rad;

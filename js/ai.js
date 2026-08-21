@@ -452,7 +452,6 @@
   function spanFor(v, bt) {
     const W = global.World, c = v.myCity;
     const face = v.enCity || v.frontier || { x: v.world.mapW / 2, y: v.world.mapH / 2 };
-    const toFoe = Math.atan2(face.y - c.y, face.x - c.x);
     const def = C.BUILDINGS[bt];
     /* as long a run as the idle crews will cover, and no longer — the mason budget is the
      * only ceiling there is now */
@@ -485,11 +484,28 @@
      * taken away it marched 250 units in ten). An heir's wall has a gate or it is not raised. */
     const minL = Math.max(def.span[0], C.WALL.gateMin + 16);
     if (half * 2 < minL) return null;
+    /* OUTSIDE THE CITY CIRCLE the sim refuses a run inside `CITY.r` now (the designer,
+     * 2026-08-21), and the doctrine adapts by walling the HEART, not the throne: rings
+     * around the court left the HOME SPRING GATE - the economy the raids actually come for
+     * - in the open, and the raid probes read julian 10 gates lost and income 10 against 8
+     * and 28 with the old tight walls. The sweep centres on the home gate when one stands
+     * (it lives at arm's length, mostly outside the circle already; `wallError` still
+     * refuses any run that dips inside) and on the court only when it must. */
+    const heart = (() => {
+      let best = null, bd = C.CLAIM.seat * C.CLAIM.seat;
+      for (const b of v.pl.buildings) {
+        if (b.bt !== 'gate') continue;
+        const d = (b.x - c.x) ** 2 + (b.y - c.y) ** 2;
+        if (d < bd) { bd = d; best = b; }
+      }
+      return best || c;
+    })();
+    const toFoe = Math.atan2(face.y - heart.y, face.x - heart.x);
     for (let ring = 0; ring < 4; ring++) {
-      const r = 120 + ring * 34;
+      const r = (heart === c ? C.CITY.r + 60 : 100) + ring * 40;
       for (let k = 0; k < 9; k++) {
         const a = toFoe + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.42;
-        const mx = c.x + Math.cos(a) * r, my = c.y + Math.sin(a) * r;
+        const mx = heart.x + Math.cos(a) * r, my = heart.y + Math.sin(a) * r;
         /* perpendicular to the approach: the wall stands ACROSS the road, not along it */
         const px = -Math.sin(a), py = Math.cos(a);
         for (const L of [half, half * 0.7, half * 0.5]) {
@@ -1341,6 +1357,7 @@
     let consol = null;     // {since} — outnumbered: the army pools at home instead of trickling
     let errandCo = null;   // which standard is out taking ground; kept so the flag does not wander
     let stage = null;      // {dx,dy, sx,sy, phase:'muster'|'commit', pulled:[]} — see THE ASSAULT STAGES
+    let watchCo = null;    // the WATCH's standard: shooters who garrison a forward tower
     let aimed = null;      // {x,y} of the last banner planted on GROUND rather than on a site
     /* WHERE THIS BOT'S ARMY WAS LAST SENT IN A WAR — see warOrders. It is remembered HERE, on
      * the bot, because the sim cannot remember it for us: under `rules.reach` a banner command
@@ -1756,6 +1773,66 @@
           d2(b.x, b.y, v.myCity.x, v.myCity.y) > C.CLAIM.seat * C.CLAIM.seat &&
           b.node >= 0 && !worksNear(v, b.x, b.y, 'tower', 150));
         if (bare) mission = { site: bare.node, bt: 'tower', since: v.t };
+      }
+      /* ---- AND A FORWARD TOWER IS MANNED: THE WATCH ----
+       * (the designer, 2026-08-21, two chronicles running: "he made the mistake of protecting
+       * gates only with a tower and no troops... he didn't assign companies of archers or
+       * sorcerers to the towers defending gates, making gates easy to take down with a single
+       * company.") The adaptive tower goes up and stands EMPTY, because a garrison is posted
+       * by its company's ORDER (`postTowers`) and no standard ever stays at the spring. The
+       * WATCH is that standard: one SHOOTERS hall - never the last hall he has - is assigned
+       * to a company of its own, rallied at the forward tower nearest the enemy, and left
+       * there; its men and every recruit it musters walk to the stone and climb in. Re-aimed
+       * when a nearer post stands, re-dealt if the watch hall or its tower dies. */
+      /* NOT gated on the walk - a walker's outlying Gates are what FUND the walk (the first
+       * chronicle of this whole arc), so the watch matters most while he is on the lines */
+      if (gateLost) {
+        const posts = [];
+        for (const t of v.pl.buildings) {
+          if (t.bt !== 'tower' || t.raise > 0 || t.work > 0) continue;
+          if (d2(t.x, t.y, v.myCity.x, v.myCity.y) <= C.CLAIM.seat * C.CLAIM.seat) continue;
+          if (v.pl.buildings.some((g) => g.bt === 'gate' && !g.raise &&
+              d2(g.x, g.y, t.x, t.y) < 200 * 200)) posts.push(t);
+        }
+        if (posts.length) {
+          /* THE WATCH FOLLOWS THE FIRE: aimed at the enemy's direction it garrisoned one
+           * quiet tower while the raiders hit the others (raid probes read WORSE with it -
+           * julian 7 -> 10, benedict 8 -> 11). The post is the tower nearest the own work
+           * most recently HURT; the enemy's bearing is only the tiebreak for a quiet realm. */
+          let hot = null, ht = -Infinity;
+          for (const b of v.pl.buildings)
+            if (b.lastHurt != null && b.lastHurt > ht && v.t - b.lastHurt < 90) { ht = b.lastHurt; hot = b; }
+          const en = hot || v.enCity || { x: world.mapW / 2, y: world.mapH / 2 };
+          posts.sort((a, b) => d2(a.x, a.y, en.x, en.y) - d2(b.x, b.y, en.x, en.y));
+          const post = posts[0];
+          let co = watchCo != null ? v.pl.companies.find((q) => q.id === watchCo) : null;
+          if (!co) {
+            watchCo = null;
+            /* a shooters hall, and never one he cannot spare: at two or three halls the
+             * dedication starved the rest of the defence and the raid probes read WORSE
+             * (julian 7 -> 10 gates lost) - the watch is for a DEVELOPED realm, four halls
+             * up, where a quarter of the muster buys a standing garrison */
+            const halls = v.pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns && !b.raise);
+            const hall = halls.length >= 4 ? halls.find((b) => {
+              const m = global.World.mustersOf(b);
+              return m && C.UNITS[m.kind].shoots && b.co !== (errandCo || -1);
+            }) : null;
+            if (hall) {
+              const r = issue({ c: 'assign', id: hall.id, co: 'new' });
+              if (r && r.ok) {
+                const fresh = v.pl.companies[v.pl.companies.length - 1];
+                if (fresh) { watchCo = fresh.id; co = fresh; }
+              }
+            }
+          }
+          if (co && (!co.rally || d2(co.rally.x, co.rally.y, post.x, post.y) > C.TOWER.man * C.TOWER.man))
+            issue({ c: 'rally', co: co.id, x: post.x, y: post.y });
+        } else if (watchCo != null) {
+          /* no forward post stands any more: the watch comes home to the banner */
+          const co = v.pl.companies.find((q) => q.id === watchCo);
+          if (co && co.rally) issue({ c: 'rally', co: co.id });
+          watchCo = null;
+        }
       }
       if (mission) {
         const s = world.map.sites[mission.site];
@@ -2383,7 +2460,7 @@
       lapses: L, hold, noWalk, noTerms, debug: warSt,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
                 gateLost = false; gatedPrev = null; consol = null; for (const k of Object.keys(lostAt)) delete lostAt[k];
-                marching = false; stray = null; lastWant = null; for (const k of Object.keys(spells)) delete spells[k];
+                marching = false; stray = null; lastWant = null; watchCo = null; for (const k of Object.keys(spells)) delete spells[k];
                 for (const k of Object.keys(pactAt)) delete pactAt[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for
        * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord

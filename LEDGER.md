@@ -593,6 +593,42 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### THE EIGHTH CHRONICLE — the watch, and the curtain pushed off the court (2026-08-21)
+
+Seed 3816632737, brand at PRINCE at 0.10.55, lost by castle at 14:11 — better (income
+peaked 34, adaptive towers up at his gates, the walk attempted), and the designer's list
+survived contact: the towers stood EMPTY (the player razed three of them at gated springs),
+sorcerers never entered stone, and the walk began at 10:47 with the war already lost.
+
+- **THE WATCH**: a garrison is posted by its company's ORDER (`postTowers`), and no standard
+  ever stayed at a forward spring - the errand moves on with the errand. One shooters hall
+  (never the last) is assigned to a fresh standard and rallied at the forward gated tower
+  nearest the enemy. Rig (brand, seed 42, one gate razed at 4:00): a sorcerer company forms,
+  and by +180s TWENTY men sit inside the forward towers. The first cut was gated on
+  `!v.walking` and the rig's brand walks at five minutes - the guard was exactly backwards
+  (a walker's outlying Gates fund the walk; the first chronicle of this arc), and the rig
+  read "posts 6, watch 0" until it came out.
+- **THE CURTAIN OFF THE COURT**: the sim refused a run only through the throne's own
+  footprint, so both the AI's `spanFor` rings (120-222) and a player's tight walls hugged
+  the court - the designer: too close for the building ground, too short to man. `wallError`
+  refuses inside `CITY.r` now with its own word ('court'), and `spanFor` sweeps outside.
+  One suite rig moved with it (the crews-refusal runs drawn at `c.x + 90`).
+  **And the rule alone cost the stone-heirs their probes** - found by a worker-driven probe
+  pair on a court-reverted copy of the tree, after three watch variants read IDENTICAL
+  numbers (the watch was never the cause; the confound shipped in one batch): julian 8 -> 10
+  gates lost and income 28 -> 10, benedict 9 -> 10 and 16 -> 12. The rings-around-the-throne
+  doctrine, pushed out to `CITY.r + 60`, no longer shielded the HOME SPRING GATE the raids
+  actually come for. `spanFor` centres on the HEART now - the gate nearest the seat, which
+  lives at arm's length and mostly outside the circle already - and the probes read julian 9
+  and income 21, benedict 9 and 14: the court rule's net price is about a gate, on floors
+  that were failing before it (the pre-existing julian/benedict failures stand in TODO).
+- **THE WATCH NEEDS FOUR HALLS**: at two or three, dedicating a shooters hall starved the
+  rest of the defence; the raid-probe numbers that first condemned it turned out to be the
+  court rule's (above), but the floor stays - the watch is for a developed realm, where a
+  quarter of the muster buys a standing garrison. And it follows the FIRE: the post is the
+  tower nearest the most recently hurt own work, the enemy's bearing only a quiet-realm
+  tiebreak.
+
 ### THE SEVENTH CHRONICLE — the assault stages, and the pooling that measured wrong (2026-08-21)
 
 The designer's report after the sixth-chronicle fixes: "better, but he made the mistake of

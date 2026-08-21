@@ -1923,10 +1923,14 @@
     for (let i = 0; i <= steps; i++) {
       const t = i / steps, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
       if (!groundBears(world, x, y)) return 'ground';
-      /* never through a Seat's own ground, anyone's */
+      /* never inside a CITY CIRCLE, anyone's (the designer, 2026-08-21: "walls shouldn't
+       * be built within the city circle - that's too close, doesn't leave enough space for
+       * other buildings, and walls are then too small to place enough troops on them").
+       * The old rule spared only the throne's own footprint (`seatR`); the whole court is
+       * building ground now, and a curtain belongs OUTSIDE it, long enough to man. */
       for (let q = 0; q < world.players.length; q++) {
         const c = cityOf(world, q);
-        if (d2(x, y, c.x, c.y) < C.CITY.seatR * C.CITY.seatR) return 'crowded';
+        if (d2(x, y, c.x, c.y) < C.CITY.r * C.CITY.r) return 'court';
       }
     }
     const probe = { x: (ax + bx) / 2, y: (ay + by) / 2, x2: bx, y2: by };

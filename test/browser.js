@@ -673,6 +673,7 @@ async function match(browser, base, renderer) {
   async function runRenderer(r) {
     const rows = [], times = [];
     let group = '', markAt = Date.now();
+    try {
     const suite = (name) => {
       if (group) times.push([group, Date.now() - markAt]);
       markAt = Date.now(); group = name;
@@ -1783,12 +1784,21 @@ async function match(browser, base, renderer) {
        * a length past the crews is refused for the crews, which is correct and would look
        * exactly like a broken tap path. */
       const half = Math.min(80, W.wallReach(g.world, 0) / 2 - 4);
+      /* OUTSIDE THE CITY CIRCLE (the court-clearance rule) — and LEVEL first: the walkway
+       * suite downstream reads the lift of a man on this very wall against a flat-ground
+       * threshold, and the court rule pushed the old spots onto a slope (measured: lift 9.7
+       * against a floor of 15). Any legal run is the second pass, so the tap tests never dry. */
+      for (const wantFlat of [true, false])
       for (let a = 0; a < 6.283; a += 0.3) {
-        for (let rr = 130; rr <= 230; rr += 25) {
+        for (let rr = 165; rr <= 320; rr += 25) {
           const mx = c.x + Math.cos(a) * rr, my = c.y + Math.sin(a) * rr;
           const px = -Math.sin(a) * half, py = Math.cos(a) * half;
           const A = { x: mx - px, y: my - py }, B = { x: mx + px, y: my + py };
           if (W.wallError(g.world, 0, A.x, A.y, B.x, B.y)) continue;
+          if (wantFlat) {
+            const ha = R.groundH(A.x, A.y), hb = R.groundH(B.x, B.y), hm = R.groundH(mx, my);
+            if (Math.abs(ha - hb) > 3 || Math.abs(hm - ha) > 3 || Math.abs(hm - hb) > 3) continue;
+          }
           const sa = R.project(A.x, A.y), sb = R.project(B.x, B.y);
           const onScreen = (q) => q.x > 30 && q.x < window.innerWidth - 30 && q.y > 90 && q.y < lid;
           if (!onScreen(sa) || !onScreen(sb)) continue;
@@ -1883,17 +1893,22 @@ async function match(browser, base, renderer) {
          await pg.evaluate(() => !!(window.Render.span)));
       const before = await pg.evaluate(() =>
         window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall').length);
-      /* the second tap: the far end. Move first, so the preview has a real point to draw to. */
+      /* the second tap: the far end. Move first, so the preview has a real point to draw to.
+       * THE REFUSAL IS CAPTURED - "0 -> 0" with the reason invisible cost a blind gate. */
+      await pg.evaluate(() => { window.__said2 = []; window.__realBanner2 = window.UI.banner;
+                               window.UI.banner = (t) => { window.__said2.push(t); }; });
       await pg.mouse.move(run.bx, run.by); await pg.waitForTimeout(60);
       await pg.mouse.click(run.bx, run.by); await pg.waitForTimeout(250);
       const after = await pg.evaluate(() => {
+        window.UI.banner = window.__realBanner2;
         const w = window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall');
         const b = w[w.length - 1];
         return { n: w.length, x2: b && b.x2, x: b && b.x, y: b && b.y,
                  span: !!window.Game.game.span, rspan: !!window.Render.span,
-                 sheet: window.UI.sheetOpen() };
+                 sheet: window.UI.sheetOpen(), said: window.__said2.slice() };
       });
-      ok('the second tap raises the wall', after.n === before + 1, `${before} -> ${after.n}`);
+      ok('the second tap raises the wall', after.n === before + 1,
+         `${before} -> ${after.n}${after.said.length ? ' — said: ' + after.said.join(' | ') : ''}`);
       ok('...and it is stored as a line, not a point', after.x2 != null);
       ok('the second tap opens no sheet of its own', !after.sheet);
       ok('and the arming is spent', !after.span && !after.rspan);
@@ -1923,6 +1938,9 @@ async function match(browser, base, renderer) {
         const R = window.Render, C2 = window.CONST, g = window.Game.game;
         const w = g.world.players[0].buildings.filter((b) => b.bt === 'wall');
         const b = w[w.length - 1];
+        /* soft on no-wall: the two-tap claims above already failed and said why; a throw
+         * here used to discard the whole runRenderer's buffered evidence */
+        if (!b) return null;
         /* THE MASONS HAVE TO BE DONE FIRST. A wall still going up is scaffolding: it bars
          * nothing, hides nothing, and nobody mans it — so let the last sliver of the raise
          * tick away, which is also what puts it in the standing list. */
@@ -1993,17 +2011,19 @@ async function match(browser, base, renderer) {
         return { man: on.man || 0, manOff: off.man || 0,
                  lift: heightNear(on), flat: heightNear(off), facing: got };
       });
-      ok('the sim puts the man at the wall ON the wall', climbed.man > 0, climbed.man);
+      ok('the sim puts the man at the wall ON the wall', !!climbed && climbed.man > 0,
+         climbed ? climbed.man : 'no wall stood to climb');
       /* `facing` is the SIGNED error between the heading the renderer gave him and the
        * wall's own outward normal — so this fails both when he is turned the wrong way and
        * when he is merely pointing along his last march. */
       ok('...and he faces out over it, not along his last march',
-         climbed.facing != null && Math.abs(climbed.facing) < 0.2,
-         climbed.facing == null ? 'no instance found' : `off by ${climbed.facing.toFixed(2)} rad`);
-      ok('...and leaves the man behind it on the ground', climbed.manOff === 0, climbed.manOff);
-      ok('and the renderer draws him up on the walkway', climbed.lift > 15,
-         `on the wall ${climbed.lift.toFixed(1)} above ground, behind it ${climbed.flat.toFixed(1)}`);
-      ok('...while the man behind it stays on the grass', climbed.flat < 8, climbed.flat.toFixed(1));
+         !!climbed && climbed.facing != null && Math.abs(climbed.facing) < 0.2,
+         !climbed ? 'no wall' : climbed.facing == null ? 'no instance found' : `off by ${climbed.facing.toFixed(2)} rad`);
+      ok('...and leaves the man behind it on the ground', !!climbed && climbed.manOff === 0, climbed && climbed.manOff);
+      ok('and the renderer draws him up on the walkway', !!climbed && climbed.lift > 15,
+         climbed ? `on the wall ${climbed.lift.toFixed(1)} above ground, behind it ${climbed.flat.toFixed(1)}` : 'no wall');
+      ok('...while the man behind it stays on the grass', !!climbed && climbed.flat < 8,
+         climbed ? climbed.flat.toFixed(1) : 'no wall');
 
       /* A WALL FOLLOWS THE GROUND, AND IS NOT BURIED BY IT. Every course used to be placed
        * at the height of the run's MIDPOINT — the per-course ground height was computed and
@@ -4054,9 +4074,28 @@ async function match(browser, base, renderer) {
     await pg.close();
     if (group) times.push([group, Date.now() - markAt]);
     return { rows, times };
+    /* AN ABORT MUST NOT EAT THE EVIDENCE: the buffered rows ride the error, and the call
+     * site records them before rethrowing - "aborted at 51/51" with the failing suite
+     * invisible cost four blind gates in one day */
+    } catch (e) {
+      if (group) times.push([group, Date.now() - markAt]);
+      e.__rows = { rows, times };
+      throw e;
+    }
   }
 
-  const done = await runRenderer('3d');
+
+  /* AN ABORT MUST NOT EAT THE EVIDENCE. runRenderer buffers its rows privately, so a throw
+   * anywhere inside used to discard every claim it had already made - four gates in one day
+   * read "aborted at 51/51" with the actual failing suite invisible. The rows that exist are
+   * flushed BEFORE the throw goes on to the top-level catch. */
+  let done;
+  try { done = await runRenderer('3d'); }
+  catch (e) {
+    const part = e && e.__rows;
+    if (part) record(part.rows, part.times);
+    throw e;
+  }
   record(done.rows, done.times);
 
   /* ---------------- the veil at a phone's pixel density ----------------

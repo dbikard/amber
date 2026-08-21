@@ -570,6 +570,23 @@ purse and idle crews still capping. And the errand-mission build path composed
 refused 'short' every think until it lapsed — a spanned work routes through `spotFor` and
 its far end rides the command. (→ LEDGER: THE SIXTH CHRONICLE)
 
+**A FORWARD TOWER IS MANNED: THE WATCH** (ai.js, beside the adaptive towers; the designer,
+2026-08-21, two chronicles running: "protecting gates only with a tower and no troops...
+he didn't assign companies of archers or sorcerers to the towers defending gates"). A
+garrison is posted by its company's ORDER and no standard ever stayed at the spring, so the
+adaptive tower stood empty. Under `gateLost`, one SHOOTERS hall — never his last hall — is
+assigned to a company of its own (`{c:'assign', co:'new'}`) and rallied at the forward
+gated tower nearest the enemy; `postTowers` then climbs its men into the stone. NOT gated
+on the walk — a walker's outlying Gates are what fund the walk. The watch comes home when
+no forward post stands. `watchCo` is the bot's memo, cleared on reset.
+
+**A CURTAIN STANDS OUTSIDE THE CITY CIRCLE** (world.js `wallError`; the designer,
+2026-08-21: "walls shouldn't be built within the city circle — too close, doesn't leave
+enough space for other buildings, and walls are then too small to place enough troops on
+them"). The run-sweep test grew from the throne's own footprint (`seatR`) to the whole
+court (`CITY.r`), anyone's, with its own refusal — 'court' — so the player is told the real
+reason. `spanFor`'s rings moved outside the circle with it.
+
 **A MOMENT SAYS WHERE** (record.js): the chronicle wrote "the enemy is inside your city" for
 every `hurtcity`, a Gate on a spring four hundred out included (reported from play: the enemy
 never was in the city, only at gates and towers). It names the work, by whom and where, and keeps

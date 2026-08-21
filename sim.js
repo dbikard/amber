@@ -126,6 +126,9 @@ function playProbe(heirKind, seed) {
   }
   r.income = Math.round(world.players[1].incomeRate);
   r.army = world.units.filter((u) => u.owner === 1 && u.hp > 0).length;
+  r.walls = world.players[1].buildings.filter((b) => b.bt === 'wall').length;
+  r.towers = world.players[1].buildings.filter((b) => b.bt === 'tower').length;
+  r.gates = world.players[1].buildings.filter((b) => b.bt === 'gate').length;
   return r;
 }
 function fmtProbe(heir, r) {

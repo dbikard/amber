@@ -32,6 +32,11 @@ touches no balance surface.
 - brand's raid probe flaked 'jewel on the raiders 0/1' once (2026-08-21; 0/0 and 0/2 ok
   before): the probe is one scripted game, and brand held gates lost to 3 — the floor
   fires only when >2 lost, so his first loss put him one cast under. Watch, don't tune.
+- THE BENEDICT MIRROR DRIFTS LOW: across the 2026-08-21 runs it read 65, 60, 35, 25, 30,
+  15 percent (n=20 each) — enormous spread, and the last three lean hard to seat 1. If a
+  first-seat bias has crept in (an asymmetry in the opening deal or the corner draw), the
+  mirror is the instrument that would show it; run one n=60 benedict mirror and, if it
+  stays under 35, bisect the opening for the asymmetry. Do not tune doctrine on it.
 - LAN version skew: the wire carries no GAME_VERSION and a guest REGENERATES the war's
   country from the seed — a stale PWA on either side deals DIFFERENT ground from the same
   seed (any worldgen change does this; COUNTRY_GEN now guards saves but nothing guards the
@@ -397,12 +402,10 @@ to four, and bots on every seat nobody holds — including one a heir walks out 
       measured wrong (tripwire +17, every raid probe lost) and reverted whole — the LEDGER
       has both halves. Held by 'the assault stages, commits as a body, and re-stages when
       broken'.
-- [ ] **Forward towers stand empty** (the seventh chronicle: "he made the mistake of
-      protecting gates only with a tower and no troops"). The adaptive tower goes up but the
-      errand's standard moves on with the errand, so no shooter garrisons it. Wants a small
-      standing WATCH: when a forward tower stands at a gated spring after gateLost, keep or
-      deal 2-3 shooters whose order stays at the tower (a dedicated pennant, or the errand
-      leaves a detachment — needs the muster's support, design first). [REF]
+- [x] **Forward towers stand empty** — SHIPPED 2026-08-21 as THE WATCH (ai.js): under
+      gateLost one shooters hall (never the last) takes a fresh standard rallied at the
+      forward gated tower nearest the enemy; postTowers climbs its men in. Held by
+      'a forward tower is manned: the watch'.
 - [ ] **The assault still walks into stone** (the seventh chronicle: "he lost a lot of men
       against my wall, attacked without siege weapons; he should rather have attacked gates
       not protected by a wall"). Two candidate levers, referee'd separately: (1) the WAR
