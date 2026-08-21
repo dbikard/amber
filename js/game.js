@@ -900,6 +900,49 @@
     if (game.realm) return (game.realm.helm = game.realm.helm || { orders: {}, hand: 0 });
     return (game.helm = game.helm || { orders: {}, hand: null });
   }
+  /* ---- WALL SNAPPING (the designer, 2026-08-21) ----
+   * A wall wants to MEET the stone that is already standing: the sim has always allowed a
+   * run to start at, end at or pass through a tower of your own (it becomes a bastion,
+   * `noteWalls` stamps `onWall` by geometry) — but the taps were not magnetic, so hitting
+   * the tolerance was finger-luck. One spelling of the snap, used by the tap and by the
+   * live preview alike: an endpoint within `SNAP_END` of an own tower takes the tower's
+   * centre; failing that, a tower near the MIDDLE of the run swings the run about its
+   * anchor to pass through it (same length, the far end moves a little). Read off the VIEW,
+   * so a guest snaps to what he can see of his own works. */
+  const SNAP_END = 52, SNAP_RUN = 36;
+  function snapTowers(view) {
+    const me = hand(), pl = view.players[me] || {};
+    return (pl.buildings || []).filter((b) => b.bt === 'tower');
+  }
+  function snapEnd(view, w) {
+    let best = null, bd = SNAP_END * SNAP_END;
+    for (const b of snapTowers(view)) {
+      const d = (b.x - w.x) ** 2 + (b.y - w.y) ** 2;
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best ? { x: best.x, y: best.y, tx: best.x, ty: best.y } : null;
+  }
+  function snapRun(view, from, to) {
+    const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy);
+    if (len < 60) return null;
+    let best = null, bd = SNAP_RUN * SNAP_RUN;
+    for (const b of snapTowers(view)) {
+      const t = ((b.x - from.x) * dx + (b.y - from.y) * dy) / (len * len);
+      if (t <= 0.12 || t >= 0.88) continue;          // the endpoints' own snap owns those
+      const px = from.x + dx * t, py = from.y + dy * t;
+      const d = (b.x - px) ** 2 + (b.y - py) ** 2;
+      if (d < bd) { bd = d; best = b; }
+    }
+    if (!best) return null;
+    const ang = Math.atan2(best.y - from.y, best.x - from.x);
+    return { x: from.x + Math.cos(ang) * len, y: from.y + Math.sin(ang) * len,
+             tx: best.x, ty: best.y };
+  }
+  /* the far end, given the anchor: an endpoint snap first, a mid-run swing second */
+  function snapWallTo(view, from, w) {
+    return snapEnd(view, w) || snapRun(view, from, w);
+  }
+
   function hand() {
     /* THE LIVE BANNERS, on a guest too. This read `refWorld` on a guest — the country as it was
      * at GENESIS, every lord his own banner — so a court a guest had just conquered was "not of
@@ -1775,6 +1818,11 @@
        * `Render.hand` is how the renderer is told the same thing (writ, reach ring, halo). */
       const hv = hand(), hp = game.world.players[hv];
       Render.hand = hv === game.viewer ? null : hv;
+      /* the live run preview snaps exactly as the tap will — one spelling (`snapWallTo`) */
+      if (game.span && Render.span && Render.pointer) {
+        const pw = Render.toWorld(Render.pointer.x, Render.pointer.y, game.viewer);
+        Render.span.snap = snapWallTo(view, game.span, pw);
+      }
       Render.frame(view, game.viewer, dtReal);
       UI.paused(game.world.paused, game.viewer, game.names);
       UI.hud(view, game.viewer, (hp.incomeRate || 0) - (hp.drainRate || 0), game.targeting, hv);
@@ -1791,6 +1839,10 @@
       /* a guest may hold ANY seat but seat 0 — read its own, never seat 1's */
       const gv = game.viewer, gh = hand(), gp = snapCur.players[gh] || {};
       Render.hand = gh === gv ? null : gh;
+      if (game.span && Render.span && Render.pointer) {
+        const pw = Render.toWorld(Render.pointer.x, Render.pointer.y, gv);
+        Render.span.snap = snapWallTo(view, game.span, pw);
+      }
       Render.frame(view, gv, dtReal);
       UI.paused(snapCur.paused, gv, game.names);
       UI.hud(view, gv, (gp.incomeRate || 0) - (gp.drainRate || 0), game.targeting, gh);
@@ -1885,7 +1937,8 @@
      * in the middle of doing, and nothing else on the map should steal the tap. */
     if (game.span) {
       const from = game.span;
-      const w = Render.toWorld(x, y, game.viewer);
+      const w0 = Render.toWorld(x, y, game.viewer);
+      const w = snapWallTo(view, from, w0) || w0;
       const r = issue({ c: 'build', x: from.x, y: from.y, x2: w.x, y2: w.y, bt: from.bt, co: from.co });
       /* a refused run keeps the anchor, so you can try the far end again without starting over */
       if (!r || r.ok !== false) clearPlacing();
@@ -1914,6 +1967,9 @@
          * fresh first tap. What still waits for the second is the length and the crews: a point
          * cannot be too short or too long, and saying so would be a lie about a run that does
          * not exist yet. A guest holds no world; the host judges, as it does for everything. */
+        /* the anchor is magnetic too: a run is allowed to BEGIN at a bastion */
+        const aSnap = snapEnd(view, w);
+        if (aSnap) { w.x = aSnap.x; w.y = aSnap.y; }
         if (game.world) {
           const bad = World.placementError(game.world, hand(), w.x, w.y, game.placing.bt);
           if (bad) { sayErr(bad); return; }

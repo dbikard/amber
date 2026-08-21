@@ -4149,7 +4149,9 @@
       const def = C.BUILDINGS.wall;
       const a = R.project(R.span.x, R.span.y);
       const moved = R.pointer && R.pointer !== R.span.from;
-      const w2 = moved ? R.toWorld(R.pointer.x, R.pointer.y) : R.span;
+      /* the SNAPPED far end when game.js computed one this frame — the preview must show
+       * the run the tap will actually draw, tower-snaps included (one spelling, game.js) */
+      const w2 = moved ? (R.span.snap || R.toWorld(R.pointer.x, R.pointer.y)) : R.span;
       const len = Math.hypot(w2.x - R.span.x, w2.y - R.span.y);
       /* THE PRICE IS THE LENGTH. A run is bought by the crew, and there is no longest run —
        * only how far the idle masons reach — so the preview says what THIS run will cost and
@@ -4172,6 +4174,31 @@
         g.strokeStyle = '#ffe9a8'; g.globalAlpha = 0.55;
         g.beginPath(); g.arc(cap.x, cap.y, 5, 0, 7); g.stroke();
         g.globalAlpha = 1;
+      }
+      /* ---- AND EVERY CREW'S REACH IS A LABELLED TICK (the designer, 2026-08-21) ----
+       * One dot said only where the masons stop; the question while aiming is "what would
+       * TWO crews cover? three?" — so each crew-length along the aim gets a tick and its
+       * crew count, up to the idle crews' reach. The cap circle stays the hard end. */
+      if (moved && reach > 0 && len > 4) {
+        const ux = (w2.x - R.span.x) / len, uy = (w2.y - R.span.y) / len;
+        g.font = '600 11px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'top';
+        for (let k = 1; k * C.WALL.unit <= reach + 1; k++) {
+          const p = R.project(R.span.x + ux * k * C.WALL.unit, R.span.y + uy * k * C.WALL.unit);
+          const within = k * C.WALL.unit <= len + 1;
+          g.globalAlpha = within ? 0.9 : 0.45;
+          g.strokeStyle = '#ffe9a8';
+          g.beginPath(); g.moveTo(p.x - 4, p.y - 4); g.lineTo(p.x + 4, p.y + 4); g.stroke();
+          g.beginPath(); g.moveTo(p.x + 4, p.y - 4); g.lineTo(p.x - 4, p.y + 4); g.stroke();
+          g.fillStyle = '#ffe9a8';
+          g.fillText(String(k), p.x, p.y + 7);
+        }
+        g.globalAlpha = 1; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+      }
+      /* the tower the run is snapped to wears a ring, so the snap is an ANSWER, not a guess */
+      if (moved && R.span.snap && R.span.snap.tx != null) {
+        const tp = R.project(R.span.snap.tx, R.span.snap.ty);
+        g.strokeStyle = '#ffe9a8'; g.lineWidth = 2.5;
+        g.beginPath(); g.arc(tp.x, tp.y, 12, 0, 7); g.stroke();
       }
       if (moved) {
         g.font = '600 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'bottom';
