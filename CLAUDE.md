@@ -1348,7 +1348,14 @@ the cheapest work in the game would switch the throne's guns off from outside th
   forking building) + menu entry in `ui.js`.
 - **A work with a LENGTH**, manning, towers, gates, breaches, the Seat gun: see "The Curtain
   Wall" above.
-- **Touch a number**: sim before/after. The referee is `node sim.js`, not vibes. Its full run
+- **Touch a number**: sim before/after. The numbers themselves live in `AI.DEFAULTS`
+  (ai.js) — every doctrine constant the referee keeps re-judging, overridable per bot via
+  `AI.make(kind, {tune})`, which is what lets **`node search.js`** (the overnight referee-
+  driven parameter search, the designer's call over a learned policy) play CANDIDATE
+  vectors against baselines pinned at the defaults: (1+λ) ES, common seed battery per
+  generation, THE PLAYER'S OPENINGS as constraints (every gate over the floor is paid out
+  of fitness), resumable state in `search-out/`. A search result is a PROPOSAL — the full
+  referee and the designer judge it before any default changes. The referee is `node sim.js`, not vibes. Its full run
   is mirror / THE TRIPWIRE (benedict over greedy, >65% — the one automated judgment-beats-macro
   check) / THE PLAYER'S OPENINGS (scripted exploits from the designer's chronicles, floors per
   heir — a failed floor is the next AI work by name) / the ladder / convergence. The old

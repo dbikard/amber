@@ -11,3 +11,4 @@
 .*.time
 .*.done
 node_modules/
+search-out/

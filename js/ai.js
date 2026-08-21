@@ -218,7 +218,22 @@
    * assembles (outside every tower's reach and any man's aggro); `near` is the band that
    * counts as "at the fight"; `gather` the band that counts as assembled at the flag;
    * `retreat` the fraction of the commit floor below which a committed assault breaks off. */
-  const STAGE = { back: 450, near: 340, gather: 200, retreat: 0.45 };
+  /* ---- THE TUNABLES (2026-08-22, the designer: "start an overnight run") ----
+   * Every doctrine constant the referee keeps re-judging lives in ONE table now, and a bot
+   * may be made with `opts.tune` overriding any of them - which is what lets `search.js`
+   * play a CANDIDATE against baselines PINNED at these defaults. The defaults are exactly
+   * the shipped values (env overrides still seed them), so a bot made without `tune` plays
+   * byte-identical to before - the trace suite holds it. */
+  const envN = (k, d) => +(typeof process !== 'undefined' && process.env && process.env[k]) || d;
+  const D = {
+    STAGE_BACK: 450, STAGE_NEAR: 340, STAGE_GATHER: 200, STAGE_RETREAT: 0.45,
+    FOE_R: 130, BREAKERS: 3,
+    COMMIT: envN('AMBER_COMMIT', 22), OUTNUMBER: envN('AMBER_OUTNUM', 5),
+    HALL_CAP: envN('AMBER_HALLS', 4), SPARE: envN('AMBER_SPARE', 3),
+    WALK_ARMY: envN('AMBER_WALKARM', 8), SHRINE_GUARD: envN('AMBER_SHGUARD', 500),
+    RAID_MEN: envN('AMBER_RAIDMEN', 8)
+  };
+
   const menNear = (v, x, y, r) => {
     let n = 0;
     for (const u of v.myUnits) if (d2(u.x, u.y, x, y) < r * r) n++;
@@ -375,8 +390,8 @@
    * The radius is generous on purpose — a soldier acquires at 140 — and the sweep simply
    * swings round to the far side of the Seat, so being pressed changes WHERE an heir builds
    * rather than whether he can build at all. */
-  const FOE_R = 130;
-  const clearOfFoes = (v, x, y) => !v.visHostiles.some((u) => d2(u.x, u.y, x, y) < FOE_R * FOE_R);
+  const clearOfFoes = (v, x, y) => { const F = (v.T || D).FOE_R;
+    return !v.visHostiles.some((u) => d2(u.x, u.y, x, y) < F * F); };
 
   /* ---------------- placement doctrine ----------------
    * Free ground means an heir must choose WHERE, not just what. The doctrine is the old
@@ -587,7 +602,7 @@
    * Sending shooters at a Seat is not a weak attack, it is no attack: they will stand in front
    * of the walls with nothing to shoot until somebody comes out. An heir who cannot finish
    * holds his ground instead, and the want below raises him something that can. */
-  const BREAKERS = 3;
+
   /* `v.green` is the `siege` LAPSE (CONST.DIFFICULTY): an heir who has not learned what breaks
    * stone marches on the Seat with whatever he has — the beginner's assault, shooters standing
    * under the walls with nothing to shoot. Set on the view by `decide`, never by a doctrine.
@@ -596,7 +611,7 @@
    * which says something about the Works and nothing a footing may say. A lapse that makes an
    * heir stronger is not a lapse. It bites the shooter-heavy doctrines and is a no-op for one
    * whose recruits already break stone, which is written down in TODO rather than hidden. */
-  const strike = (v) => (v.enCity && (v.green || v.breakers >= BREAKERS) ? v.enCityId : seek(v));
+  const strike = (v) => (v.enCity && (v.green || v.breakers >= (v.T || D).BREAKERS) ? v.enCityId : seek(v));
   /* what an assault costs to be worth making: a real army, and more of it than he can see of
    * the other man's. Both are read fresh every time the heir thinks, so the march is a
    * standing decision rather than a one-way door. */
@@ -609,14 +624,11 @@
    * column that is still an army when it arrives at a Seat with something standing round it,
    * and it costs the rusher nothing it was entitled to: `greedy` still takes `random` 40-2.
    * What it stops is winning a match before either side has played one. */
-  const COMMIT = +(typeof process !== 'undefined' && process.env && process.env.AMBER_COMMIT) || 22;
+
   /* how far behind in men an heir must SEE himself before he answers with another hall, and
    * how many halls that answer may ever reach. See "the muster answers the muster" below. */
-  const OUTNUMBER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_OUTNUM) || 5;
-  const HALL_CAP = +(typeof process !== 'undefined' && process.env && process.env.AMBER_HALLS) || 4;
   /* how much of the realm's earnings may sit past what the halls can drink before another
    * hall is the obvious answer — an allowance for the stone every doctrine also wants */
-  const SPARE = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SPARE) || 3;
   /* how many men a detachment wants before it is worth sending out to hold ground. Below this
    * the smallest manned company still goes — one man on a spring is a Gate the black road has
    * not eaten yet — but the errand PREFERS a body that can stand there. */
@@ -630,18 +642,15 @@
   /* a walk is PUBLIC from its first tick, and a walk takes five minutes; the answer used to wait
    * for ten per cent — thirty seconds a column two minutes away did not have (2026-08-19) */
   const WALK_ANSWER = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKANS) || 1;
-  const WALK_ARMY = +(typeof process !== 'undefined' && process.env && process.env.AMBER_WALKARM) || 8;
   /* how near a RIVAL comes to a walker's own Shrine before the walker's army turns and stands
    * over it. A shooter throws 105 and a Ballista Tower 350, so anything inside this is either
    * already hitting it or one march from it. */
-  const SHRINE_GUARD = +(typeof process !== 'undefined' && process.env && process.env.AMBER_SHGUARD) || 500;
   /* the walk's two new gates (2026-08-19): the share of INCOME the affordability sum may count
    * (a raid takes income away, never the bank), and the finished towers a walker wants at home
    * before he steps on the lines */
   const envNum = (k, d) => { const v = typeof process !== 'undefined' && process.env ? process.env[k] : null; return v != null && v !== '' && isFinite(+v) ? +v : d; };
   const WALK_INCOME = envNum('AMBER_WALKINC', 0.8);
   /* the army an idle heir raids a rival's outlying Gates with */
-  const RAID_MEN = envNum('AMBER_RAIDMEN', 8);
   /* the rejected consolidation, for the rig only — see the note at its seam */
   const CONSOL = (typeof process !== 'undefined' && process.env && process.env.AMBER_CONSOL) === '1';
   const WALK_TOWERS = envNum('AMBER_WALKTOW', 2);
@@ -1274,6 +1283,8 @@
 
   function make(kind, opts) {
     opts = opts || {};
+    const T = Object.assign({}, D, opts.tune || {});
+    opts = opts || {};
     const P = HEIRS[kind] || BASELINES[kind];
     if (!P) throw new Error('unknown bot: ' + kind);
     const interval = (P.interval || 1.5) * (opts.slow || 1);
@@ -1345,7 +1356,7 @@
       if (rng.chance(Math.min(1, interval / (SPELL * (1 / f - 1))))) { spells[k] = t + SPELL; return true; }
       return false;
     };
-    const commit = Math.max(4, Math.round(COMMIT * (1 - Math.min(0.9, L.trickle || 0))));
+    const commit = Math.max(4, Math.round(T.COMMIT * (1 - Math.min(0.9, L.trickle || 0))));
     let marching = false;  // is the assault under way — see `ready`, which has hysteresis
     let stray = null;      // {site, until} — an `aim` lapse: the army sent somewhere known and wrong
     let lastWant = null;   // where the doctrine last meant the banner, to notice a NEW order
@@ -1368,6 +1379,7 @@
 
     function decide(world, me, issue, order) {
       const v = view(world, me);
+      v.T = T;       // the bot's tunables ride the view, for the module-level helpers
       warSt.v = v;   // the view this think is decided on, for warOrders' default (see there)
       if (P.custom) { P.custom(v, issue, rng, order); return; }
       if (noise > 0 && rng.chance(noise)) return;
@@ -1668,9 +1680,9 @@
         return s + C.UNITS[mus.kind].cost * C.TIER[b.level - 1] / mus.period;
       }, 0);
       const walkDrain = v.walking ? C.BUILDINGS.shrine.drain[0] : 0;
-      const thirsty = v.income - walkDrain > musterCap + SPARE;
-      const oneMore = (v.have.barracks || 0) < HALL_CAP &&
-                      (v.enemyArmy >= v.army + OUTNUMBER || thirsty);
+      const thirsty = v.income - walkDrain > musterCap + T.SPARE;
+      const oneMore = (v.have.barracks || 0) < T.HALL_CAP &&
+                      (v.enemyArmy >= v.army + T.OUTNUMBER || thirsty);
       if (!handled && oneMore && !idle) {
         handled = true;
         if (v.free > 0) {
@@ -1690,7 +1702,7 @@
       /* ...and ONE Works may not be enough: an Engine every twenty-four seconds is a siege
        * train that never forms if the first few die on the way. He wants a second before he
        * gives up on the road by force. */
-      if (!handled && !idle && v.breakers < BREAKERS && v.army >= 5 && (v.have.siege || 0) < 2) {
+      if (!handled && !idle && v.breakers < T.BREAKERS && v.army >= 5 && (v.have.siege || 0) < 2) {
         handled = true;
         if (v.free > 0) {
           if (v.essence < C.BUILDINGS.siege.cost) saving = true;
@@ -2108,7 +2120,7 @@
         }
         return best ? { x: best.x, y: best.y, pattern: race.pattern, pi: race.pi, gate: best.id } : race;
       };
-      const answer = race && !homeThreat && !v.walking && v.army >= WALK_ARMY ? answerAt(race) : null;
+      const answer = race && !homeThreat && !v.walking && v.army >= T.WALK_ARMY ? answerAt(race) : null;
       /* ...AND THE OTHER HALF OF IT: A WALKER GUARDS HIS OWN SHRINE. The answer above was
        * measured on its own first, and it was too good: the banner reached the burning Shrine
        * on 95% of samples against 62% before it, and brand — the one heir whose plan is dig,
@@ -2132,7 +2144,7 @@
        * rear-placed Shrine need never come within six hundred of the throne at all. */
       const shrine = v.walking && !answer ? v.pl.buildings.find((b) => b.bt === 'shrine' && !b.raise) : null;
       const myShrine = shrine && v.visHostiles.some((u) => u.owner !== C.CHAOS_ID &&
-        d2(u.x, u.y, shrine.x, shrine.y) < SHRINE_GUARD * SHRINE_GUARD) ? shrine : null;
+        d2(u.x, u.y, shrine.x, shrine.y) < T.SHRINE_GUARD * T.SHRINE_GUARD) ? shrine : null;
       /* ...and at HOME, the finished defence facing the enemy rather than the throne itself:
        * a coordinate banner, so the shooters are posted to the wall or the tower (see
        * `defencePost`). Not while a walk is being answered or a Shrine guarded — those aim
@@ -2160,7 +2172,7 @@
         /* idle with eight, or TWICE that with anything short of an assault: brand sat at home
          * with a hundred men and an income of seven for ten minutes while his errand wanted a
          * spring the rival had already taken (the chronicle of 2026-08-19, seed 1443391195) */
-        else if ((armyIdle && v.army >= RAID_MEN) || v.army >= RAID_MEN * 2) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
+        else if ((armyIdle && v.army >= T.RAID_MEN) || v.army >= T.RAID_MEN * 2) { const r = raidAt(v, (h) => heldOff(v, h)); if (r) raid = { x: r.x, y: r.y, id: 'r' + r.id }; }
       }
       /* ---- THE ASSAULT STAGES, COMMITS AS A BODY, AND BREAKS OFF WHEN MAULED ----
        * (the designer, 2026-08-21, on the third trickle report: "the AI should know to stop
@@ -2199,18 +2211,18 @@
          * commit floor - a 14-man realm stages 10, a 40-man realm the full 22. Always
          * reachable, so the flag can never become the place he waits forever (the
          * consolidation trap); armies under RAID_MEN pass through - a scout is not a wave. */
-        const floorF = Math.min(commit, Math.max(RAID_MEN, Math.floor(v.army * 0.75)));
-        if (atk && !nearFight && v.army >= RAID_MEN && stoneAt(v, atk.x, atk.y)) {
+        const floorF = Math.min(commit, Math.max(T.RAID_MEN, Math.floor(v.army * 0.75)));
+        if (atk && !nearFight && v.army >= T.RAID_MEN && stoneAt(v, atk.x, atk.y)) {
           if (!stage || d2(stage.dx, stage.dy, atk.x, atk.y) > 300 * 300) {
             const dxh = v.myCity.x - atk.x, dyh = v.myCity.y - atk.y, L2 = Math.hypot(dxh, dyh) || 1;
-            const off = Math.min(STAGE.back, Math.max(0, L2 - 40));
+            const off = Math.min(T.STAGE_BACK, Math.max(0, L2 - 40));
             stage = { dx: atk.x, dy: atk.y, k: atk.k,
                       sx: atk.x + dxh / L2 * off, sy: atk.y + dyh / L2 * off,
-                      phase: menNear(v, atk.x, atk.y, STAGE.near) >= floorF ? 'commit' : 'muster',
+                      phase: menNear(v, atk.x, atk.y, T.STAGE_NEAR) >= floorF ? 'commit' : 'muster',
                       pulled: [] };
           }
-          const atFight = menNear(v, stage.dx, stage.dy, STAGE.near);
-          const atFlag = menNear(v, stage.sx, stage.sy, STAGE.gather);
+          const atFight = menNear(v, stage.dx, stage.dy, T.STAGE_NEAR);
+          const atFlag = menNear(v, stage.sx, stage.sy, T.STAGE_GATHER);
           if (stage.phase === 'muster' && (atFlag >= floorF || atFight >= floorF)) {
             stage.phase = 'commit'; stage.hi = 0;
             for (const co of stage.pulled) issue({ c: 'rally', co });   // rejoin the banner
@@ -2222,11 +2234,11 @@
            * of a wipe and the whole column was recalled while still marching in (measured -
            * commit at 5s, "retreat" at 7s, forever) */
           if (stage.phase === 'commit' && (stage.hi || 0) >= Math.max(3, Math.round(floorF * 0.8)) &&
-                     atFight < Math.max(2, (stage.hi || 0) * STAGE.retreat)) {
+                     atFight < Math.max(2, (stage.hi || 0) * T.STAGE_RETREAT)) {
             /* mauled: break the engaged companies off with the forced march */
             stage.phase = 'muster';
             const at = new Set();
-            for (const u of v.myUnits) if (u.co && d2(u.x, u.y, stage.dx, stage.dy) < STAGE.near * STAGE.near) at.add(u.co);
+            for (const u of v.myUnits) if (u.co && d2(u.x, u.y, stage.dx, stage.dy) < T.STAGE_NEAR * T.STAGE_NEAR) at.add(u.co);
             for (const coId of at) { issue({ c: 'rally', co: coId, x: stage.sx, y: stage.sy, hard: 1 }); stage.pulled.push(coId); }
           }
           if (stage.phase === 'muster') {
@@ -2241,10 +2253,10 @@
            * survivors stood under the tower). A committed stage dissolves THROUGH the
            * break-off: the engaged companies are pulled hard to the flag first. */
           if (stage.phase === 'commit') {
-            const atF = menNear(v, stage.dx, stage.dy, STAGE.near);
+            const atF = menNear(v, stage.dx, stage.dy, T.STAGE_NEAR);
             if (atF > 0) {
               const at = new Set();
-              for (const u of v.myUnits) if (u.co && d2(u.x, u.y, stage.dx, stage.dy) < STAGE.near * STAGE.near) at.add(u.co);
+              for (const u of v.myUnits) if (u.co && d2(u.x, u.y, stage.dx, stage.dy) < T.STAGE_NEAR * T.STAGE_NEAR) at.add(u.co);
               for (const coId of at) issue({ c: 'rally', co: coId, x: stage.sx, y: stage.sy, hard: 1 });
             }
           }
@@ -2254,7 +2266,7 @@
       }
       const aim = answer2 || myShrine || guard || raid2 || stageAim || post;
       if (opts.debug && warSt.last) Object.assign(warSt.last, { want, armyIdle, free, consol: !!consol, guard: !!guard, raid: !!raid, post: !!post, choke: ownChoke(v).id,
-                                                                stage: stage ? stage.phase + '@' + Math.round(stage.dx) + ',' + Math.round(stage.dy) + ' hi' + (stage.hi || 0) + ' atF' + menNear(v, stage.dx, stage.dy, STAGE.near) : null,
+                                                                stage: stage ? stage.phase + '@' + Math.round(stage.dx) + ',' + Math.round(stage.dy) + ' hi' + (stage.hi || 0) + ' atF' + menNear(v, stage.dx, stage.dy, T.STAGE_NEAR) : null,
                                                                 raidPick: (raidAt(v, (h) => heldOff(v, h)) || {}).id, trouble: (troubleAt(v, v.myCity) || {}).id, stray: !!stray });
       if (aim) {
         const aimId = aim === post ? post.id : aim.id;
@@ -2490,6 +2502,6 @@
    * instruction is a PARAMETER to that doctrine (`step(world, me, issue, dt, order)`), not a
    * second driver fighting it for the same company's standard — which is what two of them
    * issuing rallies at each other would have been. One brain, one economy, one lord. */
-  global.AI = { make, view, HEIRS, BASELINES };
+  global.AI = { make, view, HEIRS, BASELINES, DEFAULTS: D };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.AI;
 })(typeof window !== 'undefined' ? window : globalThis);

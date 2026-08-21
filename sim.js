@@ -46,8 +46,9 @@ function playMatch(aKind, bKind, seed, opts) {
   const bots = [AI.make(aKind, opts.aOpts), AI.make(bKind, opts.bOpts)];
   const issue = (pi) => (cmd) => World.applyCommand(world, pi, cmd);
   const issuers = [issue(0), issue(1)];
+  const maxT = opts.cap || MAX_T;   // the search caps its matches shorter than the referee's wall
   let peak = 0;              // furthest ANYONE got along the Pattern in this match
-  while (world.winner === null && world.t < MAX_T) {
+  while (world.winner === null && world.t < maxT) {
     /* alternate which bot is polled first. With free placement, acting first means
      * claiming the ground first — stepping seat 0 ahead of seat 1 every tick is a bias
      * in the REFEREE, not in the game, and a mirror match will show it. */
@@ -66,8 +67,15 @@ function series(aKind, bKind, n, baseSeed, opts) {
   for (let i = 0; i < n; i++) {
     /* swap sides each game so any board bias cancels out */
     const swap = i % 2 === 1;
-    const m = swap ? playMatch(bKind, aKind, baseSeed + i, opts)
-                   : playMatch(aKind, bKind, baseSeed + i, opts);
+    /* the TUNE follows its bot across the swap: `tuneA` is aKind's whatever seat it sits in
+     * - the search plays a CANDIDATE against a baseline pinned at the defaults */
+    const mo = opts && (opts.tuneA || opts.tuneB)
+      ? Object.assign({}, opts, swap
+          ? { aOpts: opts.tuneB ? { tune: opts.tuneB } : undefined, bOpts: opts.tuneA ? { tune: opts.tuneA } : undefined }
+          : { aOpts: opts.tuneA ? { tune: opts.tuneA } : undefined, bOpts: opts.tuneB ? { tune: opts.tuneB } : undefined })
+      : opts;
+    const m = swap ? playMatch(bKind, aKind, baseSeed + i, mo)
+                   : playMatch(aKind, bKind, baseSeed + i, mo);
     const w = m.winner === null || m.winner === -1 ? null : (swap ? 1 - m.winner : m.winner);
     if (w === 0) r.a++; else if (w === 1) r.b++; else r.draw++;
     r.times.push(m.t);
@@ -89,9 +97,9 @@ function series(aKind, bKind, n, baseSeed, opts) {
  * walked over the field. FLOORS, not races: an heir under a standing raid must keep most of his
  * Gates, keep earning, and actually SPEND his Jewel on the raiders. The raid party is spawned
  * (a rig, not a match — the heir's response is the measurement, not the raiders' economy). */
-function playProbe(heirKind, seed) {
+function playProbe(heirKind, seed, tune) {
   const world = World.createWorld(seed);
-  const bot = AI.make(heirKind, {});
+  const bot = AI.make(heirKind, tune ? { tune } : {});
   const issue = (cmd) => {
     if (cmd.c === 'power' && cmd.k === 'storm') {
       r.storms++;
@@ -154,8 +162,9 @@ function fmt(aKind, bKind, r, n) {
 /* ---------------- a worker is one series ---------------- */
 if (!isMainThread) {
   parentPort.postMessage(workerData.probe
-    ? playProbe(workerData.probe, workerData.seed)
-    : series(workerData.a, workerData.b, workerData.n, workerData.seed));
+    ? playProbe(workerData.probe, workerData.seed, workerData.tune)
+    : series(workerData.a, workerData.b, workerData.n, workerData.seed,
+             { tuneA: workerData.tuneA, tuneB: workerData.tuneB, cap: workerData.cap }));
   return;
 }
 
