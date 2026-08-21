@@ -1255,9 +1255,11 @@ masons are still on the run.
 own tower (`wallError` exempts them; `noteWalls` deals `onWall` by geometry, both directions
 — held by 'a curtain turns at its bastion'); what was missing was the FINGER: `snapWallTo` in
 game.js (one spelling, used by the tap and fed to the preview via `Render.span.snap` each
-frame) snaps an endpoint within `SNAP_END` to an own tower's centre, else swings the run
-about its anchor to pass through a tower near its middle (same length, `SNAP_RUN`, the
-endpoints' band excluded), and the snapped tower wears a ring. The span preview draws a tick
+frame) snaps an endpoint within `SNAP_END` — to ANOTHER RUN'S END first (stone meeting stone
+end-to-end is the join `noteWalls` unions into one curtain, so it outranks a tower even when
+the tower is nearer the finger; the designer, 2026-08-21), to an own tower's centre second —
+else swings the run about its anchor to pass through a tower near its middle (same length,
+`SNAP_RUN`, the endpoints' band excluded), and the snapped stone wears a ring. The span preview draws a tick
 and a crew count at every crew-length up to the idle masons' reach — "what would two crews
 cover?" answered on the ground — with the cap circle still the hard end. Towers snap onto
 walls at the SIM (the build command re-seats them, only when the snapped spot is itself

@@ -1257,7 +1257,7 @@ async function match(browser, base, renderer) {
          * finished Gates deal two more crews, the same arithmetic the game uses. */
         window.__snapRigGates = [];
         { const gd = C2.BUILDINGS ? C2.BUILDINGS.gate : window.CONST.BUILDINGS.gate;
-          for (let k = 0; k < 2; k++) {
+          for (let k = 0; k < 4; k++) {
             const g2 = { id: w.nextId++, bt: 'gate', level: 1, x: seat.x + 300 + k * 60, y: seat.y - 300,
               cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: -1, co: 0 };
             w.players[0].buildings.push(g2); window.__snapRigGates.push(g2.id);
@@ -1322,6 +1322,65 @@ async function match(browser, base, renderer) {
           const onB = Math.min(Math.hypot(e[0] - rig.pair.bx, e[1] - rig.pair.by), Math.hypot(e[2] - rig.pair.bx, e[3] - rig.pair.by)) < 1;
           return onA && onB;
         })(), wall ? `ends ${wall.ends.map(Math.round).join(',')}` : 'no wall issued');
+        /* ---- AND ANOTHER RUN'S END OUTRANKS A TOWER (the designer, 2026-08-21) ----
+         * A standalone run goes up, a tower stands just past its far end, and the tap lands
+         * BETWEEN them - nearer the tower. The anchor must take the wall's end: stone
+         * meeting stone end-to-end is the join noteWalls unions into one curtain. */
+        {
+          const prio = await pg.evaluate(([pair]) => {
+            const g = window.Game.game, w = g.world, W = window.World, R = window.Render;
+            const seat = w.map.sites[w.map.cities[0]];
+            let spot = null;
+            for (let rad = 220; rad < 420 && !spot; rad += 24)
+              for (let a = 0; a < 40 && !spot; a++) {
+                const th = a / 40 * Math.PI * 2;
+                const ax = seat.x + Math.cos(th) * rad, ay = seat.y + Math.sin(th) * rad;
+                if (Math.hypot(ax - pair.ax, ay - pair.ay) < 320 || Math.hypot(ax - pair.bx, ay - pair.by) < 320) continue;
+                for (let f = 0; f < 8 && !spot; f++) {
+                  const ph = f / 8 * Math.PI * 2;
+                  const bx2 = ax + Math.cos(ph) * 150, by2 = ay + Math.sin(ph) * 150;
+                  /* the tower and the TAP go from the run's end TOWARD THE SEAT, so the tap
+                   * stays inside the writ - built outward, end+40 left the claim and the
+                   * anchor was refused with no span at all (measured, one full run) */
+                  const sL = Math.hypot(seat.x - bx2, seat.y - by2) || 1;
+                  const sx2 = (seat.x - bx2) / sL, sy2 = (seat.y - by2) / sL;
+                  const tx = bx2 + sx2 * 60, ty = by2 + sy2 * 60;
+                  const px2 = bx2 + sx2 * 40, py2 = by2 + sy2 * 40;   // the tap: 40 from the end, 20 from the tower
+                  if (W.wallError(w, 0, ax, ay, bx2, by2)) continue;
+                  if (W.placementError(w, 0, tx, ty, 'tower')) continue;
+                  if (W.placementError(w, 0, px2, py2, 'wall')) continue;   // the anchor tap must be takeable
+                  spot = { ax, ay, bx: bx2, by: by2, tx, ty, px: px2, py: py2 };
+                }
+              }
+            if (!spot) return null;
+            const rw = W.applyCommand(w, 0, { c: 'build', bt: 'wall', x: spot.ax, y: spot.ay, x2: spot.bx, y2: spot.by });
+            const rt = W.applyCommand(w, 0, { c: 'build', bt: 'tower', x: spot.tx, y: spot.ty });
+            if (!rw.ok || !rt.ok) return { fail: (rw.err || '') + '/' + (rt.err || '') };
+            const t3 = w.players[0].buildings.filter((b) => b.bt === 'tower').pop();
+            t3.raise = 0; t3.hp = t3.maxHp;
+            window.__snapRigGates.push(t3.id);   // the cleanup list takes the tower too
+            for (let i = w.units.length - 1; i >= 0; i--) {
+              const u = w.units[i];
+              if (u.owner === 0 && Math.hypot(u.x - spot.bx, u.y - spot.by) < 140) w.units.splice(i, 1);
+            }
+            g.placing = { bt: 'wall', co: 0 }; g.span = null; R.span = null; g.armedFlag = null;
+            R.setZoom(1); R.lookAt(spot.bx, spot.by);
+            return spot;
+          }, [rig.pair]);
+          ok('the rig is alive: a standalone run with a tower just past its end', !!(prio && !prio.fail),
+             prio && prio.fail ? prio.fail : (prio ? 'ok' : 'no ground'));
+          if (prio && !prio.fail) {
+            await pg.waitForTimeout(250);
+            /* the tap: 40 from the wall's end, 20 from the tower - the TOWER is nearer */
+            const pt = await pg.evaluate(([x, y]) => window.Render.project(x, y), [prio.px, prio.py]);
+            await pg.mouse.click(pt.x, pt.y);
+            await pg.waitForTimeout(150);
+            const sp2 = await pg.evaluate(() => window.Game.game.span && { x: window.Game.game.span.x, y: window.Game.game.span.y });
+            ok('the anchor takes the wall\'s end over the nearer tower', !!sp2 &&
+               Math.hypot(sp2.x - prio.bx, sp2.y - prio.by) < 1,
+               sp2 ? `anchor ${Math.round(sp2.x)},${Math.round(sp2.y)} - wall end ${Math.round(prio.bx)},${Math.round(prio.by)}, tower ${Math.round(prio.tx)},${Math.round(prio.ty)}` : 'no span');
+          }
+        }
         /* put the ground back: the shells were never finished and later suites count works.
          * THE RIG'S CREW-GATES GO TOO - left standing, the two-tap wall suite downstream
          * chose a run beside one and was refused 'crowded', and its unguarded read then

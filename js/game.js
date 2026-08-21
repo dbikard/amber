@@ -915,6 +915,20 @@
     return (pl.buildings || []).filter((b) => b.bt === 'tower');
   }
   function snapEnd(view, w) {
+    /* ANOTHER RUN'S END FIRST, TOWERS SECOND (the designer, 2026-08-21): two runs meeting
+     * end-to-end is the join `noteWalls` unions into one curtain, so the wall's own stone
+     * outranks a tower even when the tower is nearer the finger. */
+    const me = hand(), pl = view.players[me] || {};
+    let bestW = null, bwd = SNAP_END * SNAP_END;
+    for (const b of (pl.buildings || [])) {
+      if (b.x2 == null || b.gone) continue;        // only works with a LENGTH have ends
+      const e = World.wallEnds(b);
+      for (const k of [0, 2]) {
+        const d = (e[k] - w.x) ** 2 + (e[k + 1] - w.y) ** 2;
+        if (d < bwd) { bwd = d; bestW = { x: e[k], y: e[k + 1], tx: e[k], ty: e[k + 1] }; }
+      }
+    }
+    if (bestW) return bestW;
     let best = null, bd = SNAP_END * SNAP_END;
     for (const b of snapTowers(view)) {
       const d = (b.x - w.x) ** 2 + (b.y - w.y) ** 2;
@@ -993,7 +1007,8 @@
     noup: 'The Pattern is what it is — there is nothing to raise',
     contested: 'The ground is contested',
     fog: 'You cannot storm what you cannot see',
-    /* the two refusals only a work with a LENGTH can earn */
+    /* the refusals only a work with a LENGTH can earn */
+    court: 'Too close to the court — a curtain stands outside the city circle',
     short: 'Too short a run to be a wall',
     crews: 'Too long for the crews you have — hold more Gates, or draw a shorter run',
     paused: 'The world is halted — lift it to give orders',
