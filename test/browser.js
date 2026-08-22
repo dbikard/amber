@@ -1089,6 +1089,13 @@ async function match(browser, base, renderer) {
        tray.right <= tray.w + 1 && tray.left >= 0,
        `${tray.n} chips, powers span ${tray.left}..${tray.right} of ${tray.w}`);
 
+    /* THE OPPONENT IS DISARMED from here to the end of the page: every block below is
+     * about SHEETS, INPUT, FORMATIONS or the RENDERER - none is about julian - and the
+     * night's vector made him strong enough to be razing the player's court under them:
+     * dead taps, missing rows, a different pair of failures every run. A still opponent
+     * is the controlled world these blocks always assumed. */
+    await pg.evaluate(() => { window.Game.game.bot = { step() {} }; });
+
     /* ---- THE ROSTER SHOWS EVERY KIND, HOWEVER MANY THERE ARE ----
      * Reported from play (2026-08-21, with a screenshot of a pill showing one and a half
      * kinds): an eight-kind company wraps its roster to three lines, and the old two-line
@@ -1196,7 +1203,7 @@ async function match(browser, base, renderer) {
           .some((c) => /Resume the Muster|Halt the Muster/.test(c.textContent)));
       };
       const openSeat = async () => {
-        for (let att = 0; att < 3; att++) if (await openSeatOnce()) return true;
+        for (let att = 0; att < 5; att++) if (await openSeatOnce()) return true;
         return false;
       };
       const seat1 = await openSeat();
@@ -1790,7 +1797,7 @@ async function match(browser, base, renderer) {
        * against a floor of 15). Any legal run is the second pass, so the tap tests never dry. */
       for (const wantFlat of [true, false])
       for (let a = 0; a < 6.283; a += 0.3) {
-        for (let rr = 165; rr <= 320; rr += 25) {
+        for (let rr = 195; rr <= 340; rr += 25) {
           const mx = c.x + Math.cos(a) * rr, my = c.y + Math.sin(a) * rr;
           const px = -Math.sin(a) * half, py = Math.cos(a) * half;
           const A = { x: mx - px, y: my - py }, B = { x: mx + px, y: my + py };
@@ -1884,8 +1891,11 @@ async function match(browser, base, renderer) {
       ok('...and the sheet gets out of the way', !(await sheetOpen()));
       ok('...and the button shows it is armed',
          await pg.evaluate(() => document.getElementById('btn-build').classList.contains('armed')));
-      /* the first tap on the map is the run's START */
-      await pg.mouse.click(run.ax, run.ay); await pg.waitForTimeout(200);
+      /* the first tap on the map is the run's START - RE-PROJECTED at tap time: the pick's
+       * screen points go stale if anything nudges the camera between pick and tap, and a
+       * stale tap mapped the far end inside the city circle ('court', one run in eight) */
+      const pA = await pg.evaluate(([x, y]) => window.Render.project(x, y), [run.wax, run.way]);
+      await pg.mouse.click(pA.x, pA.y); await pg.waitForTimeout(200);
       const armed = await pg.evaluate(() =>
         window.Game.game.span ? { x: window.Game.game.span.x, y: window.Game.game.span.y } : null);
       ok('the first tap anchors the run', !!armed);
@@ -1897,8 +1907,9 @@ async function match(browser, base, renderer) {
        * THE REFUSAL IS CAPTURED - "0 -> 0" with the reason invisible cost a blind gate. */
       await pg.evaluate(() => { window.__said2 = []; window.__realBanner2 = window.UI.banner;
                                window.UI.banner = (t) => { window.__said2.push(t); }; });
-      await pg.mouse.move(run.bx, run.by); await pg.waitForTimeout(60);
-      await pg.mouse.click(run.bx, run.by); await pg.waitForTimeout(250);
+      const pB = await pg.evaluate(([x, y]) => window.Render.project(x, y), [run.wbx, run.wby]);
+      await pg.mouse.move(pB.x, pB.y); await pg.waitForTimeout(60);
+      await pg.mouse.click(pB.x, pB.y); await pg.waitForTimeout(250);
       const after = await pg.evaluate(() => {
         window.UI.banner = window.__realBanner2;
         const w = window.Game.game.world.players[0].buildings.filter((b) => b.bt === 'wall');

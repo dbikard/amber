@@ -225,13 +225,25 @@
    * the shipped values (env overrides still seed them), so a bot made without `tune` plays
    * byte-identical to before - the trace suite holds it. */
   const envN = (k, d) => +(typeof process !== 'undefined' && process.env && process.env[k]) || d;
+  /* THE NIGHT'S VECTOR (2026-08-22, adopted on the designer's "go"): eighteen generations
+   * of `search.js` against baselines pinned at the old defaults, THE PLAYER'S OPENINGS as
+   * constraints - and the first configuration in the project's history to hold all five
+   * raid floors (julian 6 and benedict 6 against floors of 6, brand casting his Jewel),
+   * with the contested share in band (59) and no head-to-head loss for the flagship
+   * (tuned benedict vs pinned greedy 50% at n=40). In doctrine terms: assaults wait for a
+   * third more men, walks are answered at once and small, one more hall with a deeper
+   * cushion, works built closer to danger, tighter staging flags, more stubborn commits,
+   * an extra breaker before stone. The full story - including the noisy contention-era
+   * generation the adoption REJECTED - is in the LEDGER. */
   const D = {
-    STAGE_BACK: 450, STAGE_NEAR: 340, STAGE_GATHER: 200, STAGE_RETREAT: 0.45,
-    FOE_R: 130, BREAKERS: 3,
-    COMMIT: envN('AMBER_COMMIT', 22), OUTNUMBER: envN('AMBER_OUTNUM', 5),
-    HALL_CAP: envN('AMBER_HALLS', 4), SPARE: envN('AMBER_SPARE', 3),
-    WALK_ARMY: envN('AMBER_WALKARM', 8), SHRINE_GUARD: envN('AMBER_SHGUARD', 500),
-    RAID_MEN: envN('AMBER_RAIDMEN', 8)
+    STAGE_BACK: envN('AMBER_STAGEBACK', 467), STAGE_NEAR: envN('AMBER_STAGENEAR', 344),
+    STAGE_GATHER: envN('AMBER_STAGEGATHER', 120),
+    STAGE_RETREAT: +(typeof process !== 'undefined' && process.env && process.env.AMBER_STAGERETREAT) || 0.309,
+    FOE_R: envN('AMBER_FOER', 80), BREAKERS: envN('AMBER_BREAKERS', 4),
+    COMMIT: envN('AMBER_COMMIT', 32), OUTNUMBER: envN('AMBER_OUTNUM', 6),
+    HALL_CAP: envN('AMBER_HALLS', 5), SPARE: envN('AMBER_SPARE', 5),
+    WALK_ARMY: envN('AMBER_WALKARM', 4), SHRINE_GUARD: envN('AMBER_SHGUARD', 523),
+    RAID_MEN: envN('AMBER_RAIDMEN', 9)
   };
 
   const menNear = (v, x, y, r) => {

@@ -3790,8 +3790,8 @@ suite('the muster answers the muster');
   ok('an heir whose plan named two halls holds more than two', halls.every((n) => n > 2),
      `halls at six minutes, per map: ${halls.join(', ')}`);
   /* the cap is the other half of the rule: it answers a rush, it does not become `greedy` */
-  ok('...and never more than the cap the rule sets', halls.every((n) => n <= 4),
-     `halls at six minutes, per map: ${halls.join(', ')}`);
+  ok('...and never more than the cap the rule sets', halls.every((n) => n <= AI.DEFAULTS.HALL_CAP),
+     `halls at six minutes, per map: ${halls.join(', ')} (cap ${AI.DEFAULTS.HALL_CAP})`);
   ok('so the muster grew with the realm instead of stopping where the plan did',
      spare.every((s) => s >= drink(1) * 2.5), `essence a second the halls can drink: ${spare.join(', ')}`);
 }
@@ -9259,8 +9259,9 @@ suite('every court is named, and a minor lord does not conquer');
     w.chaosNext = 1e9;
     const seat = World.seatOf(w, me);
     const co = w.players[me].companies.find((q) => q.city === me);
-    /* an army big enough that every doctrine wants to use it */
-    if (co) for (let k = 0; k < 24; k++)
+    /* an army big enough that every doctrine wants to use it - past the commit floor,
+       read off the defaults so a retuned floor cannot quietly disarm the rig */
+    if (co) for (let k = 0; k < AI.DEFAULTS.COMMIT + 4; k++)
       manAt(w, me, 'soldier', seat.x + 30 + (k % 8) * 12, seat.y + ((k / 8) | 0) * 14).co = co.id;
     /* he has to have SEEN a rival court to want it */
     for (const c of w.cities) w.players[me].explored[c.site] = { kind: 'city' };
@@ -9549,7 +9550,9 @@ suite('a lesser heir decides worse, he is not poorer');
       const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
       const en = w.map.cities[0], home = w.map.cities[1];
       for (const s of w.map.sites) w.players[1].explored[s.id] = 1;   // he knows the whole board
-      for (let k = 0; k < 30; k++) manAt(w, 1, 'soldier', World.seatOf(w, 1).x + 40 + (k % 6) * 8, World.seatOf(w, 1).y + Math.floor(k / 6) * 8);
+      /* an army PAST the commit floor, read off the defaults - pinned at 30 it stopped
+       * striking the day the floor moved to 32, and the un-struck want wandered */
+      for (let k = 0; k < AI.DEFAULTS.COMMIT + 4; k++) manAt(w, 1, 'soldier', World.seatOf(w, 1).x + 40 + (k % 6) * 8, World.seatOf(w, 1).y + Math.floor(k / 6) * 8);
       const bot = AI.make('benedict', { noise: 0, lapses });
       let odd = 0;
       const iss = (cmd) => { const r = World.applyCommand(w, 1, cmd);
@@ -10191,8 +10194,13 @@ suite('a forward gate is defended, and the jewel answers a raid');
   const pl = w.players[1], c1 = World.cityOf(w, 1);
   const bot = AI.make('julian', {});
   let storms = 0, stormAt = null, raiders = [];
-  const razeOne = () => {   // the raid: kill his furthest forward Gate outright, once
-    const fwd = pl.buildings.filter((b) => b.bt === 'gate' && Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+  const razeOne = () => {   // the raid: kill a STANDING forward Gate outright, once
+    /* finished, not the newest shell: a gate born and killed inside one think interval was
+     * never in `gatedPrev`, so the set-diff cannot see it die - a real one-think blind spot,
+     * but not the chronicle's raid, which chews standing gates over seconds (found when the
+     * night's vector shifted julian's build order and the rig razed a two-second-old shell) */
+    const fwd = pl.buildings.filter((b) => b.bt === 'gate' && !(b.raise > 0) &&
+                                           Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
     const g = fwd[fwd.length - 1];
     if (g) World.hurtBuilding ? World.hurtBuilding(w, 1, g.id, 1e9, 0) : (g.hp = 0);
     return g;

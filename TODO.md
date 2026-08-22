@@ -423,5 +423,6 @@ to four, and bots on every seat nobody holds — including one a heir walks out 
       HYPOTHESIS (unmeasured this round) is that the walker's fortify-first doctrine and
       Shrine guard now beat the answering army, so the next probe is to trace an answered
       walk (does the answer reach the Shrine? die on stone? arrive without breakers?)
-      before touching any constant. Corwin now PASSES his raid floor (was a named
-      failure); julian and benedict still fail theirs (8 gates lost against a floor of 6).
+      before touching any constant. RESOLVED 2026-08-22: the contested share sits at 50-59
+      in band after the faced crescent + the night's vector, and ALL FIVE raid floors hold
+      (the night's vector closed julian and benedict, the two named failures).

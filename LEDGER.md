@@ -593,6 +593,52 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### THE NIGHT'S VECTOR — the referee tuned the doctrine, and the floors all held (2026-08-22)
+
+The designer's call, over a learned policy: "rather than fine-tuning rules could we imagine
+training a small NN policy?" - answered with the bounded version that keeps every rule
+legible. `search.js`: a (1+λ) evolution strategy over the thirteen tunables of
+`AI.DEFAULTS`, candidates played against baselines PINNED at the old defaults (sim.js
+carries `tuneA` to the candidate's side across the seat swap), a common seed battery per
+generation, the incumbent re-evaluated every generation, and THE PLAYER'S OPENINGS as
+constraints - every probe gate over the floor paid out of the fitness. One night, eighteen
+generations, eleven accepted moves, ~19 minutes a generation on four cores.
+
+**Adopted (gen 16):** COMMIT 22→32, RAID_MEN 8→9, BREAKERS 3→4, HALL_CAP 4→5, OUTNUMBER
+5→6, SPARE 3→5, WALK_ARMY 8→4, SHRINE_GUARD 500→523, FOE_R 130→80, STAGE_BACK 450→467,
+STAGE_NEAR 340→344, STAGE_GATHER 200→120, STAGE_RETREAT 0.45→0.31. In doctrine terms:
+assaults wait for a third more men, walks are answered at once and small, one more hall
+with a deeper cushion, works built closer to danger, tighter staging flags, more stubborn
+commits, an extra breaker before stone.
+
+**The evidence, full referee with the vector as everyone's defaults:** all five raid floors
+GREEN for the first time in the project's history - julian 6 and benedict 6 against floors
+of 6 (both had failed at 7-10 through weeks of hand-tuning), brand 5 AND casting his Jewel,
+incomes up (bleys 37, brand 32). Contested share 59, in band. greedy over random 6-0. The
+tripwire read 40 under the SHARED tune - ambiguous, because greedy also benefits from a
+higher commit floor - and the disambiguation run (tuned benedict against greedy PINNED at
+the old defaults, n=40) read 50%, dead even with the old defaults' own 43-55 band: the
+flagship lost nothing head-to-head.
+
+**Rejected (gen 17):** the deadline generation ran under full contention with the queued
+referee chain (237 minutes against ~19) and accepted a candidate carrying FIVE probe
+violations on a noisy battery. The final `state.json` best is therefore NOT the adopted
+vector; adoption took the last clean generation. A search's answer is a proposal, and the
+proposal is judged - that was the design, and the first night needed it.
+
+Watch, from one played game before trusting it: the ladder reshuffles under the vector
+(bleys strong, corwin weakest) and personalities shift with the deeper commit floor.
+
+**Adoption fallout, all rig pins:** four suites had the old numbers baked in - the hall cap
+at a literal 4, two armies sized at 24 and 30 against a commit floor now 32 (a rig army
+under the floor never strikes, and the un-struck want wandered into the aim suite's "odd
+banner") - all four now read `AI.DEFAULTS` so the next vector cannot quietly disarm them.
+And one REAL blind spot surfaced: a Gate born and killed inside a single think interval is
+invisible to the gated-springs set-diff (`gatedPrev` never contained it), found when the
+vector shifted julian's build order and the adaptive-towers rig razed a two-second-old
+shell. Left as-is deliberately: a real raid chews a standing gate over many thinks, and the
+window is one interval; the rig now razes a FINISHED gate, which is what it always meant.
+
 ### ONE DISC, FACED — THE SHOOTERS ARE THE REAR CRESCENT (2026-08-22)
 
 From the same war, with a screenshot of two separate blobs on a road: "range units are
