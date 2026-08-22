@@ -30,6 +30,8 @@ const N = +args.n || 8;                       // games per heir-series (seats sw
 const OUT = path.join(__dirname, args.out || 'search-out');
 const CAP = 1500;                             // seconds of game time a search match may run
 const GATE_FLOOR = 6;                         // the probes' raid floor
+const HEAVY_FLOOR = 5;                        // the heavy probe's works floor (razed)
+const HEAVY_INCOME = 10;                      // ...and its income floor
 const PENALTY = 0.05;                         // fitness paid per gate lost over the floor
 const WORKERS = Math.max(2, Math.min(16, os.cpus().length));
 const HEIRS = ['julian', 'bleys', 'brand', 'corwin', 'benedict'];
@@ -50,7 +52,8 @@ const SPACE = {
   STAGE_BACK:    { lo: 300, hi: 600, int: true },
   STAGE_NEAR:    { lo: 220, hi: 450, int: true },
   STAGE_GATHER:  { lo: 120, hi: 300, int: true },
-  STAGE_RETREAT: { lo: 0.25, hi: 0.7 }
+  STAGE_RETREAT: { lo: 0.25, hi: 0.7 },
+  FINISH_STALL:  { lo: 60,  hi: 200, int: true }
 };
 const KEYS = Object.keys(SPACE);
 
@@ -101,13 +104,23 @@ async function evaluate(tune, heirs, seedBase) {
     job({ a: h, b: 'greedy', n: N, seed: seedBase + i * 1000, tuneA: tune, cap: CAP, maxT: CAP }));
   const probes = HEIRS.map((h, i) =>
     job({ probe: h, seed: 1000 + 400 + HEIRS.indexOf(h), tune }));
+  /* the HEAVY probe joins the constraint set (2026-08-22, the ninth chronicle's raid:
+   * outriders and archers against gates AND towers) - brand and julian are the named work,
+   * so the search pays for every work lost over its floor and every point of income under
+   * its floor, the same currency as the light probes */
+  const heavies = HEIRS.map((h) =>
+    job({ probeHeavy: h, seed: 1000 + 500 + HEIRS.indexOf(h), tune }));
   const sr = await Promise.all(series);
   const pr = await Promise.all(probes);
+  const hr = await Promise.all(heavies);
   const wins = sr.reduce((t, r) => t + r.a, 0);
   const games = heirs.length * N;
-  const over = pr.reduce((t, r) => t + Math.max(0, r.razed - GATE_FLOOR), 0);
+  const over = pr.reduce((t, r) => t + Math.max(0, r.razed - GATE_FLOOR), 0) +
+               hr.reduce((t, r) => t + Math.max(0, r.razed - HEAVY_FLOOR) +
+                                       Math.max(0, HEAVY_INCOME - r.income), 0);
   return { fit: wins / games - PENALTY * over, winRate: wins / games, over,
-           probes: pr.map((r, i) => `${HEIRS[i]}:${r.razed}`).join(' ') };
+           probes: pr.map((r, i) => `${HEIRS[i]}:${r.razed}`).join(' ') +
+                   ' | heavy ' + hr.map((r, i) => `${HEIRS[i]}:${r.razed}/${r.income}`).join(' ') };
 }
 
 /* ---------------- the loop ---------------- */
