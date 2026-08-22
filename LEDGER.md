@@ -593,6 +593,51 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### ONE DISC, FACED — THE SHOOTERS ARE THE REAR CRESCENT (2026-08-22)
+
+From the same war, with a screenshot of two separate blobs on a road: "range units are
+standing too far behind contact units. too far from battle in many cases and in that case
+too far to heal the front troops." The arithmetic condemned the two-disc layout on its own:
+a body of n at berth b is a disc of radius ~b·√(n/π), so fifty fighting men are an 86-radius
+disc, forty shooters a 76 one, and the back line's offset (the depth of BOTH plus a berth)
+parks every shooter 108-260 behind the flag - the sorcerer reaches 130, the Warden mends at
+110, and even the 170 acquire aggro cannot see the melee from there, so the rear half of
+every big company simply watched. No cap on the offset can fix it: keeping the whole second
+disc inside a sorcerer's reach of the front EDGE (front disc radius + offset + back disc
+radius ≤ 130) has no solution past about thirty men a side.
+
+What shipped: ONE spiral, faced. The same `bodyPlace` places for the whole body, sorted by
+their projection along the remembered facing; fighting men are dealt the forward places in
+rank order, shooters the rear crescent, and the deal is rebuilt every tick so growth and
+losses re-sort themselves. Measured on 50+30+10 at rest: the shooters' front rank at 8
+BEHIND the fighting line (was 108), the worst shooter 198 from the front edge (was ~346),
+and all ten wardens in mend range of a fighting man (was none). A body of one kind builds
+no deal and keeps its exact old spiral to the byte. `g.want` - the march standoff the local
+pacing reads, the number that once had to equal the two-disc depth or the line pushed
+through its own arriving archers - is now the single body's radius, which is smaller than
+the old offset was for every mixed body that exists.
+
+### A COMPANY ORDERED HOME MANS THE HOME STONE (2026-08-22)
+
+From a played war: "I don't see sorcerers going on walls and in towers." The mechanism, not
+a doctrine gap: manning is posted by the ORDER (`postWalls` band 48, `postTowers` band 76),
+and a company with no rally is ordered at its city's COURT CENTRE - which is every struck
+standard in a war (`hold`/`walls` strike the standards by design). The court-clearance rule
+then pushed every run past `CITY.r`, so no wall could ever again fall inside the band of a
+home order, and the court's own towers at 76-150 were already outside `TOWER.man`. Home
+garrisons had quietly stopped being possible for anyone not micro-rallying a standard onto
+the stone. The fix widens ELIGIBILITY, not the bands: an order EXACTLY at the
+company's home court (within 32 of `homeOf`) reads as "keep this city", and every own run
+and tower within the court's claim becomes eligible; the nearest is taken, the roster's
+dealing (shooters first, berth caps, alarms) unchanged. The first cut read "near the court"
+(`CITY.r`) and the cover suite caught it the same hour: a reserve deliberately rallied a
+hundred from the throne was marched onto the parapet - an order to stand SOMEWHERE is not
+an order to keep the city, and 32 is the width of "exactly". Rig on a war country: eight sorcerers under a struck
+standard climb the parapet and twenty-eight men post to the curtain within ninety seconds;
+the tower half fills even without the wall. The rig's own lesson, twice in one file: a
+hand-zeroed `raise` skips the completion path, so the run never entered `world.walls` and
+the first read said "nobody posts" about a wall the sim had never been told stood.
+
 ### THE EIGHTH CHRONICLE — the watch, and the curtain pushed off the court (2026-08-21)
 
 Seed 3816632737, brand at PRINCE at 0.10.55, lost by castle at 14:11 — better (income

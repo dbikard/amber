@@ -836,12 +836,29 @@
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
       const gs = foldOrder(world, standingOrder(world, u.owner, co3));
       if (!gs) continue;
-      let post = null, pd = reach;
+      /* ---- A COMPANY ORDERED HOME MANS THE HOME STONE (2026-08-22) ----
+       * The manning band is 48 around the ORDER, and a company with no rally is ordered at
+       * its city's COURT - in a war that is every struck standard. The court-clearance rule
+       * put every run at least CITY.r out, so "holding at home" could never man a wall
+       * again: reported from a war as sorcerers never going on walls or into towers. An
+       * order AT the court reads as "keep this city", so the eligible stone widens to every
+       * own run within the court's claim; the order-near band is untouched for everyone
+       * posted somewhere in particular. */
+      const home3 = homeOf(world, u.owner, co3);
+      /* the ORDER IS the court - a struck standard or a banner on the throne - never merely
+       * near it: a reserve deliberately rallied a hundred out is an order to stand THERE,
+       * and marching him onto the wall would repeal the order (the cover suite's reserve
+       * did exactly that when this read `CITY.r`) */
+      const atHome = d2(gs.x, gs.y, home3.x, home3.y) < 32 * 32;
+      let post = null, pd = reach, hpost = null, hd = Infinity;
       for (const w of world.walls) {
         if (w.owner !== u.owner) continue;
-        const dd = Math.sqrt(segD2(w.b, gs.x, gs.y));
+        const dd2 = segD2(w.b, gs.x, gs.y);
+        const dd = Math.sqrt(dd2);
         if (dd < pd) { pd = dd; post = w; }
+        if (atHome && dd2 < hd && segD2(w.b, home3.x, home3.y) < C.CLAIM.seat * C.CLAIM.seat) { hd = dd2; hpost = w; }
       }
+      if (!post) post = hpost;
       if (!post) { u.post = 0; continue; }
       /* HE IS POSTED TO THE CURTAIN, not to the one run he happened to stand nearest — which
        * run of it he ends up on is the roster's business, below. */
@@ -1151,12 +1168,17 @@
       const co3 = u.co ? coOf(world, u.owner, u.co) : null;
       const gs = foldOrder(world, standingOrder(world, u.owner, co3));
       if (!gs) continue;
-      let post = null, pd = C.TOWER.man;
+      /* an order AT the court mans the court's towers too - see the note in postWalls */
+      const home3 = homeOf(world, u.owner, co3);
+      const atHome = d2(gs.x, gs.y, home3.x, home3.y) < 32 * 32;
+      let post = null, pd = C.TOWER.man, hpost = null, hd = Infinity;
       for (const b of pl3.buildings) {
         if (b.bt !== 'tower' || b.raise > 0 || b.work > 0 || b.onWall) continue;
         const dd = Math.sqrt(d2(b.x, b.y, gs.x, gs.y));
         if (dd < pd) { pd = dd; post = b; }
+        if (atHome && dd < hd && d2(b.x, b.y, home3.x, home3.y) < C.CLAIM.seat * C.CLAIM.seat) { hd = dd; hpost = b; }
       }
+      if (!post) post = hpost;
       if (!post) continue;
       let list = rosters.get(post.id);
       if (!list) { list = []; rosters.set(post.id, list); }
@@ -3392,19 +3414,34 @@
         const cs = cityOf(world, g.owner);
         return cs && d2(g.goal.x, g.goal.y, cs.x, cs.y) < C.CITY.seatR * C.CITY.seatR;
       })();
-      const r0 = home ? C.CITY.seatR + 24 : 0;
-      const back = bodyPlace(g.n - 1, r0, C.CROWD.space).r
-                 + bodyPlace(g.m - 1, 0, C.CROWD.space).r + C.CROWD.space;
-      const inv = L > 0.001 ? back / L : back;
-      g.bx = -fx * inv; g.by = -fy * inv;
-      /* and the standoff the march reads. It is the SAME number that sets the back line's
-       * place — the depth of both bodies — and it has to be, or the shooters arrive a berth
-       * behind the line, park on the ground the fighting men still have a hundred units to
-       * cross, and the line finishes the march trying to push through its own archers.
-       * Measured before this was understood: ten of eighteen fighting men still adrift
-       * thirty seconds after the company came to rest. A body of one kind never sets it and
-       * is paced by nothing. */
-      g.want = back;
+      /* ---- ONE DISC, FACED (2026-08-22) ----
+       * The back line was a SECOND disc set behind the first by the depth of both, and at
+       * ninety men that put every shooter 110-260 behind the flag - past the sorcerer's 130,
+       * past the Warden's 110 mend, past even the 170 aggro that would have brought them
+       * into the fight on their own (the designer, from a war: "range units are standing
+       * too far behind contact units... too far to heal the front troops"). One body now:
+       * every man's place is dealt from the SAME spiral, the places sorted along the facing,
+       * the fighting men given the forward ones and the shooters the rear crescent. The
+       * whole body is half as deep, the shooters' front rank stands directly behind the
+       * fighting line, and the wardens sit among the men they mend. A body of one kind
+       * skips the deal entirely and keeps its exact old spiral. */
+      const nl = Math.sqrt(fx * fx + fy * fy) || 1;
+      const ux2 = fx / nl, uy2 = fy / nl;
+      const r0g = home ? C.CITY.seatR + 24 : (g.r0 || 0);
+      const cnt2 = g.n + g.m;
+      const idx = new Array(cnt2), fv = new Array(cnt2);
+      for (let i = 0; i < cnt2; i++) {
+        idx[i] = i;
+        const p = bodyPlace(i, r0g, C.CROWD.space);
+        fv[i] = p.x * ux2 + p.y * uy2;
+      }
+      idx.sort((a, b) => fv[b] - fv[a] || a - b);
+      g.deal = { f: idx.slice(0, g.n), s: idx.slice(g.n), r0: r0g };
+      /* the standoff the march reads: the body's own radius - the shooters hold it behind
+       * the most advanced fighting men until the ground is crossed, which is what stops the
+       * faster shooters arriving first and being pushed through on the line's arrival (the
+       * measured failure that built the old two-disc offset) */
+      g.want = bodyPlace(cnt2 - 1, r0g, C.CROWD.space).r + C.CROWD.space;
     }
     /* a banner that moves mints a new key every time it is planted, so the remembered bearings
      * are swept of every order nobody is standing at any more */
@@ -4681,9 +4718,15 @@
            * shooters standing behind the ring. Both terms are zero for a body of one kind, and
            * this is then the disc it has always been. */
           const inner = home ? C.CITY.seatR + 24 : (u._line ? u._line.r0 : 0);
-          const o0 = bodyPlace(u.rank || 0, u.rear ? 0 : inner, C.CROWD.space);
-          const ln = u.rear && u._line ? u._line : null;
-          const off = ln ? { x: o0.x + ln.bx, y: o0.y + ln.by, r: Math.sqrt((o0.x + ln.bx) * (o0.x + ln.bx) + (o0.y + ln.by) * (o0.y + ln.by)) } : o0;
+          /* a MIXED body's place comes off the faced deal - the same spiral, the forward
+           * places to the fighting men, the rear crescent to the shooters (see musterAll);
+           * a body of one kind keeps its exact old spiral */
+          const dl = u._line && u._line.deal;
+          const off = dl
+            ? bodyPlace((u.rear ? dl.s[u.rank] : dl.f[u.rank]) != null
+                          ? (u.rear ? dl.s[u.rank] : dl.f[u.rank]) : (u.rank || 0),
+                        dl.r0, C.CROWD.space)
+            : bodyPlace(u.rank || 0, u.rear ? 0 : inner, C.CROWD.space);
           const pt = placeAt(world, home ? cs.x : gs.x, home ? cs.y : gs.y, off);
           gx = pt.x; gy = pt.y;
           /* THE WHOLE BODY IS MUSTER GROUND, not just the last few strides — and this is the

@@ -328,14 +328,20 @@ A work's group is cached by a key that must carry **everything drawn into it** �
 level, the garrison, the damage, a wall's ends and breach, *and the company whose standard it
 flies* (once missing, so `{c:'assign'}` left a moved hall flying the old colours).
 
-**A MIXED COMPANY IS TWO LINES, AND THE SHOOTERS ARE THE BACK ONE.** `CONST.UNITS[k].shoots` is
-DERIVED from reach (`range >= CONST.LINE_REACH`), so nothing names a kind — an Engine and a
-Bombard belong at the back for all that they shoot stone, a Ram at 26 at the front for all that
-he crawls. `musterAll` deals the two lines separately (each dense, neither holing the other),
-and a body holding both is two discs: the
-fighting men on the flag, the shooters set back by the depth of both plus a berth. The bearing is
-the way the body is MARCHING, remembered in `world._face` while the order stands — recomputed at
-rest it would swing the back line round the flag. A body of one kind is one disc on the flag.
+**A MIXED COMPANY IS ONE DISC, FACED — THE SHOOTERS ARE THE REAR CRESCENT** (2026-08-22;
+the designer, from a war: "range units are standing too far behind contact units... too far
+to heal the front troops"). `CONST.UNITS[k].shoots` is DERIVED from reach
+(`range >= CONST.LINE_REACH`), so nothing names a kind — an Engine and a Bombard belong at
+the back for all that they shoot stone, a Ram at 26 at the front for all that he crawls.
+The back line was a SECOND disc set behind the first by the depth of both, and at ninety men
+that put every shooter 110-260 behind the flag — past the sorcerer's 130, the Warden's 110
+mend, even the 170 aggro. `musterAll` deals ONE spiral now, its places sorted along the
+facing (`g.deal`): the fighting men take the forward places, the shooters the rear crescent,
+and the wardens sit among the men they mend (measured: worst shooter 346 → 198 from the
+front edge; all ten wardens in mend range where none were). The bearing is the way the body
+is MARCHING, remembered in `world._face` while the order stands — recomputed at rest it
+would swing the crescent round the flag. A body of one kind builds no deal and keeps its
+exact old spiral; `g.want` (the march standoff the pacing reads) is the whole body's radius.
 
 **THE RAID AND THE WALK'S ANSWER STAGE, COMMIT AS A BODY, AND RE-STAGE WHEN BROKEN — THE
 ASSAULT DOES NOT** (ai.js `STAGE`, `stoneAt`, the machine in decide; the designer's own
@@ -1183,6 +1189,15 @@ the length one crew covers, so a run's crews, cost, hit points and upgrade price
 multiply together (`b.crews`), `rising()` counts crews rather than works, and
 `World.wallReach` is the longest run a heir could start right now. A run past it is
 `'crews'`, which is a different refusal from `'busy'` and has a different fix.
+**A COMPANY ORDERED HOME MANS THE HOME STONE** (postWalls/postTowers, 2026-08-22; reported
+from a war: "I don't see sorcerers going on walls and in towers"). A company with no rally
+is ordered at its city's COURT — every struck standard in a war — and the court-clearance
+rule put all stone at least `CITY.r` out, past the manning bands. An order EXACTLY AT the
+court (within 32 of `homeOf` — a struck standard, never a reserve deliberately rallied a
+hundred out, whose order means stand THERE) widens the eligible stone to every own run and
+tower within the court's claim; the order-near bands are untouched for everyone posted
+somewhere in particular.
+
 **Manning is a ROSTER, not a distance — and STONE IS FOR SHOOTERS.** `postWalls` runs once a
 tick, before anything moves: every man whose ORDER (company rally, else banner) is within
 `WALL.man*1.5` of one of his own runs is posted to it. The roster is sorted **shooters first,

@@ -9059,6 +9059,98 @@ suite('a curtain stands outside the city circle');
     x: legal.ax, y: legal.ay, x2: legal.bx, y2: legal.by }).ok);
 }
 
+/* ---------------- A COMPANY ORDERED HOME MANS THE HOME STONE ----------------
+ * Reported from a WAR (the designer, 2026-08-22): "I don't see sorcerers going on walls and
+ * in towers." Manning is posted by the ORDER, the band is 48 around it, and a company with
+ * no rally is ordered at its city's COURT - which is every struck standard in a war. The
+ * court-clearance rule then put every run at least CITY.r out, so "holding at home" could
+ * never man a wall again, and the court's towers (76-150 out) were outside TOWER.man too.
+ * An order AT the court reads as "keep this city": the eligible stone widens to every own
+ * run and tower within the court's claim. The order-near band is untouched. */
+suite('a company ordered home mans the home stone');
+{
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  w.chaosNext = 1e9;
+  const me = 0, pl = w.players[me], seat = World.seatOf(w, me);
+  pl.essence = 1e6;
+  const gd = C.BUILDINGS.gate;
+  for (let i = 0; i < 3; i++)
+    pl.buildings.push({ id: w.nextId++, bt: 'gate', level: 1, x: seat.x + 300 + i * 40, y: seat.y - 300,
+                        cd: 0, raise: 0, raiseFor: gd.raise, hp: gd.hp, maxHp: gd.hp, lastHurt: -99, node: -1, co: 0 });
+  let wall = null;
+  for (let rad = C.CITY.r + 40; rad < 380 && !wall; rad += 20)
+    for (let a = 0; a < 32 && !wall; a++) {
+      const th = a / 32 * Math.PI * 2;
+      const mx = seat.x + Math.cos(th) * rad, my = seat.y + Math.sin(th) * rad;
+      const px = -Math.sin(th) * 80, py = Math.cos(th) * 80;
+      if (!World.wallError(w, me, mx - px, my - py, mx + px, my + py)) {
+        if (World.applyCommand(w, me, { c: 'build', bt: 'wall', x: mx - px, y: my - py, x2: mx + px, y2: my + py }).ok)
+          wall = pl.buildings.filter((b) => b.bt === 'wall').pop();
+      }
+    }
+  ok('the rig is alive: a curtain stands by the court, outside the circle', !!wall,
+     wall ? `${Math.round(Math.hypot(wall.x - seat.x, wall.y - seat.y))} out` : 'no legal run found');
+  for (let i = 0; i < 120 * 30 && wall.raise > 0; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  ok('...finished, and in the standing list', wall.raise === 0 && w.walls.some((q) => q.b.id === wall.id));
+  /* the war's resting state: the standard STRUCK - the company is ordered at its court */
+  World.applyCommand(w, me, { c: 'rally', co: pl.companies[0].id });
+  for (let i = 0; i < 8; i++) manAt(w, me, 'sorcerer', seat.x + 30 + i * 10, seat.y + 20).co = pl.companies[0].id;
+  for (let i = 0; i < 6; i++) manAt(w, me, 'soldier', seat.x + 30 + i * 10, seat.y + 40).co = pl.companies[0].id;
+  for (let i = 0; i < 30 * 90; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const manned = w.units.filter((u) => u.owner === me && u.man != null && u.man !== 0);
+  ok('the sorcerers stand on the parapet, under a struck standard', manned.length >= 4,
+     `${manned.length} on the wall`);
+  ok('...every one of them a shooter', manned.every((u) => C.UNITS[u.kind].mans),
+     [...new Set(manned.map((u) => u.kind))].join(','));
+  ok('...and the swordsmen hold the ground before it, posted to the curtain',
+     w.units.filter((u) => u.owner === me && u.post && u.kind === 'soldier').length >= 3,
+     `${w.units.filter((u) => u.owner === me && u.post).length} posted in all`);
+}
+
+/* ---------------- ONE DISC, FACED: THE SHOOTERS ARE THE REAR CRESCENT ----------------
+ * (the designer, from a war, 2026-08-22: "range units are standing too far behind contact
+ * units. too far from battle in many cases and in that case too far to heal the front
+ * troops.") The back line was a SECOND disc set behind the first by the depth of both, and
+ * at ninety men that put every shooter 110-260 behind the flag - past the sorcerer's 130,
+ * past the Warden's 110 mend. One spiral now, its places sorted along the facing: fighting
+ * men forward, shooters the rear crescent, wardens among the men they mend. A body of one
+ * kind keeps its exact old spiral (no deal is built for it). */
+suite('one disc, faced: the shooters are the rear crescent');
+{
+  const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+  const pl = w.players[0], seat = World.seatOf(w, 0);
+  const co = pl.companies[0];
+  const far = { x: seat.x + Math.sign(w.mapW / 2 - seat.x) * 500, y: seat.y + Math.sign(w.mapH / 2 - seat.y) * 400 };
+  World.applyCommand(w, 0, { c: 'rally', co: co.id, x: far.x, y: far.y });
+  for (let i = 0; i < 50; i++) manAt(w, 0, 'soldier', seat.x + (i % 10) * 12, seat.y + ((i / 10) | 0) * 12).co = co.id;
+  for (let i = 0; i < 30; i++) manAt(w, 0, 'sorcerer', seat.x + (i % 10) * 12, seat.y + 60 + ((i / 10) | 0) * 12).co = co.id;
+  for (let i = 0; i < 10; i++) manAt(w, 0, 'warden', seat.x + (i % 10) * 12, seat.y + 100).co = co.id;
+  for (let i = 0; i < 30 * 90; i++) { World.update(w, C.SIM_DT); w.events.length = 0; }
+  const mine = w.units.filter((u) => u.owner === 0 && u.hp > 0);
+  const fx = far.x - seat.x, fy = far.y - seat.y, L = Math.hypot(fx, fy), ux = fx / L, uy = fy / L;
+  const proj = (u) => (u.x - far.x) * ux + (u.y - far.y) * uy;
+  /* the SETTLED body: stragglers still on the road are the march's business, not the
+   * formation's - only men within twice the body's own radius of the flag are read */
+  const settled = mine.filter((u) => Math.hypot(u.x - far.x, u.y - far.y) < 260);
+  const F = settled.filter((u) => !C.UNITS[u.kind].shoots);
+  const S = settled.filter((u) => C.UNITS[u.kind].shoots && u.kind !== 'warden');
+  const Wd = settled.filter((u) => u.kind === 'warden');
+  ok('the rig is alive: a settled mixed body of eighty-plus', F.length >= 40 && S.length >= 20 && Wd.length >= 6,
+     `${F.length} fighters, ${S.length} shooters, ${Wd.length} wardens`);
+  const frontEdge = Math.max(...F.map(proj));
+  const sMax = Math.max(...S.map(proj));
+  ok('no shooter stands ahead of the fighting line', sMax <= frontEdge + 6,
+     `foremost shooter ${Math.round(sMax)} against a front edge of ${Math.round(frontEdge)}`);
+  ok('the shooters\' front rank stands directly behind the line, not a second body away',
+     sMax > -40, `foremost shooter at ${Math.round(sMax)}`);
+  const worst = frontEdge - Math.min(...S.map(proj));
+  ok('the whole crescent is within reinforcing reach of the front edge', worst < 250,
+     `worst shooter ${Math.round(worst)} from the edge (the two-disc layout measured ~346)`);
+  ok('every warden can mend a fighting man where he stands',
+     Wd.every((wd) => F.some((f) => Math.hypot(f.x - wd.x, f.y - wd.y) < C.UNITS.warden.mendR)),
+     `${Wd.filter((wd) => F.some((f) => Math.hypot(f.x - wd.x, f.y - wd.y) < C.UNITS.warden.mendR)).length} of ${Wd.length}`);
+}
+
 /* ---------------- A HOSTILE IS SOMEBODY I MAY STRIKE ----------------
  * Reported from play: *"a lord with whom I'm at terms still unleashes the jewel storm on me."*
  * The damage was never the bug — `hurt` refuses a blow between heirs at peace, and the storm
