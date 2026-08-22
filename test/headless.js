@@ -9020,12 +9020,96 @@ suite('a forward tower is manned: the watch');
      `${pl.companies.length} companies (${cos0} before)`);
   ok('...a new standard, not the army\'s', pl.companies.length > cos0);
   const men = watch.length ? w.units.filter((u) => u.owner === me && u.co === watch[0].id && u.hp > 0) : [];
-  ok('...of SHOOTERS', men.length >= 2 && men.every((u) => C.UNITS[u.kind].shoots),
+  /* the hall is PICKED for mustering `mans` men (a Works hall SHOOTS but its bombards can
+   * never take a berth); the company may gain other kinds later - brand forks his spire to
+   * the Warden's Art and the wardens join the same standard - so the claim is "berth-takers
+   * among them", and the garrison count below is the sharp instrument either way */
+  ok('...with men who can TAKE A BERTH among them',
+     men.length >= 2 && men.some((u) => C.UNITS[u.kind].mans),
      [...new Set(men.map((u) => u.kind))].join(',') || 'no men');
   ok('...and they are IN the stone', w.units.filter((u) => u.owner === me && u.tow != null).length >= 2,
      `${w.units.filter((u) => u.owner === me && u.tow != null).length} garrisoned`);
   ok('and he never gave up his last hall',
      pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns).length >= 2, `${halls0} halls before`);
+}
+
+/* ---------------- THE WATCH KEEPS ITS POST THROUGH THE BANNER ----------------
+ * Found in a WAR rig (2026-08-22, seed 17, a minor lord): warOrders translates every banner
+ * into a rally per company, and it stomped the watch company's standing rally every think -
+ * two rallies a think, six men shuttling between towers, "in towers 0" forever. The watch's
+ * id is shared through warSt and exempted in the strike loops and the fan-out. */
+suite('the watch keeps its post through the banner');
+{
+  /* The full war sequence on a country, compressed: pushed halls and spring-gates, thirty
+   * seconds of real play so the gated-spring memory seeds across several thinks (the
+   * footing's noise skips one think in five, so a single forced think can seed nothing),
+   * then a spring gate dies and the watch must be dealt BY DECIDE ITSELF - the two memos
+   * (decide's watchCo, warOrders' warSt.watchCo) move together only on this path, which is
+   * why a rig that hand-sets one of them proves nothing. Against the stomping code this
+   * rig shows the exact reported flap: two rallies a think, the standard bouncing between
+   * springs, and it reads 'held false'. */
+  const w = World.createWorld(17, 2, null, { reach: 1, occupy: 1, endOnSeat: 0 }, { country: true });
+  w.chaosNext = 1e9;
+  const me = 0, pl = w.players[me], seat = World.seatOf(w, me);
+  pl.essence = 1e6;
+  const co0 = pl.companies[0];
+  const put = (bt, x, y, extra) => {
+    const d = C.BUILDINGS[bt];
+    const b = Object.assign({ id: w.nextId++, bt, level: 1, x, y, cd: 0, raise: 0, work: 0,
+      hp: d.hp, maxHp: d.hp, lastHurt: -99, node: -1, co: co0.id }, extra || {});
+    pl.buildings.push(b); return b;
+  };
+  /* a WORKS first - the mans pick must skip it - then the spire the watch should take */
+  const works = put('siege', seat.x + 120, seat.y - 140);
+  const spire = put('spire', seat.x - 140, seat.y + 120);
+  put('barracks', seat.x + 160, seat.y + 120); put('barracks', seat.x - 160, seat.y - 120);
+  /* two outlying gate+tower pairs ON REAL SPRINGS - gateLost reads the set-diff of gated
+   * springs, so a gate razed off node -1 dies invisibly */
+  const rr = seat.reach * seat.reach, cc = C.CLAIM.seat * C.CLAIM.seat;
+  const springs = w.map.sites.filter((n) => n.kind === 'node' && World.nodeHolder(w, n) === -1)
+    .filter((n) => { const d = (n.x - seat.x) ** 2 + (n.y - seat.y) ** 2; return d > cc && d < rr; })
+    .sort((a, b) => (a.x - seat.x) ** 2 + (a.y - seat.y) ** 2 - ((b.x - seat.x) ** 2 + (b.y - seat.y) ** 2));
+  ok('the rig is alive: two free outlying springs inside reach', springs.length >= 2, `${springs.length}`);
+  const s1 = springs[0], s2 = springs[1];
+  put('gate', s1.x, s1.y, { node: s1.id }); put('tower', s1.x + 60, s1.y + 30);
+  const g2 = put('gate', s2.x, s2.y, { node: s2.id }); put('tower', s2.x + 50, s2.y + 40);
+  for (let k = 0; k < 12; k++) {
+    const d = C.UNITS.soldier;
+    w.units.push({ id: w.nextId++, owner: me, kind: 'soldier', tier: 1,
+                   x: seat.x - 60 - k * 8, y: seat.y - 40, ox: 0, oy: 0, hp: d.hp, maxHp: d.hp,
+                   dmg: d.dmg, cd: 0, goal: null, co: co0.id, from: -1 });
+  }
+  const bot = AI.make('brand', Object.assign({}, C.MINOR));
+  const issue = (cmd) => World.applyCommand(w, me, cmd);
+  for (let i = 0; i < 30 * 30; i++) {
+    if (i % 30 === 0) bot.step(w, me, issue, 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  g2.gone = 1; pl.buildings.splice(pl.buildings.indexOf(g2), 1);
+  const cos0 = pl.companies.length;
+  let watch = null, held = true, otherMoved = false;
+  const was0 = co0.rally ? { x: co0.rally.x, y: co0.rally.y } : null;
+  for (let i = 0; i < 30 * 120; i++) {
+    if (i % 30 === 0) {
+      bot.step(w, me, issue, 1.0, null);
+      if (!watch && pl.companies.length > cos0) watch = pl.companies[pl.companies.length - 1];
+      if (watch) {
+        const r = watch.rally;
+        if (!r || !pl.buildings.some((b) => b.bt === 'tower' && !b.gone &&
+            Math.hypot(b.x - seat.x, b.y - seat.y) > C.CLAIM.seat &&
+            Math.hypot(r.x - b.x, r.y - b.y) <= C.TOWER.man)) held = false;
+      }
+      const r0 = co0.rally;
+      if ((r0 && (!was0 || Math.hypot(r0.x - was0.x, r0.y - was0.y) > 1)) || (!r0 && was0)) otherMoved = true;
+    }
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  ok('a gate died and the WATCH was dealt by decide itself', !!watch, `${pl.companies.length} companies`);
+  const hall = watch ? pl.buildings.find((b) => C.BUILDINGS[b.bt].spawns && b.co === watch.id) : null;
+  ok('...from the hall whose men can take a berth, never the Works',
+     !!hall && hall.id === spire.id && hall.id !== works.id, hall ? hall.bt : 'no hall');
+  ok('the army company was re-ordered while the banners flowed', otherMoved);
+  ok('and the watch rally stayed at a forward tower through every think', !!watch && held);
 }
 
 /* ---------------- A CURTAIN STANDS OUTSIDE THE CITY CIRCLE ----------------
@@ -9149,6 +9233,91 @@ suite('one disc, faced: the shooters are the rear crescent');
   ok('every warden can mend a fighting man where he stands',
      Wd.every((wd) => F.some((f) => Math.hypot(f.x - wd.x, f.y - wd.y) < C.UNITS.warden.mendR)),
      `${Wd.filter((wd) => F.some((f) => Math.hypot(f.x - wd.x, f.y - wd.y) < C.UNITS.warden.mendR)).length} of ${Wd.length}`);
+}
+
+/* ---------------- AN UNCHALLENGED HEIR FINISHES IT ----------------
+ * Reported from play (2026-08-22): "the AI didn't finish him off and was for some reason
+ * postponing the final attack while he could have easily won 10 minutes ago. this was
+ * frustrating." The commit floor (32 under the night's vector) is a promise about arriving
+ * as a body, not a licence to besiege nobody: a winning heir whose field army hovered under
+ * it never launched. Untouched past FINISH_STALL with the enemy Seat known - no throne
+ * threat, nothing of his hurt, no man lost - the floor relaxes to half. Pressure of any
+ * kind resets the clock, so a real war never sees it. */
+suite('an unchallenged heir finishes it');
+{
+  const run = (pressure) => {
+    const w = World.createWorld(1000, 2); w.chaosNext = 1e9;
+    const pl = w.players[1], seat = World.seatOf(w, 1);
+    const en = w.map.cities[0];
+    for (const s2 of w.map.sites) pl.explored[s2.id] = { kind: s2.kind };
+    /* a crippled muster: no halls, no income - the army is 20 for the whole rig, under the
+     * commit floor and over its unchallenged half */
+    for (let i = pl.buildings.length - 1; i >= 0; i--)
+      if (C.BUILDINGS[pl.buildings[i].bt].spawns) pl.buildings.splice(i, 1);
+    pl.essence = 0; pl.eco = 0;
+    for (let i = 0; i < 20; i++) manAt(w, 1, 'soldier', seat.x + 30 + (i % 5) * 12, seat.y + ((i / 5) | 0) * 12);
+    const bot = AI.make('benedict', { noise: 0 });
+    let struck = null;
+    for (let i = 0; i < 30 * 460 && struck == null; i++) {
+      if (pressure && i % 900 === 890 && pl.buildings.length) World.hurtBuilding(w, 1, pl.buildings[0].id, 3, 0);
+      World.update(w, C.SIM_DT); w.events.length = 0;
+      bot.step(w, 1, (cmd) => { const r = World.applyCommand(w, 1, cmd);
+        if (r.ok && cmd.c === 'banner' && cmd.site === en) struck = w.t; return r; }, C.SIM_DT, null);
+    }
+    return struck;
+  };
+  ok('the rig is alive: twenty men are under the commit floor and past its half',
+     20 < AI.DEFAULTS.COMMIT && 20 >= Math.max(AI.DEFAULTS.RAID_MEN, Math.round(AI.DEFAULTS.COMMIT / 2)));
+  const calm = run(false);
+  /* never in the OPENING (t > 300): quiet at minute two is a war unbegun, not a war won -
+   * the un-guarded relaxation struck at 1:40 in benedict's raid probe and cost it a gate */
+  ok('an untouched heir with a known Seat marches once the opening is past and the stall runs out',
+     calm != null && calm > 300 && calm < 300 + AI.DEFAULTS.FINISH_STALL + 60,
+     calm != null ? `struck at ${calm.toFixed(0)}s` : 'never struck');
+  const pressed = run(true);
+  ok('...and one whose works are being struck holds the full floor', pressed == null,
+     pressed != null ? `struck at ${pressed.toFixed(0)}s under pressure` : 'held, as the floor promises');
+  /* the LEDGER note beside the vector: FINISH_STALL is in AI.DEFAULTS, in the search space */
+}
+
+/* ---------------- A SIEGE TRAIN IS RAMS, NOT A SHIELDWALL ----------------
+ * The ninth chronicle (2026-08-22): "he then at some point committed a large attack against
+ * my wall but didn't have siege weapons." The Works want was keyed on `v.breakers` - anyone
+ * who may TARGET stone, which is every melee man - so a sixty-man army read as sixty
+ * "breakers" and the want never fired in any real game. It counts `v.siegers` now, the
+ * kinds with a `siege` multiplier; and when the Works is what he is saving for and a
+ * rival's WALL is known to him (his own fog memory), the muster valve opens whatever the
+ * odds - the wall is why he is outnumbered, and the Works is the one tool that changes it. */
+suite('a siege train is rams, not a shieldwall');
+{
+  const w = World.createWorld(42, 2); w.chaosNext = 1e9;
+  const me = 1, pl = w.players[me];
+  const bot = AI.make('brand', {});
+  for (let i = 0; i < 30 * 240; i++) {
+    if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  ok('the rig is alive: a developed brand with a real melee army and no Works',
+     w.units.filter((u) => u.owner === me && !C.UNITS[u.kind].menOnly).length >= 10 &&
+     pl.buildings.every((b) => b.bt !== 'siege'),
+     `${w.units.filter((u) => u.owner === me && !C.UNITS[u.kind].menOnly).length} melee`);
+  /* the player's wall enters his fog memory */
+  pl.ghosts[9999] = { bt: 'wall', level: 1, x: 1000, y: 1200, owner: 0 };
+  let worksAt = null;
+  for (let i = 0; i < 30 * 300 && worksAt == null; i++) {
+    if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+    if (pl.buildings.some((b) => b.bt === 'siege')) worksAt = w.t;
+  }
+  ok('a melee army is no siege train: the Works rises', worksAt != null,
+     worksAt != null ? `at ${worksAt.toFixed(0)}s` : 'never');
+  for (let i = 0; i < 30 * 120; i++) {
+    if (i % 30 === 0) bot.step(w, me, (cmd) => World.applyCommand(w, me, cmd), 1.0, null);
+    World.update(w, C.SIM_DT); w.events.length = 0;
+  }
+  ok('...and true siege units muster from it',
+     w.units.filter((u) => u.owner === me && C.UNITS[u.kind].siege).length >= 2,
+     `${w.units.filter((u) => u.owner === me && C.UNITS[u.kind].siege).length} in the train`);
 }
 
 /* ---------------- A HOSTILE IS SOMEBODY I MAY STRIKE ----------------

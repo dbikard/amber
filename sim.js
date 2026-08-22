@@ -97,6 +97,51 @@ function series(aKind, bKind, n, baseSeed, opts) {
  * walked over the field. FLOORS, not races: an heir under a standing raid must keep most of his
  * Gates, keep earning, and actually SPEND his Jewel on the raiders. The raid party is spawned
  * (a rig, not a match — the heir's response is the measurement, not the raiders' economy). */
+/* THE HEAVY RAID (the ninth chronicle, 2026-08-22): "a company of fast moving outriders
+ * easily destroys a gate + tower if it is not garrisoned and the attack goes fast." The
+ * light probe's six outriders are handled now (all five floors green); the player's real
+ * company was a rotating ten-outrider, four-archer body cycling springs from minute four.
+ * NO FLOORS YET - this probe prints a baseline first, and floors are set from measurement
+ * (the same calibration discipline the light probe went through). */
+function playProbeHeavy(heirKind, seed, tune) {
+  const world = World.createWorld(seed);
+  const bot = AI.make(heirKind, tune ? { tune } : {});
+  const issue = (cmd) => World.applyCommand(world, 1, cmd);
+  const c1 = World.cityOf(world, 1);
+  const r = { razed: 0, income: 0, army: 0 };
+  let raiders = [];
+  for (let i = 0; i < 30 * 660; i++) {
+    World.update(world, DT);
+    for (const ev of world.events) if (ev.e === 'raze' && ev.pi === 1 && (ev.bt === 'gate' || ev.bt === 'tower')) r.razed++;
+    world.events.length = 0;
+    bot.step(world, 1, issue, DT);
+    if (world.t > 240 && i % 60 === 0) {
+      raiders = raiders.filter((u) => u.hp > 0);
+      const want = [['outrider', 10], ['archer', 4]];
+      for (const [kind, n] of want) {
+        while (raiders.filter((u) => u.kind === kind).length < n) {
+          const fwd = world.players[1].buildings.filter((b) => (b.bt === 'gate' || b.bt === 'tower') &&
+            Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat);
+          const tgt = fwd[fwd.length - 1];
+          if (!tgt) break;
+          const d = C.UNITS[kind];
+          const u = { id: world.nextId++, owner: 0, kind, tier: 1,
+                      x: tgt.x + 140, y: tgt.y + 70, ox: 0, oy: 0, hp: d.hp, maxHp: d.hp,
+                      dmg: d.dmg, cd: 0, goal: null, co: 0, from: -1 };
+          world.units.push(u);
+          raiders.push(u);
+        }
+        if (!world.players[1].buildings.some((b) => (b.bt === 'gate' || b.bt === 'tower') &&
+            Math.hypot(b.x - c1.x, b.y - c1.y) > C.CLAIM.seat)) break;
+      }
+    }
+  }
+  r.income = Math.round(world.players[1].incomeRate);
+  r.army = world.units.filter((u) => u.owner === 1 && u.hp > 0).length;
+  r.gates = world.players[1].buildings.filter((b) => b.bt === 'gate').length;
+  return r;
+}
+
 function playProbe(heirKind, seed, tune) {
   const world = World.createWorld(seed);
   const bot = AI.make(heirKind, tune ? { tune } : {});
@@ -139,6 +184,20 @@ function playProbe(heirKind, seed, tune) {
   r.gates = world.players[1].buildings.filter((b) => b.bt === 'gate').length;
   return r;
 }
+/* floors from the 2026-08-22 baseline: bleys 0, corwin 1, benedict 1, julian 4 razed -
+ * and brand at 7 with income 7, the ninth chronicle's collapse reproduced. razed counts
+ * GATES AND TOWERS both (the pair is what the fast company kills). Brand is the named
+ * work, as julian and benedict were for the light probe. */
+function fmtProbeHeavy(heir, r) {
+  const checks = [
+    ['works lost ' + r.razed, r.razed <= 5],
+    ['income ' + r.income, r.income >= 10],
+    ['army ' + r.army, r.army >= 12]
+  ];
+  const bad = checks.filter(([, ok2]) => !ok2);
+  return `heavy vs ${heir.padEnd(8)}  ` + checks.map(([t2]) => t2).join(' · ') +
+         (bad.length ? '   FAILS: ' + bad.map(([t2]) => t2).join(', ') : '   ok');
+}
 function fmtProbe(heir, r) {
   const checks = [
     ['gates lost ' + r.razed, r.razed <= 6],
@@ -161,7 +220,9 @@ function fmt(aKind, bKind, r, n) {
 
 /* ---------------- a worker is one series ---------------- */
 if (!isMainThread) {
-  parentPort.postMessage(workerData.probe
+  parentPort.postMessage(workerData.probeHeavy
+    ? playProbeHeavy(workerData.probeHeavy, workerData.seed, workerData.tune)
+    : workerData.probe
     ? playProbe(workerData.probe, workerData.seed, workerData.tune)
     : series(workerData.a, workerData.b, workerData.n, workerData.seed,
              { tuneA: workerData.tuneA, tuneB: workerData.tuneB, cap: workerData.cap }));
@@ -222,6 +283,9 @@ jobs.push({ head: '\n— smoke (expansion pays: greedy over random) —',
 jobs.push({ head: '\n— the player\'s openings (a standing raid on the forward Gates; floors, not races) —',
             probe: heirs[0], seed: SEED + 400 });
 for (let i = 1; i < heirs.length; i++) jobs.push({ probe: heirs[i], seed: SEED + 400 + i });
+/* the heavy raid: the player's rotating outrider+archer company, minutes four to eleven */
+jobs.push({ head: '', probeHeavy: heirs[0], seed: SEED + 500 });
+for (let i = 1; i < heirs.length; i++) jobs.push({ probeHeavy: heirs[i], seed: SEED + 500 + i });
 let first = true;
 for (let i = 0; i < heirs.length; i++) for (let j = i + 1; j < heirs.length; j++) {
   jobs.push({ head: first ? '\n— the ladder (heirs need not be equal; the campaign faces the weakest first) —' : null,
@@ -240,7 +304,7 @@ for (const j of jobs) j.maxT = CAP;   // ...and every worker is handed it with i
 
 const order = jobs.map((_, i) => i);
 const WEIGHT = { julian: 3, brand: 2, corwin: 2, benedict: 2, random: 1, greedy: 1, bleys: 1 };
-const cost = (j) => j.probe ? 6 : j.n * ((WEIGHT[j.a] || 2) + (WEIGHT[j.b] || 2));
+const cost = (j) => j.probeHeavy ? 9 : j.probe ? 6 : j.n * ((WEIGHT[j.a] || 2) + (WEIGHT[j.b] || 2));
 order.sort((x, y) => cost(jobs[y]) - cost(jobs[x]));
 
 const POOL = Math.max(1, Math.min(+args.jobs || os.cpus().length, jobs.length));
@@ -253,7 +317,7 @@ function flush() {
   while (printed < jobs.length && done[printed]) {
     const j = jobs[printed], r = done[printed];
     if (j.head) console.log(j.head);
-    console.log(j.probe ? fmtProbe(j.probe, r) : fmt(j.a, j.b, r, j.n));
+    console.log(j.probeHeavy ? fmtProbeHeavy(j.probeHeavy, r) : j.probe ? fmtProbe(j.probe, r) : fmt(j.a, j.b, r, j.n));
     printed++;
     if (printed === rrEnd) {
       const table = {};

@@ -593,6 +593,103 @@ stall), benedict/greedy 18-2 → 19-1, greedy/random 18-2 → 20-0; contested Pa
 next full run); greedy mirror median 25.3m → 14.3m; the ladder re-pasted as
 `corwin, julian, bleys, brand, benedict`.
 
+### A SIEGE TRAIN IS RAMS, NOT A SHIELDWALL (2026-08-22)
+
+The ninth chronicle's sharpest line: "he then at some point committed a large attack against
+my wall but didn't have siege weapons." Two defects, one small and one structural:
+
+- **`v.breakers` counts anyone who may TARGET stone** - every melee man - so brand's
+  sixty-man army read as sixty "breakers" and the Works want (`breakers < BREAKERS`) never
+  fired in ANY real game since the want was written. The rig: a developed brand, ghosts
+  seeded with a rival wall, Works NEVER in 300s - one identifier changed to `v.siegers`
+  (kinds with a `siege` multiplier) and the Works rises the same minute, thirteen rams in
+  the train two minutes later. `strike`'s own `breakers` gate is left alone: its question
+  is "may this army hurt a Seat at all", and melee men may.
+- **The muster valve's threat guard starved the Works exactly when it mattered**: never
+  pause while the enemy in sight outnumbers you is right for men-vs-men and wrong for the
+  one purchase that answers a WALL - the wall is why he is outnumbered at every fight. When
+  the Works is what he is saving for and a rival's wall is KNOWN (his own `pl.ghosts`), the
+  valve opens whatever the odds; only the throne under attack holds it. Greedy raises no
+  walls, so the tripwire cannot be bought with this.
+- **AND THE TRIGGER IS A KNOWN WALL, NOT A THIN TRAIN** (probe- and suite-refereed the
+  same day, in two rounds). Round one: under the standing raid the want put benedict's
+  purse on a Works while the forward Gates went down - razed 7 against the floor of 6. The
+  bisect is a lesson in dirty controls: `AMBER_FINISH` off, no change; `AMBER_BREAKERS=0`,
+  no change - but that switch also opens `strike`'s own gate (`breakers >= 0` is always
+  true), so it was never "the want off"; a tree with ONLY the `v.siegers` identifier
+  reverted put benedict back to HEAD's numbers to the byte (6/5/36). A first guard -
+  `stoneHot`, the want waits 45s after any work of his is struck - cured the probe and was
+  then SUPERSEDED by the suite run: `siegers < BREAKERS` alone fires for EVERY heir from
+  army five (the old `breakers` test fired for nearly none), and the want monopolised the
+  one crew for two Works ahead of expansion, the adaptive towers, the curtain and the
+  stage - seven suites red ('ordered to the gates' raising NOTHING in 180s, julian's
+  adaptive towers 0 of 3, the re-stage never bannering), plus the tripwire at 40 (n=20,
+  noisy but directionally the same story: the opening spent on the wrong stone). The
+  landed rule keeps the original all-shooters case (`breakers < BREAKERS`) and arms the
+  siegers case ONLY when a rival's wall is KNOWN (`pl.ghosts` - the same signal the
+  valve's foeWalled arm reads): no walls known, no want, so every opening, raid probe and
+  expansion rig is out by construction and the want fires exactly where the ninth
+  chronicle saw the defect. stoneHot is dropped - a walling raider is the chronicle
+  itself, and the want must fire there. All five light probes green (julian 6, bleys 5,
+  brand 5, corwin 4, benedict 6 - benedict at HEAD's byte); heavy probe unmoved (brand
+  7/7 stays the named work).
+
+### THE WATCH IN A WAR — the banner stomped it, and the hall could not man a tower (2026-08-22)
+
+Asked "do lords in the war benefit from all the improvements we made", the audit said yes by
+construction for everything in the shared layers (the vector defaults, staging, the valve,
+manning, the crescent - war suites held through every gate) and then the rig said no for the
+watch, twice, on seed 17 (a minor lord, brand + `CONST.MINOR`, one outlying Gate razed):
+
+- **The banner stomped the watch.** `warOrders` fans every banner into a rally per company
+  and struck the watch's standing rally every think - the trace showed the rally flapping
+  between two towers twice a think for minutes, "men 6, in towers 0". `warSt.watchCo`
+  shares the standard's id from decide, and the two strike loops and the fan-out pass over
+  it. On a board `warOrders` is not seated, so nothing changes there.
+- **The hall was a gun pit.** The watch picked its hall by `shoots` - and a Works SHOOTS
+  (engine, bombard) but its men can never take a berth, so six bombards parked at a tower
+  forever, "in towers 0" with the rally now holding. The pick is `mans` (archer, sorcerer):
+  the watch is a GARRISON, and the flag that decides a berth decides the hall. After both:
+  one standard held, ten sorcerers in the stone. The `mans` change also moved the light
+  probes - bleys 7 -> 5 with it (measured both ways on the batch) - so it is refereed, not
+  only rigged. **And the ERRAND can briefly take the watch - both fences were refereed
+  out**: once the spire manned it the watch read as a small manned spare and the errand
+  took the standard for a moment (two rallies a think at the rig's tail, bouncing between
+  tower-adjacent points). A hard exclusion of `watchCo` from the spare pool broke a floor -
+  a two-company benedict under the standing raid had no errand AT ALL and read 10 razed
+  against the floor of 6, back to 6 to the byte on reverting only the guard - and
+  last-resort preference read the same 10 while ALSO letting the steal through in the rig
+  whenever the other spare's men died. The steal is brief and lands by the stone; the
+  fences cost real Gates; nothing shipped. If a chronicle ever shows the watch parked at a
+  spring for minutes, that is the evidence to revisit with. The suite ('the watch keeps its post through the
+  banner') is the full war sequence compressed to 150s: pushed halls (a Works FIRST, so the
+  mans pick is proven to skip it), spring-gates on real nodes (a gate razed off `node: -1`
+  dies invisibly to the set-diff), thirty seconds of real play before the raze (the
+  footing's noise skips one think in five, so ONE forced think can seed no memory - found
+  when the rig read gateLost false forever), and the watch dealt BY DECIDE ITSELF - a rig
+  that hand-sets `warSt.watchCo` proves nothing, because the two memos move together only
+  on the real path (hand-set, the errand rightly stole the 'watch' since decide's own memo
+  was null). Against the stomping code the suite shows the reported flap verbatim - two
+  rallies a think - and fails; the board watch suite now asserts the men can TAKE A BERTH
+  (`mans`), not merely shoot.
+
+### AN UNCHALLENGED HEIR FINISHES IT (2026-08-22)
+
+The night's vector had a sharp edge the referee could not see: COMMIT 32 is right for
+arriving as a body, and wrong as a licence to besiege nobody - "the AI didn't finish him
+off and was for some reason postponing the final attack while he could have easily won 10
+minutes ago. this was frustrating." For a game, frustrating-while-winning is worse than
+losing. The stall-breaker reads only own-side signals (fog-honest): the throne threatened,
+any work hurt within a dozen seconds, a man lost since last think - any of them resets the
+clock. Untouched past FINISH_STALL (100s, tunable, in the search's space for future nights)
+with the enemy Seat known, the commit floor relaxes to half, never below the raid floor;
+the footing's `hold` still covers the want, so the opening promise stands. Rig: a 20-man
+heir (under 32, over 16) strikes when untouched and holds the full floor under a trickle of
+chip damage. And the referee caught the first cut the same run: with no opening guard the
+relaxation fired at 1:40 of benedict's raid probe - quiet because the war had not BEGUN -
+and sent him out with sixteen men just before the raid landed (6 -> 7 gates, the run's one
+regression). `t > 300` now, and the probe reads 6 again.
+
 ### THE NIGHT'S VECTOR — the referee tuned the doctrine, and the floors all held (2026-08-22)
 
 The designer's call, over a learned policy: "rather than fine-tuning rules could we imagine

@@ -489,6 +489,18 @@ tower left a defender no counter. It still out-reaches the Seat's own gun (200),
 `aggro` (200) stays under its reach so it remains the one kind the rule can be seen on.
 (→ LEDGER: NO GUN OUT-REACHES THE TOWERS)
 
+**AN UNCHALLENGED HEIR FINISHES IT** (ai.js, at `ready`; reported from play 2026-08-22:
+"the AI didn't finish him off... postponing the final attack while he could have easily won
+10 minutes ago. this was frustrating"). The commit floor is a promise about arriving as a
+body, not a licence to besiege nobody. Pressure is every own-side signal there is
+(fog-honest): the throne threatened, any work of his hurt within a dozen seconds, a man
+lost since last think. Untouched past `FINISH_STALL` (100s, in `AI.DEFAULTS`) with the
+enemy Seat KNOWN — and never in the OPENING (`t > 300`): quiet at minute two is a war
+unbegun, not a war won (unguarded, the relaxation struck at 1:40 in benedict's raid probe
+and cost it a gate) — the floor relaxes to half, never below the raid floor, and the
+footing's `hold` still covers the want downstream. Rig: a 20-man heir under the 32 floor strikes at
+101s untouched, and never in 240s while anything of his is being hit.
+
 **A WALKER FORTIFIES FIRST** (ai.js, the walk clause; the designer, 2026-08-19, from a
 chronicle at PRINCE in which Brand walked at 3:57 with nothing beside his Shrine, sent his army
 at the player's court in the same breath, had his Gates raided, ran dry and was torn off the
@@ -584,7 +596,13 @@ adaptive tower stood empty. Under `gateLost`, one SHOOTERS hall — never his la
 assigned to a company of its own (`{c:'assign', co:'new'}`) and rallied at the forward
 gated tower nearest the enemy; `postTowers` then climbs its men into the stone. NOT gated
 on the walk — a walker's outlying Gates are what fund the walk. The watch comes home when
-no forward post stands. `watchCo` is the bot's memo, cleared on reset.
+no forward post stands. `watchCo` is the bot's memo, cleared on reset. **The hall must
+muster men who can TAKE A BERTH (`mans`), not merely men who shoot** — `shoots` admitted a
+Works, and six bombards parked at a tower forever. **And in a WAR the watch survives the
+banner**: `warOrders` fans every banner into a rally per company and struck the watch's
+standing rally every think (two rallies a think, the men shuttling between towers, "in
+towers 0"); `warSt.watchCo` shares the standard's id and the strike loops and the fan-out
+pass over it. (→ LEDGER: THE WATCH IN A WAR)
 
 **A CURTAIN STANDS OUTSIDE THE CITY CIRCLE** (world.js `wallError`; the designer,
 2026-08-21: "walls shouldn't be built within the city circle — too close, doesn't leave

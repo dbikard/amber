@@ -125,6 +125,11 @@
        * for the rest of the match. An heir has to know the difference between an army and an
        * army that can finish, or the referee reads it as "matches stopped ending". */
       breakers: myUnits.filter((u) => !C.UNITS[u.kind].menOnly).length,
+      /* the TRUE siege train - kinds with a `siege` multiplier - as distinct from
+       * `breakers`, which is anyone who may TARGET stone at all: a sixty-man shieldwall is
+       * sixty breakers and no siege train, and the Works want keyed on `breakers` never
+       * fired in any real game (the ninth chronicle: a large attack on a wall, no rams) */
+      siegers: myUnits.filter((u) => C.UNITS[u.kind].siege).length,
       /* CHAOS IS THE WEATHER, NOT THE OPPONENT (DESIGN_PRINCIPLES). `threats` is everything
        * hostile near the Seat and fiends are most of it, so a doctrine that calls off the walk
        * on `threats` calls it off for the weather — and the black road is capped precisely so
@@ -243,7 +248,12 @@
     COMMIT: envN('AMBER_COMMIT', 32), OUTNUMBER: envN('AMBER_OUTNUM', 6),
     HALL_CAP: envN('AMBER_HALLS', 5), SPARE: envN('AMBER_SPARE', 5),
     WALK_ARMY: envN('AMBER_WALKARM', 4), SHRINE_GUARD: envN('AMBER_SHGUARD', 523),
-    RAID_MEN: envN('AMBER_RAIDMEN', 9)
+    RAID_MEN: envN('AMBER_RAIDMEN', 9),
+    /* how long an heir must go UNTOUCHED - nothing of his hurt, nobody at his throne, no
+     * man lost - before a known enemy Seat relaxes his commit floor to half: the dominant
+     * stall, reported from play 2026-08-22 ("the AI didn't finish him off... for some
+     * reason postponing the final attack while he could have easily won 10 minutes ago") */
+    FINISH_STALL: envN('AMBER_FINISH', 100)
   };
 
   const menNear = (v, x, y, r) => {
@@ -1198,7 +1208,10 @@
         /* the Recall, and every order that means "keep your own court": standards struck */
         if (told === 'home' || (cmd.site === -1 && cmd.x == null && !told)) {
           if (st) st.aim = null;
-          for (const co of cos) if (co.rally) issue({ c: 'rally', co: co.id });
+          /* THE WATCH KEEPS ITS POST (2026-08-22, found in a war rig): the banner fans to
+           * every company, and it stomped the watch's standing rally every think - two
+           * rallies a think, six men shuttling between towers, nobody ever climbing in */
+          for (const co of cos) if (co.rally && co.id !== (st && st.watchCo)) issue({ c: 'rally', co: co.id });
           return { ok: true };
         }
         let at = told || aimOf(cmd);
@@ -1224,7 +1237,7 @@
             const s = springTo(world, me, W.seatOf(world, me), false);
             if (s) at = { x: s.x, y: s.y };
             else { if (st) st.aim = null;
-                   for (const co of cos) if (co.rally) issue({ c: 'rally', co: co.id });
+                   for (const co of cos) if (co.rally && co.id !== (st && st.watchCo)) issue({ c: 'rally', co: co.id });
                    return { ok: true }; }
           }
         }
@@ -1278,6 +1291,7 @@
         if (st) st.aim = { x: at.x, y: at.y };
         let last = { ok: true };
         for (const co of cos) {
+          if (co.id === (st && st.watchCo)) continue;   // the watch keeps its post
           const p = within(cityOfCo(co), at.x, at.y);
           if (!moved && co.rally && d2(co.rally.x, co.rally.y, p.x, p.y) < 40 * 40) continue;
           last = issue({ c: 'rally', co: co.id, x: p.x, y: p.y });
@@ -1370,6 +1384,8 @@
     };
     const commit = Math.max(4, Math.round(T.COMMIT * (1 - Math.min(0.9, L.trickle || 0))));
     let marching = false;  // is the assault under way — see `ready`, which has hysteresis
+    let pressedAt = 0;     // when this heir was last TOUCHED — the dominant-stall clock
+    let prevArmy = 0;
     let stray = null;      // {site, until} — an `aim` lapse: the army sent somewhere known and wrong
     let lastWant = null;   // where the doctrine last meant the banner, to notice a NEW order
     let timer = interval * 0.5, rng = null;
@@ -1608,7 +1624,7 @@
        * minute six and beat the same ruler 32-4. So: while the ground earns more than the
        * muster can drink, the answer is another hall. It is fog-honest — every term is the
        * heir's own realm — and it stands down by itself the moment the two are level. */
-      let saving = false, handled = false;
+      let saving = false, handled = false, savingSiege = false;
       /* A SPRING UNDER HIS FEET IS A SPRING HE TAKES, whatever the plan says next. Every drop
        * of essence past the base 2.5 comes out of the ground through a Shadow Gate; one costs
        * 120, draws 4.5 a second, and has paid for itself before the masons are off the next
@@ -1714,10 +1730,25 @@
       /* ...and ONE Works may not be enough: an Engine every twenty-four seconds is a siege
        * train that never forms if the first few die on the way. He wants a second before he
        * gives up on the road by force. */
-      if (!handled && !idle && v.breakers < T.BREAKERS && v.army >= 5 && (v.have.siege || 0) < 2) {
+      /* TWO CASES, refereed apart (2026-08-22). `breakers < BREAKERS` is the original
+       * all-shooters case and stays. The ninth chronicle's case ("committed a large attack
+       * against my wall but didn't have siege weapons") is NARROWER than "few siege
+       * units": rewritten as `siegers < BREAKERS` alone it fired for EVERY heir from army
+       * five and monopolised the one crew for two Works ahead of expansion, the adaptive
+       * towers, the curtain and the stage - seven suites red, benedict's raid probe 7
+       * against the floor of 6 (a single-line revert tree proved it), the war 'gates'
+       * order raising nothing. The sharp trigger is the chronicle's own: a rival's WALL IS
+       * KNOWN (`pl.ghosts`, his fog memory - the same signal the valve's foeWalled arm
+       * reads). No walls known, no want - out of every opening, every raid probe (raiders
+       * raise no walls) and every expansion rig by construction, and armed exactly where
+       * the designer saw the defect. */
+      const foeStone = Object.values(v.pl.ghosts || {}).some((g) =>
+        g.bt === 'wall' && global.World.foe(world, me, g.owner));
+      if (!handled && !idle && v.army >= 5 && (v.have.siege || 0) < 2 &&
+          (v.breakers < T.BREAKERS || (foeStone && v.siegers < T.BREAKERS))) {
         handled = true;
         if (v.free > 0) {
-          if (v.essence < C.BUILDINGS.siege.cost) saving = true;
+          if (v.essence < C.BUILDINGS.siege.cost) { saving = true; savingSiege = true; }
           else {
             const at = spotFor(v, 'siege');
             if (at) issue({ c: 'build', x: at.x, y: at.y, bt: 'siege', co: hallCo(v, at) });
@@ -1831,21 +1862,24 @@
           const post = posts[0];
           let co = watchCo != null ? v.pl.companies.find((q) => q.id === watchCo) : null;
           if (!co) {
-            watchCo = null;
+            watchCo = null; warSt.watchCo = null;
             /* a shooters hall, and never one he cannot spare: at two or three halls the
              * dedication starved the rest of the defence and the raid probes read WORSE
              * (julian 7 -> 10 gates lost) - the watch is for a DEVELOPED realm, four halls
              * up, where a quarter of the muster buys a standing garrison */
             const halls = v.pl.buildings.filter((b) => C.BUILDINGS[b.bt].spawns && !b.raise);
+            /* mans, not shoots: a Works hall SHOOTS (engine, bombard) but its men can
+             * never take a berth - found in a war rig where the watch was dealt the gun
+             * pit and six bombards parked at a tower forever, "in towers 0" */
             const hall = halls.length >= 4 ? halls.find((b) => {
               const m = global.World.mustersOf(b);
-              return m && C.UNITS[m.kind].shoots && b.co !== (errandCo || -1);
+              return m && C.UNITS[m.kind].mans && b.co !== (errandCo || -1);
             }) : null;
             if (hall) {
               const r = issue({ c: 'assign', id: hall.id, co: 'new' });
               if (r && r.ok) {
                 const fresh = v.pl.companies[v.pl.companies.length - 1];
-                if (fresh) { watchCo = fresh.id; co = fresh; }
+                if (fresh) { watchCo = fresh.id; co = fresh; warSt.watchCo = fresh.id; }
               }
             }
           }
@@ -1855,7 +1889,7 @@
           /* no forward post stands any more: the watch comes home to the banner */
           const co = v.pl.companies.find((q) => q.id === watchCo);
           if (co && co.rally) issue({ c: 'rally', co: co.id });
-          watchCo = null;
+          watchCo = null; warSt.watchCo = null;
         }
       }
       if (mission) {
@@ -1931,7 +1965,26 @@
        * column that dipped to one man under it turned round, and turned back the moment a
        * recruit left the yard — hysteresis: the assault SETS OUT at the floor and goes on down to
        * two thirds of it, so a column that has taken losses on the road finishes the road. */
-      const ready = v.army >= (marching ? Math.max(4, Math.round(commit * 2 / 3)) : commit);
+      /* ---- AN UNCHALLENGED HEIR FINISHES IT (2026-08-22) ----
+       * The commit floor is a promise about arriving as a body, not a licence to besiege
+       * nobody: a winning heir whose field army hovered under the floor postponed the
+       * final assault for ten minutes over a beaten player - reported from play as
+       * frustrating, which for a game is worse than losing. Pressure is every own-side
+       * signal there is (fog-honest): the throne threatened, any work of his hurt within a
+       * dozen seconds, or a man of his lost since last think. Untouched past FINISH_STALL
+       * with the enemy Seat KNOWN, the floor relaxes to half - never below the raid floor,
+       * and the footing's `hold` still covers the want downstream, so it is no way round
+       * the opening promise. */
+      const hurtRecent = v.pl.buildings.some((b) => b.lastHurt != null && v.t - b.lastHurt < 12);
+      if (homeThreat || v.threats.length > 0 || hurtRecent || v.army < prevArmy - 1) pressedAt = v.t;
+      prevArmy = v.army;
+      /* ...and never in the OPENING: at minute two nobody has been touched because the war
+       * has not begun, not because it is won - the relaxation fired at 1:40 in benedict's
+       * raid probe and sent him out with sixteen men just before the raid landed (6 -> 7
+       * gates lost, the one probe regression of the stall-breaker's referee run) */
+      const unchallenged = v.enCity && v.t > 300 && v.t - pressedAt > T.FINISH_STALL;
+      const floor0 = unchallenged ? Math.max(T.RAID_MEN, Math.round(commit / 2)) : commit;
+      const ready = v.army >= (marching ? Math.max(4, Math.round(commit * 2 / 3)) : floor0);
       /* A WALKER DOES NOT MARCH ON THE RIVAL'S SEAT: the walk IS his assault, and the army's
        * job while he is on the lines is the Shrine behind him. The same chronicle: Brand walked
        * and sent his fifty-one men at the player's court in the same breath; they died under
@@ -2027,10 +2080,22 @@
       {
         const want = mission ? C.BUILDINGS[mission.bt] : null;
         const need = want ? want.cost : 0;
+        /* ...AND THE BREAKERS OUTRANK THE ODDS (2026-08-22, the ninth chronicle: "he then
+         * at some point committed a large attack against my wall but didn't have siege
+         * weapons"). The board valve's threat guard - never pause while the enemy in sight
+         * outnumbers you - is right for men-vs-men and exactly wrong for the Works: the
+         * rival's WALL is why he is outnumbered at every fight, the Works is the one tool
+         * that changes it, and it costs 300 he can never hold while the halls drink. When
+         * what he is saving for is the WORKS and a rival's wall is KNOWN to him (his own
+         * fog memory, `pl.ghosts`), the valve opens whatever the odds - only the throne
+         * under attack still holds it. Greedy raises no walls, so the tripwire cannot be
+         * bought with this. */
+        const foeWalled = savingSiege && foeStone;
         const starved = (saving || (need > 0 && v.essence < need)) &&
                         v.income - walkDrain - musterCap <= 0 &&
                         ((world.rules && world.rules.reach) ||
-                         (gateLost && !NO_VALVE && !homeThreat && v.enemyArmy < v.army));
+                         (gateLost && !NO_VALVE && !homeThreat && v.enemyArmy < v.army) ||
+                         (foeWalled && !NO_VALVE && !homeThreat));
         if (!!v.pl.musterPaused !== starved) issue({ c: 'muster', pause: starved });
       }
       if (!mission && !homeThreat) {
@@ -2366,6 +2431,15 @@
         const manned = cos.filter((co) => size[co.id] > 0);
         let body = null;
         for (const co of manned) if (!body || size[co.id] > size[body.id]) body = co;
+        /* The WATCH is deliberately NOT fenced off here (2026-08-22, refereed twice).
+         * The errand can briefly take the watch's standard once the spire mans it - the
+         * war rig shows a short errand-vs-watch bounce - but BOTH fences were referee'd
+         * out: a hard exclusion left a two-company benedict with no errand at all under
+         * the standing raid (probe 6 -> 10 razed, the floor broken by four), and
+         * last-resort preference read the same 10 AND let the steal through in the rig
+         * whenever the other spare's men died. The steal is brief and lands by the stone;
+         * the fences cost real Gates. If a chronicle ever shows the watch parked at a
+         * spring for minutes, revisit with that evidence. */
         const spare = manned.filter((co) => !body || co.id !== body.id);
         let errand = errandCo != null ? spare.find((co) => co.id === errandCo) : null;
         if (!errand) {
@@ -2484,7 +2558,7 @@
       lapses: L, hold, noWalk, noTerms, debug: warSt,
       reset() { timer = interval * 0.5; mission = null; errandCo = null; aimed = null; warSt.aim = null;
                 gateLost = false; gatedPrev = null; consol = null; for (const k of Object.keys(lostAt)) delete lostAt[k];
-                marching = false; stray = null; lastWant = null; watchCo = null; for (const k of Object.keys(spells)) delete spells[k];
+                marching = false; stray = null; lastWant = null; watchCo = null; warSt.watchCo = null; pressedAt = 0; prevArmy = 0; for (const k of Object.keys(spells)) delete spells[k];
                 for (const k of Object.keys(pactAt)) delete pactAt[k]; },
       /* `order` is the standing instruction of whoever this lord answers to — the player, for
        * a lord sworn to him. It is a BIAS on the same brain, not a second brain: a sworn lord

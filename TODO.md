@@ -28,7 +28,19 @@ touches no balance surface.
   greedy gained neverStorms, the muster-answers want, and now stages its raids too) or the
   floor needs restating at n=40 with more seeds. Do not chase 65 with balance changes until
   the floor itself is re-measured; the next honest step is n=100 on HEAD and on the shipped
-  config, once, overnight.
+  config, once, overnight. (2026-08-22, the war-watch/foeStone batch: a PAIRED n=40 on
+  identical seeds read 40% on HEAD and 40% on the batch — 16-24 both, the same win count —
+  so the batch moved the tripwire not at all, and the full-run readings of 65 then 40 then
+  25 across the day were all n=20 noise around ~40. The drift from 55 to 40 predates the
+  batch and belongs to the floor investigation above.)
+- TWO BROWSER TESTS FLAKE UNDER CPU LOAD, trading places between runs (2026-08-22):
+  '...and he faces out over it, not along his last march' (off by -1.19 then -2.39 rad —
+  the read likely lands while the man is still turning or re-posted) and 'the anchor takes
+  the wall's end over the nearer tower'. Measured: the facing test failed twice on the
+  batch tree while sim runs contended, PASSED on HEAD in the same load, and the snap test
+  failed on HEAD in that same run — so neither failure follows the code, both follow the
+  load. A stabilization pass (wait on a settled condition, not a fixed step count) is the
+  fix; do not chase either as a regression.
 - brand's raid probe flaked 'jewel on the raiders 0/1' once (2026-08-21; 0/0 and 0/2 ok
   before): the probe is one scripted game, and brand held gates lost to 3 — the floor
   fires only when >2 lost, so his first loss put him one cast under. Watch, don't tune.
@@ -37,6 +49,16 @@ touches no balance surface.
   first-seat bias has crept in (an asymmetry in the opening deal or the corner draw), the
   mirror is the instrument that would show it; run one n=60 benedict mirror and, if it
   stays under 35, bisect the opening for the asymmetry. Do not tune doctrine on it.
+- THE HEAVY RAID: brand and julian fail the heavy probe (floors 5/10/12). Brand is the
+  ninth chronicle's collapse reproduced — 8 works lost, income 7, army 11 — and the
+  prime named work; his raider-heavy doctrine (branch 'raid') leaves his own springs
+  thinnest. Julian reads 8 works lost with income 27 and army 43 — he trades works and
+  stays rich, so his failure is the razed floor alone; watch whether it is conduct or
+  the floor counting rebuilt-and-re-razed towers. (History: at the stoneHot interim
+  julian read 4 — the early accidental Works pair was defending him; the foeStone
+  trigger rightly removed it. Final 2026-08-22 baseline: bleys 0, corwin 1, benedict 0
+  pass.) A search night with the heavy probe in the constraint set is the cheapest
+  first try.
 - LAN version skew: the wire carries no GAME_VERSION and a guest REGENERATES the war's
   country from the seed — a stale PWA on either side deals DIFFERENT ground from the same
   seed (any worldgen change does this; COUNTRY_GEN now guards saves but nothing guards the
