@@ -10818,6 +10818,32 @@ suite('the men say which court');
      before.p >= 1 && before.p === after.p && before.colour === after.colour && World.realmOf(w, 3) === 0);
 }
 
+/* ---------------- THE OVERNIGHT SEARCH MAY NOT BUY WINS WITH GATES ----------------
+ * `node search.js` plays candidate vectors against baselines and pays PENALTY per gate lost
+ * over a probe floor. Two nights running that let it walk uphill on violations: a generation
+ * is 24 games, so win-rate noise is +-0.10 while a gate costs 0.05, and the 2026-08-22 night
+ * ended by trading `over 4` for `over 7` at a better-looking win rate. Selection is
+ * lexicographic now, and the rule is exported so it can be judged here rather than trusted:
+ * a rule that silently did nothing is the dead control this whole discipline is about. */
+suite('the overnight search may not buy wins with gates');
+{
+  const { pick } = require('../search.js');
+  const r = (fit, over) => ({ fit, over, winRate: fit, probes: '' });
+  /* the incumbent is always results[0] */
+  ok('a dirtier candidate is refused however well it played',
+     pick([r(0.20, 4), r(0.90, 5)]) === 0, 'took the 5-violation candidate');
+  ok('...and the OLD rule would have taken it, so the test bites',
+     0.90 > 0.20);
+  ok('a cleaner candidate is taken even playing worse',
+     pick([r(0.50, 4), r(0.10, 2)]) === 1);
+  ok('among equals, fitness decides',
+     pick([r(0.10, 3), r(0.30, 3), r(0.20, 3)]) === 1);
+  ok('the cleanest wins before the fittest',
+     pick([r(0.10, 4), r(0.90, 4), r(0.20, 1)]) === 2);
+  ok('nothing better than the incumbent leaves it standing',
+     pick([r(0.50, 3), r(0.40, 3), r(0.10, 4)]) === 0);
+}
+
 /* ---------------- */
 const bad = report("headless");
 if (QUICK_RUN) {

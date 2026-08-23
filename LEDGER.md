@@ -690,6 +690,89 @@ relaxation fired at 1:40 of benedict's raid probe - quiet because the war had no
 and sent him out with sixteen men just before the raid landed (6 -> 7 gates, the run's one
 regression). `t > 300` now, and the probe reads 6 again.
 
+### THE SECOND NIGHT — THE PROBES ARE CONSTRAINTS, NOT COSTS (2026-08-23)
+
+The second search night ran the heavy raid in the constraint set (the ninth chronicle's
+attack: ten outriders and four archers against gates AND towers) with FINISH_STALL added to
+the space, from the shipped 0.10.61 defaults. Twenty-two generations, ~21 minutes each, on
+an idle box.
+
+**The night's own answer is not adoptable, and the log says why in one column.** Reading
+the incumbent's violation count per generation: 9 → 3 by gen 2, then a nine-generation
+plateau at 3-4, and then gens 20 and 21 walked it to 6 and 7 — the last two steps of the
+night were bought with gates. That is arithmetic, not luck: a generation is 24 games, so
+win-rate noise is about ±0.10 while PENALTY charges 0.05 for a lost gate, and noise outbids
+the constraint roughly two to one. The 2026-08-21 night ended the same way (gen 17, five
+violations, blamed on contention); with the same shape appearing on an idle box it is the
+FITNESS that is wrong, not the weather.
+
+**Fixed in the tool, not by hand-picking a generation.** `pick()` in search.js is
+lexicographic: a candidate with more violations than the incumbent — re-evaluated on the
+same generation's battery, so the comparison is like-for-like — is never accepted however
+well it played; among the rest, fewer violations wins and the old fitness breaks the tie.
+The penalty stays inside `fit` so the ranking inside a tier still leans clean. It is
+EXPORTED and unit-tested ('the overnight search may not buy wins with gates'), with the
+would-have-taken-it case asserted alongside, because a selection rule that silently does
+nothing is precisely the dead control this project keeps re-learning. The runner is now
+`require.main === module`-guarded so requiring it does not start a night.
+
+**BOTH candidates were refereed as if adopted (env-seeded defaults, so every heir and every
+baseline plays the vector) and BOTH were rejected.** Against shipped 0.10.61 — zero light
+failures, heavy julian 8 and brand 8 on an income of 7:
+
+| | light failures | heavy failures | tripwire n=40 | contested |
+|---|---|---|---|---|
+| shipped 0.10.61 | none | julian 8, brand 8/inc 7 | 40% | 49% |
+| pair only (HALL_CAP 4 + SPARE 4) | julian 7, benedict 8, brand casts no Jewel | brand 6/inc 34 | 45% | 44% |
+| plateau (gens 2-6) | julian 7, bleys 7, brand casts no Jewel | brand 6/inc 34 | 45% | 55% |
+| gen 21 (the night's best) | julian 7, bleys 7, corwin 7 **army 0**, benedict 9, brand no Jewel | brand 6/inc 34 | 45% | 63% |
+
+The light probes ARE the designer's chronicled exploits, so trading three of them (five, for
+the night's own answer) to mend one heavy probe is the wrong side of the trade, and corwin
+ending a scripted raid with an army of ZERO is the clearest possible no. Nothing adopted;
+0.10.61's defaults stand. The tripwire and the contested share moved by less than noise in
+every column.
+
+**But the trade itself is the finding, and it is worth more than the vector would have
+been:** every candidate that mends the heavy raid does it by concentrating — a deeper commit
+floor, more men before a raid goes out, fewer spare standards — and pays for it with the
+defenders who answer the LIGHT raid. Julian's heavy 8 → 1 and brand's income 7 → 34 are real
+and repeatable, so the heavy collapse is not fate; it is simply not reachable from where the
+search may look. That points the named work at doctrine (batched reinforcements, forward
+defence) rather than at another night of the same shape.
+
+**AND THE ONE-AT-A-TIME SWEEP NAMES THE LEVER — AND SHOWS IT POINTS BOTH WAYS.** Nine
+single-dimension runs against the same heavy probe (control reproduced exactly: julian
+8/27/43, brand 8/7/11, matching the full run to the digit, so the instrument is alive):
+FOE_R, OUTNUMBER, RAID_MEN, STAGE_BACK and STAGE_NEAR each change NOTHING at all — five of
+the search's thirteen dials are inert on this question. `HALL_CAP` 5 → 4 is the whole of
+julian's mend (8 works lost → 2, army 43 → 60) and `COMMIT` 32 → 34 is half of it (→ 5).
+And the same `HALL_CAP` 4 that saves julian RUINS brand: income 3, army 1, a total collapse.
+Nothing single-dimension mends brand at all; only the plateau's combination does. So the
+hall cap is a genuine doctrine tension between two heirs' economies and not a number to be
+nudged — which is exactly the sort of thing a search reports and a designer decides.
+
+**AND THE INTERACTION IS A PAIR, EXACTLY:** `HALL_CAP` 4 with `SPARE` 4 gives julian 1 work
+lost and brand 6 on an income of 34 — the whole of the plateau's heavy mend — and adding
+COMMIT 34 on top changes NOTHING (identical to the digit). Dropping either half breaks it:
+the plateau minus the hall cap reads julian 11 / brand 12, and minus the spare reads brand
+3 income / 1 man, the same collapse the hall cap causes alone. So eleven of the thirteen
+dials are noise on this question and two of them are the answer — and both are dials the
+FIRST night moved the other way (HALL_CAP 4 → 5, SPARE 3 → 5) on a fitness that had no
+heavy probe in it.
+
+**And the minimal pair was refereed on its own, and REJECTED TOO** — which is what settles
+the question. `HALL_CAP` 4 + `SPARE` 4 alone, everything else at 0.10.61: the heavy side
+mends exactly as promised (julian 8 → 1, brand 8/income 7/army 11 → 6/34/70, only brand
+still failing) and the LIGHT side breaks in three places — julian 7, benedict 8, brand
+casting no Jewel — against shipped's clean sweep. Three routes tried (two dials, five
+dials, the whole vector) and every one of them pays for the heavy raid in light-raid gates,
+by margins far outside probe noise. The trade is structural, not a tuning accident: fewer
+halls and fewer spare standards concentrate the army, and concentration is precisely what
+the light raid punishes. Shipped 0.10.61 stands; brand's heavy collapse stays the named
+work and belongs to DOCTRINE (batched reinforcements, forward defence), where breadth and
+concentration are not the same dial.
+
 ### THE NIGHT'S VECTOR — the referee tuned the doctrine, and the floors all held (2026-08-22)
 
 The designer's call, over a learned policy: "rather than fine-tuning rules could we imagine

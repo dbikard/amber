@@ -49,6 +49,21 @@ touches no balance surface.
   first-seat bias has crept in (an asymmetry in the opening deal or the corner draw), the
   mirror is the instrument that would show it; run one n=60 benedict mirror and, if it
   stays under 35, bisect the opening for the asymmetry. Do not tune doctrine on it.
+- THE SECOND SEARCH NIGHT (2026-08-23) says the heavy raid is not a tunable problem, or
+  not only one. Both candidates it produced — the deadline winner and the honest plateau —
+  buy heavy-raid resilience with LIGHT-raid gates: the winner refereed as five light
+  failures (julian 7, bleys 7, corwin 7 with his army wiped to ZERO, benedict 9, brand
+  casting no Jewel) against heavy julian 1 / brand 6 on an income of 34. Nothing adopted.
+  A one-at-a-time sweep then named the mechanism exactly: `HALL_CAP` 5→4 with `SPARE` 5→4
+  IS the heavy mend (julian 8 works lost → 1, brand 8/income 7 → 6/income 34), eleven of
+  the thirteen dials do nothing at all on it, and the pair refereed ALONE still breaks
+  three light probes (julian 7, benedict 8, brand casting no Jewel). Three routes, one
+  verdict: fewer halls and fewer spare standards concentrate the army, and the light raid
+  punishes concentration. So the heavy raid wants DOCTRINE, not a vector — BATCHED
+  REINFORCEMENTS below is the standing candidate, and forward defence the other. A next
+  night should also drop or normalise the heavy floor's weight: brand's failure is worth
+  ~6 units where a whole win rate spans 0.5, so it drags every generation toward one
+  heir's scripted game.
 - THE HEAVY RAID: brand and julian fail the heavy probe (floors 5/10/12). Brand is the
   ninth chronicle's collapse reproduced — 8 works lost, income 7, army 11 — and the
   prime named work; his raider-heavy doctrine (branch 'raid') leaves his own springs

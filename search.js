@@ -123,6 +123,32 @@ async function evaluate(tune, heirs, seedBase) {
                    ' | heavy ' + hr.map((r, i) => `${HEIRS[i]}:${r.razed}/${r.income}`).join(' ') };
 }
 
+/* ---------------- THE PROBES ARE CONSTRAINTS, NOT COSTS ---------------- */
+/* Paying `PENALTY` per gate lost was the first cut, and two nights running the searcher
+ * learned it could BUY wins with gates: a generation plays 24 games, so win-rate noise is
+ * +-0.10 while a gate costs 0.05, and the last two generations of the 2026-08-22 night
+ * walked the incumbent from `over 4` to `over 7` on exactly that trade — the same shape as
+ * the 2026-08-21 night's gen-17. Selection is LEXICOGRAPHIC: a candidate with MORE
+ * violations than the INCUMBENT (results[0], re-evaluated on this generation's own battery,
+ * so the comparison is like-for-like) is never accepted however well it played; among the
+ * rest, fewer violations wins and the old fitness breaks the tie. The penalty stays inside
+ * `fit` so the ranking within a tier still leans clean.
+ * Exported and unit-tested in test/headless.js — a selection rule that silently did nothing
+ * is exactly the dead control this whole discipline is about. */
+function pick(results) {
+  const incOver = results[0].over;
+  let bi = 0;
+  for (let i = 1; i < results.length; i++) {
+    if (results[i].over > incOver) continue;
+    if (results[i].over < results[bi].over) { bi = i; continue; }
+    if (results[i].over === results[bi].over && results[i].fit > results[bi].fit) bi = i;
+  }
+  return bi;
+}
+
+module.exports = { pick };
+if (require.main !== module) return;
+
 /* ---------------- the loop ---------------- */
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
@@ -152,8 +178,16 @@ async function evaluate(tune, heirs, seedBase) {
     const cands = [state.best];
     for (let i = 0; i < LAMBDA; i++) cands.push(perturb(state.best, state.sigma));
     const results = await Promise.all(cands.map((c) => evaluate(c, heirs, seedBase)));
-    let bi = 0;
-    for (let i = 1; i < results.length; i++) if (results[i].fit > results[bi].fit) bi = i;
+    /* ---- THE PROBES ARE CONSTRAINTS, NOT COSTS (2026-08-23) ----
+     * Paying `PENALTY` per gate lost was the first cut, and two nights running the searcher
+     * learned it could BUY wins with gates: a generation plays 24 games, so win-rate noise is
+     * +-0.10 while a gate costs 0.05, and the last two generations of the 2026-08-22 night
+     * walked the incumbent from `over 4` to `over 7` on exactly that trade. Selection is
+     * LEXICOGRAPHIC now: a candidate with MORE violations than the incumbent can never be
+     * accepted however well it played, and among candidates at or under the incumbent's
+     * violations the old fitness decides. The penalty stays in `fit` so the ranking inside a
+     * violation tier still prefers the cleaner one. */
+    const bi = pick(results);
     const took = ((Date.now() - t0) / 60000).toFixed(1);
     const inc = results[0], win = results[bi];
     const moved = bi !== 0;
