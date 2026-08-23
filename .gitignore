@@ -12,3 +12,4 @@
 .*.done
 node_modules/
 search-out/
+search-out*/nohup.txt
