@@ -1987,7 +1987,23 @@ async function match(browser, base, renderer) {
          * — the run is hundreds long and his place is not where he happens to be standing.
          * Stepped until he gets there, and the renderer is asked afterwards. */
         for (let i = 0; i < 40 * 30; i++) window.World.update(g.world, C2.SIM_DT);
+        /* AND THE WORLD IS HELD WHILE THE RENDERER IS ASKED. The page's own frame loop is
+         * still stepping this world, and the read below is two frames away in WALL-CLOCK
+         * time — so on a loaded box the loop banks a second of sim between the last manual
+         * step and the answer, the man walks off his berth, `u.man` clears and the renderer
+         * rightly draws him facing his march. That is the whole of the flake: it failed at
+         * -1.19 and -2.39 rad under contention and passed solo, on identical code, on both
+         * trees. The halt is world state (`world.paused`), so `update()` returns early and
+         * the man cannot move while the question is being asked. */
+        g.world.paused = { by: 0, at: g.world.t };
+        /* ...and the halt is PROVEN, not trusted: ten steps are pushed at the held world and
+         * the clock must not move. A pause that silently stopped working would put the flake
+         * straight back, and it would look exactly like a renderer bug. */
+        const tHeld = g.world.t;
+        for (let i = 0; i < 10; i++) window.World.update(g.world, C2.SIM_DT);
+        const heldStill = g.world.t === tHeld;
         await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+        const heldThrough = g.world.t === tHeld;
         /* screen y RISES up the page, so a man standing on a wall projects HIGHER than the
          * ground he would otherwise stand on */
         /* the lift itself, read off the renderer's own instance matrices rather than
@@ -2019,11 +2035,18 @@ async function match(browser, base, renderer) {
             got = Math.atan2(Math.sin(e.y - want), Math.cos(e.y - want));   // signed error
           }
         }
-        return { man: on.man || 0, manOff: off.man || 0,
-                 lift: heightNear(on), flat: heightNear(off), facing: got };
+        const answer = { man: on.man || 0, manOff: off.man || 0, heldStill, heldThrough,
+                         lift: heightNear(on), flat: heightNear(off), facing: got };
+        g.world.paused = null;   // nothing downstream inherits a halted world
+        return answer;
       });
       ok('the sim puts the man at the wall ON the wall', !!climbed && climbed.man > 0,
          climbed ? climbed.man : 'no wall stood to climb');
+      /* the instrument first: the question below is only meaningful if the world really did
+         stand still while the renderer was asked (see the note in the rig) */
+      ok('...and the world is held while the renderer is asked',
+         !!climbed && climbed.heldStill && climbed.heldThrough,
+         climbed ? `steps refused ${climbed.heldStill}, through the frames ${climbed.heldThrough}` : 'no wall');
       /* `facing` is the SIGNED error between the heading the renderer gave him and the
        * wall's own outward normal — so this fails both when he is turned the wrong way and
        * when he is merely pointing along his last march. */

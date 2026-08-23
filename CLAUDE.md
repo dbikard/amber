@@ -210,6 +210,15 @@ progress. AI reads only what a human could see (see `AI.view()`).
 - The suite prints its slowest suites when a run is slow — start there rather than bisecting
   by hand. Most browser-suite time is FRAME time, so renderer performance and test speed are
   the same problem. Wait on a condition (`until`) rather than a fixed sleep.
+- **A RENDERER READ IS TWO FRAMES AWAY IN WALL-CLOCK TIME, AND THE WORLD IS STILL RUNNING.**
+  A browser rig that steps the sim by hand, awaits `requestAnimationFrame` and then asks the
+  renderer has handed the page's OWN loop however many milliseconds the box felt like taking
+  — on a loaded machine that is a second of banked sim, and the thing being measured has
+  moved. It cost two runs of 'he faces out over it' (off by 1.19 and 2.39 rad: the man had
+  walked off his berth, `u.man` cleared, and the renderer correctly drew his march heading),
+  and it looks exactly like a renderer bug. **Halt the world for the question** —
+  `world.paused` is world state, so `update()` returns early — and **assert the halt held**,
+  or a pause that stops working restores the flake silently.
 - There is ONE renderer. A second, Pixi-based one was kept for years as a "fallback for
   devices without WebGL"; Pixi has been WebGL-only since v7, so it was never a fallback.
   WebGL is a stated requirement, said plainly at boot. `runRenderer` still buffers its own
@@ -1389,7 +1398,8 @@ the cheapest work in the game would switch the throne's guns off from outside th
   generation, THE PLAYER'S OPENINGS as constraints (every gate over the floor is paid out
   of fitness), resumable state in `search-out/`. A search result is a PROPOSAL — the full
   referee and the designer judge it before any default changes. The referee is `node sim.js`, not vibes. Its full run
-  is mirror / THE TRIPWIRE (benedict over greedy, >65% — the one automated judgment-beats-macro
+  is mirror / THE TRIPWIRE (benedict over greedy, >65% — **a target the build has never met:
+  measured 40% at n=100 on 0.10.62, and under review in TODO; do not tune toward it** — the one automated judgment-beats-macro
   check) / THE PLAYER'S OPENINGS (scripted exploits from the designer's chronicles, floors per
   heir — a failed floor is the next AI work by name) / the ladder / convergence. The old
   three-matchup gradient was trimmed 2026-08-20 (→ LEDGER: THE GRADIENT WAS TRIMMED); a new

@@ -18,6 +18,18 @@ touches no balance surface.
       seat has a driver skipped while his hand is on it, but a guest's seat has none (a human
       holds it) and the host does not know a guest's hand. Carry the guest's hand on the wire
 
+- **THE TRIPWIRE FLOOR, MEASURED AT LAST: 40% (40-60) at n=100 on shipped 0.10.62**
+  (2026-08-23, the honest run the entry below kept asking for; SE ~4.9, so the truth is
+  roughly 30-50 and certainly not 65). The stated target of >65% has therefore been a
+  permanent red light, which is worse than no check at all — it trains every session to
+  read the one automated judgment-beats-macro test as noise. And read plainly, 40% says
+  the FLAGSHIP HEIR LOSES TO THE NAIVE BASELINE: macro beats judgment on today's board.
+  Two questions for the designer, neither of which should be answered by tuning: (1) is
+  the target restated at what a good doctrine should actually reach, or (2) is "benedict
+  behind greedy" the next AI work? greedy has gained real machinery this month
+  (neverStorms, the muster-answers want, staged raids) while benedict's edge was last
+  measured in a different game. A pre-vector tree at the same n is running to say whether
+  the first search night cost him the edge or he never had it lately.
 - THE TRIPWIRE'S FLOOR LIED: benedict over greedy reads 55% at HEAD on n=40 (seed 1000)
   against a stated floor of 65 — the 75/70 readings that set the floor were n=20. The
   2026-08-21 econ batch bisect ran everything against the honest 55: the econ config read
@@ -33,22 +45,26 @@ touches no balance surface.
   so the batch moved the tripwire not at all, and the full-run readings of 65 then 40 then
   25 across the day were all n=20 noise around ~40. The drift from 55 to 40 predates the
   batch and belongs to the floor investigation above.)
-- TWO BROWSER TESTS FLAKE UNDER CPU LOAD, trading places between runs (2026-08-22):
-  '...and he faces out over it, not along his last march' (off by -1.19 then -2.39 rad —
-  the read likely lands while the man is still turning or re-posted) and 'the anchor takes
-  the wall's end over the nearer tower'. Measured: the facing test failed twice on the
-  batch tree while sim runs contended, PASSED on HEAD in the same load, and the snap test
-  failed on HEAD in that same run — so neither failure follows the code, both follow the
-  load. A stabilization pass (wait on a settled condition, not a fixed step count) is the
-  fix; do not chase either as a regression.
+- ONE BROWSER TEST STILL FLAKES UNDER CPU LOAD: 'the anchor takes the wall's end over the
+  nearer tower' (failed once on HEAD, 2026-08-22, while sim runs contended; passes solo and
+  passed again under deliberate load 2026-08-23). Its sibling flake is FIXED and the cause
+  is worth knowing before chasing this one: 'he faces out over it' read the renderer two
+  frames away in WALL-CLOCK time while the page's own loop kept stepping the world, so
+  under load the man walked off his berth, `u.man` cleared, and the renderer rightly drew
+  his march heading (-1.19 and -2.39 rad on two runs). The rig halts the world for the
+  question now (`world.paused`) and PROVES the halt refused ten steps, so a pause that
+  stopped working cannot quietly restore the flake. Suspect the same shape here — a read
+  or a tap whose meaning depends on how much sim ran in between — rather than the snap
+  geometry.
 - brand's raid probe flaked 'jewel on the raiders 0/1' once (2026-08-21; 0/0 and 0/2 ok
   before): the probe is one scripted game, and brand held gates lost to 3 — the floor
   fires only when >2 lost, so his first loss put him one cast under. Watch, don't tune.
-- THE BENEDICT MIRROR DRIFTS LOW: across the 2026-08-21 runs it read 65, 60, 35, 25, 30,
-  15 percent (n=20 each) — enormous spread, and the last three lean hard to seat 1. If a
-  first-seat bias has crept in (an asymmetry in the opening deal or the corner draw), the
-  mirror is the instrument that would show it; run one n=60 benedict mirror and, if it
-  stays under 35, bisect the opening for the asymmetry. Do not tune doctrine on it.
+- ~~THE BENEDICT MIRROR DRIFTS LOW~~ **CLOSED (2026-08-23): no seat bias.** The n=60 run
+  the item asked for reads 45% (27-32, one draw) on shipped 0.10.62 — SE ~6.5, so a band of
+  roughly 32-58 that contains 50 comfortably. The 2026-08-21 spread (65, 60, 35, 25, 30, 15)
+  was n=20 noise, exactly as the item feared it might be; there is no asymmetry in the
+  opening deal to bisect. Keep the lesson rather than the suspicion: a mirror at n=20 says
+  almost nothing, and three low readings in a row are not evidence of a bias.
 - THE SECOND SEARCH NIGHT (2026-08-23) says the heavy raid is not a tunable problem, or
   not only one. Both candidates it produced — the deadline winner and the honest plateau —
   buy heavy-raid resilience with LIGHT-raid gates: the winner refereed as five light

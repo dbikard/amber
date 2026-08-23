@@ -690,6 +690,44 @@ relaxation fired at 1:40 of benedict's raid probe - quiet because the war had no
 and sent him out with sixteen men just before the raid landed (6 -> 7 gates, the run's one
 regression). `t > 300` now, and the probe reads 6 again.
 
+### THE TRIPWIRE, MEASURED HONESTLY AT LAST (2026-08-23)
+
+Three numbers the project has needed for a week, each at a sample where the answer means
+something, all on seed 1000:
+
+- **The floor: benedict over greedy reads 40% (40-60) at n=100 on shipped 0.10.62.** The
+  stated target is >65. SE is 4.9, so the truth is roughly 30-50 and the target is not
+  within reach of it. A check that can never go green is worse than no check: it teaches
+  every session to read the one automated judgment-beats-macro test as weather. Read
+  plainly, the number says MACRO BEATS JUDGMENT on today's board.
+- **The mirror: 45% (27-32, one draw) at n=60 — no seat bias, item closed.** The 2026-08-21
+  spread that raised the alarm (65, 60, 35, 25, 30, 15) was n=20 noise, and three low
+  readings in a row are not evidence of an asymmetry in the deal.
+- **And the deficit is a REGRESSION, not the standing state: the same run on the tree
+  BEFORE the first search night's vector was adopted (fdb2ea2) reads 55% (55-45).** Fifteen
+  points, ~2.1 SE on the difference of two n=100 proportions. **And the attribution is
+clean: the adoption commit itself (76373f0, 0.10.60) reads 40-60 — the SAME 40% as today's
+build — so the vector carries the whole of it and the 0.10.61 doctrine batch (stall-breaker,
+the Works want, the war watch) costs nothing on this axis.** The first night's own ledger
+  entry flagged exactly this risk and could not resolve it — "the tripwire read 40 under the
+  SHARED tune, ambiguous, because greedy also benefits from a higher commit floor" — and the
+  disambiguation it settled for (tuned benedict against greedy PINNED at the old defaults,
+  n=40) read 50 and looked clean. That was the wrong instrument: the question is not whether
+  the flagship beats a frozen opponent, it is what the ruler reads once EVERYONE plays the
+  new numbers, which is what shipping means. An attribution run at the adoption commit
+  itself is in flight to say whether the vector or the 0.10.61 doctrine batch carries it.
+
+**And it is not one dial.** `COMMIT` 32 → 22 was the obvious suspect (the vector's largest
+behavioural move) and it recovers only four points — 44% against shipped's 40, well inside
+the noise of the difference — while breaking two of the light floors on the way: julian to
+8 works razed on an income of 7, corwin to 7. So the tripwire loss is spread across the
+vector rather than carried by its headline number, and the cheap partial revert does not
+exist. A dial-by-dial bisect at n=100 is the only instrument that can find it.
+
+The lesson for the next adoption, whoever runs it: **judge a shared default by a run where
+both sides have it, at n=100, against the same measurement on the tree before.** Anything
+smaller cannot see fifteen points.
+
 ### THE SECOND NIGHT — THE PROBES ARE CONSTRAINTS, NOT COSTS (2026-08-23)
 
 The second search night ran the heavy raid in the constraint set (the ninth chronicle's
