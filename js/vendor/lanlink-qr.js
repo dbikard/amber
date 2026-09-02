@@ -1,14 +1,21 @@
-/* qrcode.js — minimal dependency-free QR Code generator (byte mode, ECC level M).
+/* lanlink-qr.js — the QR carrier for lanlink.js: a link code shown on one screen and read by
+ * another phone's camera. Two verbs, and any carrier added later (sound, a shared link) keeps
+ * their shape so the game picks one without knowing which:
+ *   LanLink.qr.show(canvas, code, opts) → { frames, note, stop() } | null
+ *   LanLink.qr.scan(els, opts)          → Promise<code>
  *
- * Used to pair LAN co-op without typing: the host renders the join link as a
- * QR code; the partner points their phone camera at it and taps the popup to
- * open the link (which auto-joins the room). No library, no build — fits the
- * vanilla-JS / GitHub-Pages constraint.
+ * THE LIBRARY NEVER TOUCHES A CLASS OR AN ID. It draws into the canvas it is handed and reads
+ * from the video it is handed; showing, hiding and wording the overlay are the game's
+ * (`opts.open`, `opts.close`, `opts.words`), because every game dresses its scanner differently.
  *
- * Implements the QR Code spec (ISO/IEC 18004) for versions 1–10 at error-
- * correction level M (good tolerance for camera scans). Algorithm is a compact
- * port of Nayuki's public-domain QR Code generator reference.
- */
+ * ONE STILL FRAME WHEN THE CODE FITS. A P2 link code is ~200 characters — a QR of version 9
+ * or 10, which a phone reads the moment its camera settles. Anything longer (a P1 fallback,
+ * 700+ characters and a version-30 QR too dense for autofocus) is STREAMED: cut into
+ * `opts.chunk` pieces and cycled every `opts.period` ms as `AQ|<id>|<i>|<n>|<piece>`, and the
+ * scanner reassembles them in any order. `opts.still` is the boundary.
+ *
+ * The encoder below is the same QR generator Perils shipped (byte mode, level L, versions 1-40),
+ * kept verbatim and reachable as `LanLink.qr.encoder`; it still attaches `global.QR`. */
 (function (global) {
   'use strict';
 
@@ -322,4 +329,90 @@
 
   global.QR = { generate, render };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.QR;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+(function (global) {
+  'use strict';
+  const LanLink = global.LanLink;
+  const qr = LanLink.qr = { encoder: global.QR };
+
+  qr.show = function (canvas, code, opts) {
+    opts = opts || {};
+    const size = opts.size || 560, still = opts.still != null ? opts.still : 300;
+    const CHUNK = opts.chunk || 80, period = opts.period || 420;
+    const render = (text) => global.QR.render(canvas, text, { size, quiet: 4, dark: '#000000', light: '#ffffff' });
+    if (code.length <= still) {
+      try { render(code); return { frames: 1, note: 'showing ' + code.length + ' chars as one still QR', stop() {} }; }
+      catch (e) { /* too long for one frame after all — stream it */ }
+    }
+    const chunks = [];
+    for (let i2 = 0; i2 < code.length; i2 += CHUNK) chunks.push(code.slice(i2, i2 + CHUNK));
+    const id = Math.random().toString(36).slice(2, 6), n = chunks.length;
+    let i = 0;
+    const drawFrame = () => { try { render('AQ|' + id + '|' + i + '|' + n + '|' + chunks[i]); } catch (e) {} i = (i + 1) % n; };
+    drawFrame();
+    const timer = n > 1 ? setInterval(drawFrame, period) : null;
+    return { frames: n, note: 'showing ' + code.length + ' chars as ' + n + ' QR frames', stop() { if (timer) clearInterval(timer); } };
+  };
+
+  /* els: { video, hint?, cancel? }. opts: { open(), close(), words: { aim, reading(have, need) },
+   * onProgress(have, need) }. Resolves the full code; rejects on no scanner, no camera, or cancel. */
+  qr.scan = function (els, opts) {
+    opts = opts || {};
+    const words = opts.words || {};
+    const say = (t) => { if (els.hint) els.hint.textContent = t; };
+    return new Promise(async (resolve, reject) => {
+      if (!('BarcodeDetector' in global)) { reject(new Error('this browser can’t scan QR codes')); return; }
+      let supported = [];
+      try { supported = await global.BarcodeDetector.getSupportedFormats(); } catch (e) {}
+      if (supported.indexOf('qr_code') < 0) { reject(new Error('QR scanning unsupported here')); return; }
+      const detector = new global.BarcodeDetector({ formats: ['qr_code'] });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      } catch (e) { reject(new Error('camera blocked — allow camera access')); return; }
+      try {
+        const track = stream.getVideoTracks()[0];
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch (e) {}
+      const video = els.video;
+      video.srcObject = stream; try { await video.play(); } catch (e) {}
+      if (opts.open) opts.open();
+      say(words.aim || 'Point at the other phone');
+      let done = false;
+      const snap = document.createElement('canvas'), sctx = snap.getContext('2d');
+      const cleanup = () => { done = true; if (opts.close) opts.close(); stream.getTracks().forEach((t2) => t2.stop()); video.srcObject = null; };
+      if (els.cancel) els.cancel.onclick = () => { cleanup(); reject(new Error('scan cancelled')); };
+      const parts = {}; let pid = null, need = 0, have = 0;
+      const tick = async () => {
+        if (done) return;
+        try {
+          let src = video;
+          if (video.videoWidth) { snap.width = video.videoWidth; snap.height = video.videoHeight; sctx.drawImage(video, 0, 0); src = snap; }
+          const codes = await detector.detect(src);
+          for (const code of codes || []) {
+            const v = code.rawValue; if (!v) continue;
+            if (v.slice(0, 3) !== 'AQ|') { cleanup(); resolve(v); return; }
+            const p = v.split('|');
+            if (p.length < 5) continue;
+            const id = p[1], idx = +p[2], total = +p[3];
+            if (pid !== id) { pid = id; need = total; have = 0; for (const k in parts) delete parts[k]; }
+            if (parts[idx] == null) {
+              parts[idx] = p.slice(4).join('|'); have++;
+              say(words.reading ? words.reading(have, need) : 'reading… ' + have + '/' + need);
+              if (opts.onProgress) opts.onProgress(have, need);
+            }
+            if (need > 0 && have >= need) {
+              let full = '', ok = true;
+              for (let k = 0; k < need; k++) { if (parts[k] == null) { ok = false; break; } full += parts[k]; }
+              if (ok) { cleanup(); resolve(full); return; }
+            }
+          }
+        } catch (e) { /* transient detect error — keep scanning */ }
+        if (!done) setTimeout(() => requestAnimationFrame(tick), 60);
+      };
+      requestAnimationFrame(tick);
+    });
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

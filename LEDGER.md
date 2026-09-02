@@ -9,6 +9,46 @@ findable by search here. **Consult it before re-deciding anything a rule says wa
 the point of keeping it is that the evidence is not lost or softened. Add to it whenever a rule
 in `CLAUDE.md` is backed by a number, a photograph or a rejected alternative.
 
+## Multiplayer model
+
+### THE LINK CODE IS PACKED BY FIELD
+
+2026-09-02. Asked for NFC pairing "phone to phone" and, later, sound. NFC is not available:
+Safari exposes no Web NFC at all, and Android's Web NFC is reader/writer against TAGS — the
+peer-to-peer NDEF push (Android Beam) was removed in Android 10 and the remaining route, host
+card emulation, needs a native APK with a registered AID. Web Bluetooth is central-only. Sound
+IS feasible (Web Audio + a mic on both platforms; ggwave/Chirp did it) at ~8-16 bytes/s, so
+~10-20 s of tone per leg for a 150-byte payload, a mic prompt and a gesture per phone on iOS
+anyway, and a room full of people talking against it — a hands-free trade for a slower
+handshake, to be MEASURED on two phones in a real room before it earns a toggle.
+
+What was actually slow: a representative datachannel offer is 962 bytes of JSON, 764 chars
+as P1 (deflate + base64url), which `startPairStream` at CHUNK 80 / 420 ms cut into nine
+cycling frames — 3.8 s a cycle, fighting autofocus. Almost all of it is boilerplate. P2 packs
+the fields (ufrag, pwd, 32-byte fingerprint, setup, mid/sctp/max-message-size when not the
+defaults, then each candidate as two flag bytes, foundation, u32 priority, a normalised
+address — IPv4 4 bytes, IPv6 and an mDNS uuid 16 — port, raddr/rport, tcptype) into
+**217 chars**, one still QR of version ~10. Measured in the suite, printed in the row name.
+
+The two rules, bought by the note above `gathered`: a candidate dropped is a hole in the link
+forever. `readSdp` refuses — never skips — any line, candidate extension, fingerprint
+algorithm, m-line or address shape it was not taught (Chrome's `generation`/`network-cost`/
+`network-id`/`network-type`/`ufrag` trailers are the named exceptions, dropped on purpose;
+Firefox's `a=sendrecv` accepted as the RFC 3264 default). `packDesc` unpacks its own bytes,
+re-reads the SDP and compares fields before returning; a mismatch refuses too. Either refusal
+is null → P1, which is what shipped before, with the diag naming the reason. 43 rows hold it,
+including a Firefox-shaped session-level offer, tcp/relay, a truncated body and the legacy
+P1/P0 codes.
+
+The same session split the pairing out of `net.js` into `js/vendor/lanlink.js` (the table and
+the codec, 763 lines, loads headless) and `js/vendor/lanlink-qr.js` (the encoder that was
+`qrcode.js`, plus show/scan); `net.js` kept 254 lines — the hooks, `handle`, `snapFor`. The
+split moved code by line range and renamed `Net.` to `link.` inside `create`, so the
+suites that stand a fake table up by setting fields (`Net.isHost`, `Net.peers`,
+`Net._pending`, `Net.send`) needed no change; the codec calls in the suite moved to
+`LanLink.code`. `QR.show` draws ONE still frame when the code is under `still` (300) and
+streams above it, so the P1 fallback still pairs.
+
 ## Development Practices
 
 ### There is ONE renderer

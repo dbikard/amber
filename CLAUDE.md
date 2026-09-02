@@ -46,8 +46,11 @@ js/ai.js        — bot policies: personalities + random/greedy/marcher/lord bas
 js/terrain.js   — bakes the painted ground + shared writ-outline helpers (browser)
 js/render3d.js  — ALL drawing: Three.js, pitched camera; takes a "view" + viewer (ISOLATED)
 js/render_select.js — hands game.js the renderer, or null when the device has no WebGL
-js/qrcode.js    — QR encoder (verbatim from perils)
-js/net.js       — WebRTC pairing (from perils) + host-authoritative snapshot/command sync
+js/vendor/lanlink.js — THE LIBRARY: serverless WebRTC pairing (link codes, the P2 codec, wake
+                  lock, diag, the star of guests) — shared with perils; loads headless
+js/vendor/lanlink-qr.js — the QR carrier (encoder + show/scan) for lanlink (browser)
+js/net.js       — Amber's words on the table: `LanLink.create` + message dispatch + fog-filtered
+                  snapshots (`Net.snapFor`); `Net` IS the table
 js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
 js/campaign.js  — the chapters: boards, briefings, objectives, progress (headless-safe)
 js/realm.js     — the Reach War: create the one-world war, the run shape, the pocket save (headless-safe)
@@ -151,7 +154,21 @@ an arrow. Chaos is a foe of everyone and treats with nobody. See `REALM_PLAN.md`
 
 Perils = deterministic lockstep (co-op). Amber = **host-authoritative**: competitive play
 needs fog of war and must not trust cross-browser determinism.
-- Pairing (QR/SDP/wake-lock/diag) ported from perils `js/net.js` — do not reinvent it.
+- **PAIRING IS A LIBRARY, AND THE GAME ONLY SUPPLIES THE WORDS.** `js/vendor/lanlink.js` is the
+  table (`LanLink.create({maxPeers})` — host/join/accept, send, bye/close, diag, `onMessage(m,
+  from)`), `js/vendor/lanlink-qr.js` the carrier (`LanLink.qr.show/scan`, handed elements, never
+  ids or classes), and `Net` in `js/net.js` IS the table with Amber's hooks and `snapFor` on it.
+  Born in perils, grown here, headed for its own repo so the next game does not port it a third
+  time; a sound carrier, if one is built, goes in the library with the same two verbs. Do not
+  reinvent any of it, and do not teach the library a word of Amber's protocol.
+- **THE LINK CODE IS PACKED BY FIELD, AND REFUSES WHAT IT WAS NOT TAUGHT** (`LanLink.code`,
+  format `P2`). A datachannel offer is ~1000 bytes of JSON of which the ICE ufrag, pwd, DTLS
+  fingerprint and candidates are all that is unique; packed they are ~217 chars against P1's
+  764 — ONE still QR frame instead of nine cycling ones. THE CODE ON SCREEN IS ALL THERE WILL
+  EVER BE, so the danger is a codec that is CONFIDENT: `readSdp` is a whitelist (an untaught
+  line, extension or address refuses the whole description, `lastPackReason` says which) and
+  `packDesc` decodes its own output and compares before returning. P1 is the fallback and the
+  diag says which went out. (→ LEDGER: THE LINK CODE IS PACKED BY FIELD)
 - A STAR: the host holds one peer per guest (`Net.peers`, up to 3), each paired by the same
   QR offer/answer. Host simulates everything and sends each guest its OWN fog-filtered
   snapshot (`Net.snapFor(world, seat)`); commands carry the sender's seat. The host hands out

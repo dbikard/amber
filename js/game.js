@@ -2446,82 +2446,26 @@
     const qrDisplay = $('qr-display'), qrJoin = $('qr-join'), qrScanReply = $('qr-scan-reply');
     let pairStop = null;
 
-    /* stream a payload as small cycling QR frames — dense single QRs defeat phone autofocus */
+    /* THE CARRIER IS THE LIBRARY'S; THE SCREEN IS THE GAME'S. lanlink-qr draws into the canvas
+     * and reads from the video it is handed; what is shown, hidden and said is decided here. A
+     * P2 link code is one still frame; a longer code streams as cycling frames, as before. */
     function startPairStream(payload) {
-      if (!global.QR) return false;
-      const CHUNK = 80;
-      const chunks = [];
-      for (let i2 = 0; i2 < payload.length; i2 += CHUNK) chunks.push(payload.slice(i2, i2 + CHUNK));
-      const id = Math.random().toString(36).slice(2, 6), n = chunks.length;
-      lanNote = 'showing ' + payload.length + ' chars as ' + n + ' QR frame' + (n === 1 ? '' : 's');
-      paintDiag();
-      let i = 0, timer = null;
-      const drawFrame = () => {
-        try { global.QR.render(qrDisplay, 'AQ|' + id + '|' + i + '|' + n + '|' + chunks[i], { size: 560, quiet: 4, dark: '#000000', light: '#ffffff' }); } catch (e) {}
-        i = (i + 1) % n;
-      };
+      if (!global.LanLink || !global.LanLink.qr) return false;
+      const shown = global.LanLink.qr.show(qrDisplay, payload, { size: 560 });
+      if (!shown) return false;
+      lanNote = shown.note; paintDiag();
       qrDisplay.classList.remove('hidden');
-      drawFrame();
-      if (n > 1) timer = setInterval(drawFrame, 420);
-      pairStop = () => { if (timer) clearInterval(timer); qrDisplay.classList.add('hidden'); };
+      pairStop = () => { shown.stop(); qrDisplay.classList.add('hidden'); };
       return true;
     }
-
     /* open the camera, scan one (possibly streamed) QR, resolve its full text */
     function scanQR() {
-      return new Promise(async (resolve, reject) => {
-        const overlay = $('scanner'), video = $('scan-video'), cancel = $('scan-cancel'), hint = $('scan-hint');
-        if (!('BarcodeDetector' in window)) { reject(new Error('this browser can’t scan QR codes')); return; }
-        let supported = [];
-        try { supported = await window.BarcodeDetector.getSupportedFormats(); } catch (e) {}
-        if (supported.indexOf('qr_code') < 0) { reject(new Error('QR scanning unsupported here')); return; }
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-        let stream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
-        } catch (e) { reject(new Error('camera blocked — allow camera access')); return; }
-        try {
-          const track = stream.getVideoTracks()[0];
-          const caps = track.getCapabilities ? track.getCapabilities() : {};
-          if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-        } catch (e) {}
-        video.srcObject = stream; try { await video.play(); } catch (e) {}
-        overlay.classList.remove('hidden');
-        hint.textContent = 'Point at your rival’s Trump';
-        let done = false;
-        const snap = document.createElement('canvas'), sctx = snap.getContext('2d');
-        const cleanup = () => { done = true; overlay.classList.add('hidden'); stream.getTracks().forEach((t2) => t2.stop()); video.srcObject = null; };
-        cancel.onclick = () => { cleanup(); reject(new Error('scan cancelled')); };
-        const parts = {}; let pid = null, need = 0, have = 0;
-        const tick = async () => {
-          if (done) return;
-          try {
-            let src = video;
-            if (video.videoWidth) { snap.width = video.videoWidth; snap.height = video.videoHeight; sctx.drawImage(video, 0, 0); src = snap; }
-            const codes = await detector.detect(src);
-            for (const code of codes || []) {
-              const v = code.rawValue; if (!v) continue;
-              if (v.slice(0, 3) !== 'AQ|') { cleanup(); resolve(v); return; }
-              const p = v.split('|');
-              if (p.length < 5) continue;
-              const id = p[1], idx = +p[2], total = +p[3];
-              if (pid !== id) { pid = id; need = total; have = 0; for (const k in parts) delete parts[k]; }
-              if (parts[idx] == null) {
-                parts[idx] = p.slice(4).join('|'); have++;
-                hint.textContent = 'reading the Trump… ' + have + '/' + need;
-                lanNote = 'scanned ' + have + '/' + need + ' frames';
-              }
-              if (need > 0 && have >= need) {
-                let full = '', ok = true;
-                for (let k = 0; k < need; k++) { if (parts[k] == null) { ok = false; break; } full += parts[k]; }
-                if (ok) { cleanup(); resolve(full); return; }
-              }
-            }
-          } catch (e) { /* transient detect error — keep scanning */ }
-          if (!done) setTimeout(() => requestAnimationFrame(tick), 60);
-        };
-        requestAnimationFrame(tick);
-      });
+      const overlay = $('scanner');
+      return global.LanLink.qr.scan(
+        { video: $('scan-video'), cancel: $('scan-cancel'), hint: $('scan-hint') },
+        { open: () => overlay.classList.remove('hidden'), close: () => overlay.classList.add('hidden'),
+          words: { aim: 'Point at your rival’s Trump', reading: (have, need) => 'reading the Trump… ' + have + '/' + need },
+          onProgress: (have, need) => { lanNote = 'scanned ' + have + '/' + need + ' frames'; } });
     }
 
     $('qr-host').addEventListener('click', async () => {

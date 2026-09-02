@@ -7,9 +7,9 @@
 'use strict';
 const path = require('path');
 const R = (f) => require(path.join(__dirname, '..', 'js', f));
-R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('net.js');
+R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('vendor/lanlink.js'); R('net.js');
 R('record.js'); R('campaign.js'); R('realm.js');
-const { CONST: C, World, NAV, AI, Net, Rec, WorldGen: WG, CAMPAIGN, REALM, RNG } = globalThis;
+const { CONST: C, World, NAV, AI, Net, LanLink, Rec, WorldGen: WG, CAMPAIGN, REALM, RNG } = globalThis;
 const { suite, ok, eq, near, report, wallRig } = require('./lib.js');
 
 /* ---- --quick: a partial pass for the edit loop ----
@@ -45,7 +45,7 @@ suite('the module list is one list');
      simReq.length >= 5 && simReq.every((f, i) => shipped.indexOf(f) >= 0 && (i === 0 || shipped.indexOf(f) > shipped.indexOf(simReq[i - 1]))),
      simReq.join(' '));
   const me = fs.readFileSync(__filename, 'utf8');
-  const mine = [...me.matchAll(/R\('([a-z0-9_]+\.js)'\)/g)].map((m) => 'js/' + m[1]);
+  const mine = [...me.matchAll(/R\('([a-z0-9_\/.-]+\.js)'\)/g)].map((m) => 'js/' + m[1]);
   ok('this suite requires only files index.html ships, in the same order',
      mine.length >= 8 && mine.every((f, i) => shipped.indexOf(f) >= 0 && (i === 0 || shipped.indexOf(f) > shipped.indexOf(mine[i - 1]))),
      mine.join(' '));
@@ -10867,7 +10867,7 @@ const codecDone = (async () => {
     'a=candidate:1510613869 1 udp 2122194687 3C6A2B1E-9F4D-4C8A-8E2F-0A1B2C3D4E5F.local 51235 typ host generation 0 network-id 2 network-cost 999',
     'a=candidate:1876313031 1 udp 2122197247 ::1 51236 typ host generation 0 network-id 3 network-cost 999',
     'a=candidate:842163049 1 udp 1686052607 203.0.113.7 51234 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-id 1 network-cost 999'];
-  const fields = (s) => JSON.stringify(Net.readSdp(JSON.parse(s).sdp));
+  const fields = (s) => JSON.stringify(LanLink.code.readSdp(JSON.parse(s).sdp));
   /* the round trip: fields in, fields out, judged on the normalised form */
   const trip = async (name, str) => {
     const code = await Net.compress(str);
@@ -10875,13 +10875,13 @@ const codecDone = (async () => {
     const same = fields(back) === fields(str) && JSON.parse(back).type === JSON.parse(str).type;
     ok(name, code.slice(0, 2) === 'P2' && same,
        code.slice(0, 2) + (same ? '' : '\n  got  ' + fields(back) + '\n  want ' + fields(str)) +
-       ' ' + Net.lastPackReason);
+       ' ' + LanLink.code.lastPackReason);
     return code;
   };
   /* 1. a Chrome offer with four candidates */
   const offer = chrome('offer', 'actpass', CANDS);
-  const f = Net.readSdp(JSON.parse(offer).sdp);
-  ok('the parser reads a Chrome offer', !!f && f.cands.length === 4 && f.trickle && f.eoc, Net.lastPackReason);
+  const f = LanLink.code.readSdp(JSON.parse(offer).sdp);
+  ok('the parser reads a Chrome offer', !!f && f.cands.length === 4 && f.trickle && f.eoc, LanLink.code.lastPackReason);
   eq('...an IPv4 address is re-joined from numbers', f && f.cands[0].addr.v, '192.168.1.23');
   eq('...an mDNS address is its uuid, lowercase', f && f.cands[1].addr.v, '3c6a2b1e9f4d4c8a8e2f0a1b2c3d4e5f');
   eq('...an IPv6 address is 32 hex chars', f && f.cands[2].addr.v, '0'.repeat(31) + '1');
@@ -10910,14 +10910,14 @@ const codecDone = (async () => {
     'a=ice-ufrag:1a2b3c4d', 'a=mid:0', 'a=setup:actpass', 'a=sctp-port:5000',
     'a=max-message-size:1073741823', ''].join('\r\n') });
   await trip('a Firefox-shaped offer round-trips', firefox);
-  eq('...keeping its max-message-size', Net.readSdp(JSON.parse(await Net.decompress(await Net.compress(firefox))).sdp).maxMsg, 1073741823);
+  eq('...keeping its max-message-size', LanLink.code.readSdp(JSON.parse(await Net.decompress(await Net.compress(firefox))).sdp).maxMsg, 1073741823);
   /* 5. tcp and relay */
   const tcp = chrome('offer', 'actpass', [
     'a=candidate:3 1 tcp 1518280447 192.168.1.23 9 typ host tcptype active generation 0',
     'a=candidate:4 1 udp 41885439 203.0.113.99 3478 typ relay raddr 198.51.100.9 rport 60001 generation 0',
     'a=candidate:5 2 tcp 1518214911 2001:db8:0:0:1:0:0:1 9 typ host tcptype passive']);
   await trip('tcp and relay candidates round-trip', tcp);
-  const tf = Net.readSdp(JSON.parse(await Net.decompress(await Net.compress(tcp))).sdp);
+  const tf = LanLink.code.readSdp(JSON.parse(await Net.decompress(await Net.compress(tcp))).sdp);
   eq('...tcptype survives', tf && tf.cands[0].tcptype + '/' + tf.cands[2].tcptype, 'active/passive');
   eq('...the relay raddr survives', tf && tf.cands[1].raddr.v + ':' + tf.cands[1].rport, '198.51.100.9:60001');
   eq('...and a component-2 IPv6 candidate survives', tf && tf.cands[2].comp + ' ' + tf.cands[2].addr.v, '2 20010db8000000000001000000000001');
@@ -10926,8 +10926,8 @@ const codecDone = (async () => {
   /* 6. an unknown line → refused, named, and P1 carries it */
   for (const bad of ['a=rtcp-mux', 'a=foo:bar']) {
     const s = JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=mid:0', 'a=mid:0\r\n' + bad) });
-    ok(`"${bad}" is refused`, Net.packDesc(s) === null);
-    ok('...and the reason names it', Net.lastPackReason.indexOf(bad) >= 0, Net.lastPackReason);
+    ok(`"${bad}" is refused`, LanLink.code.packDesc(s) === null);
+    ok('...and the reason names it', LanLink.code.lastPackReason.indexOf(bad) >= 0, LanLink.code.lastPackReason);
     const code = await Net.compress(s);
     ok('...and the code falls back to P1', code.slice(0, 2) === 'P1', code.slice(0, 2));
     ok('...which decompresses to the original exactly', await Net.decompress(code) === s);
@@ -10935,20 +10935,20 @@ const codecDone = (async () => {
   }
   /* 7. an unknown candidate extension */
   const ext = chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 192.168.1.23 51234 typ host foo 1']);
-  ok('an unknown candidate extension is refused', Net.packDesc(ext) === null);
-  ok('...and named', Net.lastPackReason.indexOf('"foo"') >= 0, Net.lastPackReason);
+  ok('an unknown candidate extension is refused', LanLink.code.packDesc(ext) === null);
+  ok('...and named', LanLink.code.lastPackReason.indexOf('"foo"') >= 0, LanLink.code.lastPackReason);
   /* 8. a second m-line, sha-1, a scoped IPv6 */
   const withMid = (extra) => JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=mid:0', 'a=mid:0\r\n' + extra) });
-  ok('a second m-line is refused', Net.packDesc(withMid('m=audio 9 UDP/TLS/RTP/SAVPF 111')) === null && /m-line/.test(Net.lastPackReason), Net.lastPackReason);
+  ok('a second m-line is refused', LanLink.code.packDesc(withMid('m=audio 9 UDP/TLS/RTP/SAVPF 111')) === null && /m-line/.test(LanLink.code.lastPackReason), LanLink.code.lastPackReason);
   ok('a sha-1 fingerprint is refused',
-     Net.packDesc(JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('sha-256 ' + FP, 'sha-1 ' + FP.slice(0, 59)) })) === null &&
-     /fingerprint/.test(Net.lastPackReason), Net.lastPackReason);
+     LanLink.code.packDesc(JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('sha-256 ' + FP, 'sha-1 ' + FP.slice(0, 59)) })) === null &&
+     /fingerprint/.test(LanLink.code.lastPackReason), LanLink.code.lastPackReason);
   ok('a scoped IPv6 is refused',
-     Net.packDesc(chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 fe80::1%eth0 51234 typ host'])) === null &&
-     /address/.test(Net.lastPackReason), Net.lastPackReason);
-  ok('an embedded-IPv4 IPv6 is refused', Net.packDesc(chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 ::ffff:1.2.3.4 51234 typ host'])) === null);
-  ok('a missing ufrag is refused', Net.packDesc(JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=ice-ufrag:8hhY\r\n', '') })) === null && /ufrag/.test(Net.lastPackReason), Net.lastPackReason);
-  ok('a type that is neither offer nor answer is refused', Net.packDesc(JSON.stringify({ type: 'pranswer', sdp: JSON.parse(offer).sdp })) === null);
+     LanLink.code.packDesc(chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 fe80::1%eth0 51234 typ host'])) === null &&
+     /address/.test(LanLink.code.lastPackReason), LanLink.code.lastPackReason);
+  ok('an embedded-IPv4 IPv6 is refused', LanLink.code.packDesc(chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 ::ffff:1.2.3.4 51234 typ host'])) === null);
+  ok('a missing ufrag is refused', LanLink.code.packDesc(JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=ice-ufrag:8hhY\r\n', '') })) === null && /ufrag/.test(LanLink.code.lastPackReason), LanLink.code.lastPackReason);
+  ok('a type that is neither offer nor answer is refused', LanLink.code.packDesc(JSON.stringify({ type: 'pranswer', sdp: JSON.parse(offer).sdp })) === null);
   /* 9. a truncated P2 body throws */
   let threw = null;
   try { await Net.decompress(p2.slice(0, p2.length - 12)); } catch (e) { threw = e; }
@@ -10963,11 +10963,11 @@ const codecDone = (async () => {
   /* 11. the self-check: a raw hostname address either round-trips or is refused, never a
    * code whose decode differs from its encode */
   const host = chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 example.com 51234 typ host']);
-  const hp = Net.packDesc(host);
+  const hp = LanLink.code.packDesc(host);
   if (hp) {
-    const back = JSON.parse(Net.unpackDesc(hp));
+    const back = JSON.parse(LanLink.code.unpackDesc(hp));
     ok('a raw hostname round-trips', fields(JSON.stringify(back)) === fields(host) && back.sdp.indexOf(' example.com ') >= 0);
-  } else ok('a raw hostname is refused, with a reason', !!Net.lastPackReason, Net.lastPackReason);
+  } else ok('a raw hostname is refused, with a reason', !!LanLink.code.lastPackReason, LanLink.code.lastPackReason);
   /* and the rebuilt SDP is itself something the whitelist accepts, or the self-check could
    * never pass: readSdp(unpack(pack(x))) is a fixed point */
   const rebuilt = JSON.parse(await Net.decompress(p2)).sdp;
