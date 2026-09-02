@@ -49,6 +49,14 @@ suites that stand a fake table up by setting fields (`Net.isHost`, `Net.peers`,
 `LanLink.code`. `QR.show` draws ONE still frame when the code is under `still` (300) and
 streams above it, so the P1 fallback still pairs.
 
+Then the repo: `github.com/dbikard/lanlink`, first commit 2430e23 — the two files, the 43-row
+codec suite lifted verbatim, and a LOOPBACK suite: a host table and a guest table in ONE
+headless Chromium page exchange real link codes (P2 both ways, under 300 chars) and open a
+real DataChannel over loopback, a second guest joins the star, a send to seat 2 reaches only
+seat 2, `bye` lands at the host from seat 1 before `close`; the carrier draws a 217-char code
+as one frame, a 762-char one as ten, and `scan` refuses at once with no camera (23 rows). A
+whole handshake tested without two phones, which Amber's suites drive by faking the table.
+
 ## Development Practices
 
 ### There is ONE renderer

@@ -47,8 +47,9 @@ js/terrain.js   — bakes the painted ground + shared writ-outline helpers (brow
 js/render3d.js  — ALL drawing: Three.js, pitched camera; takes a "view" + viewer (ISOLATED)
 js/render_select.js — hands game.js the renderer, or null when the device has no WebGL
 js/vendor/lanlink.js — THE LIBRARY: serverless WebRTC pairing (link codes, the P2 codec, wake
-                  lock, diag, the star of guests) — shared with perils; loads headless
-js/vendor/lanlink-qr.js — the QR carrier (encoder + show/scan) for lanlink (browser)
+                  lock, diag, the star of guests); loads headless. VENDORED BYTE-FOR-BYTE from
+                  github.com/dbikard/lanlink @ 2430e23 (v0.1.0) — edit THERE, copy here
+js/vendor/lanlink-qr.js — the QR carrier (encoder + show/scan) for lanlink (browser); same repo
 js/net.js       — Amber's words on the table: `LanLink.create` + message dispatch + fog-filtered
                   snapshots (`Net.snapFor`); `Net` IS the table
 js/record.js    — the chronicle: a pasteable record of a played match (headless-safe)
@@ -158,9 +159,13 @@ needs fog of war and must not trust cross-browser determinism.
   table (`LanLink.create({maxPeers})` — host/join/accept, send, bye/close, diag, `onMessage(m,
   from)`), `js/vendor/lanlink-qr.js` the carrier (`LanLink.qr.show/scan`, handed elements, never
   ids or classes), and `Net` in `js/net.js` IS the table with Amber's hooks and `snapFor` on it.
-  Born in perils, grown here, headed for its own repo so the next game does not port it a third
-  time; a sound carrier, if one is built, goes in the library with the same two verbs. Do not
-  reinvent any of it, and do not teach the library a word of Amber's protocol.
+  Born in perils, grown here, and now ITS OWN REPO — `github.com/dbikard/lanlink`, with the
+  codec suite and a LOOPBACK suite that pairs a host and two guests through real link codes in
+  one Chromium page, which no Amber suite can do. The two files here are copies, kept
+  byte-identical to a pinned commit (named in the architecture list above), so `diff` answers
+  whether Amber is current: fix a pairing bug in the repo, run its tests, copy both files back,
+  bump the pin. A sound carrier, if one is built, goes in the library with the same two verbs.
+  Do not reinvent any of it, and do not teach the library a word of Amber's protocol.
 - **THE LINK CODE IS PACKED BY FIELD, AND REFUSES WHAT IT WAS NOT TAUGHT** (`LanLink.code`,
   format `P2`). A datachannel offer is ~1000 bytes of JSON of which the ICE ufrag, pwd, DTLS
   fingerprint and candidates are all that is unique; packed they are ~217 chars against P1's
