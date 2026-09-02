@@ -10844,7 +10844,140 @@ suite('the overnight search may not buy wins with gates');
      pick([r(0.50, 3), r(0.40, 3), r(0.10, 4)]) === 0);
 }
 
+/* ---------------- the link code, packed by field ----------------
+ * THE CODE ON SCREEN IS ALL THERE WILL EVER BE (net.js). Every assertion here is about the
+ * two rules that make a confident codec safe to ship: the whitelist refuses what it was not
+ * taught, and the round trip is judged on the NORMALISED fields — never on the string, which
+ * the rebuild is allowed to spell differently. The P1 legacy path and the P0 fallback are held
+ * against codes this suite makes itself, so a phone that scans an old code still pairs.
+ * The deflate stream is async, so this suite is the LAST one and the tally waits on
+ * `codecDone` — a suite registered below it would be caught by lib.js's guard. */
+suite('the link code is packed by field, and refuses what it was not taught');
+const codecDone = (async () => {
+  const FP = Array.from({ length: 32 }, (_, i) => ((i * 37 + 11) % 256).toString(16).padStart(2, '0').toUpperCase()).join(':');
+  const chrome = (type, setup, cands) => JSON.stringify({ type, sdp: [
+    'v=0', 'o=- 4611731400430051336 2 IN IP4 127.0.0.1', 's=-', 't=0 0', 'a=group:BUNDLE 0',
+    'a=extmap-allow-mixed', 'a=msid-semantic: WMS',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0', ...cands,
+    'a=ice-ufrag:8hhY', 'a=ice-pwd:asd88fgpdd777uzjYhagZg', 'a=ice-options:trickle',
+    'a=fingerprint:sha-256 ' + FP, 'a=setup:' + setup, 'a=mid:0', 'a=sctp-port:5000',
+    'a=max-message-size:262144', 'a=end-of-candidates', ''].join('\r\n') });
+  const CANDS = [
+    'a=candidate:2999745851 1 udp 2122260223 192.168.001.023 51234 typ host generation 0 network-id 1 network-cost 10',
+    'a=candidate:1510613869 1 udp 2122194687 3C6A2B1E-9F4D-4C8A-8E2F-0A1B2C3D4E5F.local 51235 typ host generation 0 network-id 2 network-cost 999',
+    'a=candidate:1876313031 1 udp 2122197247 ::1 51236 typ host generation 0 network-id 3 network-cost 999',
+    'a=candidate:842163049 1 udp 1686052607 203.0.113.7 51234 typ srflx raddr 0.0.0.0 rport 0 generation 0 network-id 1 network-cost 999'];
+  const fields = (s) => JSON.stringify(Net.readSdp(JSON.parse(s).sdp));
+  /* the round trip: fields in, fields out, judged on the normalised form */
+  const trip = async (name, str) => {
+    const code = await Net.compress(str);
+    const back = await Net.decompress(code);
+    const same = fields(back) === fields(str) && JSON.parse(back).type === JSON.parse(str).type;
+    ok(name, code.slice(0, 2) === 'P2' && same,
+       code.slice(0, 2) + (same ? '' : '\n  got  ' + fields(back) + '\n  want ' + fields(str)) +
+       ' ' + Net.lastPackReason);
+    return code;
+  };
+  /* 1. a Chrome offer with four candidates */
+  const offer = chrome('offer', 'actpass', CANDS);
+  const f = Net.readSdp(JSON.parse(offer).sdp);
+  ok('the parser reads a Chrome offer', !!f && f.cands.length === 4 && f.trickle && f.eoc, Net.lastPackReason);
+  eq('...an IPv4 address is re-joined from numbers', f && f.cands[0].addr.v, '192.168.1.23');
+  eq('...an mDNS address is its uuid, lowercase', f && f.cands[1].addr.v, '3c6a2b1e9f4d4c8a8e2f0a1b2c3d4e5f');
+  eq('...an IPv6 address is 32 hex chars', f && f.cands[2].addr.v, '0'.repeat(31) + '1');
+  eq('...the srflx keeps its raddr', f && f.cands[3].raddr && f.cands[3].raddr.v + ':' + f.cands[3].rport, '0.0.0.0:0');
+  eq('...and the fingerprint is 64 lowercase hex chars', f && f.fp, FP.replace(/:/g, '').toLowerCase());
+  const p2 = await trip('the Chrome offer round-trips as P2', offer);
+  /* 2. size */
+  const p1 = await Net.compress(offer, { force: 'P1' });
+  ok(`the P2 code is under 260 chars — measured ${p2.length} (P1 of the same offer: ${p1.length}, JSON ${offer.length})`,
+     p2.length < 260 && p1.slice(0, 2) === 'P1');
+  ok('...and shorter than P1', p2.length < p1.length, `${p2.length} vs ${p1.length}`);
+  eq('...and the diag says which was used', Net.diag.some((l) => l.indexOf('link code: P2 ' + p2.length + ' chars') >= 0), true);
+  /* 3. an answer */
+  const ans = chrome('answer', 'active', CANDS.slice(0, 2));
+  await trip('an answer round-trips with its type', ans);
+  eq('...as an answer', JSON.parse(await Net.decompress(await Net.compress(ans))).type, 'answer');
+  /* 4. Firefox: attributes at session level, a big max-message-size, small foundations */
+  const firefox = JSON.stringify({ type: 'offer', sdp: [
+    'v=0', 'o=mozilla...THIS_IS_SDPARTA-99.0 8237449833318932336 0 IN IP4 0.0.0.0', 's=-', 't=0 0',
+    'a=sendrecv', 'a=fingerprint:sha-256 ' + FP, 'a=group:BUNDLE 0', 'a=ice-options:trickle',
+    'a=msid-semantic:WMS *',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+    'a=candidate:0 1 UDP 2122252543 10.0.0.5 60001 typ host',
+    'a=candidate:2 1 UDP 1686052863 198.51.100.9 60001 typ srflx raddr 10.0.0.5 rport 60001',
+    'a=sendrecv', 'a=end-of-candidates', 'a=ice-pwd:0f9b4c1e7d2a5b8c3e6f1a4d7b0c2e5f',
+    'a=ice-ufrag:1a2b3c4d', 'a=mid:0', 'a=setup:actpass', 'a=sctp-port:5000',
+    'a=max-message-size:1073741823', ''].join('\r\n') });
+  await trip('a Firefox-shaped offer round-trips', firefox);
+  eq('...keeping its max-message-size', Net.readSdp(JSON.parse(await Net.decompress(await Net.compress(firefox))).sdp).maxMsg, 1073741823);
+  /* 5. tcp and relay */
+  const tcp = chrome('offer', 'actpass', [
+    'a=candidate:3 1 tcp 1518280447 192.168.1.23 9 typ host tcptype active generation 0',
+    'a=candidate:4 1 udp 41885439 203.0.113.99 3478 typ relay raddr 198.51.100.9 rport 60001 generation 0',
+    'a=candidate:5 2 tcp 1518214911 2001:db8:0:0:1:0:0:1 9 typ host tcptype passive']);
+  await trip('tcp and relay candidates round-trip', tcp);
+  const tf = Net.readSdp(JSON.parse(await Net.decompress(await Net.compress(tcp))).sdp);
+  eq('...tcptype survives', tf && tf.cands[0].tcptype + '/' + tf.cands[2].tcptype, 'active/passive');
+  eq('...the relay raddr survives', tf && tf.cands[1].raddr.v + ':' + tf.cands[1].rport, '198.51.100.9:60001');
+  eq('...and a component-2 IPv6 candidate survives', tf && tf.cands[2].comp + ' ' + tf.cands[2].addr.v, '2 20010db8000000000001000000000001');
+  ok('...an IPv6 with a run of zeros is spelt RFC-5952-ish on the way out',
+     JSON.parse(await Net.decompress(await Net.compress(tcp))).sdp.indexOf(' 2001:db8::1:0:0:1 ') >= 0);
+  /* 6. an unknown line → refused, named, and P1 carries it */
+  for (const bad of ['a=rtcp-mux', 'a=foo:bar']) {
+    const s = JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=mid:0', 'a=mid:0\r\n' + bad) });
+    ok(`"${bad}" is refused`, Net.packDesc(s) === null);
+    ok('...and the reason names it', Net.lastPackReason.indexOf(bad) >= 0, Net.lastPackReason);
+    const code = await Net.compress(s);
+    ok('...and the code falls back to P1', code.slice(0, 2) === 'P1', code.slice(0, 2));
+    ok('...which decompresses to the original exactly', await Net.decompress(code) === s);
+    ok('...and the diag says why', Net.diag.some((l) => l.indexOf('link code: P1 (') >= 0 && l.indexOf(bad) >= 0), Net.diag.slice(-2).join(' | '));
+  }
+  /* 7. an unknown candidate extension */
+  const ext = chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 192.168.1.23 51234 typ host foo 1']);
+  ok('an unknown candidate extension is refused', Net.packDesc(ext) === null);
+  ok('...and named', Net.lastPackReason.indexOf('"foo"') >= 0, Net.lastPackReason);
+  /* 8. a second m-line, sha-1, a scoped IPv6 */
+  const withMid = (extra) => JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=mid:0', 'a=mid:0\r\n' + extra) });
+  ok('a second m-line is refused', Net.packDesc(withMid('m=audio 9 UDP/TLS/RTP/SAVPF 111')) === null && /m-line/.test(Net.lastPackReason), Net.lastPackReason);
+  ok('a sha-1 fingerprint is refused',
+     Net.packDesc(JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('sha-256 ' + FP, 'sha-1 ' + FP.slice(0, 59)) })) === null &&
+     /fingerprint/.test(Net.lastPackReason), Net.lastPackReason);
+  ok('a scoped IPv6 is refused',
+     Net.packDesc(chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 fe80::1%eth0 51234 typ host'])) === null &&
+     /address/.test(Net.lastPackReason), Net.lastPackReason);
+  ok('an embedded-IPv4 IPv6 is refused', Net.packDesc(chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 ::ffff:1.2.3.4 51234 typ host'])) === null);
+  ok('a missing ufrag is refused', Net.packDesc(JSON.stringify({ type: 'offer', sdp: JSON.parse(offer).sdp.replace('a=ice-ufrag:8hhY\r\n', '') })) === null && /ufrag/.test(Net.lastPackReason), Net.lastPackReason);
+  ok('a type that is neither offer nor answer is refused', Net.packDesc(JSON.stringify({ type: 'pranswer', sdp: JSON.parse(offer).sdp })) === null);
+  /* 9. a truncated P2 body throws */
+  let threw = null;
+  try { await Net.decompress(p2.slice(0, p2.length - 12)); } catch (e) { threw = e; }
+  ok('a truncated P2 code throws', !!threw, threw && threw.message);
+  threw = null;
+  try { await Net.decompress(p2 + 'AA'); } catch (e) { threw = e; }
+  ok('...and so does one with bytes after the end', !!threw, threw && threw.message);
+  /* 10. the legacy codes */
+  const p0 = await Net.compress(offer, { force: 'P0' });
+  ok('a legacy P1 code still decompresses', p1.slice(0, 2) === 'P1' && await Net.decompress(p1) === offer);
+  ok('a P0 code still decompresses', p0.slice(0, 2) === 'P0' && await Net.decompress(p0) === offer);
+  /* 11. the self-check: a raw hostname address either round-trips or is refused, never a
+   * code whose decode differs from its encode */
+  const host = chrome('offer', 'actpass', ['a=candidate:1 1 udp 2122260223 example.com 51234 typ host']);
+  const hp = Net.packDesc(host);
+  if (hp) {
+    const back = JSON.parse(Net.unpackDesc(hp));
+    ok('a raw hostname round-trips', fields(JSON.stringify(back)) === fields(host) && back.sdp.indexOf(' example.com ') >= 0);
+  } else ok('a raw hostname is refused, with a reason', !!Net.lastPackReason, Net.lastPackReason);
+  /* and the rebuilt SDP is itself something the whitelist accepts, or the self-check could
+   * never pass: readSdp(unpack(pack(x))) is a fixed point */
+  const rebuilt = JSON.parse(await Net.decompress(p2)).sdp;
+  eq('the rebuilt SDP reads back to the same fields once more', fields(JSON.stringify({ type: 'offer', sdp: rebuilt })), fields(offer));
+})();
+
 /* ---------------- */
+/* the link-code suite awaits the deflate stream (see it); a suite that crashed mid-way is a
+ * red row, never a missing tally */
+codecDone.catch((e) => ok('the link-code suite ran to the end', false, String(e && e.stack || e))).then(() => {
 const bad = report("headless");
 if (QUICK_RUN) {
   /* after the tally, each on its own line: nothing that greps the "headless: N/N passing"
@@ -10859,3 +10992,4 @@ if (QUICK_RUN) {
  * provenance line gone, and the runner's exit code the only thing left saying anything. Set
  * the code and let the process end on its own; the queue drains first. */
 process.exitCode = bad;
+});

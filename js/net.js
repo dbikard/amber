@@ -90,9 +90,307 @@
     for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
     return out;
   }
-  async function compress(str) {
+
+  /* ---------------- P2: the link code packed by FIELD ----------------
+   * THE CODE ON SCREEN IS ALL THERE WILL EVER BE. There is no server to ask again, no second
+   * message, no retry: one phone photographs the other, and whatever survived the photograph
+   * is the whole of what the far side will ever know about this peer. A datachannel-only
+   * offer is ~960 bytes of SDP, ~700 chars once deflated (P1), and at 80 chars a frame that is
+   * nine cycling QR codes fighting a phone's autofocus — the slow part of pairing, measured on
+   * the table. Almost all of it is boilerplate every browser writes the same way. What is
+   * actually THIS peer's is the ICE ufrag and password, the DTLS fingerprint, the setup role
+   * and the candidate list: ~150 bytes packed, ~200 chars, one still frame.
+   *
+   * So the danger of a codec here is not that it is big but that it is CONFIDENT. A field it
+   * did not know about and quietly dropped is not a slightly worse link; it is a link with a
+   * permanent hole that no diagnostic will ever name, because the far side reads a perfectly
+   * well-formed SDP with the hole already in it. Two rules hold it:
+   *   1. THE WHITELIST. `readSdp` accepts exactly the lines it was taught — the boilerplate it
+   *      may drop, the fields it keeps, the candidate extensions it may drop (Chrome's
+   *      `generation`/`network-cost`/... are bookkeeping about the gatherer's own interfaces)
+   *      — and ANY other line, extension, fingerprint algorithm, second m-line or address it
+   *      cannot normalise makes the whole description null. Refusal is cheap: P1 still stands.
+   *   2. THE SELF ROUND TRIP. `packDesc` unpacks its own bytes, re-reads the SDP it rebuilt and
+   *      compares field for field with what it read from the original, type included. A byte
+   *      layout that loses anything — a leading zero, a case, a flag — refuses itself rather
+   *      than shipping. A codec that checks itself on every code cannot rot silently.
+   * P1 is the fallback for everything P2 refuses, and the diag says WHICH was used and, when it
+   * was P1, WHY (`lastPackReason`), because a table where every code is nine frames is a table
+   * where the whitelist has fallen behind a browser, and that is a bug report with a line in it.
+   * Addresses are normalised at parse time — IPv4 re-joined from numbers, IPv6 to 32 hex chars,
+   * mDNS to its uuid — and the round trip is judged on the normalised form, so the rebuilt
+   * string may spell an address differently and still be the same address. Anything the
+   * normaliser is not sure of (a scoped `%eth0`, an embedded `::ffff:1.2.3.4`) is refused. */
+  let lastPackReason = '';
+  const SETUPS = ['actpass', 'active', 'passive', 'holdconn'];
+  const CTYPES = ['host', 'srflx', 'prflx', 'relay'];
+  const MID_DEF = '0', SCTP_DEF = 5000, MAXMSG_DEF = 262144;
+  /* candidate extensions: kept ride the wire, dropped are the gatherer's own bookkeeping */
+  const EXT_KEEP = { raddr: 1, rport: 1, tcptype: 1 };
+  const EXT_DROP = { generation: 1, 'network-cost': 1, 'network-id': 1, 'network-type': 1, ufrag: 1 };
+  const refuse = (why) => { lastPackReason = why; return null; };
+
+  /* IPv6 text → 32 lowercase hex chars, or null. Conservative on purpose: one `::` at most,
+   * hex groups only — no zone (`%`), no embedded dotted quad. */
+  function ip6hex(s) {
+    s = s.toLowerCase();
+    if (!/^[0-9a-f:]+$/.test(s)) return null;
+    const halves = s.split('::');
+    if (halves.length > 2) return null;
+    const groups = (h) => {
+      if (h === '') return [];
+      const g = h.split(':');
+      for (const x of g) if (!/^[0-9a-f]{1,4}$/.test(x)) return null;
+      return g;
+    };
+    const L = groups(halves[0]), Rr = halves.length === 2 ? groups(halves[1]) : [];
+    if (!L || !Rr) return null;
+    let all;
+    if (halves.length === 2) {
+      if (L.length + Rr.length > 7) return null;
+      all = L.concat(new Array(8 - L.length - Rr.length).fill('0'), Rr);
+    } else {
+      if (L.length !== 8) return null;
+      all = L;
+    }
+    return all.map((g) => g.padStart(4, '0')).join('');
+  }
+  /* 32 hex chars → RFC 5952-ish text: leading zeros dropped, the first longest zero run of
+   * two or more groups as `::` */
+  function ip6str(hex) {
+    const g = [];
+    for (let i = 0; i < 8; i++) g.push(parseInt(hex.slice(i * 4, i * 4 + 4), 16));
+    let bestAt = -1, bestLen = 1;
+    for (let i = 0; i < 8; i++) {
+      if (g[i] !== 0) continue;
+      let j = i; while (j < 8 && g[j] === 0) j++;
+      if (j - i > bestLen) { bestAt = i; bestLen = j - i; }
+      i = j;
+    }
+    const hx = (n) => n.toString(16);
+    if (bestAt < 0) return g.map(hx).join(':');
+    return g.slice(0, bestAt).map(hx).join(':') + '::' + g.slice(bestAt + bestLen).map(hx).join(':');
+  }
+  /* an address as it appears in a candidate line → {t, v}, or null when unsure */
+  function readAddr(s) {
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) {
+      const p = s.split('.').map(Number);
+      if (p.some((n) => n > 255)) return null;
+      return { t: 0, v: p.join('.') };
+    }
+    const m = /^([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\.local$/i.exec(s);
+    if (m) return { t: 2, v: (m[1] + m[2] + m[3] + m[4] + m[5]).toLowerCase() };
+    if (s.indexOf(':') >= 0) { const v = ip6hex(s); return v ? { t: 1, v } : null; }
+    /* anything else, raw: printable ASCII with no space (the line was split on spaces, so a
+     * space could not have arrived here, and one must not leave here either) */
+    if (!/^[\x21-\x7e]{1,255}$/.test(s)) return null;
+    return { t: 3, v: s };
+  }
+  function addrStr(a) {
+    if (a.t === 0) return a.v;
+    if (a.t === 1) return ip6str(a.v);
+    if (a.t === 2) return a.v.slice(0, 8) + '-' + a.v.slice(8, 12) + '-' + a.v.slice(12, 16) + '-' + a.v.slice(16, 20) + '-' + a.v.slice(20) + '.local';
+    return a.v;
+  }
+  const isPort = (s) => /^\d{1,5}$/.test(s) && +s <= 65535;
+
+  /* a=candidate:... → the candidate's fields, every key present so JSON.stringify is canonical */
+  function readCand(line) {
+    const tk = line.slice('a=candidate:'.length).split(' ');
+    if (tk.length < 8 || tk[6] !== 'typ') return refuse('candidate shape: ' + line);
+    const found = tk[0];
+    if (!/^[\x21-\x7e]{1,255}$/.test(found)) return refuse('candidate foundation: ' + line);
+    if (tk[1] !== '1' && tk[1] !== '2') return refuse('candidate component: ' + line);
+    const transport = tk[2].toLowerCase();
+    if (transport !== 'udp' && transport !== 'tcp') return refuse('candidate transport: ' + line);
+    if (!/^\d{1,10}$/.test(tk[3]) || +tk[3] > 0xFFFFFFFF) return refuse('candidate priority: ' + line);
+    const addr = readAddr(tk[4]);
+    if (!addr) return refuse('candidate address: ' + line);
+    if (!isPort(tk[5])) return refuse('candidate port: ' + line);
+    const type = CTYPES.indexOf(tk[7]);
+    if (type < 0) return refuse('candidate type: ' + line);
+    let raddr = null, rport = null, tcptype = null;
+    for (let i = 8; i < tk.length; i += 2) {
+      const k = tk[i], v = tk[i + 1];
+      if (v === undefined) return refuse('candidate extension without a value: ' + line);
+      if (EXT_DROP[k]) continue;
+      if (!EXT_KEEP[k]) return refuse('candidate extension "' + k + '": ' + line);
+      if (k === 'raddr') {
+        raddr = readAddr(v);
+        if (!raddr || raddr.t > 1) return refuse('candidate raddr: ' + line);
+      } else if (k === 'rport') {
+        if (!isPort(v)) return refuse('candidate rport: ' + line);
+        rport = +v;
+      } else {
+        if (!/^[\x21-\x7e]{1,255}$/.test(v)) return refuse('candidate tcptype: ' + line);
+        tcptype = v;
+      }
+    }
+    if ((raddr === null) !== (rport === null)) return refuse('candidate raddr without rport: ' + line);
+    return { found, comp: +tk[1], transport, priority: +tk[3], addr, port: +tk[5],
+             type: CTYPES[type], raddr, rport, tcptype };
+  }
+
+  /* the strict whitelist parser: fields, or null with `lastPackReason` naming the line */
+  function readSdp(sdp) {
+    if (typeof sdp !== 'string') return refuse('no sdp');
+    const f = { ufrag: null, pwd: null, fp: null, setup: null, mid: null, sctpPort: SCTP_DEF,
+                maxMsg: MAXMSG_DEF, trickle: false, eoc: false, cands: [] };
+    let mLines = 0, bundle = null;
+    /* one value per field: a repeat that agrees (Firefox says ufrag at both levels in some
+     * versions) is fine; a repeat that disagrees is two peers in one description */
+    const once = (k, v, line) => {
+      if (f[k] !== null && f[k] !== v) return refuse('conflicting ' + k + ': ' + line);
+      f[k] = v; return true;
+    };
+    for (const line of sdp.split(/\r?\n/)) {
+      if (line === '') continue;
+      let m;
+      if (line === 'v=0' || /^o=/.test(line) || /^s=/.test(line) || /^t=/.test(line) || /^c=/.test(line) ||
+          line === 'a=extmap-allow-mixed' || /^a=msid-semantic:/.test(line) || line === 'a=sendrecv') continue;
+      if ((m = /^a=group:BUNDLE (\S+)$/.exec(line))) { if (bundle !== null && bundle !== m[1]) return refuse('two BUNDLE groups: ' + line); bundle = m[1]; continue; }
+      if (line === 'a=ice-options:trickle') { f.trickle = true; continue; }
+      if (line === 'a=end-of-candidates') { f.eoc = true; continue; }
+      if (/^m=/.test(line)) {
+        if (++mLines > 1) return refuse('a second m-line: ' + line);
+        if (!/^m=application [09] UDP\/DTLS\/SCTP webrtc-datachannel$/.test(line)) return refuse('m-line: ' + line);
+        continue;
+      }
+      if ((m = /^a=ice-ufrag:(\S{1,255})$/.exec(line))) { if (!once('ufrag', m[1], line)) return null; continue; }
+      if ((m = /^a=ice-pwd:(\S{1,255})$/.exec(line))) { if (!once('pwd', m[1], line)) return null; continue; }
+      if ((m = /^a=fingerprint:(\S+) (\S+)$/.exec(line))) {
+        if (m[1].toLowerCase() !== 'sha-256') return refuse('fingerprint algorithm: ' + line);
+        if (!/^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$/.test(m[2])) return refuse('fingerprint shape: ' + line);
+        if (!once('fp', m[2].replace(/:/g, '').toLowerCase(), line)) return null;
+        continue;
+      }
+      if ((m = /^a=setup:(\S+)$/.exec(line))) { if (SETUPS.indexOf(m[1]) < 0) return refuse('setup: ' + line); if (!once('setup', m[1], line)) return null; continue; }
+      if ((m = /^a=mid:(\S{1,255})$/.exec(line))) { if (!once('mid', m[1], line)) return null; continue; }
+      if ((m = /^a=sctp-port:(\d{1,5})$/.exec(line))) { if (+m[1] > 65535) return refuse('sctp-port: ' + line); f.sctpPort = +m[1]; continue; }
+      if ((m = /^a=max-message-size:(\d{1,15})$/.exec(line))) { f.maxMsg = +m[1]; continue; }
+      if (/^a=candidate:/.test(line)) { const c = readCand(line); if (!c) return null; f.cands.push(c); continue; }
+      return refuse('unknown line: ' + line);
+    }
+    if (mLines !== 1) return refuse('no m-line');
+    for (const k of ['ufrag', 'pwd', 'fp', 'setup', 'mid']) if (f[k] === null) return refuse('missing ' + k);
+    if (bundle !== null && bundle !== f.mid) return refuse('BUNDLE names a mid that is not here: ' + bundle);
+    return f;
+  }
+
+  /* ---- the byte layout ---- */
+  const utf8 = (s) => new TextEncoder().encode(s);
+  function packDesc(jsonStr) {
+    let d;
+    try { d = JSON.parse(jsonStr); } catch (e) { return refuse('not JSON'); }
+    if (!d || (d.type !== 'offer' && d.type !== 'answer')) return refuse('type: ' + (d && d.type));
+    const f = readSdp(d.sdp);
+    if (!f) return null;
+    const out = [];
+    const u8 = (n) => out.push(n & 255);
+    const u16 = (n) => { u8(n >> 8); u8(n); };
+    const u32 = (n) => { u8(n >>> 24); u8(n >>> 16); u8(n >>> 8); u8(n); };
+    const varint = (n) => { while (n >= 128) { u8((n % 128) | 128); n = Math.floor(n / 128); } u8(n); };
+    const bytes = (b) => { for (const x of b) u8(x); };
+    const str8 = (s, what) => { const b = utf8(s); if (b.length > 255) return refuse(what + ' too long'); u8(b.length); bytes(b); return true; };
+    const hex = (h) => { for (let i = 0; i < h.length; i += 2) u8(parseInt(h.slice(i, i + 2), 16)); };
+    const addrBytes = (a) => {
+      if (a.t === 0) { for (const n of a.v.split('.')) u8(+n); return true; }
+      if (a.t === 1 || a.t === 2) { hex(a.v); return true; }
+      return str8(a.v, 'address');
+    };
+    u8(1);
+    u8((d.type === 'answer' ? 1 : 0) | (SETUPS.indexOf(f.setup) << 1) | (f.mid === MID_DEF ? 8 : 0) |
+       (f.sctpPort === SCTP_DEF ? 16 : 0) | (f.maxMsg === MAXMSG_DEF ? 32 : 0) | (f.trickle ? 64 : 0) | (f.eoc ? 128 : 0));
+    if (!str8(f.ufrag, 'ufrag') || !str8(f.pwd, 'pwd')) return null;
+    hex(f.fp);
+    if (f.mid !== MID_DEF) { const b = utf8(f.mid); varint(b.length); bytes(b); }
+    if (f.sctpPort !== SCTP_DEF) varint(f.sctpPort);
+    if (f.maxMsg !== MAXMSG_DEF) varint(f.maxMsg);
+    varint(f.cands.length);
+    for (const c of f.cands) {
+      /* a numeric foundation with no leading zero rides as a number; anything else as text */
+      const numF = /^(0|[1-9]\d{0,14})$/.test(c.found);
+      u8(CTYPES.indexOf(c.type) | (c.transport === 'tcp' ? 4 : 0) | (c.addr.t << 3) |
+         (c.raddr ? 32 : 0) | (c.tcptype !== null ? 64 : 0) | (c.comp === 2 ? 128 : 0));
+      u8((numF ? 0 : 1) | (c.raddr && c.raddr.t === 1 ? 2 : 0));
+      if (numF) varint(+c.found); else if (!str8(c.found, 'foundation')) return null;
+      u32(c.priority);
+      if (!addrBytes(c.addr)) return null;
+      u16(c.port);
+      if (c.raddr) { addrBytes(c.raddr); u16(c.rport); }
+      if (c.tcptype !== null && !str8(c.tcptype, 'tcptype')) return null;
+    }
+    const packed = new Uint8Array(out);
+    /* THE SELF ROUND TRIP: what the far side will read has to be what was read here */
+    let back;
+    try { back = JSON.parse(unpackDesc(packed)); } catch (e) { return refuse('self-check threw: ' + e.message); }
+    const g = readSdp(back.sdp);
+    if (!g) return refuse('self-check re-read: ' + lastPackReason);
+    if (back.type !== d.type || JSON.stringify(g) !== JSON.stringify(f)) return refuse('self-check mismatch');
+    return packed;
+  }
+
+  function unpackDesc(bytes) {
+    let p = 0;
+    const need = (n) => { if (p + n > bytes.length) throw new Error('link code truncated'); };
+    const u8 = () => { need(1); return bytes[p++]; };
+    const u16 = () => (u8() << 8) | u8();
+    const u32 = () => ((u8() << 24) >>> 0) + (u8() << 16) + (u8() << 8) + u8();
+    const varint = () => { let n = 0, mul = 1, b; do { b = u8(); n += (b & 127) * mul; mul *= 128; if (mul > 2 ** 56) throw new Error('link code: varint'); } while (b & 128); return n; };
+    const take = (n) => { need(n); const s = bytes.subarray(p, p + n); p += n; return s; };
+    const str = (n) => new TextDecoder().decode(take(n));
+    const hex = (n) => Array.from(take(n), (x) => x.toString(16).padStart(2, '0')).join('');
+    const addr = (t) => {
+      if (t === 0) return Array.from(take(4)).join('.');
+      if (t === 1) return ip6str(hex(16));
+      if (t === 2) return addrStr({ t: 2, v: hex(16) });
+      return str(u8());
+    };
+    if (u8() !== 1) throw new Error('link code: unknown P2 version');
+    const fl = u8();
+    const type = (fl & 1) ? 'answer' : 'offer', setup = SETUPS[(fl >> 1) & 3];
+    const ufrag = str(u8()), pwd = str(u8()), fp = hex(32);
+    const mid = (fl & 8) ? MID_DEF : str(varint());
+    const sctpPort = (fl & 16) ? SCTP_DEF : varint();
+    const maxMsg = (fl & 32) ? MAXMSG_DEF : varint();
+    const cands = [];
+    const n = varint();
+    for (let i = 0; i < n; i++) {
+      const f0 = u8(), f1 = u8();
+      const found = (f1 & 1) ? str(u8()) : String(varint());
+      const priority = u32();
+      const a = addr((f0 >> 3) & 3);
+      const port = u16();
+      let line = 'a=candidate:' + found + ' ' + ((f0 & 128) ? 2 : 1) + ' ' + ((f0 & 4) ? 'tcp' : 'udp') + ' ' +
+                 priority + ' ' + a + ' ' + port + ' typ ' + CTYPES[f0 & 3];
+      if (f0 & 32) { const ra = addr((f1 & 2) ? 1 : 0); line += ' raddr ' + ra + ' rport ' + u16(); }
+      if (f0 & 64) line += ' tcptype ' + str(u8());
+      cands.push(line);
+    }
+    if (p !== bytes.length) throw new Error('link code: trailing bytes');
+    const fpText = fp.toUpperCase().match(/../g).join(':');
+    const lines = ['v=0', 'o=- 0 2 IN IP4 127.0.0.1', 's=-', 't=0 0', 'a=group:BUNDLE ' + mid,
+                   'a=extmap-allow-mixed', 'a=msid-semantic: WMS',
+                   'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+                   ...cands, 'a=ice-ufrag:' + ufrag, 'a=ice-pwd:' + pwd,
+                   ...((fl & 64) ? ['a=ice-options:trickle'] : []),
+                   'a=fingerprint:sha-256 ' + fpText, 'a=setup:' + setup, 'a=mid:' + mid,
+                   'a=sctp-port:' + sctpPort, 'a=max-message-size:' + maxMsg,
+                   ...((fl & 128) ? ['a=end-of-candidates'] : [])];
+    return JSON.stringify({ type, sdp: lines.join('\r\n') + '\r\n' });
+  }
+
+  /* `opts.force` ('P1' | 'P0') is for the suite, which has to hold the legacy formats against
+   * a code it made itself; play never passes it. */
+  async function compress(str, opts) {
+    const force = opts && opts.force;
+    if (!force) {
+      const packed = packDesc(str);
+      if (packed) { const code = 'P2' + b64encode(packed); diag('link code: P2 ' + code.length + ' chars'); return code; }
+      diag('link code: P1 (' + lastPackReason + ')');
+    }
     const data = new TextEncoder().encode(str);
-    if (typeof CompressionStream === 'undefined') return 'P0' + b64encode(data);
+    if (force === 'P0' || typeof CompressionStream === 'undefined') return 'P0' + b64encode(data);
     const cs = new CompressionStream('deflate-raw');
     const buf = await new Response(new Blob([data]).stream().pipeThrough(cs)).arrayBuffer();
     return 'P1' + b64encode(new Uint8Array(buf));
@@ -100,11 +398,15 @@
   async function decompress(code) {
     code = code.trim();
     const tag = code.slice(0, 2), body = b64decode(code.slice(2));
+    if (tag === 'P2') return unpackDesc(body);
     if (tag === 'P0') return new TextDecoder().decode(body);
     const ds = new DecompressionStream('deflate-raw');
     const buf = await new Response(new Blob([body]).stream().pipeThrough(ds)).arrayBuffer();
     return new TextDecoder().decode(buf);
   }
+  Net.readSdp = readSdp; Net.packDesc = packDesc; Net.unpackDesc = unpackDesc;
+  Net.compress = compress; Net.decompress = decompress;
+  Object.defineProperty(Net, 'lastPackReason', { get: () => lastPackReason });
 
   /* Keep the screen awake while pairing: a sleeping host never answers the offer (ported). */
   let wakeLock = null;
