@@ -299,6 +299,23 @@ progress. AI reads only what a human could see (see `AI.view()`).
   `chromium_headless_shell-<rev>`, so a "no Chromium" skip on a box with one reported green by
   reporting nothing); and **`process.exit` truncates a piped stdout**: set `process.exitCode`
   and let the process end. (→ LEDGER: `node test/run.js` runs the two suites AT ONCE)
+- **THE FLOOR IS ES2017, AND THE BOOT SAYS WHAT KILLED IT** (2026-09-05, from a photograph of
+  an iPad: the menu crammed into a corner, every card as wide as the screen, no footing row, and
+  no button doing anything). Two failures, one cause: an engine that does not know a thing DROPS
+  it. A Safari below 11.1 refuses object spread at PARSE time, so game.js, net.js and render3d.js
+  never ran and the menu was bare HTML; and `inset`, `min()`, flex `gap` and `env()` are all
+  newer than Safari 12, so every fixed screen lost its size and every card its width. So:
+  nothing in js/ may ask for more than ES2017 — async/await yes; object spread, `?.`, `??`,
+  class fields, lookbehind no; `Object.assign` with a null source IS the conditional spread —
+  held by the headless suite 'every script keeps to the floor', which walks the shipped sources
+  as text because Node parses everything. The CSS spells its longhands and `env()` fallbacks
+  inline and restates the `min()` widths and the flex gaps in an `@supports not (inset: 0)`
+  block for the old engines (a PROBE — nothing uses `inset` any more), checked by a rig that
+  serves the stylesheet with the modern declarations struck out. The canvas takes touches where
+  there is no `PointerEvent` (Safari before 13). And an inline ES5 reporter in index.html
+  writes every error until the boot is done INTO THE MENU, with the browser named, so the next
+  photograph says why. (→ LEDGER: THE FLOOR IS ES2017)
+
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`
   drives a real page for input, camera, the writ, HUD layering, the back

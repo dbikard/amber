@@ -116,7 +116,7 @@
    * A bar lives on the 2D overlay, where there is no scene graph to interrogate — without
    * this a suite could only prove the hp changed, which was never in doubt. */
   R.debugWorkBars = (id) => (id != null ? barRec.get(id) || null
-                                        : [...barRec].map(([wid, r2]) => ({ id: wid, ...r2 })));
+                                        : [...barRec].map(([wid, r2]) => Object.assign({ id: wid }, r2)));
   /* test handle: the ring drawn under the armed company's men — how many, whose, what colour,
    * and where each one landed (plain numbers: this crosses a page boundary in the suite) */
   R.debugHalo = () => {
@@ -4386,7 +4386,7 @@
    * there was no way to ask about it from outside — the canvas is WebGL with no preserved
    * drawing buffer, so the pixels cannot be read back after the frame. The test converts an
    * element's rect itself and compares, rather than being handed the answer. */
-  R.debugRollRects = () => rollRows.map((r) => (r.vp ? { kind: r.el.dataset.kind, ...r.vp } : null));
+  R.debugRollRects = () => rollRows.map((r) => (r.vp ? Object.assign({ kind: r.el.dataset.kind }, r.vp) : null));
 
   global.Render3D = R;
 })(typeof window !== 'undefined' ? window : globalThis);

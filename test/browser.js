@@ -6987,6 +6987,86 @@ async function match(browser, base, renderer) {
     await pg.close();
   }
 
+  /* ---------------- THE OLD ENGINES ----------------
+   * An iPad on an old Safari (2026-09-05, from a photograph): the menu crammed into the
+   * top-left corner, every card as wide as the screen, and a tap on any button doing nothing.
+   * Two failures. The LAYOUT — the screens sized by `inset`, the cards by `min()`, the rows by
+   * flex `gap` — is held by a rig outside this suite (the stylesheet served with those
+   * declarations struck out, which is all an old engine does with them), because Chromium
+   * cannot be made to forget a property. The DEAD BUTTONS were an object spread refused at
+   * parse time, so game.js never ran, and nothing on the screen said so. What this suite holds
+   * is the answer to that: a script that fails is NAMED on the menu, and a canvas on an engine
+   * without pointer events (Safari before 13) still takes a finger. */
+  {
+    suite('an old browser is told why');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    /* one shipped script replaced by something no engine parses: the way a syntax past the
+     * floor arrives on an old one */
+    await pg.route('**/js/realm.js*', (r) => r.fulfill({ contentType: 'text/javascript', body: 'this is not javascript {' }));
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await until(pg, () => !document.getElementById('boot-err').classList.contains('hidden'));
+    const said = await pg.evaluate(() => document.getElementById('boot-err').textContent);
+    ok('a script that will not parse is named on the menu', /realm\.js:1/.test(said), said);
+    ok('...with the browser', /Chrome\/|Version\//.test(said), said);
+    await pg.close();
+    /* the control: a page that boots says nothing, and an error AFTER the boot is a match's
+     * business and not the menu's */
+    const pg2 = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    await pg2.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg2);
+    ok('the rig is alive: a page that boots says nothing', await pg2.evaluate(() => document.getElementById('boot-err').classList.contains('hidden')));
+    await pg2.evaluate(() => window.dispatchEvent(new ErrorEvent('error', { message: 'a match\'s error' })));
+    ok('...and an error after the boot is not written there either',
+       await pg2.evaluate(() => document.getElementById('boot-err').classList.contains('hidden')));
+    await pg2.close();
+  }
+  {
+    suite('the canvas takes touches where there are no pointer events');
+    /* Safari before 13 has no PointerEvent and dispatches none: the constructor is hidden and
+     * every pointer listener dropped before a script runs, and the page is given a touchscreen */
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 }, hasTouch: true });
+    await pg.addInitScript(() => {
+      try { delete window.PointerEvent; } catch (e) {}
+      if (window.PointerEvent) Object.defineProperty(window, 'PointerEvent', { value: undefined, configurable: true });
+      const ael = EventTarget.prototype.addEventListener;
+      window.__dropped = 0;
+      /* counted on the game canvas only: the harness binds pointer listeners of its own */
+      EventTarget.prototype.addEventListener = function (t, f, o) { if (/^pointer/.test(t)) { if (this && this.id === 'game') window.__dropped++; return; } return ael.call(this, t, f, o); };
+    });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 7 }));
+    await inMatchNow(pg);
+    await until(pg, () => window.Render.ready);
+    await pg.waitForTimeout(150);
+    const hall = await pg.evaluate(() => {
+      const w = window.Game.game.world, b = w.players[0].buildings[1], q = window.Render.project(b.x, b.y);
+      return { x: q.x, y: q.y, on: !!q.ok, bt: b.bt, dropped: window.__dropped, pe: typeof window.PointerEvent };
+    });
+    ok('the rig is alive: the hall is on screen and nothing pointer-shaped was bound', hall.on && hall.dropped === 0 && hall.pe === 'undefined',
+       `${hall.bt} at ${hall.x && hall.x.toFixed(0)},${hall.y && hall.y.toFixed(0)}; ${hall.dropped} pointer listeners bound on the canvas, PointerEvent ${hall.pe}`);
+    await pg.touchscreen.tap(hall.x, hall.y);
+    await until(pg, () => !document.getElementById('sheet').classList.contains('hidden'));
+    const sheet = await pg.evaluate(() => ({ open: !document.getElementById('sheet').classList.contains('hidden'),
+                                           text: document.getElementById('sheet').textContent.slice(0, 40) }));
+    ok('a finger on the hall opens its sheet', sheet.open, sheet.text);
+    /* and a drag pans — away from the home corner, where the clamp already holds the camera */
+    await pg.evaluate(() => window.UI.closeSheet());
+    const cam0 = await pg.evaluate(() => [window.Render.camX, window.Render.camY]);
+    await pg.evaluate(() => {
+      const cvs = document.getElementById('game');
+      const t = (x, y) => new Touch({ identifier: 9, target: cvs, clientX: x, clientY: y });
+      const ev = (type, x, y) => cvs.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true,
+        touches: type === 'touchend' ? [] : [t(x, y)], changedTouches: [t(x, y)] }));
+      ev('touchstart', 210, 600); ev('touchmove', 170, 570); ev('touchmove', 120, 530); ev('touchend', 120, 530);
+    });
+    await pg.waitForTimeout(100);
+    const cam1 = await pg.evaluate(() => [window.Render.camX, window.Render.camY]);
+    ok('...and a drag pans the camera', Math.hypot(cam1[0] - cam0[0], cam1[1] - cam0[1]) > 30,
+       `${cam0.map((v) => v.toFixed(0))} → ${cam1.map((v) => v.toFixed(0))}`);
+    await pg.close();
+  }
+
   await browser.close();
   srv.close();
   /* NOT `process.exit` — see the note at the foot of test/headless.js: with stdout piped (the

@@ -61,6 +61,89 @@ suite('the module list is one list');
   eq('...on every asset index.html loads', (html.match(/\?v=([0-9.]+)/g) || []).filter((q) => q !== '?v=' + ver).length, 0);
 }
 
+/* ---------------- the floor ----------------
+ * THE FLOOR IS ES2017, and an engine below it does not run the game: it shows a menu whose
+ * buttons do nothing, which is what an iPad on an old Safari showed (2026-09-05 — thirteen
+ * object spreads, refused at parse time, and game.js never ran). Node parses everything, so a
+ * syntax past the floor is invisible to every other suite; this one reads the shipped sources as
+ * TEXT and names the line. A token walk rather than a parser: it steps over comments, strings,
+ * templates and regex literals and looks only for the spellings that actually trip Safari 10-16
+ * — spread and rest inside braces (ES2018), `?.` and `??` (2020), logical assignment (2021),
+ * private fields (2022), numeric separators, BigInt, `for await`, and the ES2018 regex features
+ * (lookbehind, named groups, the s flag, \p{}). Three.js and lanlink are vendored at ES2017 and
+ * held to the same line. The control is a sample that carries one of each. */
+suite('every script keeps to the floor');
+{
+  const fs = require('fs'), root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const shipped = [...html.matchAll(/<script src="(js\/[^"?]+)/g)].map((m) => m[1]).concat(['sw.js']);
+  const RE_BEFORE = /[(,=:[!&|?{};+\-*%<>~^]/, RE_WORD = /^(return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/;
+  const offenders = (src) => {
+    const bad = [], stack = [];   // '{' '(' '[' and 'T' for a template's ${ }
+    let i = 0, line = 1, tpl = false, prev = '', word = '';
+    const say = (what) => bad.push(what + ' at line ' + line);
+    const skipTo = (n) => { line += (src.slice(i, n).match(/\n/g) || []).length; i = n; };
+    while (i < src.length) {
+      const c = src[i], d = src[i + 1];
+      if (tpl) {   // inside a template literal, outside any ${ }
+        if (c === '\\') { i += 2; continue; }
+        if (c === '`') { tpl = false; prev = '`'; i++; continue; }
+        if (c === '$' && d === '{') { stack.push('T'); tpl = false; prev = '{'; i += 2; continue; }
+        if (c === '\n') line++;
+        i++; continue;
+      }
+      if (c === '\n') { line++; i++; continue; }
+      if (c === ' ' || c === '\t' || c === '\r') { i++; continue; }
+      if (c === '/' && d === '/') { const e = src.indexOf('\n', i); skipTo(e < 0 ? src.length : e); continue; }
+      if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); skipTo(e < 0 ? src.length : e + 2); continue; }
+      if (c === '"' || c === "'") { let j = i + 1; while (j < src.length && src[j] !== c) { if (src[j] === '\\') j++; j++; } skipTo(j + 1); prev = c; continue; }
+      if (c === '`') { tpl = true; i++; continue; }
+      if (c === '/' && (!prev || RE_BEFORE.test(prev) || (/[A-Za-z]/.test(prev) && RE_WORD.test(word)))) {   // a regex literal
+        let j = i + 1, cls = false;
+        while (j < src.length && (cls || src[j] !== '/') && src[j] !== '\n') { if (src[j] === '\\') j++; else if (src[j] === '[') cls = true; else if (src[j] === ']') cls = false; j++; }
+        const body = src.slice(i + 1, j); let k = j + 1; while (/[a-z]/.test(src[k] || '')) k++;
+        const flags = src.slice(j + 1, k);
+        if (/\(\?<[=!]/.test(body)) say('regex lookbehind');
+        else if (/\(\?<[A-Za-z]/.test(body)) say('a named capture group');
+        if (/\\p\{/.test(body) && flags.indexOf('u') >= 0) say('a unicode property escape');
+        if (flags.indexOf('s') >= 0) say('the regex s flag');
+        skipTo(k); prev = '/'; continue;
+      }
+      if (/[A-Za-z_$]/.test(c)) {   // an identifier or keyword, taken whole
+        let j = i; while (j < src.length && /[A-Za-z0-9_$]/.test(src[j])) j++;
+        word = src.slice(i, j);
+        if (word === 'for' && /^\s+await\b/.test(src.slice(j, j + 12))) say('for await');
+        prev = src[j - 1]; i = j; continue;
+      }
+      if (/[0-9]/.test(c)) {   // a number, taken whole
+        let j = i; while (j < src.length && /[0-9A-Za-z_.]/.test(src[j])) j++;
+        const num = src.slice(i, j);
+        if (/[0-9]_[0-9]/.test(num)) say('a numeric separator');
+        if (/^(0|[1-9][0-9]*|0[xX][0-9a-fA-F]+|0[oO][0-7]+|0[bB][01]+)n$/.test(num)) say('a BigInt literal');
+        prev = src[j - 1]; word = ''; i = j; continue;
+      }
+      if (c === '{' || c === '(' || c === '[') { stack.push(c); prev = c; i++; continue; }
+      if (c === '}' || c === ')' || c === ']') { const top = stack.pop(); if (c === '}' && top === 'T') tpl = true; prev = c; i++; continue; }
+      if (c === '.' && d === '.' && src[i + 2] === '.') { if (stack[stack.length - 1] === '{') say('spread or rest inside braces'); prev = '.'; i += 3; continue; }
+      if (c === '?' && d === '.' && !/[0-9]/.test(src[i + 2] || '')) say('optional chaining ?.');
+      if (c === '?' && d === '?') { say('nullish ??'); prev = '?'; i += 2; continue; }
+      if (((c === '|' && d === '|') || (c === '&' && d === '&')) && src[i + 2] === '=') say('logical assignment');
+      if (c === '#' && /[A-Za-z_$]/.test(d || '')) say('a private field');
+      prev = c; i++;
+    }
+    return bad;
+  };
+  const sample = "const a = { ...b, c: [...d] }; f(...d); x?.y; c ?? d; e ||= 1; /(?<=a)b/; /a/s; 1_000; 10n; class K { #p = 1 }\nfor await (const q of r) {}";
+  eq('the walk can see an offender of every kind', offenders(sample).length, 10, offenders(sample).join('; '));
+  eq('...and not a spread that is legal, nor a comment, string, template or regex that mentions one',
+     offenders("f(...a); const b = [...c]; // { ...x }\n/* ?? */ const s = '{ ...y }'; const t = `${g({ k: 1 })} ?.`; /\\?\\./.test(s); a / b / c;").join('; '), '');
+  for (const f of shipped) {
+    const src = fs.readFileSync(path.join(root, f), 'utf8');
+    const found = offenders(src);
+    eq(f + ' keeps to ES2017', found.slice(0, 4).join('; ') + (found.length > 4 ? ' … ' + found.length : ''), '');
+  }
+}
+
 /* ---------------- the world ---------------- */
 suite('world generation');
 for (const seed of SEEDS) {

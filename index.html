@@ -8,11 +8,40 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.10.65';</script>
-<link rel="manifest" href="manifest.json?v=0.10.65">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.10.65">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.10.65">
-<link rel="stylesheet" href="styles.css?v=0.10.65">
+<script>window.GAME_VERSION = '0.10.66';</script>
+<!-- THE BOOT SAYS WHAT KILLED IT. The menu is plain HTML and shows on any browser, so a script
+     the engine cannot parse, or a boot that throws, looks like a menu whose buttons do nothing —
+     which is exactly what an iPad on an old Safari showed, and a photograph of that says nothing
+     about why. Every error until game.js declares the boot done is written into the menu with
+     the browser named, in the ES5 the oldest engine can still run. Resource errors do not bubble,
+     so the listener captures: a script that fails to LOAD is named too. -->
+<script>
+window.BootErr = (function () {
+  var lines = [], on = true;
+  function paint() {
+    var el = document.getElementById('boot-err');
+    if (!el || !lines.length) return;
+    var ua = navigator.userAgent || '';
+    var os = (ua.match(/(?:OS|Android) [0-9_.]+/) || [''])[0].replace(/_/g, '.');
+    var ver = (ua.match(/(?:Version|Chrome|Firefox)\/[0-9.]+/) || [''])[0];
+    el.textContent = 'Amber could not start on this browser (' + (os + ' ' + ver).replace(/^ | $/g, '') + '): ' + lines.join(' · ');
+    el.classList.remove('hidden');
+  }
+  function add(s) { if (!on) return; lines.push(s); paint(); }
+  window.addEventListener('error', function (e) {
+    var t = e.target;
+    if (t && t !== window && t.src) { add('failed to load ' + String(t.src).replace(/^.*\//, '').replace(/\?.*$/, '')); return; }
+    add((e.message || 'script error') + (e.filename ? ' [' + e.filename.replace(/^.*\//, '').replace(/\?.*$/, '') + ':' + e.lineno + ']' : ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) { var r = e && e.reason; add('boot: ' + (r && r.message ? r.message : r)); });
+  document.addEventListener('DOMContentLoaded', paint);
+  return { off: function () { on = false; }, lines: lines };
+})();
+</script>
+<link rel="manifest" href="manifest.json?v=0.10.66">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.10.66">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.10.66">
+<link rel="stylesheet" href="styles.css?v=0.10.66">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -100,6 +129,7 @@
   <div class="sub">— The Succession —</div>
   <p class="lore">Oberon is gone. The black road reaches for the one true city.<br>
      Raise your works, walk in Shadow, and take the throne — by siege, or by the Pattern.</p>
+  <div id="boot-err" class="hidden"></div>
 
   <!-- the way in: where you are in the story, and one tap back into it -->
   <button id="btn-campaign" class="mcard primary">
@@ -256,23 +286,29 @@
   <button id="scan-cancel">✕</button>
 </div>
 
-<script src="js/vendor/three.min.js?v=0.10.65"></script>
-<script src="js/rng.js?v=0.10.65"></script>
-<script src="js/const.js?v=0.10.65"></script>
-<script src="js/worldgen.js?v=0.10.65"></script>
-<script src="js/nav.js?v=0.10.65"></script>
-<script src="js/world.js?v=0.10.65"></script>
-<script src="js/ai.js?v=0.10.65"></script>
-<script src="js/terrain.js?v=0.10.65"></script>
-<script src="js/render3d.js?v=0.10.65"></script>
-<script src="js/render_select.js?v=0.10.65"></script>
-<script src="js/vendor/lanlink.js?v=0.10.65"></script>
-<script src="js/vendor/lanlink-qr.js?v=0.10.65"></script>
-<script src="js/net.js?v=0.10.65"></script>
-<script src="js/record.js?v=0.10.65"></script>
-<script src="js/campaign.js?v=0.10.65"></script>
-<script src="js/realm.js?v=0.10.65"></script>
-<script src="js/ui.js?v=0.10.65"></script>
-<script src="js/game.js?v=0.10.65"></script>
+<!-- THE FLOOR IS ES2017 (Safari 10.1 / iOS 10.3, Chrome 58) — async/await, but no object
+     spread, no `?.`, no `??`, no class fields, no lookbehind. Three.js and lanlink are ES2017
+     already and nothing in js/ may ask for more: an iPad on an old Safari refused one object
+     spread at parse time and the whole game was a menu that did nothing. The headless suite
+     holds the line ('every script keeps to the floor'); the CSS keeps its own (styles.css, at
+     the end). -->
+<script src="js/vendor/three.min.js?v=0.10.66"></script>
+<script src="js/rng.js?v=0.10.66"></script>
+<script src="js/const.js?v=0.10.66"></script>
+<script src="js/worldgen.js?v=0.10.66"></script>
+<script src="js/nav.js?v=0.10.66"></script>
+<script src="js/world.js?v=0.10.66"></script>
+<script src="js/ai.js?v=0.10.66"></script>
+<script src="js/terrain.js?v=0.10.66"></script>
+<script src="js/render3d.js?v=0.10.66"></script>
+<script src="js/render_select.js?v=0.10.66"></script>
+<script src="js/vendor/lanlink.js?v=0.10.66"></script>
+<script src="js/vendor/lanlink-qr.js?v=0.10.66"></script>
+<script src="js/net.js?v=0.10.66"></script>
+<script src="js/record.js?v=0.10.66"></script>
+<script src="js/campaign.js?v=0.10.66"></script>
+<script src="js/realm.js?v=0.10.66"></script>
+<script src="js/ui.js?v=0.10.66"></script>
+<script src="js/game.js?v=0.10.66"></script>
 </body>
 </html>

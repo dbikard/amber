@@ -134,6 +134,38 @@ so the whole browser half reported green by reporting nothing. And both suites e
 `process.exit(report(...))`, which was harmless while they wrote to a terminal and silently ate
 the tally the moment the runner captured them — `process.exit` truncates a piped stdout.
 
+### THE FLOOR IS ES2017, AND THE BOOT SAYS WHAT KILLED IT
+
+2026-09-05. The report was a photograph: an iPad with the pre-iPadOS status bar (iOS 12 at the
+newest), the menu packed into the top-left corner, the three mode cards as wide as the screen
+with the name and the blurb run together on one line, no footing row, no version line, and no
+button doing anything. What was NOT on the screen was the evidence: the footing row and the
+version line are written by game.js, so game.js never ran.
+
+- Every shipped script parses as ES2018 (acorn), and Chromium with every API Safari 12 lacks
+  deleted before load (PointerEvent, ResizeObserver, OffscreenCanvas, structuredClone, the
+  webgl2 context, twenty more) booted and opened the rivals screen. So the culprit is a SYNTAX,
+  and the only ES2018 syntax in the game was object spread: thirteen sites (game.js six, net.js
+  five in the snapshot, render3d.js two). Safari 10.1-11.0 refuses it at parse time; Three.js
+  and lanlink are ES2017 already (async/await), which is what makes ES2017 the floor and iOS 9
+  (no classes) out of reach whatever js/ does. Rewritten as `Object.assign` — a null source is
+  skipped, which is the conditional spread — and the snapshot suite holds the contract.
+- The layout was reproduced in Chromium by serving styles.css with `inset`, `min()`, `gap`,
+  `env()`, `touch-action` and `backdrop-filter` struck out (an engine drops a declaration it
+  does not know, which is all the emulation needed): the screenshot matched the photograph.
+  `inset: 0` (eleven sites) is spelled as longhands; each `env()` placement has a plain
+  fallback before it; the seventeen `min()` widths and the flex gaps are restated inside
+  `@supports not (inset: 0)` (Safari 14.1 — the same release as flex `gap`, one past `min()`);
+  a card's spans are `display: block` because an old WebKit lays a `<button>`'s children out
+  inline whatever its display. After: centred and sized as on a phone, the rivals screen too.
+- Pointer events are Safari 13; before them the canvas heard nothing at all. With the touch
+  fallback a touchscreen tap on the hall opens its sheet and a drag pans (camX 116 → 189, camY
+  -50 → 7); on the old game.js, served into the same rig, neither.
+- The reporter: a route that hands the page a realm.js that is not JavaScript puts
+  "Uncaught SyntaxError: Unexpected identifier 'is' [realm.js:1]" and the browser's version on
+  the menu; a page that boots says nothing, and an error raised after the boot is not written
+  there. It is the instrument the photograph lacked.
+
 ## Orders and building
 
 ### A CITY CIRCLE IS NOT A SPECIAL CASE, AND A STANDARD GOES WHERE YOU POINT

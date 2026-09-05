@@ -9,14 +9,14 @@ body {
 }
 .hidden { display: none !important; }
 
-#game { position: fixed; inset: 0; touch-action: none; }
+#game { position: fixed; top: 0; left: 0; right: 0; bottom: 0; touch-action: none; }
 
 /* ---------------- HUD ---------------- */
 /* above #overlay (z-index 4) — the overlay canvas paints the full-screen fog veil in the
  * 3D path, and without a z-index here that veil would bury the HUD */
-#hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+#hud { position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10; }
 #hud-top {
-  position: absolute; top: env(safe-area-inset-top, 0); left: 0; right: 0;
+  position: absolute; top: 0; top: env(safe-area-inset-top, 0); left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: center;
   padding: 6px 12px; font-size: 14px;
   color: #e08a96; text-shadow: 0 1px 3px #000;
@@ -35,9 +35,9 @@ body {
 /* THE WHOLE PANEL IS THE BUTTON. A halt is lifted more often than anything else in the game
    is tapped, and on a phone that means it should be impossible to miss. */
 #halt {
-  position: fixed; inset: 0; z-index: 60;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 60;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-  background: rgba(8,6,14,0.72); backdrop-filter: blur(2px);
+  background: rgba(8,6,14,0.72); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
   border: 0; cursor: pointer; font: inherit; color: #ffd98a;
   text-shadow: 0 2px 10px #000;
 }
@@ -62,7 +62,7 @@ body {
 #masons.busy { color: #8d8478; }
 #masons.busy .m-ico { opacity: 0.45; }
 #walkers {
-  position: absolute; right: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
+  position: absolute; right: 10px; top: 28px; top: calc(env(safe-area-inset-top, 0) + 28px);
   display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
   pointer-events: none;
 }
@@ -99,7 +99,7 @@ body {
  * whole discipline — a permanent chip that says "at war" is an echo, and an echo shoves the
  * one thing that must interrupt you (somebody on the Pattern) off the screen. */
 #war-chip {
-  position: absolute; right: 10px; top: calc(env(safe-area-inset-top, 0) + 28px);
+  position: absolute; right: 10px; top: 28px; top: calc(env(safe-area-inset-top, 0) + 28px);
   pointer-events: auto; -webkit-tap-highlight-color: transparent;
   display: flex; align-items: center; gap: 6px;
   font-family: inherit; font-size: 13px; font-weight: bold; letter-spacing: 1px;
@@ -157,7 +157,7 @@ body {
  * centred line at phone width runs straight under it. Bounded off the map's own edge rather
  * than by a guessed width, so it cannot creep back at another size. */
 #objective {
-  position: absolute; left: 10px; top: calc(env(safe-area-inset-top, 0) + 48px);
+  position: absolute; left: 10px; top: 48px; top: calc(env(safe-area-inset-top, 0) + 48px);
   max-width: min(58vw, 300px); text-align: left;
   font-size: 13px; font-style: italic; color: #ffe9a8;
   text-shadow: 0 1px 3px #000, 0 0 10px #0009;
@@ -176,7 +176,7 @@ body {
   border-left: 3px solid #c9a44f; border-radius: 4px; letter-spacing: 0.5px;
 }
 #hud-bottom {
-  position: absolute; bottom: calc(env(safe-area-inset-bottom, 0) + 2px); left: 0; right: 0;
+  position: absolute; bottom: 2px; bottom: calc(env(safe-area-inset-bottom, 0) + 2px); left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: flex-end; gap: 10px;
   padding: 6px 10px; pointer-events: none;
 }
@@ -219,7 +219,7 @@ body {
 .pw:disabled { border-color: #5a4c30; opacity: 0.55; }
 .pw.armed { border-color: #ff6a5a; box-shadow: 0 0 14px rgba(255, 106, 90, 0.6); }
 .pw-cd {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: bold; color: #fff; text-shadow: 0 1px 3px #000;
   font-family: system-ui, sans-serif;
 }
@@ -280,7 +280,7 @@ body {
 
 /* ---------------- build / upgrade sheet ---------------- */
 #sheet {
-  position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0) + 70px);
+  position: fixed; left: 50%; bottom: 70px; bottom: calc(env(safe-area-inset-bottom, 0) + 70px);
   transform: translateX(-50%);
   width: min(94vw, 430px); max-height: 62vh; overflow-y: auto;
   background: linear-gradient(#1c1626ee, #120e1cee);
@@ -328,7 +328,7 @@ body {
 
 /* ---------------- menu ---------------- */
 #menu, #end, #roll, #chapters, #rivals, #lan-screen, #war-setup {
-  position: fixed; inset: 0; z-index: 40;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 20px; text-align: center;
   background: radial-gradient(ellipse at 50% 110%, rgba(255, 205, 110, 0.13), transparent 55%),
@@ -342,6 +342,8 @@ body {
 }
 #menu .sub { font-size: 16px; letter-spacing: 5px; color: #c9a44f; margin-top: -6px; }
 #menu .lore { font-size: 13px; font-style: italic; color: #b8a878; line-height: 1.6; margin: 8px 0 14px; }
+/* what the boot reporter in index.html writes when a script fails to load, parse or run */
+#boot-err { font-size: 11px; line-height: 1.5; color: #ff9a9f; max-width: 78vw; word-break: break-word; margin: -6px 0 8px; }
 .mbtn {
   width: min(78vw, 340px); padding: 13px; font-family: inherit; font-size: 15px;
   letter-spacing: 2px; color: #ffe9a8; background: linear-gradient(#2a2138, #171020);
@@ -377,6 +379,10 @@ body {
 .mcard.primary .mc-name { font-size: 21px; }
 .mc-line { font-size: 11px; font-style: italic; color: #b8a878; line-height: 1.45; }
 .mc-note { font-size: 10px; letter-spacing: 1px; color: #c9a44f; margin-top: 3px; }
+/* the card is a <button>, and an old WebKit lays a button's children out INLINE whatever its
+   display says — the kicker, the name and the line ran on as one sentence. A flex item is a
+   block already, so this costs nothing where the flex is honoured. */
+.mcard > span { display: block; }
 /* the two other ways to play are each other's equals, so they share a row and a width */
 .mrow { display: flex; gap: 8px; justify-content: center; width: min(78vw, 340px); }
 .mrow .mcard { width: 100%; }
@@ -500,7 +506,7 @@ body {
    map, so the map is what you come back to. The veil is the dismiss target, which is why the
    card stops the tap from reaching it. */
 .cp-veil {
-  position: fixed; inset: 0; z-index: 40; background: rgba(6, 4, 12, 0.72);
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40; background: rgba(6, 4, 12, 0.72);
   display: flex; align-items: center; justify-content: center; padding: 18px;
   -webkit-tap-highlight-color: transparent;
 }
@@ -579,7 +585,7 @@ body {
  * A long read rather than a screen of buttons, so it packs from the top and scrolls, and the
  * CLOSE button sits at the end of the scroll where a thumb arrives having finished reading. */
 #roll, #rivals, #lan-screen { justify-content: flex-start; padding-top: 22px; }
-#council { position: fixed; inset: 0; z-index: 40;
+#council { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 40;
   display: flex; flex-direction: column; align-items: center;
   gap: 10px; padding: 20px; text-align: center; overflow-y: auto;
   background: radial-gradient(ellipse at 50% 110%, rgba(255, 205, 110, 0.13), transparent 55%),
@@ -708,12 +714,12 @@ body {
    sliding further down the page. Reported from play with a picture. Percentages resolve
    against the containing block, which for a fixed element is the viewport, so these two lines
    are what actually holds it. */
-#roll-figs { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 41; pointer-events: none; }
+#roll-figs { position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; z-index: 41; pointer-events: none; }
 
 /* the chronicle's last resort: a browser that will not reach the clipboard still has to let
  * you get the text out, so it goes somewhere you can select it by hand */
 #record-box {
-  position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 10px; padding: 16px; background: #08050ee6;
 }
 #record-text {
@@ -724,20 +730,20 @@ body {
 }
 
 /* ---------------- scanner ---------------- */
-#scanner { position: fixed; inset: 0; z-index: 50; background: #000; }
+#scanner { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: #000; }
 #scan-video { width: 100%; height: 100%; object-fit: cover; }
 #scan-hint {
   position: absolute; top: 8%; left: 0; right: 0; text-align: center;
   color: #ffe9a8; font-size: 15px; text-shadow: 0 1px 4px #000;
 }
 #scan-cancel {
-  position: absolute; top: calc(env(safe-area-inset-top, 0) + 10px); right: 14px;
+  position: absolute; top: 10px; top: calc(env(safe-area-inset-top, 0) + 10px); right: 14px;
   width: 44px; height: 44px; border-radius: 50%; border: 1px solid #c9a44f;
   background: #000a; color: #ffe9a8; font-size: 20px;
 }
 
 /* 3D renderer overlay (bars / labels / minimap) — input passes through */
-#overlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
+#overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 4; }
 
 /* ---------------- flag tray (army orders, bottom-left) ---------------- */
 /* the tray must never push the royal powers off the screen: it wraps and scrolls
@@ -839,3 +845,41 @@ button.ws-chip { cursor: pointer; }
 .ws-col-bots { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; }
 .ws-col-bots .ws-step { gap: 4px; }
 .ws-col .ws-who { font-size: 12px; text-align: center; }
+
+/* ---------------- THE OLD ENGINES ----------------
+ * An iPad on iOS 12 (Safari 12) showed the menu crammed into the top-left corner with every card
+ * as wide as the screen and nothing centred: the screens were `position: fixed` boxes sized by
+ * `inset: 0` (Safari 14.1), the cards by `min()` (13.1), the rows spaced by flex `gap` (14.1),
+ * the HUD placed by `env()` (11.2) — and an engine that does not know a declaration DROPS it,
+ * so each of those was simply absent. The longhands and the `env()` fallbacks are written inline
+ * above, for everyone; what follows is only for an engine that does not know `inset`, which is
+ * exactly the set that does not know `min()` or flex `gap` either: the same widths spelled as
+ * `width` + `max-width`, and the gaps as sibling margins. `@supports not (inset: 0)` is a PROBE,
+ * not a use — nothing above relies on `inset` any more. A modern browser never enters this block,
+ * and the rig that checks it serves the stylesheet with the modern declarations struck out. */
+@supports not (inset: 0) {
+  .mbtn, .mcard, .mrow, #footing-row { width: 78vw; max-width: 340px; }
+  .mbtn.small, .mrow .mcard, #chapters-body .mbtn { max-width: none; }
+  #sheet { width: 94vw; max-width: 430px; }
+  #objective { max-width: 300px; }
+  #qr-display { width: 72vw; height: 72vw; max-width: 300px; max-height: 300px; }
+  #end-stats, #council-body, #roll-body, #record-text { width: 96vw; max-width: 560px; }
+  #rivals-body, #chapters-body, #war-setup-body { width: 96vw; max-width: 520px; }
+  .cp { width: 92vw; max-width: 420px; }
+  #flag-tray { max-height: 300px; }
+  /* the gaps: a column's as top margins, a row's as left margins, a wrapping row's all round */
+  #menu > * + *, #end > * + *, #roll > * + *, #chapters > * + *, #rivals > * + *, #lan-screen > * + *,
+  #war-setup > * + *, #council > * + *, #record-box > * + *, #war-setup-body > * + * { margin-top: 10px; }
+  #lan-panel > * + *, #rivals-body > * + *, #chapters-body > * + * { margin-top: 8px; }
+  #lan-sides > * + *, #banner-wrap > * + *, #halt > * + * { margin-top: 6px; }
+  #footing-row > * + *, #terms > * + *, #knell > * + * { margin-top: 4px; }
+  #walkers > * + * { margin-top: 3px; }
+  .mrow > * + *, #tap-label > * + *, .sheet-flag > * + * { margin-left: 8px; }
+  #purse > * + * { margin-left: 12px; }
+  #powers > * + *, .cp-head > * + *, .cc-city > * + *, .cc-term > * + *, .ws-side > * + * { margin-left: 10px; }
+  .diff-row > * + *, .ws-step > * + *, #war-chip > * + * { margin-left: 6px; }
+  #masons > * + * { margin-left: 3px; }
+  .mfoot > * { margin: 0 7px; }
+  .lan-row > *, .cp-acts > * { margin: 3px; }
+  .stat-key > * { margin: 5px; }
+}

@@ -1204,7 +1204,7 @@
          * still carry him to the court and still hand him the command of it; they simply do
          * not offer what only a host can honour. */
         orders: game.realm && !ally
-          ? ORDERS.map((o) => ({ ...o, on: !!orders[lordIdx] && STANCE_WORD[orders[lordIdx].mode] === o.mode })).concat(nbrs)
+          ? ORDERS.map((o) => Object.assign({}, o, { on: !!orders[lordIdx] && STANCE_WORD[orders[lordIdx].mode] === o.mode })).concat(nbrs)
           : []
       });
     }
@@ -1415,13 +1415,13 @@
        * your screen unfogged exactly as your own are. `Net.snapFor` says the same thing in the
        * same words; a board has one seat per realm and this is `pi === viewer` to the byte. */
       players: world.players.map((pl, pi) => World.realmOf(world, pi) === World.realmOf(world, viewer)
-        ? { ...pl, castleHp: (World.seatOf(world, pi) || {}).hp || 0, ghosts: [] }
-        : { ...pl, castleHp: (World.seatOf(world, pi) || {}).hp || 0,
+        ? Object.assign({}, pl, { castleHp: (World.seatOf(world, pi) || {}).hp || 0, ghosts: [] })
+        : Object.assign({}, pl, { castleHp: (World.seatOf(world, pi) || {}).hp || 0,
             /* the SAME gate and the SAME ghost projection the wire uses — both written once
              * in world.js, so a fog rule cannot land on the host's screen and miss the wire
              * (or the other way round, which is how the wall-ends rule once forked) */
             buildings: pl.buildings.filter((b) => World.workSeen(see, b)),
-            ghosts: World.ghostsFor(world, viewer, pi, see) }),
+            ghosts: World.ghostsFor(world, viewer, pi, see) })),
       sites: world.map.sites.map((s) => {
         if (see(s.x, s.y)) return { id: s.id, live: true, holder: World.nodeHolder(world, s) };
         return mem[s.id] ? { id: s.id, live: false, holder: -1 } : null;
@@ -1462,7 +1462,7 @@
     const live = side.map((m) => World.realmOf(view, m)).find((r) => side.indexOf(r) >= 0);
     if (live == null || live === World.realmOf(view, viewer)) return view;
     view.players = view.players.slice();
-    view.players[viewer] = { ...view.players[viewer], realm: live };
+    view.players[viewer] = Object.assign({}, view.players[viewer], { realm: live });
     return view;
   }
   function guestView() {
@@ -1481,7 +1481,7 @@
       const prev = new Map(snapPrev.units.map((u) => [u.id, u]));
       units = snap.units.map((u) => {
         const q = prev.get(u.id);
-        return q ? { ...u, x: q.x + (u.x - q.x) * alpha, y: q.y + (u.y - q.y) * alpha } : u;
+        return q ? Object.assign({}, u, { x: q.x + (u.x - q.x) * alpha, y: q.y + (u.y - q.y) * alpha }) : u;
       });
     }
     /* THE GUEST DOES NOT GET ITS OWN FOG RULES. This used to rebuild the source list by
@@ -2014,7 +2014,7 @@
       const siteId = Render.hitSite(x, y, view, game.viewer);
       const w = Render.toWorld(x, y, game.viewer);
       const where = siteId >= 0 ? { site: siteId } : { x: w.x, y: w.y };
-      const r = issue({ c: 'rally', co: id, ...where });   // a COMPANY's standard, not a hall's
+      const r = issue(Object.assign({ c: 'rally', co: id }, where));   // a COMPANY's standard, not a hall's
       /* remembered only if it was TAKEN: a refused order is not one to double down on */
       twice = (!r || r.ok !== false) ? { co: id, where, sx: x, sy: y, at: Date.now() } : null;
       return;
@@ -2922,10 +2922,33 @@
     };
     UI.init(H);
     const cvs = $('game');
-    cvs.addEventListener('pointerdown', onDown);
-    cvs.addEventListener('pointermove', onMove);
-    cvs.addEventListener('pointerup', onUp);
-    cvs.addEventListener('pointercancel', onUp);
+    if (global.PointerEvent) {
+      cvs.addEventListener('pointerdown', onDown);
+      cvs.addEventListener('pointermove', onMove);
+      cvs.addEventListener('pointerup', onUp);
+      cvs.addEventListener('pointercancel', onUp);
+    } else {
+      /* NO POINTER EVENTS — Safari before 13, the iPad on the shelf. The same four handlers,
+       * fed the touches: one call per finger that changed, its identifier standing in for
+       * the pointer id, so a pinch is still two ids in `touches`. The default is refused on
+       * every one because `touch-action` is as missing as the events and the page would
+       * scroll and zoom under a drag; and a mouse for the odd old desktop, on the window so a
+       * drag that leaves the canvas still ends. Nothing above changes for a browser that has
+       * pointer events — every browser the suite runs, save the one it makes for this rig. */
+      const feed = (fn) => (e) => {
+        e.preventDefault();
+        const ts = e.changedTouches;
+        for (let i = 0; i < ts.length; i++) fn({ pointerId: ts[i].identifier, clientX: ts[i].clientX, clientY: ts[i].clientY });
+      };
+      cvs.addEventListener('touchstart', feed(onDown), { passive: false });
+      cvs.addEventListener('touchmove', feed(onMove), { passive: false });
+      cvs.addEventListener('touchend', feed(onUp), { passive: false });
+      cvs.addEventListener('touchcancel', feed(onUp), { passive: false });
+      const mouse = (fn) => (e) => fn({ pointerId: 1, clientX: e.clientX, clientY: e.clientY });
+      cvs.addEventListener('mousedown', mouse(onDown));
+      window.addEventListener('mousemove', mouse(onMove));
+      window.addEventListener('mouseup', mouse(onUp));
+    }
     cvs.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('popstate', onPopState);
     /* the door the app actually dies through most often: the OS swipe. The war saves as the
@@ -2951,6 +2974,8 @@
       rules: { reach: 1, occupy: 1, endOnSeat: 0, truce: 1 }
     });
     requestAnimationFrame((t2) => { lastFrame = t2; requestAnimationFrame(frame); });
+    /* the boot is done: what fails from here is a match's business, not the menu's */
+    if (global.BootErr) global.BootErr.off();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
