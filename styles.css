@@ -413,8 +413,8 @@ body {
 .card.rival .c-rate { font-size: 9px; letter-spacing: 1px; color: #8a7ca8; text-transform: uppercase; }
 .card.rival .c-blurb { grid-column: 1 / 3; }
 .diff-row { display: flex; gap: 6px; justify-content: center; flex-basis: 100%; }
-.mbtn.diff { border-color: #5a4c30; color: #b8a878; }
-.mbtn.diff.on { border-color: #c9a44f; color: #ffe9a8; box-shadow: 0 0 12px rgba(255, 220, 150, 0.3); }
+.mbtn.diff, .mbtn.lang { border-color: #5a4c30; color: #b8a878; }
+.mbtn.diff.on, .mbtn.lang.on { border-color: #c9a44f; color: #ffe9a8; box-shadow: 0 0 12px rgba(255, 220, 150, 0.3); }
 .diff-note { flex-basis: 100%; text-align: center; font-size: 11px; font-style: italic; color: #b8a878; margin: -2px 0 4px; }
 #lan-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #lan-status { font-size: 12px; font-style: italic; color: #b8a878; }

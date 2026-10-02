@@ -21,6 +21,9 @@
   'use strict';
 
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
+  /* the words a player reads go through `tr` (i18n.js); a Node run without it reads English */
+  const tr = (s, v) => (global.tr ? global.tr(s, v)
+    : (v ? String(s).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m)) : String(s)));
   const REALM = {};
   const World = () => global.World;
   const WG = () => global.WorldGen;
@@ -147,21 +150,21 @@
         const w = realm.world, me = w.players[0];
         const W = World();
         if (W.realmMembers(w, 0).some((pi) => w.players[pi].pattern >= 100))
-          return 'The Pattern holds, and it answers to your name.';
+          return tr('The Pattern holds, and it answers to your name.');
         const mine = W.realmCities(w, 0).length;
         const all = w.cities.filter((c) => !c.razed).length;
         const pc = w.pattern != null ? w.cities[w.pattern] : null;
-        const at = pc ? (w.map.sites[pc.site].name || 'AMBER') : 'the centre';
+        const at = pc ? (w.map.sites[pc.site].name || 'AMBER') : tr('the centre');
         /* OUT OF THE WHOLE COUNTRY, not out of an allowance. It used to read "1 of 2 cities
          * held" against an allowance ceiling, which is gone — and a ceiling of two was the
          * least interesting number on the screen anyway. What a war is about is how much of
          * the country flies your banner. */
-        const held = `${mine} of ${all} ${all === 1 ? 'city' : 'cities'} held`;
+        const held = all === 1 ? tr('{mine} of {all} city held', { mine, all }) : tr('{mine} of {all} cities held', { mine, all });
         /* AMBER is "yours" when its lord flies your banner — you do not hold it yourself, you
          * hold his oath, which is the whole shape of the war */
         if (pc && pc.owner >= 0 && W.realmOf(w, pc.owner) === W.realmOf(w, 0))
-          return `${held} — ${at} is yours: raise a Shrine and walk`;
-        return `${held} — the Pattern lies in ${at}`;
+          return tr('{held} — {at} is yours: raise a Shrine and walk', { held, at });
+        return tr('{held} — the Pattern lies in {at}', { held, at });
       },
       /* a war has no tutorial; present so game.js holds a war exactly where it holds a
        * chapter, with no branch */

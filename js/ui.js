@@ -11,6 +11,9 @@
 
   UI.init = function (handlers) {
     H = handlers;
+    /* the static page is said once, in the page's tongue, before anything is written into it */
+    global.I18N.dom(document.body);
+    document.title = tr(document.title);
     const sheet = $('sheet');
     sheet.addEventListener('click', (e) => {
       if (performance.now() - (sheet._openedAt || 0) < 320) { e.stopPropagation(); e.preventDefault(); }
@@ -28,17 +31,17 @@
       const b = $('realm-new');
       if (Date.now() - newArm < 3500) {
         newArm = 0;
-        b.textContent = '⟲ Begin a new war';
+        b.textContent = tr('⟲ Begin a new war');
         b.classList.remove('armed');
         H.onRealmNew();
         return;
       }
       newArm = Date.now();
-      b.textContent = '⚠ The saved war will be LOST — tap again to begin anew';
+      b.textContent = tr('⚠ The saved war will be LOST — tap again to begin anew');
       b.classList.add('armed');
       setTimeout(() => {
         if (Date.now() - newArm >= 3400) {
-          b.textContent = '⟲ Begin a new war';
+          b.textContent = tr('⟲ Begin a new war');
           b.classList.remove('armed');
         }
       }, 3600);
@@ -80,7 +83,7 @@
      * read as three more ways to play — which is exactly the complaint the menu earned. */
     const lab = document.createElement('div');
     lab.className = 'set-label';
-    lab.textContent = 'Your footing — how hard the heirs play';
+    lab.textContent = tr('Your footing — how hard the heirs play');
     foot.appendChild(lab);
     const diffRow = document.createElement('div');
     diffRow.className = 'diff-row';
@@ -89,14 +92,14 @@
     UI.paintFooting = () => {
       const cur = UI.difficulty();
       for (const b of diffRow.children) b.classList.toggle('on', b.dataset.key === cur);
-      note.textContent = C.DIFFICULTY[cur].blurb;
+      note.textContent = tr(C.DIFFICULTY[cur].blurb);
     };
     for (const key of C.DIFFICULTY_UI) {
       const d = C.DIFFICULTY[key];
       const b = document.createElement('button');
       b.className = 'mbtn small diff';
       b.dataset.key = key;
-      b.textContent = d.name;
+      b.textContent = tr(d.name);
       b.addEventListener('click', () => { UI.setDifficulty(key); UI.paintFooting(); });
       diffRow.appendChild(b);
     }
@@ -104,6 +107,24 @@
     foot.appendChild(note);
 
     UI.paintFooting();
+
+    /* THE TONGUE is a setting like the footing. Chosen once per page: a new choice reloads,
+     * so nothing already drawn has to be said again (see js/i18n.js). */
+    const langRow = document.createElement('div');
+    langRow.className = 'diff-row lang-row';
+    for (const k of global.I18N.langs) {
+      const b = document.createElement('button');
+      b.className = 'mbtn small lang' + (k === global.I18N.lang ? ' on' : '');
+      b.dataset.lang = k;
+      b.textContent = global.I18N.names[k];
+      b.addEventListener('click', () => {
+        if (k === global.I18N.lang) return;
+        global.I18N.set(k);
+        try { global.location.reload(); } catch (e) { /* nowhere to reload */ }
+      });
+      langRow.appendChild(b);
+    }
+    foot.appendChild(langRow);
   };
   /* remembered across sessions; an unknown or missing value falls back to the default */
   UI.difficulty = function () {
@@ -136,18 +157,18 @@
      * there is a war to abandon, and it says which act the card will take */
     const war = !!(global.REALM && global.REALM.saved && global.REALM.saved());
     $('realm-new').classList.toggle('hidden', !war);
-    $('realm-new').textContent = '⟲ Begin a new war';
+    $('realm-new').textContent = tr('⟲ Begin a new war');
     $('realm-new').classList.remove('armed');
     $('realm-line').textContent = war
-      ? 'Your war waits where you put it down — one tap resumes it.'
-      : 'One land, sixteen thrones, one Pattern. Put it down and pick it up.';
+      ? tr('Your war waits where you put it down — one tap resumes it.')
+      : tr('One land, sixteen thrones, one Pattern. Put it down and pick it up.');
     if (UI.paintFooting) UI.paintFooting();
     /* the match you WALKED OUT OF is often the one worth sending — a game that went badly
      * enough to abandon never reaches the end screen, so the chronicle is offered here too */
     const has = !!(global.Rec && global.Rec.recorded && global.Rec.recorded());
     const btn = $('menu-record');
     btn.classList.toggle('hidden', !has);
-    btn.textContent = '📜 Chronicle of the last match';
+    btn.textContent = tr('📜 Chronicle of the last match');
     $('record-box').classList.add('hidden');
   };
   /* ---------------- the screens that sit over the menu ----------------
@@ -165,9 +186,9 @@
     body.innerHTML = order.map((k, i) => {
       const h = H2[k];
       return `<button class="card rival" data-heir="${k}">` +
-             `<span class="c-name">${h.title}</span>` +
-             `<span class="c-rate">${i === 0 ? 'the gentlest' : i === order.length - 1 ? 'the hardest' : ''}</span>` +
-             `<span class="c-blurb">${h.blurb || ''}</span></button>`;
+             `<span class="c-name">${tr(h.title)}</span>` +
+             `<span class="c-rate">${i === 0 ? tr('the gentlest') : i === order.length - 1 ? tr('the hardest') : ''}</span>` +
+             `<span class="c-blurb">${h.blurb ? tr(h.blurb) : ''}</span></button>`;
     }).join('');
     for (const b of body.querySelectorAll('.rival'))
       b.addEventListener('click', () => { $('rivals').classList.add('hidden'); H.onSkirmish(b.dataset.heir); });
@@ -226,17 +247,17 @@
       const p = document.createElement('div');
       p.className = 'ws-blurb';
       p.textContent = st.ffa
-        ? 'One country, sixteen thrones, one Pattern. Two to four heirs contend for it, every one for ' +
+        ? tr('One country, sixteen thrones, one Pattern. Two to four heirs contend for it, every one for ' +
           'himself; the rest of the country is minor lords who hold ground and swear to whoever breaks them. ' +
-          'Terms may be sworn and broken — and whoever walks the Pattern finds the rest allied against him.'
-        : 'One country, sixteen thrones, one Pattern. Two to four heirs contend for it in two ' +
+          'Terms may be sworn and broken — and whoever walks the Pattern finds the rest allied against him.')
+        : tr('One country, sixteen thrones, one Pattern. Two to four heirs contend for it in two ' +
           'sides; the rest of the country is minor lords who hold ground and swear to whoever breaks them. ' +
-          'An heir at your side is your ally — one banner, one victory — not your vassal.';
+          'An heir at your side is your ally — one banner, one victory — not your vassal.');
       body.appendChild(p);
       /* the shape first: two sides, or a free-for-all */
       const shape = document.createElement('div');
       shape.className = 'ws-shape';
-      for (const [key, label] of [[false, 'TWO SIDES'], [true, 'FREE FOR ALL']]) {
+      for (const [key, label] of [[false, tr('TWO SIDES')], [true, tr('FREE FOR ALL')]]) {
         const b = document.createElement('button');
         b.className = 'mbtn small' + (st.ffa === key ? ' on' : '');
         b.id = key ? 'ws-ffa' : 'ws-sides';
@@ -266,21 +287,24 @@
       sum.className = 'ws-sum';
       sum.id = 'ws-sum';
       if (st.ffa) {
-        body.appendChild(side('RIVAL HEIRS', st.rivals + (st.rivals === 1 ? ' heir' : ' heirs') + ', each his own banner', 'foe',
+        body.appendChild(side(tr('RIVAL HEIRS'), st.rivals === 1 ? tr('{n} heir, each his own banner', { n: st.rivals })
+                                                                : tr('{n} heirs, each his own banner', { n: st.rivals }), 'foe',
                               st.rivals, 1, 3, (v) => { st.rivals = v; }));
-        sum.textContent = 'free for all — ' + (1 + st.rivals) + ' contenders, ' + (16 - 1 - st.rivals) + ' minor lords';
+        sum.textContent = tr('free for all — {c} contenders, {m} minor lords', { c: 1 + st.rivals, m: 16 - 1 - st.rivals });
       } else {
         const room = 4 - 1 - st.a - st.b;   // seats left at the table
-        body.appendChild(side('YOUR SIDE', 'you' + (st.a ? ' and ' + st.a + (st.a === 1 ? ' heir' : ' heirs') : ', alone'), 'own',
+        body.appendChild(side(tr('YOUR SIDE'), !st.a ? tr('you, alone') : st.a === 1 ? tr('you and {n} heir', { n: st.a })
+                                                              : tr('you and {n} heirs', { n: st.a }), 'own',
                               st.a, 0, Math.min(2, st.a + room), (v) => { st.a = v; }));
-        body.appendChild(side('AGAINST YOU', st.b + (st.b === 1 ? ' heir' : ' heirs') + ', one banner', 'foe',
+        body.appendChild(side(tr('AGAINST YOU'), st.b === 1 ? tr('{n} heir, one banner', { n: st.b })
+                                                           : tr('{n} heirs, one banner', { n: st.b }), 'foe',
                               st.b, 1, Math.min(3, st.b + room), (v) => { st.b = v; }));
-        sum.textContent = (1 + st.a) + ' v ' + st.b + ' — ' + (1 + st.a + st.b) + ' contenders, ' + (16 - 1 - st.a - st.b) + ' minor lords';
+        sum.textContent = tr('{a} v {b} — {c} contenders, {m} minor lords', { a: 1 + st.a, b: st.b, c: 1 + st.a + st.b, m: 16 - 1 - st.a - st.b });
       }
       body.appendChild(sum);
       const go = document.createElement('button');
       go.className = 'mbtn'; go.id = 'ws-begin';
-      go.textContent = 'BEGIN THE WAR';
+      go.textContent = tr('BEGIN THE WAR');
       go.addEventListener('click', () => { el.classList.add('hidden'); onBegin(st.ffa ? { ffa: st.rivals } : { a: st.a, b: st.b }); });
       body.appendChild(go);
     };
@@ -305,7 +329,7 @@
      * offered: on a briefing THE OTHER CHAPTERS is already the way back, and two buttons that
      * both mean "not this" is one button too many */
     $('chapters-close').classList.remove('hidden');
-    $('chapters-title').textContent = 'THE SUCCESSION';
+    $('chapters-title').textContent = tr('THE SUCCESSION');
     body.innerHTML = '';
     for (const ch of CAM.CHAPTERS) {
       const open = CAM.open(ch.key), done = CAM.cleared(ch.key);
@@ -313,9 +337,9 @@
       b.className = 'card chapter' + (open ? '' : ' locked') + (done ? ' cleared' : '');
       b.dataset.key = ch.key;
       b.innerHTML = `<span class="c-ico">${done ? '✔' : open ? '❖' : '🔒'}</span>` +
-                    `<span class="c-name">${ch.title}</span>` +
-                    `<span class="c-blurb">${open ? ch.brief.split('\n')[0]
-                       : 'Sealed until the chapter before it is done.'}</span>`;
+                    `<span class="c-name">${tr(ch.title)}</span>` +
+                    `<span class="c-blurb">${open ? tr(ch.brief).split('\n')[0]
+                       : tr('Sealed until the chapter before it is done.')}</span>`;
       if (open) b.addEventListener('click', () => UI.brief(CAM, ch.key));
       body.appendChild(b);
     }
@@ -329,11 +353,11 @@
     $('chapters').classList.remove('hidden');
     briefing = ch.key;
     $('chapters-close').classList.add('hidden');
-    $('chapters-title').textContent = ch.title.toUpperCase();
+    $('chapters-title').textContent = tr(ch.title).toUpperCase();
     body.innerHTML = '';
     const p = document.createElement('div');
     p.className = 'brief';
-    p.innerHTML = ch.brief.split('\n\n').map((q) => `<p>${q.replace(/\n/g, '<br>')}</p>`).join('');
+    p.innerHTML = tr(ch.brief).split('\n\n').map((q) => `<p>${q.replace(/\n/g, '<br>')}</p>`).join('');
     body.appendChild(p);
     const ob = document.createElement('div');
     ob.className = 'brief-obj';
@@ -341,12 +365,12 @@
      * world — two empty players and nothing else — and the day an objective looked past a
      * building list it threw where it stood, taking the BEGIN button and the way back with it.
      * A briefing has no world. See `ask` in campaign.js. */
-    ob.textContent = '❖ ' + (ch.obj.ask || '');
+    ob.textContent = '❖ ' + (ch.obj.ask ? tr(ch.obj.ask) : '');
     body.appendChild(ob);
     const go = document.createElement('button');
     go.className = 'mbtn';
     go.id = 'chapter-begin';
-    go.textContent = 'BEGIN';
+    go.textContent = tr('BEGIN');
     go.addEventListener('click', () => {
       briefing = null;
       $('chapters').classList.add('hidden');
@@ -357,7 +381,7 @@
     const back = document.createElement('button');
     back.className = 'mbtn small';
     back.id = 'chapter-back';
-    back.textContent = 'THE OTHER CHAPTERS';
+    back.textContent = tr('THE OTHER CHAPTERS');
     back.addEventListener('click', () => UI.chapters(CAM, null));
     body.appendChild(back);
   };
@@ -381,7 +405,7 @@
   let watchOn = false;
   UI.spectate = function (on, text) {
     if (!!on !== watchOn) { watchOn = !!on; $('hud').classList.toggle('watching', watchOn); }
-    if (watchOn) UI.objective(text || '👁 You are out of the fight — watching');
+    if (watchOn) UI.objective(text || tr('👁 You are out of the fight — watching'));
   };
   UI.watching = () => watchOn;
   /* ---- ⚑ THE WAR, IN A CHIP ----
@@ -412,8 +436,8 @@
     const r = el.getBoundingClientRect();
     $('walkers').style.top = Math.ceil(r.bottom) + 6 + 'px';
     /* the dot is a claim about the war and a screen reader is owed it in words */
-    el.title = state.wants ? 'The war council — something is waiting on you'
-                           : 'The war council';
+    el.title = state.wants ? tr('The war council — something is waiting on you')
+                           : tr('The war council');
   };
 
   /* ---- THE COUNCIL ----
@@ -555,7 +579,7 @@
     /* what this court is to your banner, said once, in words — the swatch is a colour and a
      * colour is not an answer when sixteen banners are on the map */
     if (c.terms) pop.appendChild(el('div', 'cp-say', c.terms.name + ' · ' + c.terms.holds +
-                                                     ' · ' + c.terms.state.toUpperCase()));
+                                                     ' · ' + tr(c.terms.state).toUpperCase()));
     const acts = el('div', 'cp-acts');
     const btn = (t, cls, fn) => {
       const b = el('button', 'mbtn small' + (cls ? ' ' + cls : ''), t);
@@ -563,9 +587,9 @@
       acts.appendChild(b);
       return b;
     };
-    btn('◎ GO THERE', '', () => { UI.courtPopClose(); popH.onLook(c.idx); UI.councilClose(); });
+    btn(tr('◎ GO THERE'), '', () => { UI.courtPopClose(); popH.onLook(c.idx); UI.councilClose(); });
     if (c.mine && !c.hand && !c.ally) {
-      btn('👑 COMMAND', '', () => { UI.courtPopClose(); popH.onTake(c.idx); UI.councilClose(); });
+      btn(tr('👑 COMMAND'), '', () => { UI.courtPopClose(); popH.onTake(c.idx); UI.councilClose(); });
       for (const o of c.orders)
         btn(o.on ? '● ' + o.label : o.label, '', () => {
           popH.onOrder(c.lordIdx, o.mode, o.target);
@@ -580,7 +604,7 @@
         UI.courtPop(c.idx, popH);
       });
     pop.appendChild(acts);
-    const close = el('button', 'mbtn small cp-x', 'CLOSE');
+    const close = el('button', 'mbtn small cp-x', tr('CLOSE'));
     close.addEventListener('click', () => UI.courtPopClose());
     pop.appendChild(close);
     /* tapping the ground behind it dismisses — the phone idiom, and it must not fall through
@@ -611,16 +635,16 @@
       r.appendChild(el('span', null, k));
       return r;
     };
-    top.appendChild(line('cities held', d.held + ' of ' + d.all));
-    top.appendChild(line('essence a second', (d.income >= 0 ? '+' : '') + d.income.toFixed(1)));
-    top.appendChild(line('crews idle', d.free + ' of ' + d.crews));
-    top.appendChild(line('men afield', String(d.men)));
+    top.appendChild(line(tr('cities held'), tr('{a} of {b}', { a: d.held, b: d.all })));
+    top.appendChild(line(tr('essence a second'), (d.income >= 0 ? '+' : '') + d.income.toFixed(1)));
+    top.appendChild(line(tr('crews idle'), tr('{a} of {b}', { a: d.free, b: d.crews })));
+    top.appendChild(line(tr('men afield'), String(d.men)));
     body.appendChild(top);
     /* TO ARMS — the one banner-wide order: every lord of yours in reach of your court marches
      * to it, for as long as it is pressed and no longer (game.js liftArms). Offered only where
      * a standing order can be honoured — the host's — like the stances on the rows. */
     if (H2.onToArms && d.cities.some((c) => c.mine && !c.hand && !c.ally && c.orders && c.orders.length)) {
-      const arms = el('button', 'mbtn cc-arms', '⚔ TO ARMS — every lord in reach, to your court');
+      const arms = el('button', 'mbtn cc-arms', tr('⚔ TO ARMS — every lord in reach, to your court'));
       arms.id = 'cc-to-arms';
       arms.addEventListener('click', () => { H2.onToArms(); UI.council(popH.data(), popH); });
       body.appendChild(arms);
@@ -646,7 +670,7 @@
      * on this panel already lives: an inline strip under the row, exactly as COMMAND and the
      * standing orders do for a court of your own. A banner's courts are adjacent and only the
      * FIRST carries the strip, because terms are sworn between banners and not about a court. */
-    body.appendChild(el('h3', 'cc-head', 'THE COURTS'));
+    body.appendChild(el('h3', 'cc-head', tr('THE COURTS')));
     {
     for (const c of d.cities) {
       const row = el('div', 'cc-city' + (c.mine ? ' mine' : '') + (c.hand ? ' hand' : ''));
@@ -677,7 +701,7 @@
       if (c.mine && !c.hand && !c.ally) {
         const acts = el('div', 'cc-acts');
         const btn = (t, fn) => { const b = el('button', 'mbtn small', t); b.addEventListener('click', fn); acts.appendChild(b); };
-        btn('👑 COMMAND', () => { H2.onTake(c.idx); UI.councilClose(); });
+        btn(tr('👑 COMMAND'), () => { H2.onTake(c.idx); UI.councilClose(); });
         for (const o of c.orders)
           btn(o.on ? '● ' + o.label : o.label, () => { H2.onOrder(c.lordIdx, o.mode, o.target); UI.council(H2.data(), H2); });
         body.appendChild(acts);
@@ -721,13 +745,13 @@
     const el = $('halt'), on = !!paused;
     const key = on ? String(paused.by) : '';
     $('btn-pause').textContent = on ? '▶' : '⏸';
-    $('btn-pause').title = on ? 'Go on' : 'Call a halt';
+    $('btn-pause').title = on ? tr('Go on') : tr('Call a halt');
     if (key === haltShown) return;
     haltShown = key;
     el.classList.toggle('hidden', !on);
     if (!on) return;
-    const who = paused.by === viewer ? 'you called it'
-      : 'called by ' + ((names && names[paused.by]) || ('seat ' + (paused.by + 1)));
+    const who = paused.by === viewer ? tr('you called it')
+      : tr('called by {who}', { who: (names && names[paused.by]) || tr('seat {n}', { n: paused.by + 1 }) });
     el.querySelector('.halt-who').textContent = who;
   };
 
@@ -797,8 +821,9 @@
        * else, so it gets the card rather than a pennant, and a colour no company can take. */
       const col = trump ? '#c48eff' : UI.coColor(id);
       const b = mk(id, trump ? '🃏' : '⚐', trump ? 'co trump' : 'co', col);
-      b.title = trump ? 'the Champion you called through the Trump'
-                      : n + (n === 1 ? ' hall' : ' halls') + (quiet ? ', mustering nobody' : '');
+      b.title = trump ? tr('the Champion you called through the Trump')
+                      : n === 1 ? (quiet ? tr('{n} hall, mustering nobody', { n }) : tr('{n} hall', { n }))
+                      : (quiet ? tr('{n} halls, mustering nobody', { n }) : tr('{n} halls', { n }));
       /* A QUIET STANDARD SAYS SO. The tray is where you look to see what the army is doing,
        * so 'why is nobody arriving under this flag' has to be answerable from it. */
       if (quiet) b.classList.add('quiet');
@@ -840,7 +865,7 @@
         .map(([k, c]) => ((C.UNITS[k] && C.UNITS[k].icon) || '•') + '\u2060' + c).join(' ');
       /* a standard with nobody under it is worth saying out loud — it is the difference
        * between "they are on their way" and "there is nobody to send" */
-      if (!rtxt) rtxt = '— no men';
+      if (!rtxt) rtxt = tr('— no men');
     }
     if (roster.textContent !== rtxt) roster.textContent = rtxt;
     /* BESIDE THE FLAG IT DESCRIBES, not at the end of the tray. Re-parented rather than
@@ -937,8 +962,8 @@
         d.className = 'walker' + (mine ? ' mine' : '') + (q.walking ? '' : ' stalled');
         d.style.color = UI.seatColor(pi, viewer);
         d.textContent = (q.walking ? '✴ ' : '✧ ') +
-                        (pi === viewer ? 'YOU'
-                          : ((UI.names && UI.names[pi]) || C.SEAT_NAMES[pi] || 'a rival').toUpperCase()) +
+                        (pi === viewer ? tr('YOU')
+                          : ((UI.names && UI.names[pi]) || C.SEAT_NAMES[pi] || tr('a rival')).toUpperCase()) +
                         ' ' + q.pattern.toFixed(0) + '%';
         race.appendChild(d);
       }
@@ -1011,14 +1036,14 @@
           nm.style.color = UI.seatColor(pi, viewer);
           /* the match's own names — at a country's table a seat IS a city, and 'A RIVAL'
            * fifteen times over said nothing about any of them */
-          nm.textContent = ((UI.names && UI.names[pi]) || C.SEAT_NAMES[pi] || 'a rival').toUpperCase();
+          nm.textContent = ((UI.names && UI.names[pi]) || C.SEAT_NAMES[pi] || tr('a rival')).toUpperCase();
           const st = document.createElement('span');
           st.className = 't-state';
           /* what the NEXT tap does is what the chip has to make obvious, so each line is
            * written as the state and the tap reads as its opposite */
-          st.textContent = mine2 && his ? '⚑ at terms — tap to break'
-                         : his ? 'asks terms — tap to accept'
-                         : mine2 ? 'terms offered' : 'at war — tap to offer';
+          st.textContent = mine2 && his ? tr('⚑ at terms — tap to break')
+                         : his ? tr('asks terms — tap to accept')
+                         : mine2 ? tr('terms offered') : tr('at war — tap to offer');
           d.appendChild(nm); d.appendChild(st);
           tray.appendChild(d);
         }
@@ -1041,7 +1066,7 @@
     }
     /* my pattern, small, over my own city */
     const mp = $('my-pattern');
-    if (me.pattern > 0) { mp.classList.remove('hidden'); mp.textContent = '✴ ' + me.pattern.toFixed(1) + '%' + (me.walking ? ' — walking' : ' — paused'); }
+    if (me.pattern > 0) { mp.classList.remove('hidden'); mp.textContent = me.walking ? tr('✴ {p}% — walking', { p: me.pattern.toFixed(1) }) : tr('✴ {p}% — paused', { p: me.pattern.toFixed(1) }); }
     else mp.classList.add('hidden');
   };
 
@@ -1056,31 +1081,31 @@
      * and the old base-income field is gone from the table. Keyed on the dead field this
      * branch silently never fired, so a Gate's card — build sheet and upgrade sheet alike —
      * stopped saying what a Gate is FOR. Found by a test that asked the card to say it. */
-    if (d.nodeIncome) return `<span class="c-rate up">+${d.nodeIncome[level - 1]}◆/s from its spring</span>`;
+    if (d.nodeIncome) return `<span class="c-rate up">${tr('+{n}◆/s from its spring', { n: d.nodeIncome[level - 1] })}</span>`;
     /* A LEVEL BUYS BETTER MEN, NOT MORE OF THEM, so the card has to say what the men become
      * — the rate is the same at every level and quoting it would read as "no change". */
     if (d.spawns) return unitLine(d.spawns, d.period[level - 1], level);
-    if (bt === 'shrine') return `<span class="c-rate dn">−${d.drain[level - 1]}◆/s while walking</span>`;
+    if (bt === 'shrine') return `<span class="c-rate dn">${tr('−{n}◆/s while walking', { n: d.drain[level - 1] })}</span>`;
     return '';
   }
   /* why the ground refuses a work — said plainly, because free placement fails silently otherwise */
   const WHY = {
-    ground: 'the ground will not bear it — wood, rock or water',
-    whole: 'there is nothing broken to mend',
-    working: 'the masons are already in it',
-    crowded: 'too close to another work',
-    claim: 'beyond your writ — hold a Gate nearer, or take a spring',
-    nospring: 'a Gate draws Shadow out of the ground — it stands on a spring, and only there',
-    taken: 'that spring is already drawn upon',
-    presence: 'no troops of yours stand there to claim it',
-    contested: 'the enemy stands there',
-    busy: 'your masons are all at work — every Shadow Gate you hold hires another crew',
-    unique: 'you have one already',
+    ground: tr('the ground will not bear it — wood, rock or water'),
+    whole: tr('there is nothing broken to mend'),
+    working: tr('the masons are already in it'),
+    crowded: tr('too close to another work'),
+    claim: tr('beyond your writ — hold a Gate nearer, or take a spring'),
+    nospring: tr('a Gate draws Shadow out of the ground — it stands on a spring, and only there'),
+    taken: tr('that spring is already drawn upon'),
+    presence: tr('no troops of yours stand there to claim it'),
+    contested: tr('the enemy stands there'),
+    busy: tr('your masons are all at work — every Shadow Gate you hold hires another crew'),
+    unique: tr('you have one already'),
     /* a work with a length has two refusals of its own — both about the RUN, not the spot */
-    short: 'too short a run to be a wall',
-    crews: 'longer than your masons reach — hold more Gates, or draw a shorter run',
+    short: tr('too short a run to be a wall'),
+    crews: tr('longer than your masons reach — hold more Gates, or draw a shorter run'),
     /* the Reach War's own refusal: the outer bound every work answers to */
-    reach: 'beyond your cities’ reach — take a city nearer to it'
+    reach: tr('beyond your cities’ reach — take a city nearer to it')
   };
   /* The standard chooser, used twice: once before raising a hall, once on the hall's own
    * sheet to move it later. Companies exist so that a dozen halls need not mean a dozen
@@ -1100,12 +1125,12 @@
     for (const co of cos) {
       const n = me.buildings.filter((q) => C.BUILDINGS[q.bt] && C.BUILDINGS[q.bt].spawns && q.co === co.id).length;
       if (co.trump) continue;   // the Champion answers his own card and nothing else
-      row('Standard ' + co.id,
-          (n ? n + (n === 1 ? ' hall musters' : ' halls muster') + ' under it' : 'no hall under it yet') +
-          (co.rally ? ' · posted afield' : ' · holding at home'),
+      row(tr('Standard {n}', { n: co.id }),
+          (n ? (n === 1 ? tr('{n} hall musters under it', { n }) : tr('{n} halls muster under it', { n })) : tr('no hall under it yet')) +
+          (co.rally ? tr(' · posted afield') : tr(' · holding at home')),
           UI.coColor(co.id), current === co.id, co.id);
     }
-    row('A new standard', 'Raise a company of its own, with its own flag in the tray',
+    row(tr('A new standard'), tr('Raise a company of its own, with its own flag in the tray'),
         '#b8a878', false, 'new');
     if (!cos.length) return;   // nothing to choose between: the caller should not have asked
   }
@@ -1123,7 +1148,7 @@
      * hall — was nowhere on the card that sells it. `rateTag` is the same line the upgrade
      * sheet already shows: +◆/s on a Gate, −◆/s and the man on a hall, the walk's drain on
      * the Shrine. Reported from play as "the rate cost of mustering should be visible". */
-    return `<span class="c-ico">${d.icon}</span><span class="c-name">${d.name}</span>` +
+    return `<span class="c-ico">${d.icon}</span><span class="c-name">${tr(d.name)}</span>` +
            `<span class="c-cost">◆ ${d.cost}${d.raise ? ' · 🔨' + d.raise + 's' : ''}</span>` +
            rateTag(bt, 1) +
            `<span class="c-blurb">${bad ? '<i>' + (WHY[bad] || bad) + '</i>' : ''}</span>`;
@@ -1153,7 +1178,7 @@
          * one option on it is a menu you resent — it simply raises its own standard. Every
          * hall after that gets the choice: join one of yours, or raise another. */
         if (d.spawns && el._me && (el._me.companies || []).length) {
-          el.innerHTML = `<div class="sheet-title">${d.icon} ${d.name} — under which standard?</div>`;
+          el.innerHTML = `<div class="sheet-title">${tr('{icon} {name} — under which standard?', { icon: d.icon, name: tr(d.name) })}</div>`;
           standardCards(el, el._me, 0, (co) => { H.onPick(bt, co); UI.closeSheet(); });
           addCancel(el);
           return;
@@ -1207,7 +1232,7 @@
   UI.buildSheet = function (essence, me) {
     const el = freshSheet();
     el._me = me || null;
-    el.innerHTML = `<div class="sheet-title">Raise a work ${trChip(essence)}</div>` +
+    el.innerHTML = `<div class="sheet-title">${tr('Raise a work')} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb hidden" id="no-crew"><i>${WHY.busy}</i></div>`;
     buildCards(el, essence);
     showSheet(el, essence);
@@ -1231,8 +1256,8 @@
     const i = level - global.World.forkAt(bt);
     if (b2.dmg) {
       const dps = (b2.dmg[i] / b2.atk[i]).toFixed(1);
-      return `<span class="c-rate wide">${b2.dmg[i]} dmg · ${dps}/s · ${b2.range[i]} range` +
-             (b2.splash[i] ? ` · splash ${b2.splash[i]}` : ' · single target') + `</span>`;
+      return `<span class="c-rate wide">${tr('{d} dmg · {dps}/s · {r} range', { d: b2.dmg[i], dps, r: b2.range[i] })}` +
+             (b2.splash[i] ? tr(' · splash {n}', { n: b2.splash[i] }) : tr(' · single target')) + `</span>`;
     }
     if (b2.spawns) return unitLine(b2.spawns, b2.period ? b2.period[i] : C.BUILDINGS[bt].period[level - 1], level);
     return '';
@@ -1244,18 +1269,18 @@
     /* `keep` on the line, because the drain beside it STOPS when the hall is full — a hall's
      * standing cost is the muster rate only until its company stands complete, and a card
      * that quoted the drain without the ceiling read as a bill that never ends */
-    return `<span class="c-rate dn">−${(u.cost * m / period).toFixed(1)}◆/s muster` +
-           (u.keep ? ` · keeps ${u.keep}` : '') + `</span>` +
-           `<span class="c-rate up">${C.TIER_NAME[level - 1]}${u.name || cap(kind)}: ` +
-           `${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow</span>`;
+    const un = tr(u.name || cap(kind)), tn = C.TIER_NAME[level - 1];
+    return `<span class="c-rate dn">${tr('−{n}◆/s muster', { n: (u.cost * m / period).toFixed(1) })}` +
+           (u.keep ? tr(' · keeps {n}', { n: u.keep }) : '') + `</span>` +
+           `<span class="c-rate up">${tn ? tr(tn + '{name}', { name: un }) : un}: ` +
+           `${tr('{hp} hp · {d} blow', { hp: Math.round(u.hp * m), d: +(u.dmg * m).toFixed(1) })}</span>`;
   }
 
   const raiseLine = (s) => (s.work > 0
-    ? `<b>🔨 The masons are raising it to level ${s.level} — ` +
-      `${Math.round((1 - s.work / (s.workFor || 1)) * 100)}%, about ${Math.ceil(s.work)}s more.</b><br>` +
-      'It stands and it can be broken, but it does its job for nobody until they are out of it.'
-    : `<b>🔨 Rising — ${Math.round((1 - s.raise / (s.raiseFor || 1)) * 100)}%, about ${Math.ceil(s.raise)}s more.</b><br>` +
-      'Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.');
+    ? `<b>${tr('🔨 The masons are raising it to level {l} — {p}%, about {s}s more.', { l: s.level, p: Math.round((1 - s.work / (s.workFor || 1)) * 100), s: Math.ceil(s.work) })}</b><br>` +
+      tr('It stands and it can be broken, but it does its job for nobody until they are out of it.')
+    : `<b>${tr('🔨 Rising — {p}%, about {s}s more.', { p: Math.round((1 - s.raise / (s.raiseFor || 1)) * 100), s: Math.ceil(s.raise) })}</b><br>` +
+      tr('Until it is finished it earns nothing and holds no ground, and your masons can start nothing else.'));
   /* WHICH SIDE OF THE STONE IS THE SHELTERED ONE. A run works its own sheltered face out from
    * where the owner's Seat lies, which is right for a curtain drawn across the approach to it
    * and wrong for every other one — a wall thrown up around a forward spring, or along a flank,
@@ -1279,8 +1304,8 @@
     const b = document.createElement('button');
     b.className = 'card demolish';
     b.id = 'work-demolish';
-    b.innerHTML = '<span class="c-ico">⚒</span><span class="c-name">Throw it down</span>' +
-                  `<span class="c-blurb">Clear the ground for something else — ${back}◆ of the stone comes back. It cannot be undone.</span>`;
+    b.innerHTML = `<span class="c-ico">⚒</span><span class="c-name">${tr('Throw it down')}</span>` +
+                  `<span class="c-blurb">${tr('Clear the ground for something else — {n}◆ of the stone comes back. It cannot be undone.', { n: back })}</span>`;
     b.addEventListener('click', () => { H.onDemolish(s.id); UI.closeSheet(); });
     el.appendChild(b);
   }
@@ -1291,10 +1316,10 @@
     const change = document.createElement('button');
     change.className = 'card';
     change.id = 'change-standard';
-    change.innerHTML = '<span class="c-ico">⚐</span><span class="c-name">Change its standard</span>' +
-                       '<span class="c-blurb">Move this hall to another company, or back under the Banner</span>';
+    change.innerHTML = `<span class="c-ico">⚐</span><span class="c-name">${tr('Change its standard')}</span>` +
+                       `<span class="c-blurb">${tr('Move this hall to another company, or back under the Banner')}</span>`;
     change.addEventListener('click', () => {
-      el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — under which standard?</div>`;
+      el.innerHTML = `<div class="sheet-title">${tr('{icon} {name} — under which standard?', { icon: face.icon, name: tr(face.name) })}</div>`;
       standardCards(el, me, s.co || 0, (want) => { H.onAssign(s.id, want); UI.closeSheet(); });
       addCancel(el);
     });
@@ -1305,9 +1330,9 @@
     const b = document.createElement('button');
     b.className = 'card';
     b.id = 'wall-flip';
-    b.innerHTML = '<span class="c-ico">⇄</span><span class="c-name">Turn the wall about</span>' +
-                  '<span class="c-blurb">The far side becomes the sheltered one. Your men fall back ' +
-                  'through it and take cover on the other face.</span>';
+    b.innerHTML = `<span class="c-ico">⇄</span><span class="c-name">${tr('Turn the wall about')}</span>` +
+                  `<span class="c-blurb">${tr('The far side becomes the sheltered one. Your men fall back ' +
+                  'through it and take cover on the other face.')}</span>`;
     b.addEventListener('click', () => { H.onFlip(s.id); UI.closeSheet(); });
     el.appendChild(b);
   }
@@ -1315,8 +1340,8 @@
     const d = C.BUILDINGS[s.bt], face = workFace(s);
     const el = freshSheet();
     el._me = me || null;
-    el.innerHTML = `<div class="sheet-title">${face.icon} ${face.name} — level ${s.level} ${trChip(essence)}</div>` +
-                   `<div class="sheet-blurb">${face.blurb}</div>`;
+    el.innerHTML = `<div class="sheet-title">${tr('{icon} {name} — level {l}', { icon: face.icon, name: tr(face.name), l: s.level })} ${trChip(essence)}</div>` +
+                   `<div class="sheet-blurb">${tr(face.blurb)}</div>`;
     /* ---- WHOSE STANDARD THIS HALL MUSTERS INTO, IN THE HEADER ----
      * It used to be a line of small print near the bottom of the sheet, under the upgrade card
      * and the valve — and it was not there AT ALL while the hall was being raised or re-tooled,
@@ -1330,10 +1355,10 @@
       f.className = 'sheet-flag';
       f.innerHTML = co0
         ? `<span class="sf-pip" style="background:${UI.coColor(co0.id)}"></span>` +
-          `<span class="sf-name" style="color:${UI.coColor(co0.id)}">⚐ Standard ${co0.id}</span>` +
-          `<span class="sf-note">${co0.paused ? 'mustering nobody'
-            : co0.rally ? 'posted afield' : 'holding at home'}</span>`
-        : '<span class="sf-name">⚐ No standard yet</span>';
+          `<span class="sf-name" style="color:${UI.coColor(co0.id)}">${tr('⚐ Standard {n}', { n: co0.id })}</span>` +
+          `<span class="sf-note">${co0.paused ? tr('mustering nobody')
+            : co0.rally ? tr('posted afield') : tr('holding at home')}</span>`
+        : `<span class="sf-name">${tr('⚐ No standard yet')}</span>`;
       el.appendChild(f);
       /* ---- AND THE VALVE RIDES WITH IT ----
        * Halting a standard's muster is the one order on this sheet you give in a hurry — the
@@ -1347,10 +1372,10 @@
         mu.className = 'card';
         mu.id = 'co-muster';
         mu.innerHTML = co0.paused
-          ? `<span class="c-ico">▶</span><span class="c-name">Resume Standard ${co0.id}</span>` +
-            '<span class="c-blurb">Its halls pay for troops again</span>'
-          : `<span class="c-ico">⏸</span><span class="c-name">Halt Standard ${co0.id}</span>` +
-            '<span class="c-blurb">Every hall under this standard stops mustering — the rest of the realm carries on</span>';
+          ? `<span class="c-ico">▶</span><span class="c-name">${tr('Resume Standard {n}', { n: co0.id })}</span>` +
+            `<span class="c-blurb">${tr('Its halls pay for troops again')}</span>`
+          : `<span class="c-ico">⏸</span><span class="c-name">${tr('Halt Standard {n}', { n: co0.id })}</span>` +
+            `<span class="c-blurb">${tr('Every hall under this standard stops mustering — the rest of the realm carries on')}</span>`;
         mu.addEventListener('click', () => { H.onMusterCo(co0.id, !co0.paused); UI.closeSheet(); });
         el.appendChild(mu);
       }
@@ -1374,9 +1399,9 @@
     if (s.breach) {
       const size = s.units != null ? s.units : (s.crews || 1);   // stone, not crews
       const price = Math.max(1, Math.round(C.BUILDINGS.wall.cost * size * C.WALL.repair));
-      costCard(el, { icon: '🧱', name: 'Mend the breach', cost: price, essence,
-                     blurb: 'Half the stone, and as many crews as you can spare — fewer crews, ' +
-                            'longer work. It shelters nobody until they are done.' },
+      costCard(el, { icon: '🧱', name: tr('Mend the breach'), cost: price, essence,
+                     blurb: tr('Half the stone, and as many crews as you can spare — fewer crews, ' +
+                            'longer work. It shelters nobody until they are done.') },
                () => { H.onFix(s.id); UI.closeSheet(); });
       demolishCard(el, s);
       showSheet(el, essence);
@@ -1390,12 +1415,12 @@
     if (forking) {
       const hint = document.createElement('div');
       hint.className = 'sheet-blurb';
-      hint.textContent = (d.forkHint || 'Rebuild it.') + ' Choose once — the choice does not come again.';
+      hint.textContent = tr('{hint} Choose once — the choice does not come again.', { hint: d.forkHint ? tr(d.forkHint) : tr('Rebuild it.') });
       el.appendChild(hint);
       for (const key of d.branchUI) {
         const b2 = d.branches[key];
         const cost = global.World.upgradeCost(s.bt, s.level, key);
-        costCard(el, { icon: b2.icon, name: b2.name, cost, essence, blurb: b2.blurb,
+        costCard(el, { icon: b2.icon, name: tr(b2.name), cost, essence, blurb: tr(b2.blurb),
                        extra: branchStatLine(s.bt, key, fork) },
                  () => { H.onUp(s.id, key); UI.closeSheet(); });
       }
@@ -1409,9 +1434,8 @@
       const secs = Math.round(Math.max(1, (d.raise || 10) * C.UP_WORK));
       const quiet = d.spawns ? 'musters nobody' : s.bt === 'tower' ? 'does not shoot'
         : s.bt === 'gate' ? 'draws nothing' : 'stands idle';
-      costCard(el, { name: `Upgrade to level ${s.level + 1}`, cost, essence,
-                     blurb: `🔨 ${secs}s of masonry — it ${quiet} until they are done, and a ` +
-                            'crew of yours is on it.',
+      costCard(el, { name: tr('Upgrade to level {l}', { l: s.level + 1 }), cost, essence,
+                     blurb: tr('🔨 {s}s of masonry — it ' + quiet + ' until they are done, and a crew of yours is on it.', { s: secs }),
                      above: rt ? (forked ? rt : rt.replace('c-rate', 'c-rate wide')) : '' },
                () => { H.onUp(s.id, s.br); UI.closeSheet(); });
     }
@@ -1431,11 +1455,11 @@
       b.className = 'card walkbtn';
       if (walking) {
         b.disabled = true;
-        b.innerHTML = '<span class="c-name">✴ Walking the Pattern</span>' +
-                      '<span class="c-blurb">The lines will not let go. Only the Pattern finished — or this Shrine thrown down — ends the walk.</span>';
+        b.innerHTML = `<span class="c-name">${tr('✴ Walking the Pattern')}</span>` +
+                      `<span class="c-blurb">${tr('The lines will not let go. Only the Pattern finished — or this Shrine thrown down — ends the walk.')}</span>`;
       } else {
-        b.innerHTML = '<span class="c-name">✴ Walk the Pattern</span>' +
-                      '<span class="c-blurb">Drains Essence, and the drain comes before your halls are paid. Your rival WILL know. There is no turning back.</span>';
+        b.innerHTML = `<span class="c-name">${tr('✴ Walk the Pattern')}</span>` +
+                      `<span class="c-blurb">${tr('Drains Essence, and the drain comes before your halls are paid. Your rival WILL know. There is no turning back.')}</span>`;
         b.addEventListener('click', () => { H.onWalk(true); UI.closeSheet(); });
       }
       el.appendChild(b);
@@ -1445,11 +1469,14 @@
   };
 
   /* ---------------- map site sheet (v0.2) ---------------- */
+  /* a site's name in the page's tongue: a board's city is NAMED for its heir by worldgen
+   * ("the City of Corwin"), everything else is a name off the table or a proper noun */
+  const siteName = (n) => global.I18N.site(n);
   const KIND_BLURB = {
-    node: 'A spring of living Shadow. Raise a Gate on it — your troops must be standing here — and it will pay for wars.',
-    vantage: 'High ground over the paths. A Watchtower here sees far and shoots farther.',
-    road: 'A milestone of the black road. Chaos favors this ground.',
-    city: 'A Seat of Power.'
+    node: tr('A spring of living Shadow. Raise a Gate on it — your troops must be standing here — and it will pay for wars.'),
+    vantage: tr('High ground over the paths. A Watchtower here sees far and shoots farther.'),
+    road: tr('A milestone of the black road. Chaos favors this ground.'),
+    city: tr('A Seat of Power.')
   };
   /* `own` is game.js's answer about WHO HOLDS THIS — `{mine, name}` — because whether a spring
    * is yours is a question about BANNERS now and the sheet has no world to ask. Without it a
@@ -1460,10 +1487,10 @@
     const el = $('sheet');
     el._me = pinfo || null;
     const mineSite = own ? own.mine : (st && st.holder === viewer);
-    const ownerTxt = !st ? 'unexplored' : st.holder == null || st.holder < 0 ? 'unclaimed'
-      : mineSite ? 'yours'
-      : (own && own.name ? own.name + '’s' : 'the rival’s');
-    el.innerHTML = `<div class="sheet-title">${site.name} ${trChip(essence)}</div>` +
+    const ownerTxt = !st ? tr('unexplored') : st.holder == null || st.holder < 0 ? tr('unclaimed')
+      : mineSite ? tr('yours')
+      : (own && own.name ? tr('{name}’s', { name: own.name }) : tr('the rival’s'));
+    el.innerHTML = `<div class="sheet-title">${siteName(site.name)} ${trChip(essence)}</div>` +
                    `<div class="sheet-blurb">${KIND_BLURB[site.kind] || ''} <b>(${ownerTxt})</b></div>`;
 
     /* ---- the Seat of Power: city status + city-wide commands ---- */
@@ -1479,8 +1506,8 @@
         const hp = war && war.hp != null ? war.hp : p2.castleHp;
         const maxHp = (war && war.maxHp) || C.CASTLE_HP;
         stat.innerHTML = war && war.owner < 0
-          ? `🗼 YIELDED — hold the court to claim it`
-          : `🗼 Seat ${Math.round(hp)}/${maxHp}`;
+          ? tr('🗼 YIELDED — hold the court to claim it')
+          : tr('🗼 Seat {hp}/{max}', { hp: Math.round(hp), max: maxHp });
         el.appendChild(stat);
         /* A SEAT SHOOTS, AND NOBODY WOULD GUESS IT FROM A HIT-POINT BAR. It is the hardest gun
          * on the board and the only one no curtain shades — an heir planning an assault is
@@ -1488,8 +1515,8 @@
          * table, so it can never quote a figure the sim has stopped using. */
         const gun = document.createElement('div');
         gun.className = 'sheet-blurb';
-        gun.textContent = `🎯 The throne's own guns: ${Math.round(C.SEAT_GUN.dmg / C.SEAT_GUN.atk)}/s ` +
-                          `out to ${C.SEAT_GUN.range}, and no wall shades them.`;
+        gun.textContent = tr("🎯 The throne's own guns: {dps}/s out to {r}, and no wall shades them.",
+                             { dps: Math.round(C.SEAT_GUN.dmg / C.SEAT_GUN.atk), r: C.SEAT_GUN.range });
         el.appendChild(gun);
       }
       if (!foeCity && pinfo) {
@@ -1498,14 +1525,14 @@
         const muster = Math.max(0, (pinfo.drainRate || 0) - walkDrain);
         const eco = document.createElement('div');
         eco.className = 'sheet-blurb';
-        eco.textContent = `+${(pinfo.incomeRate || 0).toFixed(1)}/s income · −${muster.toFixed(1)}/s muster` +
-                          (walkDrain ? ` · −${walkDrain.toFixed(1)}/s the walk` : '');
+        eco.textContent = tr('+{i}/s income · −{m}/s muster', { i: (pinfo.incomeRate || 0).toFixed(1), m: muster.toFixed(1) }) +
+                          (walkDrain ? tr(' · −{w}/s the walk', { w: walkDrain.toFixed(1) }) : '');
         el.appendChild(eco);
         /* Sound the Recall — every blade comes home */
         const rc = document.createElement('button');
         rc.className = 'card walkbtn';
-        rc.innerHTML = '<span class="c-name">🛡 Sound the Recall</span>' +
-                       '<span class="c-blurb">Every standard is struck and the whole army turns for home — defend the city</span>';
+        rc.innerHTML = `<span class="c-name">${tr('🛡 Sound the Recall')}</span>` +
+                       `<span class="c-blurb">${tr('Every standard is struck and the whole army turns for home — defend the city')}</span>`;
         rc.addEventListener('click', () => { H.onRecall(); UI.closeSheet(); });
         el.appendChild(rc);
         /* ---- THE MUSTER, WHOLE (reported from play, 2026-08-21) ----
@@ -1524,12 +1551,14 @@
         const mu = document.createElement('button');
         mu.className = 'card';
         mu.innerHTML = anyHalt
-          ? '<span class="c-name">▶ Resume the Muster</span><span class="c-blurb">' +
+          ? `<span class="c-name">${tr('▶ Resume the Muster')}</span><span class="c-blurb">` +
             (pinfo.musterPaused && quietCos.length
-              ? `The realm valve and ${quietCos.length} halted standard${quietCos.length > 1 ? 's' : ''} — everything pays for troops again`
-              : pinfo.musterPaused ? 'Barracks and spires pay for troops again'
-              : `${quietCos.length} halted standard${quietCos.length > 1 ? 's' : ''} pay${quietCos.length > 1 ? '' : 's'} for troops again`) + '</span>'
-          : '<span class="c-name">⏸ Halt the Muster</span><span class="c-blurb">Stop paying for new troops while the treasury gathers</span>';
+              ? (quietCos.length > 1 ? tr('The realm valve and {n} halted standards — everything pays for troops again', { n: quietCos.length })
+                                     : tr('The realm valve and {n} halted standard — everything pays for troops again', { n: quietCos.length }))
+              : pinfo.musterPaused ? tr('Barracks and spires pay for troops again')
+              : (quietCos.length > 1 ? tr('{n} halted standards pay for troops again', { n: quietCos.length })
+                                     : tr('{n} halted standard pays for troops again', { n: quietCos.length }))) + '</span>'
+          : `<span class="c-name">${tr('⏸ Halt the Muster')}</span><span class="c-blurb">${tr('Stop paying for new troops while the treasury gathers')}</span>`;
         mu.addEventListener('click', () => { H.onMusterAll(!anyHalt); UI.closeSheet(); });
         el.appendChild(mu);
         /* one row per mustering standard: the same toggle its hall offers, all in one place */
@@ -1542,8 +1571,8 @@
            * should show on the control panel of the city tower") — the pip AND the name wear
            * the company's colour, the same answer the tray and the hall sheet give */
           row.innerHTML = `<span class="c-ico">${co.paused ? '▶' : '⏸'}</span>` +
-            `<span class="c-name" style="color:${UI.coColor(co.id)}"><span class="sf-pip" style="background:${UI.coColor(co.id)}"></span>Standard ${co.id}</span>` +
-            `<span class="c-blurb">${halls} hall${halls > 1 ? 's' : ''} — ${co.paused ? 'mustering nobody: resume this standard' : 'mustering: halt this standard'}</span>`;
+            `<span class="c-name" style="color:${UI.coColor(co.id)}"><span class="sf-pip" style="background:${UI.coColor(co.id)}"></span>${tr('Standard {n}', { n: co.id })}</span>` +
+            `<span class="c-blurb">${halls > 1 ? tr('{n} halls', { n: halls }) : tr('{n} hall', { n: halls })} — ${co.paused ? tr('mustering nobody: resume this standard') : tr('mustering: halt this standard')}</span>`;
           row.addEventListener('click', () => { H.onMusterCo(co.id, !co.paused); UI.closeSheet(); });
           el.appendChild(row);
         }
@@ -1556,21 +1585,21 @@
       if (war && war.mine && !war.isSeat) {
         const tk = document.createElement('button');
         tk.className = 'card walkbtn';
-        tk.innerHTML = '<span class="c-name">👑 Take Command Here</span>' +
-                       '<span class="c-blurb">Drive this court yourself — its purse, its crews and its ' +
-                       'standards answer your taps. The one you leave goes back to its own lord</span>';
+        tk.innerHTML = `<span class="c-name">${tr('👑 Take Command Here')}</span>` +
+                       `<span class="c-blurb">${tr('Drive this court yourself — its purse, its crews and its ' +
+                       'standards answer your taps. The one you leave goes back to its own lord')}</span>`;
         tk.addEventListener('click', () => { H.onTakeSeat(war.idx); UI.closeSheet(); });
         el.appendChild(tk);
 
         const lbl = document.createElement('div');
         lbl.className = 'sheet-blurb';
         const STANCE = { hold: 'warden', walls: 'warden', gates: 'steward', warden: 'warden', steward: 'steward', marshal: 'marshal' };
-        const sayOrder = (o) => !o ? 'no stance given — his geography decides: a warden on the frontier, a steward inside'
-          : o.mode === 'attack' ? 'ordered: march on ' + ((war.nbrs.find((n) => n.idx === o.target) || {}).name || 'a neighbour')
-          : o.mode === 'support' ? (o.arms ? 'TO ARMS: ' : 'ordered: support ') + ((war.own.find((n) => n.idx === o.target) || {}).name || 'a city')
-          : STANCE[o.mode] === 'steward' ? 'stance: STEWARD — grows the country, takes the springs in reach'
-          : STANCE[o.mode] === 'marshal' ? 'stance: MARSHAL — an army for your banner, goes where it fights'
-          : 'stance: WARDEN — holds and fortifies the court';
+        const sayOrder = (o) => !o ? tr('no stance given — his geography decides: a warden on the frontier, a steward inside')
+          : o.mode === 'attack' ? tr('ordered: march on {name}', { name: (war.nbrs.find((n) => n.idx === o.target) || {}).name || tr('a neighbour') })
+          : o.mode === 'support' ? tr(o.arms ? 'TO ARMS: {name}' : 'ordered: support {name}', { name: (war.own.find((n) => n.idx === o.target) || {}).name || tr('a city') })
+          : STANCE[o.mode] === 'steward' ? tr('stance: STEWARD — grows the country, takes the springs in reach')
+          : STANCE[o.mode] === 'marshal' ? tr('stance: MARSHAL — an army for your banner, goes where it fights')
+          : tr('stance: WARDEN — holds and fortifies the court');
         lbl.textContent = '⚑ ' + sayOrder(war.steward);
         el.appendChild(lbl);
 
@@ -1586,9 +1615,9 @@
         /* the order is given to the LORD, not to the ground: he is the one who carries it out,
          * and a court that changes hands must not inherit the last man's instructions */
         const set = (mode, target) => () => { H.onSteward(war.lord, mode, target); UI.closeSheet(); };
-        btn('WARDEN', set('warden'));
-        btn('STEWARD', set('steward'));
-        btn('MARSHAL', set('marshal'));
+        btn(tr('WARDEN'), set('warden'));
+        btn(tr('STEWARD'), set('steward'));
+        btn(tr('MARSHAL'), set('marshal'));
         el.appendChild(row);
         /* the orders that need a NAME get one row each — a picker inside a picker on a phone
          * is a maze, and there are only ever a handful of neighbours */
@@ -1623,8 +1652,8 @@
       } else if (war && war.mine && war.isSeat) {
         const here = document.createElement('div');
         here.className = 'sheet-blurb';
-        here.textContent = '👑 Your own hand is on this court — its purse and its crews are the ' +
-                           'ones the BUILD button spends.';
+        here.textContent = tr('👑 Your own hand is on this court — its purse and its crews are the ' +
+                           'ones the BUILD button spends.');
         el.appendChild(here);
       }
     }
@@ -1639,7 +1668,7 @@
 
   function addCancel(el) {
     const c = document.createElement('button');
-    c.className = 'card cancel'; c.textContent = 'Close';
+    c.className = 'card cancel'; c.textContent = tr('Close');
     c.addEventListener('click', UI.closeSheet);
     el.appendChild(c);
   }
@@ -1686,7 +1715,7 @@
       const r = el._raising, busy = r.raise > 0 || r.work > 0;
       const line = el.querySelector('#raise-line');
       if (line) line.innerHTML = busy ? raiseLine(r)
-        : '<b>✔ Finished.</b> Tap it again to see what it can do.';
+        : tr('<b>✔ Finished.</b> Tap it again to see what it can do.');
       if (!busy) el._raising = null;
     }
     const chip = el.querySelector('.tr-chip b');
@@ -1770,15 +1799,15 @@
     $('hud').classList.add('hidden');
     UI.closeSheet();
     $('end').classList.remove('hidden');
-    $('end-title').textContent = won ? 'THE THRONE IS YOURS' : 'THE SUCCESSION PASSES YOU BY';
+    $('end-title').textContent = won ? tr('THE THRONE IS YOURS') : tr('THE SUCCESSION PASSES YOU BY');
     $('end-title').className = won ? 'won' : 'lost';
     $('end-sub').textContent = sub;
     const nx = $('end-next');
     nx.textContent = nextLabel || '';
     nx.classList.toggle('hidden', !nextLabel);
     nx.disabled = ready === false;
-    $('end-copy').textContent = '📜 COPY THE CHRONICLE';
-    $('end-save').textContent = 'SAVE';
+    $('end-copy').textContent = tr('📜 COPY THE CHRONICLE');
+    $('end-save').textContent = tr('SAVE');
     $('record-box').classList.add('hidden');
     const R = global.Rec;
     UI.stats(R && R.curves ? R.curves() : null, R && R.summary ? R.summary() : null);
@@ -1807,19 +1836,19 @@
   /* a key whose value is said as part of another key's phrase: it must not be said twice */
   const FOLDED = new Set(['mendR', 'bindR', 'splashFrac']);
   const SAY = {
-    siege: (v) => `×${v} vs stone`,
-    menOnly: () => 'besieges nothing · but strikes a Shrine',
-    mans: () => `holds a parapet, and shelters inside a tower (${C.TOWER.berths} to a tower)`,
-    mend: (v, u) => `mends ${v}/s` + (u.mendR ? ` out to ${u.mendR}` : ''),
-    bind: (v, u) => 'throws chains' + (u.bindR ? ` out to ${u.bindR}` : ''),
-    bindHp: (v) => `a fiend already under ${Math.round(v * 100)}% of its life turns instead`,
+    siege: (v) => tr('×{v} vs stone', { v }),
+    menOnly: () => tr('besieges nothing · but strikes a Shrine'),
+    mans: () => tr('holds a parapet, and shelters inside a tower ({n} to a tower)', { n: C.TOWER.berths }),
+    mend: (v, u) => (u.mendR ? tr('mends {v}/s out to {r}', { v, r: u.mendR }) : tr('mends {v}/s', { v })),
+    bind: (v, u) => (u.bindR ? tr('throws chains out to {r}', { r: u.bindR }) : tr('throws chains')),
+    bindHp: (v) => tr('a fiend already under {p}% of its life turns instead', { p: Math.round(v * 100) }),
     /* the Binding's three numbers, each said by ITS OWN key: drop one from the table and its
      * sentence goes with it, and nothing else in the line has to be rewritten */
-    hexT: (v) => `the chains hold ${v}s`,
-    hexSlow: (v) => `a chained man marches at ${Math.round(v * 100)}% pace`,
-    hexAmp: (v) => `…and takes ×${v} from every blow`,
-    hexCd: (v) => `a throw every ${v}s, in place of his shot`,
-    splash: (v, u) => `splash ${v}` + (u.splashFrac ? ` at ${Math.round(u.splashFrac * 100)}%` : '')
+    hexT: (v) => tr('the chains hold {v}s', { v }),
+    hexSlow: (v) => tr('a chained man marches at {p}% pace', { p: Math.round(v * 100) }),
+    hexAmp: (v) => tr('…and takes ×{v} from every blow', { v }),
+    hexCd: (v) => tr('a throw every {v}s, in place of his shot', { v }),
+    splash: (v, u) => (u.splashFrac ? tr('splash {v} at {p}%', { v, p: Math.round(u.splashFrac * 100) }) : tr('splash {v}', { v }))
   };
   /* a field with no words yet, said as itself: 'hexSlow' 0.4 → "hex slow 0.4". Ugly on purpose
    * — it is a prompt to write the sentence, not a substitute for one — and never wrong. */
@@ -1839,13 +1868,13 @@
     if (!u) return '';
     const bits = [];
     if (!scaled) {
-      bits.push(`${u.hp} hp`, `${u.dmg} blow`);
+      bits.push(tr('{n} hp', { n: u.hp }), tr('{n} blow', { n: u.dmg }));
       if (u.cost) bits.push(`◆ ${u.cost}`);
     }
-    bits.push(`${u.range} reach`, `${u.speed} pace`, `a blow every ${u.atk}s`);
+    bits.push(tr('{n} reach', { n: u.range }), tr('{n} pace', { n: u.speed }), tr('a blow every {n}s', { n: u.atk }));
     /* the hall's ceiling belongs here rather than in the table: it is the same at every level,
      * and it is the number that says what a hall is worth */
-    if (u.keep) bits.push(`${u.keep} to a hall`);
+    if (u.keep) bits.push(tr('{n} to a hall', { n: u.keep }));
     const tags = [];
     for (const k of Object.keys(u)) {
       if (BASE_KEYS.has(k) || FOLDED.has(k)) continue;
@@ -1872,8 +1901,7 @@
    * one is quoting a man the game never musters. The Archer read 42 hp · 6 blow · ◆23 on his
    * card and 53 · 7.5 · ◆29 in his own level table one tap later, which is the kind of thing a
    * codex exists to stop. `m` is the tier of the lowest level he exists at. */
-  const KEY_NUMS = (u, m) => `${Math.round(u.hp * m)} hp · ${+(u.dmg * m).toFixed(1)} blow · ` +
-                             `${u.range} reach`;
+  const KEY_NUMS = (u, m) => tr('{hp} hp · {d} blow · {r} reach', { hp: Math.round(u.hp * m), d: +(u.dmg * m).toFixed(1), r: u.range });
 
   /* ---- EVERY LEVEL, WITH ITS NUMBERS ----
    * A LEVEL BUYS BETTER MEN, NOT MORE OF THEM: `CONST.TIER` multiplies a recruit's hit points,
@@ -1899,8 +1927,8 @@
     const d = C.BUILDINGS[bt], b2 = key ? d.branches[key] : null, levels = levelsFor(bt, key);
     if (!levels.length) return '';
     const u = kind ? C.UNITS[kind] : null;
-    const head = u ? '<tr><th>lv</th><th>to raise</th><th>hp</th><th>blow</th><th>each</th><th>drain</th></tr>'
-                   : '<tr><th>lv</th><th>to raise</th><th>blow</th><th>every</th><th>range</th></tr>';
+    const head = u ? tr('<tr><th>lv</th><th>to raise</th><th>hp</th><th>blow</th><th>each</th><th>drain</th></tr>')
+                   : tr('<tr><th>lv</th><th>to raise</th><th>blow</th><th>every</th><th>range</th></tr>');
     const rows = levels.map((L) => {
       const raise = `◆ ${Math.round(priceTo(bt, key, L))}`;
       if (u) {
@@ -1929,7 +1957,7 @@
     return `<button class="man" data-kind="${kind}"${bt ? ` data-bt="${bt}"` : ''}` +
            `${key ? ` data-br="${key}"` : ''}>` +
            `<span class="m-emblem">${u.icon || '•'}</span>` +
-           `<span class="m-name">${u.name || cap(kind)}</span>` +
+           `<span class="m-name">${tr(u.name || cap(kind))}</span>` +
            (tag ? `<span class="m-tag">${tag}</span>` : '') +
            `<span class="m-cost">${u.cost ? '◆ ' + Math.round(u.cost * m) : ''}</span>` +
            `<span class="m-nums">${KEY_NUMS(u, m)}</span></button>`;
@@ -1941,11 +1969,11 @@
     const rng = Array.isArray(b2.range) ? b2.range[i] : b2.range;
     return `<button class="man work" data-bt="${bt}"${key ? ` data-br="${key}"` : ''}>` +
            `<span class="m-emblem">${b2.icon || d.icon || '•'}</span>` +
-           `<span class="m-name">${key ? b2.name : d.name}</span>` +
-           `<span class="m-tag">${key ? `${d.name} · level ${d.fork}` : 'level 1'}</span>` +
+           `<span class="m-name">${tr(key ? b2.name : d.name)}</span>` +
+           `<span class="m-tag">${key ? tr('{name} · level {l}', { name: tr(d.name), l: d.fork }) : tr('level 1')}</span>` +
            `<span class="m-cost">◆ ${key ? b2.cost : d.cost}</span>` +
-           `<span class="m-nums">${dmg != null ? `${dmg} blow · ${rng} range · musters nobody`
-                                               : 'the work itself'}</span></button>`;
+           `<span class="m-nums">${dmg != null ? tr('{d} blow · {r} range · musters nobody', { d: dmg, r: rng })
+                                               : tr('the work itself')}</span></button>`;
   }
   /* THE OPENED CARD. It sits under both columns, full width, so it reads as the small card
    * growing rather than as a panel somewhere else. The berth for the figure is `c-fig` exactly
@@ -1957,10 +1985,10 @@
     return '<div class="man-open">' +
            `<span class="c-fig" data-kind="${kind}">${u.icon || '•'}</span>` +
            '<div class="mo-text">' +
-           `<div class="mo-name">${u.name || cap(kind)}` +
+           `<div class="mo-name">${tr(u.name || cap(kind))}` +
            `<span class="mo-cost">${u.cost ? '◆ ' + Math.round(u.cost * m) : ''}</span></div>` +
            (from ? `<div class="mo-from">${from}</div>` : '') +
-           `<div class="mo-blurb">${u.blurb || ''}</div>` +
+           `<div class="mo-blurb">${u.blurb ? tr(u.blurb) : ''}</div>` +
            (bt ? levelTable(bt, key, kind) : '') + rollStat(kind, !!bt) + '</div></div>';
   }
   function workOpen(bt, key) {
@@ -1968,11 +1996,11 @@
     return '<div class="man-open">' +
            `<span class="c-fig no-fig">${b2.icon || d.icon || '•'}</span>` +
            '<div class="mo-text">' +
-           `<div class="mo-name">${key ? b2.name : d.name}` +
+           `<div class="mo-name">${tr(key ? b2.name : d.name)}` +
            `<span class="mo-cost">◆ ${key ? b2.cost : d.cost}</span></div>` +
-           `<div class="mo-from">${key ? `${d.name}, level ${d.fork} — chosen once, and forever`
-                                       : `${d.name}, level 1`}</div>` +
-           `<div class="mo-blurb">${(key ? b2.blurb : d.blurb) || ''}</div>` +
+           `<div class="mo-from">${key ? tr('{name}, level {l} — chosen once, and forever', { name: tr(d.name), l: d.fork })
+                                       : tr('{name}, level 1', { name: tr(d.name) })}</div>` +
+           `<div class="mo-blurb">${(key ? b2.blurb : d.blurb) ? tr(key ? b2.blurb : d.blurb) : ''}</div>` +
            levelTable(bt, key, null) + '</div></div>';
   }
   UI.roll = function () {
@@ -1987,15 +2015,15 @@
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
       if (!d.branches) continue;
-      h += `<div class="roll-hall"><div class="roll-head">${d.icon} ${d.name}` +
-           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${d.blurb}</div><div class="roll-cols">` +
-           '<div class="roll-col"><div class="col-head">Level 1</div>';
-      if (d.spawns) { h += manCard(d.spawns, 'level 1', bt); raised.add(d.spawns); }
+      h += `<div class="roll-hall"><div class="roll-head">${d.icon} ${tr(d.name)}` +
+           `<b>◆ ${d.cost}</b></div><div class="roll-blurb">${tr(d.blurb)}</div><div class="roll-cols">` +
+           `<div class="roll-col"><div class="col-head">${tr('Level 1')}</div>`;
+      if (d.spawns) { h += manCard(d.spawns, tr('level 1'), bt); raised.add(d.spawns); }
       else h += workCard(bt, null);          // a work that musters nobody IS its level 1
-      h += `</div><div class="roll-col"><div class="col-head">Level ${d.fork} — choose once</div>`;
+      h += `</div><div class="roll-col"><div class="col-head">${tr('Level {l} — choose once', { l: d.fork })}</div>`;
       for (const key of d.branchUI) {
         const b2 = d.branches[key];
-        if (b2.spawns) { h += manCard(b2.spawns, b2.name, bt, key); raised.add(b2.spawns); }
+        if (b2.spawns) { h += manCard(b2.spawns, tr(b2.name), bt, key); raised.add(b2.spawns); }
         else h += workCard(bt, key);
       }
       h += '</div></div><div class="roll-open"></div></div>';
@@ -2007,8 +2035,8 @@
      * other and never in both, which is what the codex used to do to nine of eleven kinds. */
     const loose = Object.keys(C.UNITS).filter((k) => !raised.has(k));
     if (loose.length) {
-      h += '<div class="roll-hall"><div class="roll-head">⚑ Out of Shadow</div>' +
-           '<div class="roll-blurb">Raised by nobody: what you meet rather than what you muster.</div>' +
+      h += `<div class="roll-hall"><div class="roll-head">${tr('⚑ Out of Shadow')}</div>` +
+           `<div class="roll-blurb">${tr('Raised by nobody: what you meet rather than what you muster.')}</div>` +
            '<div class="roll-cols"><div class="roll-col">' +
            loose.filter((k, i) => i % 2 === 0).map((k) => manCard(k)).join('') +
            '</div><div class="roll-col">' +
@@ -2051,8 +2079,8 @@
     const d = C.BUILDINGS[card.dataset.bt];
     if (!d) return '';
     const tag = card.querySelector('.m-tag'), t = tag ? tag.textContent : '';
-    if (!t || t === 'level 1') return `${d.name}, level 1 — mustered from the first`;
-    return `${t} · ${d.name} at level ${d.fork}, chosen once and forever`;
+    if (!t || t === tr('level 1')) return tr('{name}, level 1 — mustered from the first', { name: tr(d.name) });
+    return tr('{tag} · {name} at level {l}, chosen once and forever', { tag: t, name: tr(d.name), l: d.fork });
   }
   /* THE FIGURES ARE THE RENDERER'S, AND THE TIMING IS OURS. ui.js owns one canvas and the two
    * moments that matter — the Roll opened, the Roll shut — and render3d.js owns every line
@@ -2134,7 +2162,7 @@
     const top = s.max || peak || 1;
     const head = document.createElement('div');
     head.className = 'stat-head';
-    head.innerHTML = '<span>' + s.label + '</span><b>' + brief(top) + '</b>';
+    head.innerHTML = '<span>' + tr(s.label) + '</span><b>' + brief(top) + '</b>';
     card.appendChild(head);
 
     const svg = svgEl('svg', { viewBox: '0 0 ' + CH_W + ' ' + CH_H, preserveAspectRatio: 'none',
@@ -2185,12 +2213,12 @@
     if (sum) {
       const dead = sum.deadFoe + sum.deadChaos;
       const facts = [
-        ['LASTED', global.Rec.clock(sum.at)],
-        ['PEAK ARMY', String(sum.peakArmy)],
-        ['PEAK WORKS', String(sum.peakWorks)],
-        ['YOUR DEAD', dead + (dead ? ' (' + Math.round(sum.deadChaos / dead * 100) + '% Chaos)' : '')],
-        ['WORKS LOST', sum.lost + ' · razed ' + sum.razed],
-        ['THE WALK', sum.walkStarted != null ? 'begun ' + global.Rec.clock(sum.walkStarted) : 'never']
+        [tr('LASTED'), global.Rec.clock(sum.at)],
+        [tr('PEAK ARMY'), String(sum.peakArmy)],
+        [tr('PEAK WORKS'), String(sum.peakWorks)],
+        [tr('YOUR DEAD'), dead ? tr('{n} ({p}% Chaos)', { n: dead, p: Math.round(sum.deadChaos / dead * 100) }) : String(dead)],
+        [tr('WORKS LOST'), tr('{n} · razed {r}', { n: sum.lost, r: sum.razed })],
+        [tr('THE WALK'), sum.walkStarted != null ? tr('begun {t}', { t: global.Rec.clock(sum.walkStarted) }) : tr('never')]
       ];
       const strip = document.createElement('div');
       strip.className = 'stat-facts';
@@ -2203,7 +2231,7 @@
     for (const st of data.seats) {
       const chip = document.createElement('span');
       chip.style.color = UI.seatColor(st.i, data.viewer);
-      chip.textContent = (st.won ? '♔ ' : '') + (st.you ? 'YOU' : String(st.name).split(',')[0]);
+      chip.textContent = (st.won ? '♔ ' : '') + (st.you ? tr('YOU') : String(st.name).split(',')[0]);
       key.appendChild(chip);
     }
     box.appendChild(key);
@@ -2233,8 +2261,8 @@
     if (data.partial) {
       const note = document.createElement('p');
       note.className = 'stat-note';
-      note.textContent = 'From your own snapshots: a rival\'s essence never crosses the wire, ' +
-                         'and veiled works are not counted.';
+      note.textContent = tr('From your own snapshots: a rival\'s essence never crosses the wire, ' +
+                         'and veiled works are not counted.');
       box.appendChild(note);
     }
   };
@@ -2244,7 +2272,7 @@
    * argued from memory. These two buttons put the whole match somewhere it can be pasted
    * or attached. Clipboard first, because pasting is the point; a textarea if the browser
    * refuses (no secure context, no permission), because a refusal must not be a dead end. */
-  const recordText = () => (global.Rec && global.Rec.text ? global.Rec.text() : 'AMBER — nothing recorded.');
+  const recordText = () => (global.Rec && global.Rec.text ? global.Rec.text() : tr('AMBER — nothing recorded.'));
   UI.copyRecord = function (btn) {
     const txt = recordText();
     btn = btn || $('end-copy');
@@ -2253,11 +2281,11 @@
       $('record-box').classList.remove('hidden');
       ta.value = txt;
       ta.focus(); ta.select();
-      btn.textContent = 'SELECT IT ALL AND COPY';
+      btn.textContent = tr('SELECT IT ALL AND COPY');
     };
     if (!navigator.clipboard || !navigator.clipboard.writeText) return fallback();
     navigator.clipboard.writeText(txt)
-      .then(() => { btn.textContent = '✓ COPIED — PASTE IT ANYWHERE'; })
+      .then(() => { btn.textContent = tr('✓ COPIED — PASTE IT ANYWHERE'); })
       .catch(fallback);
   };
   UI.saveRecord = function () {
@@ -2269,7 +2297,7 @@
       a.href = url; a.download = name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-      $('end-save').textContent = '✓ SAVED';
+      $('end-save').textContent = tr('✓ SAVED');
     } catch (e) { UI.copyRecord(); }
   };
 

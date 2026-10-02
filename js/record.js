@@ -16,6 +16,11 @@
 
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
   const Rec = { on: false };
+  /* the words a player reads go through `tr` (i18n.js); a Node run without it reads English.
+   * The table's column codes, the build/seed line and the commands' codes stay as they are:
+   * they are what a report from play is read BY. */
+  const tr = (s, v) => (global.tr ? global.tr(s, v)
+    : (v ? String(s).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m)) : String(s)));
 
   const SAMPLE = 20;          // sim-seconds between rows of the table
   const RIFT_QUIET = 45;      // don't list every rift; one line per this many seconds
@@ -36,7 +41,10 @@
       const d = (s.x - x) * (s.x - x) + (s.y - y) * (s.y - y);
       if (d < bd) { bd = d; best = s; }
     }
-    return best ? best.name || best.kind : '';
+    if (!best) return '';
+    /* a place's name is said in the page's tongue, as the sheet says it (ui.js siteName) */
+    const m = /^the City of (.+)$/.exec(best.name || '');
+    return m ? tr('the City of {name}', { name: m[1] }) : best.name ? tr(best.name) : best.kind;
   }
 
   /* ---------------- the reading ----------------
@@ -112,21 +120,24 @@
     const t = world ? world.t : 0;
     const where = near(world, cmd.x, cmd.y);
     let line = cmd.c;
-    if (cmd.c === 'build') line = 'build ' + cmd.bt;
+    const bname = (bt) => tr((C.BUILDINGS[bt] || {}).name || bt);
+    if (cmd.c === 'build') line = tr('build {bt}', { bt: cmd.bt, name: bname(cmd.bt) });
     else if (cmd.c === 'up') {
       /* which work is being raised is the whole content of an upgrade order */
       const b = world && world.players ? (world.players[head.viewer].buildings || [])
         .find((q) => q.id === cmd.id) : null;
       /* called after the order took, so the level read here is the one just reached */
-      line = 'upgrade ' + (b ? b.bt + ' → L' + b.level : '?') + (cmd.br ? ' (' + cmd.br + ')' : '');
+      const br = cmd.br ? ' (' + cmd.br + ')' : '';
+      line = b ? tr('upgrade {bt} → L{lv}{br}', { bt: b.bt, name: bname(b.bt), lv: b.level, br })
+        : tr('upgrade ?{br}', { br });
     /* A WALK IS ONLY EVER BEGUN. `{c:'walk',on:false}` is refused with 'committed' and never
      * takes, and this runs only for orders that took — so there is no halt left to record. */
-    } else if (cmd.c === 'walk') line = 'BEGIN THE WALK';
-    else if (cmd.c === 'power') line = 'power: ' + (C.POWERS[cmd.k] ? C.POWERS[cmd.k].name : cmd.k);
-    else if (cmd.c === 'banner') line = 'the Recall — every standard struck';
-    else if (cmd.c === 'rally') line = 'company ' + cmd.co + ' standard';
-    else if (cmd.c === 'assign') line = 'hall → company ' + cmd.co;
-    else if (cmd.c === 'muster') line = cmd.pause ? 'halt the muster' : 'resume the muster';
+    } else if (cmd.c === 'walk') line = tr('BEGIN THE WALK');
+    else if (cmd.c === 'power') line = tr('power: {name}', { name: C.POWERS[cmd.k] ? tr(C.POWERS[cmd.k].name) : cmd.k });
+    else if (cmd.c === 'banner') line = tr('the Recall — every standard struck');
+    else if (cmd.c === 'rally') line = tr('company {co} standard', { co: cmd.co });
+    else if (cmd.c === 'assign') line = tr('hall → company {co}', { co: cmd.co });
+    else if (cmd.c === 'muster') line = cmd.pause ? tr('halt the muster') : tr('resume the muster');
     const text = line + (where ? '  @ ' + where : '');
     const last = cmds[cmds.length - 1];
     if (last && last.text === text) { last.n++; last.to = t; return; }
@@ -147,24 +158,28 @@
       const mine = ev.pi === me;
       if (ev.e === 'raze') {
         if (mine) tally.lost++; else tally.razed++;
-        const nm = C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : ev.bt;
+        const nm = C.BUILDINGS[ev.bt] ? tr(C.BUILDINGS[ev.bt].name) : ev.bt;
         /* by WHOM: a Gate gnawed off by fiends is a different fact from one a rival stormed */
-        const hand = ev.by === C.CHAOS_ID ? ' — Chaos'
+        const hand = ev.by === C.CHAOS_ID ? ' — ' + tr('Chaos')
           : (ev.by != null && ev.by !== me && head.names[ev.by] ? ' — ' + head.names[ev.by] : '');
-        notes.push([t, (mine ? 'YOUR ' + nm + ' is razed' + hand : 'you raze a rival ' + nm) +
+        notes.push([t, (mine ? tr('YOUR {nm} is razed{hand}', { nm, hand }) : tr('you raze a rival {nm}', { nm })) +
                        (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
       } else if (ev.e === 'demolish') {
-        const nm = C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : ev.bt;
-        if (mine) notes.push([t, 'you throw down your own ' + nm + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
+        const nm = C.BUILDINGS[ev.bt] ? tr(C.BUILDINGS[ev.bt].name) : ev.bt;
+        if (mine) notes.push([t, tr('you throw down your own {nm}', { nm }) + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
       } else if (ev.e === 'walk') {
         if (mine && tally.walkStarted == null) tally.walkStarted = t;
-        notes.push([t, (mine ? 'you set' : head.names[ev.pi] + ' sets') + ' foot upon the Pattern']);
+        notes.push([t, mine ? tr('you set foot upon the Pattern') : tr('{who} sets foot upon the Pattern', { who: head.names[ev.pi] })]);
       } else if (ev.e === 'pattern' && ev.idx > 0) {
-        notes.push([t, (mine ? 'you' : head.names[ev.pi]) + C.PATTERN_ALERTS[ev.idx].msg.replace(/^ has| /, ' ')]);
+        /* one whole sentence per alert, the subject inside it, so a tongue that conjugates
+         * "you" differently can; the English reads exactly as the old concatenation did */
+        const rest = C.PATTERN_ALERTS[ev.idx].msg.replace(/^ has| /, ' ');
+        notes.push([t, mine ? tr('you' + rest) : tr('{who}' + rest, { who: head.names[ev.pi] })]);
       } else if (ev.e === 'shrinefell') {
         if (!mine) tally.torn++;
-        notes.push([t, (mine ? 'YOUR Shrine is thrown down' : head.names[ev.pi] + ' is torn off the Pattern') +
-                       ' — ' + Math.round(ev.pattern) + '% left']);
+        const left = Math.round(ev.pattern);
+        notes.push([t, mine ? tr('YOUR Shrine is thrown down — {n}% left', { n: left })
+                            : tr('{who} is torn off the Pattern — {n}% left', { who: head.names[ev.pi], n: left })]);
       } else if (ev.e === 'pact') {
         /* TERMS BELONG IN THE CHRONICLE ABOVE ALMOST ANYTHING ELSE. A report from play about a
          * four-cornered war is unreadable without knowing who was at peace with whom and when
@@ -172,17 +187,17 @@
          * before it and after it are different games. Named from the viewer's seat, and a pact
          * between two other heirs is named as what it is, because it is public. */
         const other = ev.p === me ? ev.pi : ev.p;
-        const a = head.names[ev.pi] || 'an heir', b = head.names[ev.p] || 'an heir';
+        const a = head.names[ev.pi] || tr('an heir'), b = head.names[ev.p] || tr('an heir');
         if (ev.pi === me || ev.p === me)
-          notes.push([t, ev.on ? 'terms with ' + (head.names[other] || 'an heir')
-                               : (mine ? 'YOU break with ' + b : (head.names[ev.pi] || 'an heir') + ' BREAKS the truce')]);
-        else notes.push([t, ev.on ? a + ' and ' + b + ' come to terms' : a + ' breaks with ' + b]);
-      } else if (ev.e === 'surge') notes.push([t, 'the black road SURGES']);
+          notes.push([t, ev.on ? tr('terms with {who}', { who: head.names[other] || tr('an heir') })
+                               : (mine ? tr('YOU break with {b}', { b }) : tr('{a} BREAKS the truce', { a }))]);
+        else notes.push([t, ev.on ? tr('{a} and {b} come to terms', { a, b }) : tr('{a} breaks with {b}', { a, b })]);
+      } else if (ev.e === 'surge') notes.push([t, tr('the black road SURGES')]);
       else if (ev.e === 'rift') {
         if (t - lastRift < RIFT_QUIET) continue;
         lastRift = t;
-        notes.push([t, 'Chaos tears a rift' + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
-      } else if (ev.e === 'fall') notes.push([t, head.names[ev.pi] + ' is toppled']);
+        notes.push([t, tr('Chaos tears a rift') + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
+      } else if (ev.e === 'fall') notes.push([t, tr('{who} is toppled', { who: head.names[ev.pi] })]);
       else if (ev.e === 'hurtcity' && mine) {
         /* SAY WHERE, as the banner does: the event fires for ANY work of yours being hit, and
          * "the enemy is inside your city" was written into the chronicle for a Gate on a spring
@@ -191,10 +206,10 @@
          * keeps the old cry; anything else names the work, and who, and where. */
         const c = world && world.map && world.map.sites[world.map.cities[me]];
         const home = c && ev.x != null && Math.hypot(ev.x - c.x, ev.y - c.y) < C.CITY.r;
-        const what = (C.BUILDINGS[ev.bt] || {}).name || 'works';
-        const who = ev.by === C.CHAOS_ID ? 'Chaos' : (ev.by != null && ev.by !== me && head.names[ev.by]) ? head.names[ev.by] : 'the enemy';
-        notes.push([t, home ? who + ' is inside your city'
-                          : who + ' is at your ' + what + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
+        const what = tr((C.BUILDINGS[ev.bt] || {}).name || 'works');
+        const who = ev.by === C.CHAOS_ID ? tr('Chaos') : (ev.by != null && ev.by !== me && head.names[ev.by]) ? head.names[ev.by] : tr('the enemy');
+        notes.push([t, home ? tr('{who} is inside your city', { who })
+                          : tr('{who} is at your {what}', { who, what }) + (near(world, ev.x, ev.y) ? ' @ ' + near(world, ev.x, ev.y) : '')]);
       }
     }
   };
@@ -218,13 +233,13 @@
    * Seat's walls); the rest are scaled to what actually happened, because an army chart with a
    * ceiling of "whatever is possible" is a flat line along the bottom of every match. */
   Rec.SERIES = [
-    { key: 'ess',     label: 'ESSENCE',      pick: (p) => p.ess },
-    { key: 'income',  label: 'INCOME',       pick: (p) => p.income },
-    { key: 'works',   label: 'WORKS',        pick: (p) => p.works },
-    { key: 'gates',   label: 'SHADOW GATES', pick: (p) => p.gates || 0 },
-    { key: 'army',    label: 'ARMY',         pick: (p) => p.army },
-    { key: 'pattern', label: 'THE PATTERN',  pick: (p) => p.pattern, max: 100 },
-    { key: 'hp',      label: 'THE SEAT',     pick: (p) => p.hp / C.CASTLE_HP * 100, max: 100 }
+    { key: 'ess',     label: tr('ESSENCE'), pick: (p) => p.ess },
+    { key: 'income',  label: tr('INCOME'), pick: (p) => p.income },
+    { key: 'works',   label: tr('WORKS'), pick: (p) => p.works },
+    { key: 'gates',   label: tr('SHADOW GATES'), pick: (p) => p.gates || 0 },
+    { key: 'army',    label: tr('ARMY'), pick: (p) => p.army },
+    { key: 'pattern', label: tr('THE PATTERN'), pick: (p) => p.pattern, max: 100 },
+    { key: 'hp',      label: tr('THE SEAT'), pick: (p) => p.hp / C.CASTLE_HP * 100, max: 100 }
   ];
 
   Rec.curves = function () {
@@ -232,7 +247,7 @@
     const n = rows[0].players.length;
     const seats = [];
     for (let i = 0; i < n; i++) {
-      seats.push({ i, name: head.names[i] || 'seat ' + i, you: i === head.viewer,
+      seats.push({ i, name: head.names[i] || tr('seat {i}', { i }), you: i === head.viewer,
                    won: head.winner === i });
     }
     return {
@@ -344,40 +359,41 @@
   }
 
   Rec.text = function () {
-    if (!head) return 'AMBER — no match recorded.';
+    if (!head) return tr('AMBER — no match recorded.');
     const won = head.winner === head.viewer;
-    const who = head.winner == null ? 'nobody (unfinished)'
-      : head.winner < 0 ? 'Chaos'
-      : (head.winner === head.viewer ? 'YOU' : head.names[head.winner] || ('seat ' + head.winner));
+    const who = head.winner == null ? tr('nobody (unfinished)')
+      : head.winner < 0 ? tr('Chaos')
+      : (head.winner === head.viewer ? tr('YOU') : head.names[head.winner] || tr('seat {i}', { i: head.winner }));
     const L = [];
-    L.push('AMBER — THE SUCCESSION · chronicle of a match');
+    L.push(tr('AMBER — THE SUCCESSION · chronicle of a match'));
     L.push('build ' + head.version + '   seed ' + head.seed + '   ' + head.mode +
            (head.footing ? '   footing ' + head.footing : '') +
            (head.renderer ? '   ' + head.renderer : ''));
-    L.push('seats: ' + head.names.map((nm, i) => (i === head.viewer ? '[' + nm + ']' : nm)).join(', ') +
-           '   (you are seat ' + head.viewer + ')');
-    if (head.partial) L.push('NOTE: recorded from a guest\'s own snapshots — rival numbers are what you could SEE, not the truth.');
+    L.push(tr('seats: {list}   (you are seat {i})', {
+      list: head.names.map((nm, i) => (i === head.viewer ? '[' + nm + ']' : nm)).join(', '), i: head.viewer }));
+    if (head.partial) L.push(tr('NOTE: recorded from a guest\'s own snapshots — rival numbers are what you could SEE, not the truth.'));
     L.push(head.winner === undefined
-      ? 'result: abandoned at ' + clock(head.at || 0)
-      : 'result: ' + (won ? 'WON' : 'LOST') + ' at ' + clock(head.at || 0) + ' — by ' + (head.reason || '?') + ', to ' + who);
+      ? tr('result: abandoned at {t}', { t: clock(head.at || 0) })
+      : tr(won ? 'result: WON at {t} — by {reason}, to {who}' : 'result: LOST at {t} — by {reason}, to {who}',
+           { t: clock(head.at || 0), reason: head.reason || '?', who }));
     const dead = tally.deadFoe + tally.deadChaos;
-    L.push('YOUR DEAD: ' + dead + ' — ' + tally.deadFoe + ' to the heirs, ' + tally.deadChaos +
-           ' to Chaos' + (dead ? '  (Chaos took ' + Math.round(tally.deadChaos / dead * 100) + '%)' : ''));
-    L.push('your peak: ' + tally.peakArmy + ' troops, ' + tally.peakWorks + ' works · ' +
-           'works lost ' + tally.lost + ', razed ' + tally.razed +
-           (tally.walkStarted != null ? ' · began the walk at ' + clock(tally.walkStarted) : ' · never walked') +
-           (tally.torn ? ' · tore a rival off the Pattern ' + tally.torn + 'x' : ''));
+    L.push(tr('YOUR DEAD: {dead} — {foe} to the heirs, {chaos} to Chaos', { dead, foe: tally.deadFoe, chaos: tally.deadChaos }) +
+           (dead ? tr('  (Chaos took {p}%)', { p: Math.round(tally.deadChaos / dead * 100) }) : ''));
+    L.push(tr('your peak: {army} troops, {works} works · works lost {lost}, razed {razed}',
+              { army: tally.peakArmy, works: tally.peakWorks, lost: tally.lost, razed: tally.razed }) +
+           (tally.walkStarted != null ? tr(' · began the walk at {t}', { t: clock(tally.walkStarted) }) : tr(' · never walked')) +
+           (tally.torn ? tr(' · tore a rival off the Pattern {n}x', { n: tally.torn }) : ''));
     L.push('');
-    L.push('— the hours — ("+n" works rising, "*" walking, chaos = fiends alive)');
+    L.push(tr('— the hours — ("+n" works rising, "*" walking, chaos = fiends alive)'));
     L.push(table());
-    L.push('— your orders —');
+    L.push(tr('— your orders —'));
     L.push(cmds.length ? cmds.map((c) => '  ' + clock(c.at).padStart(5) +
       (c.n > 1 ? '-' + clock(c.to) : '     ') + '  ' + c.text +
-      (c.n > 1 ? '  ×' + c.n : '')).join('\n') : '  (none)');
-    if (cmds.length >= MAX_CMDS) L.push('  …(truncated at ' + MAX_CMDS + ')');
+      (c.n > 1 ? '  ×' + c.n : '')).join('\n') : '  ' + tr('(none)'));
+    if (cmds.length >= MAX_CMDS) L.push('  ' + tr('…(truncated at {n})', { n: MAX_CMDS }));
     L.push('');
-    L.push('— the moments —');
-    L.push(notes.length ? notes.map(([t, s]) => '  ' + clock(t).padStart(5) + '  ' + s).join('\n') : '  (none)');
+    L.push(tr('— the moments —'));
+    L.push(notes.length ? notes.map(([t, s]) => '  ' + clock(t).padStart(5) + '  ' + s).join('\n') : '  ' + tr('(none)'));
     return L.join('\n');
   };
 

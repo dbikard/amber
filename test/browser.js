@@ -11,7 +11,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { suite, ok, report, record, track } = require('./lib.js');
+const { suite, ok, eq, report, record, track } = require('./lib.js');
 
 const ROOT = path.join(__dirname, '..');
 /* THE PAGE'S CODE IS WHAT THE SERVER SERVES — the js/ files are loaded over HTTP from disk on
@@ -170,6 +170,57 @@ async function match(browser, base, renderer) {
   if (!browser) { console.log('\n  browser suite SKIPPED — no Chromium\n    ' + why.join('\n    ') + '\n'); return; }
   const srv = await serve();
   const base = `http://127.0.0.1:${srv.address().port}`;
+
+  /* ---------------- the tongues ----------------
+   * The French is a dictionary keyed by the English (js/i18n.js), so a word nobody wrote down
+   * falls back to English and nothing else would notice. A French page is walked through the
+   * menu's screens and into a match, and every lookup that missed is named. The picker is the
+   * control: it must answer in English again when English is chosen. */
+  {
+    suite('the game speaks French');
+    const pg = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    const errs = [];
+    pg.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
+    await pg.goto(`${base}/index.html?lang=fr`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    const head = await pg.evaluate(() => ({
+      lang: window.I18N.lang, h1: document.querySelector('#menu h1').textContent,
+      sk: document.querySelector('#btn-skirmish .mc-name').textContent, html: document.documentElement.lang,
+      picker: [...document.querySelectorAll('.lang-row button')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : ''))
+    }));
+    eq('?lang=fr is a French page', head.lang + ' ' + head.html, 'fr fr');
+    eq('the static menu is said in French', head.h1 + ' / ' + head.sk, 'AMBRE / ESCARMOUCHE');
+    eq('the picker offers both tongues, French chosen', head.picker.join(' '), 'English Français*');
+    for (const [open, close] of [['#btn-skirmish', '#rivals-close'], ['#btn-campaign', '#chapters-close'],
+                                 ['#btn-roll', '#roll-close'], ['#btn-lan', '#lan-close'], ['#btn-realm', '#war-setup-close']]) {
+      await pg.click(open); await pg.waitForTimeout(150);
+      await pg.click(close); await pg.waitForTimeout(100);
+    }
+    await pg.evaluate(() => window.Game.startSP('julian', { seed: 3 }));
+    await inMatchNow(pg);
+    await pg.evaluate(() => { const g = window.Game.game; for (let i = 0; i < 30 * 120; i++) window.World.update(g.world, 1 / 30); });
+    await pg.click('#btn-build'); await pg.waitForTimeout(450);
+    const fr = await pg.evaluate(() => ({ miss: Object.keys(window.I18N.missing), build: document.getElementById('build-lbl').textContent,
+                                          sheet: document.getElementById('sheet').textContent }));
+    eq('a French menu and match ask for no word the dictionary lacks', fr.miss.length, 0, fr.miss.slice(0, 8).join(' | '));
+    ok('...the HUD and the build sheet are French', fr.build === 'BÂTIR' && /Porte d'Ombre/.test(fr.sheet), fr.build);
+    eq('...without a page error', errs.length, 0, errs.slice(0, 3).join(' | '));
+    await pg.close();
+    /* the choice is REMEMBERED, and the picker changes it: French tapped on a plain page is
+     * French after the reload, English tapped is English again */
+    const p2 = await browser.newPage({ viewport: { width: 420, height: 860 } });
+    await p2.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(p2);
+    const say = () => p2.evaluate(() => window.I18N.lang + ' ' + document.querySelector('#menu h1').textContent);
+    const was = await say();
+    await Promise.all([p2.waitForNavigation(), p2.click('.lang-row button[data-lang="fr"]')]);
+    await ready(p2);
+    const chose = await say();
+    await Promise.all([p2.waitForNavigation(), p2.click('.lang-row button[data-lang="en"]')]);
+    await ready(p2);
+    eq('the picker is remembered across a reload, both ways', [was, chose, await say()].join(' / '), 'en AMBER / fr AMBRE / en AMBER');
+    await p2.close();
+  }
 
   /* ---------------- menus, before any match ---------------- */
   {

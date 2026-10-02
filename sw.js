@@ -19,7 +19,7 @@ const CORE = [
   './', './index.html', './styles.css', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
   './js/vendor/three.min.js',
-  './js/rng.js', './js/const.js', './js/worldgen.js', './js/nav.js', './js/world.js', './js/ai.js',
+  './js/rng.js', './js/i18n.js', './js/fr.js', './js/const.js', './js/worldgen.js', './js/nav.js', './js/world.js', './js/ai.js',
   './js/terrain.js', './js/render3d.js', './js/render_select.js',
   './js/vendor/lanlink.js', './js/vendor/lanlink-qr.js', './js/net.js', './js/record.js', './js/campaign.js', './js/realm.js',
   './js/ui.js', './js/game.js'

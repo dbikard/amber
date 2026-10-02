@@ -8,6 +8,8 @@
  * HP bars / nameplates / minimap / targeting live on a 2D overlay canvas. */
 (function (global) {
   'use strict';
+  /* the words a player reads go through `tr` (i18n.js); without it they read English */
+  const tr = global.tr || ((s0, v) => (v ? String(s0).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m)) : String(s0)));
 
   const C = global.CONST;
   const R = { targeting: false, span: null, selected: -1, pointer: null, armed: null,
@@ -3978,9 +3980,10 @@
       const p = proj(s.x, groundH(s.x, s.y) + 2, s.y);
       if (!p.ok || p.y < -20 || p.y > H + 20) continue;
       g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 3;
-      g.strokeText(s.name, p.x, p.y + 30);
+      const sName = tr(s.name);
+      g.strokeText(sName, p.x, p.y + 30);
       g.fillStyle = 'rgba(222,204,164,0.85)';
-      g.fillText(s.name, p.x, p.y + 30);
+      g.fillText(sName, p.x, p.y + 30);
     }
     /* ---- CASTLE BARS: A BAR BELONGS TO A CITY ----
      * It used to hang over the seat an heir was BORN to and draw the hit points of the seat he
@@ -4024,15 +4027,17 @@
           g.fillRect(p.x - 45, p.y - 3, 90 * f, 6);
           g.font = '600 11px Georgia, serif';
           g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 3;
-          const line = (c.hold.pi === viewer ? 'CLAIMING — ' : 'BEING CLAIMED — ') + Math.ceil(left) + 's';
+          const line = c.hold.pi === viewer ? tr('CLAIMING — {n}s', { n: Math.ceil(left) })
+                                            : tr('BEING CLAIMED — {n}s', { n: Math.ceil(left) });
           g.strokeText(line, p.x, p.y + 18);
           g.fillText(line, p.x, p.y + 18);
         } else {
           g.font = '600 11px Georgia, serif';
           g.strokeStyle = 'rgba(0,0,0,0.75)'; g.lineWidth = 3;
-          g.strokeText('YIELDED — HOLD THE COURT TO CLAIM', p.x, p.y + 4);
+          const ask = tr('YIELDED — HOLD THE COURT TO CLAIM');
+          g.strokeText(ask, p.x, p.y + 4);
           g.fillStyle = 'rgba(222,204,164,0.9)';
-          g.fillText('YIELDED — HOLD THE COURT TO CLAIM', p.x, p.y + 4);
+          g.fillText(ask, p.x, p.y + 4);
         }
       }
     }
@@ -4203,10 +4208,11 @@
       if (moved) {
         g.font = '600 13px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'bottom';
         g.fillStyle = ok ? '#ffe9a8' : '#ff6a5a';
-        const say = short ? Math.round(len) + ' — too short'
-          : over ? Math.round(len) + ' — the masons reach ' + Math.round(reach)
-          : Math.round(len) + '  ◆ ' + price + '  ·  ' + crews + (crews > 1 ? ' crews' : ' crew') +
-            (len >= C.WALL.gateMin ? '' : '  ·  no gate');
+        const say = short ? tr('{len} — too short', { len: Math.round(len) })
+          : over ? tr('{len} — the masons reach {reach}', { len: Math.round(len), reach: Math.round(reach) })
+          : Math.round(len) + '  ◆ ' + price + '  ·  ' +
+            (crews > 1 ? tr('{n} crews', { n: crews }) : tr('{n} crew', { n: crews })) +
+            (len >= C.WALL.gateMin ? '' : '  ·  ' + tr('no gate'));
         g.fillText(say, (a.x + b2.x) / 2, (a.y + b2.y) / 2 - 8);
         g.textAlign = 'left'; g.textBaseline = 'alphabetic';
       }

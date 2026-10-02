@@ -27,6 +27,17 @@
   'use strict';
   const C = global.CONST || (typeof require !== 'undefined' ? require('./const.js') : null);
   const CAMPAIGN = {};
+  /* the words a player reads go through `tr` (i18n.js); a Node run without it reads English.
+   * The CHAPTERS table stays English (its strings are the dictionary's keys); what this file
+   * composes — the objective lines, the hints it hands out — it says in the page's tongue. */
+  const tr = (s, v) => (global.tr ? global.tr(s, v)
+    : (v ? String(s).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m)) : String(s)));
+  /* a work's name, one or many: the plural is its own key ('Shadow Gates'), because French
+   * does not make a plural by adding an s to the end of the phrase */
+  const workName = (bt, n) => {
+    const nm = (C.BUILDINGS[bt] || {}).name || bt;
+    return n === 1 ? tr(nm) : tr(nm + 's');
+  };
 
   /* ---------------- what a chapter can ask about the board ----------------
    * All of it is read off the world game.js already holds, unfogged, in single player. Nothing
@@ -65,12 +76,12 @@
    * black road gnaws at them is a realm. `since` is cleared the moment the count slips, so this
    * cannot be satisfied by touching the number once. */
   OBJ.hold = (n, secs) => ({
-    ask: `Hold ${n} springs of Shadow, and keep them for ${secs} seconds`,
+    get ask() { return tr('Hold {n} springs of Shadow, and keep them for {secs} seconds', { n, secs }); },
     line: (w, me, st) => {
       const h = springs(w, me);
-      if (h < n) return `Hold ${n} springs — you draw from ${h}`;
+      if (h < n) return tr('Hold {n} springs — you draw from {h}', { n, h });
       const left = Math.max(0, secs - (w.t - st.since));
-      return `Hold ${n} springs — ${Math.ceil(left)}s`;
+      return tr('Hold {n} springs — {s}s', { n, s: Math.ceil(left) });
     },
     check: (w, me, st) => {
       if (springs(w, me) < n) { st.since = -1; return null; }
@@ -82,11 +93,9 @@
   /* RAISE SOMETHING. The plainest objective there is, and the right one for a first chapter:
    * it is satisfied by doing the thing the game is about and by nothing else. */
   OBJ.raise = (bt, n) => ({
-    ask: `Raise ${n} ${(C.BUILDINGS[bt] || {}).name || bt}${n === 1 ? '' : 's'}`,
-    line: (w, me) => {
-      const d = C.BUILDINGS[bt];
-      return `Raise ${n} ${d ? d.name : bt}${n === 1 ? '' : 's'} — you hold ${works(w, me, bt)}`;
-    },
+    get ask() { return tr('Raise {n} {works}', { n, works: workName(bt, n) }); },
+    line: (w, me) =>
+      tr('Raise {n} {works} — you hold {h}', { n, works: workName(bt, n), h: works(w, me, bt) }),
     check: (w, me) => (works(w, me, bt) >= n ? 'won' : null)
   });
 
@@ -109,10 +118,12 @@
         Math.hypot(b.x - c2.x, b.y - c2.y) >= far).length;
     }, 0);
     return {
-      ask: `Throw down every ${(C.BUILDINGS[bt] || {}).name || bt} he has taken out in Shadow`,
+      get ask() { return tr('Throw down every {work} he has taken out in Shadow', { work: workName(bt, 1) }); },
       line: (w, me) => {
-        const d = C.BUILDINGS[bt], left = out(w, me);
-        return `Throw down his ${d ? d.name : bt}s out in Shadow — ${left} still stand${left === 1 ? 's' : ''}`;
+        const left = out(w, me), wk = workName(bt, 2);
+        return left === 1
+          ? tr('Throw down his {works} out in Shadow — {left} still stands', { works: wk, left })
+          : tr('Throw down his {works} out in Shadow — {left} still stand', { works: wk, left });
       },
       check: (w, me, st) => {
         if (out(w, me) > 0) { st.seen = true; return null; }
@@ -126,8 +137,8 @@
   /* STAND. The clock is the enemy's, not yours — losing your own Seat is a loss under the sim's
    * own rule and needs nothing here. */
   OBJ.survive = (secs) => ({
-    ask: `Hold your Seat of Power for ${secs} seconds`,
-    line: (w, me, st) => `Hold your Seat — ${Math.max(0, Math.ceil(secs - w.t))}s`,
+    get ask() { return tr('Hold your Seat of Power for {secs} seconds', { secs }); },
+    line: (w, me, st) => tr('Hold your Seat — {s}s', { s: Math.max(0, Math.ceil(secs - w.t)) }),
     check: (w, me) => (w.t >= secs ? 'won' : null)
   });
 
@@ -143,15 +154,15 @@
    * where your Shrine is while it runs. The sim ends a match at a hundred, so this only has to
    * name the road and say how far along you are. */
   OBJ.walk = () => ({
-    ask: 'Walk the Pattern to its heart',
-    line: (w, me) => `Walk the Pattern — ${w.players[me].pattern.toFixed(0)}%`,
+    get ask() { return tr('Walk the Pattern to its heart'); },
+    line: (w, me) => tr('Walk the Pattern — {p}%', { p: w.players[me].pattern.toFixed(0) }),
     check: () => null
   });
 
   /* THE THRONE, which is the game's own condition and is here so a chapter can say so. */
   OBJ.seat = () => ({
-    ask: 'Break his Seat of Power',
-    line: () => 'Break his Seat of Power',
+    get ask() { return tr('Break his Seat of Power'); },
+    line: () => tr('Break his Seat of Power'),
     check: () => null
   });
 
@@ -163,7 +174,7 @@
   const FAIL = {};
   /* KEEP WHAT YOU WERE GIVEN. Reads "you had some of these and now you have none". */
   FAIL.lose = (bt) => ({
-    line: (w, me) => `Do not lose your ${(C.BUILDINGS[bt] || {}).name || bt}`,
+    line: (w, me) => tr('Do not lose your {work}', { work: workName(bt, 1) }),
     check: (w, me, st) => {
       const n = works(w, me, bt);
       if (n > 0) { st.had = true; return null; }
@@ -421,7 +432,7 @@
            * they are a lesson, not a set of alarms, and a lesson read out of order is noise. */
           for (let k = 0; k < i; k++) if (!fired[k]) return null;
           fired[i] = 1;
-          return h.text;
+          return tr(h.text);
         }
         return null;
       }

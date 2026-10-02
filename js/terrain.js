@@ -25,6 +25,8 @@
  * Returns { canvas, trees, rocks }. */
 (function (global) {
   'use strict';
+  /* the words a player reads go through `tr` (i18n.js); without it they read English */
+  const tr = global.tr || ((s0, v) => (v ? String(s0).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m)) : String(s0)));
 
   const C = global.CONST;
 
@@ -499,8 +501,9 @@
       }
       if (s.kind !== 'city' && opts.labels !== false && s.name) {
         g.font = '600 13px Georgia, serif'; g.textAlign = 'center';
-        g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 3; g.strokeText(s.name, X, Y + 44);
-        g.fillStyle = 'rgba(222,204,164,0.85)'; g.fillText(s.name, X, Y + 44);
+        const sName = tr(s.name);
+        g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 3; g.strokeText(sName, X, Y + 44);
+        g.fillStyle = 'rgba(222,204,164,0.85)'; g.fillText(sName, X, Y + 44);
       }
     }
 

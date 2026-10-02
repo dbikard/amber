@@ -37,6 +37,8 @@ index.html      — entry, canvas, DOM overlays, GAME_VERSION, script order
 styles.css      — HUD/menus (dark + gold, painterly-fantasy theme)
 js/vendor/three.min.js — Three.js, vendored; loaded first, the renderer's one dependency
 js/rng.js       — seeded RNG (headless-safe)
+js/i18n.js      — the tongues: `tr(english, vars)`, `I18N.dom`, `I18N.site` (headless-safe)
+js/fr.js        — the French dictionary, keyed by the English (headless-safe)
 js/const.js     — content tables: BUILDINGS, UNITS, POWERS, CHAOS, HEIRS (headless-safe)
 js/worldgen.js  — the land made new each match: noise → terrain → springs/Seats (headless-safe)
 js/nav.js       — movement: cost grid + per-(goal, owner) Dijkstra flow fields (headless-safe)
@@ -315,6 +317,24 @@ progress. AI reads only what a human could see (see `AI.view()`).
   there is no `PointerEvent` (Safari before 13). And an inline ES5 reporter in index.html
   writes every error until the boot is done INTO THE MENU, with the browser named, so the next
   photograph says why. (→ LEDGER: THE FLOOR IS ES2017)
+
+- **THE ENGLISH IS THE KEY, AND THE SIM SPEAKS NO TONGUE** (js/i18n.js; the designer,
+  2026-10-02: "allow changing language to French, translate the whole game"). Every string a
+  player reads is written in English where it is used and handed to `tr('...', {vars})`; the
+  French lives in `js/fr.js` under that exact English, and a missing entry falls back to English.
+  Whole PHRASES are keys with named `{placeholders}`, never fragments glued together — French
+  word order differs. The tables in const.js, ai.js's heir titles and the campaign's CHAPTERS
+  stay English and are wrapped where they are SHOWN; site names go through `I18N.site` (it knows
+  "the City of X", "X’s Seat", "SHADOW n"). The static HTML is walked once at boot
+  (`I18N.dom`, whitespace collapsed). The tongue is chosen once per page — `?lang=xx`, then the
+  saved `amber_lang`, then the browser's — and the menu's picker reloads; off a browser it is
+  always English, so `sim.js` and the suites never change tongue with the box's locale. Nothing
+  in world.js may call `tr`: a refusal or an event carries a CODE, and two seats at a LAN table
+  may speak two tongues. The chronicle's hour table, its header line and its codes stay English
+  (parsed by suites). Held by 'every word has its French' (headless: every literal handed to
+  `tr` and every table name has its French, placeholders and tags survive) and 'the game speaks
+  French' (browser: a French page through the menus and into a match misses no word).
+  **Add a string → add its French in the same commit**, or the headless suite fails.
 
 - **Run `node test/run.js` before you push.** `test/headless.js` covers worldgen, movement,
   the placement rules, the command grammar and the snapshot contract; `test/browser.js`

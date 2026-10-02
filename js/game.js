@@ -9,6 +9,12 @@
   const Render = global.Render, UI = global.UI, Net = global.Net, Rec = global.Rec;
   const REALM = global.REALM;
   const $ = (id) => document.getElementById(id);
+  /* the words a player reads go through `tr` (i18n.js); without it they read English */
+  const tr = global.tr || ((s0, v) => (v ? String(s0).replace(/\{(\w+)\}/g, (m, k) => (v[k] != null ? String(v[k]) : m)) : String(s0)));
+  /* a footing's name, said for the chronicle in the page's tongue */
+  const footName = () => { const n = (C.DIFFICULTY[UI.difficulty()] || {}).name; return n ? tr(n) : n; };
+  /* a refusal thrown by the pairing library, said in the page's tongue where it is a known one */
+  const errText = (e) => tr(String(e && e.message != null ? e.message : e));
 
   /* The succession, in the order you face it. There used to be a private difficulty ramp here
    * as well — RUNG_OPTS — which meant the footing the menu offered governed a skirmish and
@@ -84,9 +90,9 @@
    * change is that the two are not the same question. */
   const campaignLabel = () => {
     const CAM = global.CAMPAIGN;
-    if (!CAM) return 'CAMPAIGN';
+    if (!CAM) return tr('CAMPAIGN');
     const nx = CAM.next();
-    return nx ? nx.title : 'Walk it again, from the first chapter';
+    return nx ? tr(nx.title) : tr('Walk it again, from the first chapter');
   };
   /* what the button will actually do, said out loud. Walking again started you against
    * BENEDICT — the last rung — because the index was clamped instead of wrapped, so the
@@ -95,7 +101,7 @@
     const CAM = global.CAMPAIGN;
     if (!CAM) return '';
     const n = CAM.CHAPTERS.length, cl = CAM.CHAPTERS.filter((c2) => CAM.cleared(c2.key)).length;
-    return cl + ' of ' + n + ' · ' + CAM.CHAPTERS.map((c2) => (CAM.cleared(c2.key) ? '✔' : '·')).join(' ');
+    return tr('{cl} of {n}', { cl, n }) + ' · ' + CAM.CHAPTERS.map((c2) => (CAM.cleared(c2.key) ? '✔' : '·')).join(' ');
   };
 
   /* ---------------- match lifecycle ---------------- */
@@ -146,9 +152,9 @@
     homeCamera();
     armBack();
     Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
-                mode: 'the reach war',
-                footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
-    UI.startMatch('the Reach War');
+                mode: tr('the reach war'),
+                footing: footName() });
+    UI.startMatch(tr('the Reach War'));
   }
   /* putting the war down — every door out of a war runs through here, because a war that
    * only saved on the polite exits would lose an evening to one swipe-up */
@@ -248,8 +254,8 @@
    * disagree with the brain in the seat. */
   function warName(world, pi) {
     if (pi === 0) return 'Corwin';
-    const city = world.cities && world.cities[pi] && world.map.sites[world.cities[pi].site].name;
-    if ((world.heirs || []).indexOf(pi) < 0) return city || 'a lord of Shadow';
+    const city = world.cities && world.cities[pi] && I18N.site(world.map.sites[world.cities[pi].site].name);
+    if ((world.heirs || []).indexOf(pi) < 0) return city || tr('a lord of Shadow');
     const k = warKind(pi);
     return k.charAt(0).toUpperCase() + k.slice(1).toUpperCase();
   }
@@ -277,8 +283,8 @@
     if (lifted) {
       game.armsQuiet = null;
       REALM.save(game.realm);
-      UI.banner(quiet ? 'The alarm is lifted — the court is quiet, the lords return to their stances'
-                      : 'The alarm has run its span — the lords return to their stances', 'alert');
+      UI.banner(quiet ? tr('The alarm is lifted — the court is quiet, the lords return to their stances')
+                      : tr('The alarm has run its span — the lords return to their stances'), 'alert');
     }
   }
   /* the sides of the last war set up, remembered across matches — a preference, not a save */
@@ -375,8 +381,8 @@
      * A country's seats are dealt no purse at all — everyone earns by the same economy. */
     if (!game.bots) game.world.players[1].eco = (opts && opts.eco) || 1;
     /* a kind may be an heir or a baseline (the reach rig runs marchers) — both carry a title */
-    const kindTitle = (AI.HEIRS[kind] && AI.HEIRS[kind].title) ||
-                      (AI.BASELINES && AI.BASELINES[kind] && AI.BASELINES[kind].title) || 'a lord';
+    const kindTitle = tr((AI.HEIRS[kind] && AI.HEIRS[kind].title) ||
+                      (AI.BASELINES && AI.BASELINES[kind] && AI.BASELINES[kind].title) || 'a lord');
     /* at a country's table every seat is named by ITS CITY — ten seats sharing one heir's
      * name would make every banner a riddle */
     game.names = game.bots
@@ -392,19 +398,19 @@
     if (seenHints < 3) {
       localStorage.setItem('amber_hints', String(seenHints + 1));
       game.hints = [
-        [6, '⚐ Raise a Barracks — it raises a standard of its own, and its flag joins the tray', 'alert'],
-        [22, 'TAP YOUR OWN TROOPS to pick up their standard, then tap where they should stand', 'alert'],
-        [45, 'Essence is out on the map: march men to a spring, then TAP THE SPRING to raise a Gate', 'alert'],
-        [75, '⚔ To win by force, plant a standard on the rival city itself', 'alert']
+        [6, tr('⚐ Raise a Barracks — it raises a standard of its own, and its flag joins the tray'), 'alert'],
+        [22, tr('TAP YOUR OWN TROOPS to pick up their standard, then tap where they should stand'), 'alert'],
+        [45, tr('Essence is out on the map: march men to a spring, then TAP THE SPRING to raise a Gate'), 'alert'],
+        [75, tr('⚔ To win by force, plant a standard on the rival city itself'), 'alert']
       ];
     } else game.hints = [];
     Render.resize();
     homeCamera();
     armBack();
     Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
-                mode: game.chapter ? 'campaign · ' + game.chapter.key : isCampaign ? 'campaign' : 'skirmish',
-                footing: (C.DIFFICULTY[UI.difficulty()] || {}).name });
-    UI.startMatch(game.bots ? 'the Reach War' : kindTitle);
+                mode: game.chapter ? tr('campaign · {key}', { key: game.chapter.key }) : isCampaign ? tr('campaign') : tr('skirmish'),
+                footing: footName() });
+    UI.startMatch(game.bots ? tr('the Reach War') : kindTitle);
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
    * both out with the start message, so a guest never has to guess its own index. */
@@ -460,7 +466,7 @@
       /* the humans at the table keep their own seat names; every seat the host plays is named
        * the way a solo war names it — a lord for his city, a contender for himself */
       game.names = geo.players.map((_, i) =>
-        i < n ? (C.SEAT_NAMES[i] || 'an heir') : warName(geo, i));
+        i < n ? (C.SEAT_NAMES[i] || tr('an heir')) : warName(geo, i));
     } else {
       game.names = C.SEAT_NAMES.slice(0, n);
       const build = () => World.createWorld(seed, n);
@@ -474,10 +480,10 @@
     /* a guest never holds the world, only its own fogged snapshots — say so in the header
      * rather than pretend the rival columns are the truth */
     Rec.begin({ version: global.GAME_VERSION, seed, viewer: game.viewer, names: game.names.slice(),
-                mode: war ? 'the reach war · LAN ' + n + '-way' : 'LAN ' + n + '-way',
+                mode: war ? tr('the reach war · LAN {n}-way', { n }) : tr('LAN {n}-way', { n }),
                 partial: !Net.isHost });
     /* with up to four seats there is no single "the rival" — name the table instead */
-    UI.startMatch(war ? 'the Reach War' : n > 2 ? n + ' HEIRS CONTEND' : (Net.isHost ? 'Eric' : 'Corwin'));
+    UI.startMatch(war ? tr('the Reach War') : n > 2 ? tr('{n} HEIRS CONTEND', { n }) : (Net.isHost ? 'Eric' : 'Corwin'));
   }
   /* ---------------- the phone's back button ----------------
    * Installed as a PWA, Android's back gesture leaves the app. It should dismiss whatever is
@@ -560,7 +566,7 @@
       const now = performance.now();
       if (now - endArmed > 3000) {
         endArmed = now;
-        UI.banner('Leaving ends the table for everyone — press back again to end it', 'warn');
+        UI.banner(tr('Leaving ends the table for everyone — press back again to end it'), 'warn');
         armBack(); return;
       }
     }
@@ -588,7 +594,7 @@
      * holds no realm of his own, so the evening's conquests live on the host's phone — and
      * dropping him at a menu offering a brand new war, with no word about it, reads as the
      * whole war being gone. */
-    if (game.war) UI.banner('The war is the host’s to keep — pair again and it stands where it stood', 'warn');
+    if (game.war) UI.banner(tr('The war is the host’s to keep — pair again and it stands where it stood'), 'warn');
     /* on the end screen nobody is mid-match: the link was only ever the offer of a rematch */
     if (game.over) { endScreen(); return; }
     leaving = setTimeout(() => { leaving = 0; toMenu(); }, 2500);
@@ -610,7 +616,7 @@
     const heirs = Object.keys(AI.HEIRS);
     if (!game.bots) game.bots = w.players.map(() => null);
     game.bots[seat] = game.war ? warBot(w, seat) : AI.make(heirs[seat % heirs.length], {});
-    UI.banner(seatName(seat) + ' has left the table — a shadow of him fights on', 'warn');
+    UI.banner(tr('{who} has left the table — a shadow of him fights on', { who: seatName(seat) }), 'warn');
     return true;
   }
 
@@ -629,13 +635,13 @@
     if (game.mode !== 'guest' || !snapCur || game.over || linkLost === 'bye') return null;
     const quiet = (performance.now() - snapAt) / 1000;
     if (quiet > LINK.dead) {
-      endTable('The link to the host is gone — the match is ended');
+      endTable(tr('The link to the host is gone — the match is ended'));
       return 'dead';
     }
     if (quiet > LINK.quiet) {
       if (!quietSaid) {
         quietSaid = true; linkLost = 'quiet';
-        UI.banner('The link has gone quiet — waiting for the host', 'warn');
+        UI.banner(tr('The link has gone quiet — waiting for the host'), 'warn');
       }
       return 'quiet';
     }
@@ -683,7 +689,7 @@
         if (!reg.waiting || !navigator.serviceWorker.controller) return;
         waitingSW = reg.waiting;
         if (!game.mode) applyUpdate();
-        else { game.updateReady = true; UI.banner('A new shadow of Amber is drawn — it settles after this match', 'alert'); }
+        else { game.updateReady = true; UI.banner(tr('A new shadow of Amber is drawn — it settles after this match'), 'alert'); }
       };
       if (reg.waiting) onWaiting();
       reg.addEventListener('updatefound', () => {
@@ -762,20 +768,20 @@
       REALM.save(game.realm);
     }
     /* whoever it was, name them: with four seats "the other one" is not a person */
-    const other = (winner >= 0 && game.names[winner]) || 'Another heir';
+    const other = (winner >= 0 && game.names[winner]) || tr('Another heir');
     game.endWon = won;
     game.endSub = reason === 'pattern'
-      ? (won ? 'You have walked the Pattern to its blazing heart and spoken your name.'
-             : other + ' has walked the Pattern to its heart. The universe rearranges.')
-      : (won ? 'The rival Seat of Power lies in ruin along the black road.'
-             : 'Your Seat of Power lies in ruin. The road took it.');
+      ? (won ? tr('You have walked the Pattern to its blazing heart and spoken your name.')
+             : tr('{who} has walked the Pattern to its heart. The universe rearranges.', { who: other }))
+      : (won ? tr('The rival Seat of Power lies in ruin along the black road.')
+             : tr('Your Seat of Power lies in ruin. The road took it.'));
     /* A CHAPTER SAYS ITS OWN PIECE. It is a told story and the sentence at the end of one is
      * half of what it was for; the two the sim knows how to say are about a throne and a
      * Pattern and are wrong for "you held four wells through the storm". A chapter WON by
      * breaking the Seat or walking the lines keeps the sim's own line, which is the true one. */
     if (game.chapter && reason === 'objective')
-      game.endSub = won ? game.chapter.won
-                        : 'The chapter is lost. ' + game.chapter.title.replace(/^[IVX]+ · /, '') + ' waits again.';
+      game.endSub = won ? tr(game.chapter.won)
+                        : tr('The chapter is lost. {title} waits again.', { title: tr(game.chapter.title).replace(/^[IVX]+ · /, '') });
     game.endNext = null;
     /* THE RECORD IS THE HOST'S. A guest samples its own fog-filtered snapshots — a rival's
      * essence is never on the wire — so its end screen drew a different match from the host's.
@@ -789,10 +795,10 @@
       const CAM = global.CAMPAIGN;
       CAM.clear(game.chapter.key);
       const nx = CAM.next();
-      game.endNext = nx ? nx.title.toUpperCase() : 'THE SUCCESSION IS YOURS';
+      game.endNext = nx ? tr(nx.title).toUpperCase() : tr('THE SUCCESSION IS YOURS');
       game.endNextKey = nx ? nx.key : null;
     } else if (game.chapter) {
-      game.endNext = 'TRY THE CHAPTER AGAIN';
+      game.endNext = tr('TRY THE CHAPTER AGAIN');
       game.endNextKey = game.chapter.key;
     }
     endScreen();
@@ -800,7 +806,7 @@
   /* drawn separately from the ending itself, because what comes NEXT can change while the
    * screen is up — a guest dropping takes the host's rematch with it */
   function endScreen() {
-    let nextLabel = game.endNext || 'REMATCH', ready = true;
+    let nextLabel = game.endNext || tr('REMATCH'), ready = true;
     if (game.endNext) { /* the ladder already named the next rung */ }
     else if (game.mode === 'host') {
       /* the link is still up: a rematch costs a tap, not another QR */
@@ -813,7 +819,7 @@
        * a CALL, and the wait after it is what the dead button used to be. A table with no host
        * left on it is offered nothing, because nothing is what it can have. */
       nextLabel = game.noMore || !Net.active || Net.peerGone ? ''
-                : game.called ? 'AWAITING THE HOST' : 'ANOTHER MATCH';
+                : game.called ? tr('AWAITING THE HOST') : tr('ANOTHER MATCH');
       ready = !game.called;
     }
     UI.end(game.endWon, game.endSub, nextLabel, ready);
@@ -848,7 +854,7 @@
   function rematch(asker) {
     if (!canRematch()) {
       if (asker != null) { Net.send({ t: 'nomore' }, asker); return; }
-      UI.banner('An heir has left the link — pair again from the menu', 'warn');
+      UI.banner(tr('An heir has left the link — pair again from the menu'), 'warn');
       toMenu(); return;
     }
     const seed = (Math.random() * 0xffffffff) >>> 0, seats = game.seats;
@@ -864,7 +870,7 @@
    * without ever having asked for anything */
   function callAgain() {
     if (!Net.active || Net.peerGone) {
-      UI.banner('The Trump link is gone — pair again from the menu', 'warn');
+      UI.banner(tr('The Trump link is gone — pair again from the menu'), 'warn');
       toMenu(); return;
     }
     game.called = true;
@@ -1048,11 +1054,11 @@
   /* WHOEVER SITS IN THAT SEAT. `game.names` is filled per mode — two in a duel, the seat names
    * at a LAN table — and a banner about a third heir must not read "undefined breaks the truce". */
   function seatName(pi) {
-    return (game.names && game.names[pi]) || C.SEAT_NAMES[pi] || 'An heir';
+    return (game.names && game.names[pi]) || C.SEAT_NAMES[pi] || tr('An heir');
   }
   function sayErr(err) {
     if (!err) return;
-    UI.banner(REFUSAL[err] || ('The order was refused: ' + err), 'warn');
+    UI.banner(REFUSAL[err] ? tr(REFUSAL[err]) : tr('The order was refused: {err}', { err: String(err) }), 'warn');
   }
 
   /* ---------------- ⚑ THE WAR COUNCIL ----------------
@@ -1138,7 +1144,7 @@
        * in full for everyone of your own banner, so a guest can answer this for himself */
       crews += World.masons(view, pi);
       free += Math.max(0, World.masons(view, pi) - World.rising(view, pi));
-      if (p.pattern > 0) pattern = '✴ ' + Math.round(p.pattern) + '% of the Pattern is walked in your name';
+      if (p.pattern > 0) pattern = tr('✴ {n}% of the Pattern is walked in your name', { n: Math.round(p.pattern) });
     }
     for (const u of view.units) if (ours(u.owner)) men++;
     const cities = [];
@@ -1152,27 +1158,28 @@
        * a human at the table) is commanded by nobody and takes no stance — his row says so and
        * offers nothing but the way to his court */
       const ally = mineC && (view.heirs || []).indexOf(c.owner) >= 0 && c.owner !== hand() && c.owner !== game.viewer;
-      const nm = view.map.sites[c.site].name || 'a Seat of Power';
+      const nm = I18N.site(view.map.sites[c.site].name) || tr('a Seat of Power');
       const sub = [];
-      if (c.razed) sub.push('thrown down — nothing left of it');
-      else if (c.owner < 0) sub.push('YIELDED — hold the court and it swears');
+      if (c.razed) sub.push(tr('thrown down — nothing left of it'));
+      else if (c.owner < 0) sub.push(tr('YIELDED — hold the court and it swears'));
       else {
         const p = view.players[c.owner];
         if (mineC) {
           const rate = (p.incomeRate || 0) - (p.drainRate || 0);
           sub.push((rate >= 0 ? '+' : '') + rate.toFixed(1) + '/s');
-          sub.push(view.units.filter((u) => u.owner === c.owner).length + ' men');
+          sub.push(tr('{n} men', { n: view.units.filter((u) => u.owner === c.owner).length }));
           const o = orders[c.owner];
           /* the court your own hand is on needs no order: your taps ARE the order, and telling
            * a player his own capital has "no standing order" is telling him off for playing */
-          if (ally) sub.push('your ally — his own counsel');
+          if (ally) sub.push(tr('your ally — his own counsel'));
           else if (c.owner !== hand()) {
             const live = o && (o.until == null || (view.t || 0) < o.until) ? o : null;
-            const cn = (i) => (view.cities[i] && view.map.sites[view.cities[i].site].name) || 'a court';
-            sub.push(!live ? defaultStance(view, ci) + ' by default'
-              : live.mode === 'attack' ? 'ordered against ' + cn(live.target)
-              : live.mode === 'support' ? (live.arms ? 'TO ARMS — ' : 'ordered to support ') + cn(live.target)
-              : (STANCE_WORD[live.mode] || live.mode));
+            const cn = (i) => (view.cities[i] && I18N.site(view.map.sites[view.cities[i].site].name)) || tr('a court');
+            sub.push(!live ? tr(defaultStance(view, ci) + ' by default')
+              : live.mode === 'attack' ? tr('ordered against {court}', { court: cn(live.target) })
+              : live.mode === 'support' ? (live.arms ? tr('TO ARMS — {court}', { court: cn(live.target) })
+                                                     : tr('ordered to support {court}', { court: cn(live.target) }))
+              : tr(STANCE_WORD[live.mode] || live.mode));
           }
         } else {
           /* A COURT DOES NOT NEED TO SAY ITS OWN NAME BACK. In a country a lord is NAMED for his
@@ -1180,13 +1187,13 @@
            * under it that was the same word three times. What is worth saying is the thing the
            * row cannot show on its own: whose banner he answers to, when it is not his own. */
           const rl = World.realmOf(view, c.owner);
-          if (rl !== c.owner) sub.push('sworn to ' + seatName(rl));
+          if (rl !== c.owner) sub.push(tr('sworn to {who}', { who: seatName(rl) }));
         }
       }
       const nbrs = ((view.map.gen.nbrs && view.map.gen.nbrs[ci]) || [])
         .filter((i) => view.cities[i] && !ours(view.cities[i].owner) && !view.cities[i].razed)
         .slice(0, 2)
-        .map((i) => ({ mode: 'attack', target: i, label: '⚔ ' + (view.map.sites[view.cities[i].site].name || 'a court'),
+        .map((i) => ({ mode: 'attack', target: i, label: '⚔ ' + (I18N.site(view.map.sites[view.cities[i].site].name) || tr('a court')),
                        on: orders[lordIdx] && orders[lordIdx].mode === 'attack' && orders[lordIdx].target === i }));
       cities.push({
         idx: ci, lordIdx, name: nm, mine: mineC, hand: c.owner === hand(), ally,
@@ -1194,7 +1201,7 @@
          * with no lord at all (yielded, or thrown down), which belongs to nobody's banner. */
         realm: c.owner >= 0 ? World.realmOf(view, c.owner) : -1,
         tint: c.owner < 0 ? hex(C.NEUTRAL_TINT) : tint(c.owner),
-        lord: c.owner < 0 ? 'no lord' : (mineC ? (c.owner === hand() ? 'your own hand' : ally ? 'your ally' : 'sworn to you') : ''),
+        lord: c.owner < 0 ? tr('no lord') : (mineC ? (c.owner === hand() ? tr('your own hand') : ally ? tr('your ally') : tr('sworn to you')) : ''),
         sub: sub.join(' · '),
         hp: c.razed ? null : Math.max(0, c.hp / (c.maxHp || C.CASTLE_HP)),
         /* A STANDING ORDER IS THE HOST'S TO KEEP. It is a parameter to the lord's own doctrine
@@ -1204,7 +1211,7 @@
          * still carry him to the court and still hand him the command of it; they simply do
          * not offer what only a host can honour. */
         orders: game.realm && !ally
-          ? ORDERS.map((o) => Object.assign({}, o, { on: !!orders[lordIdx] && STANCE_WORD[orders[lordIdx].mode] === o.mode })).concat(nbrs)
+          ? ORDERS.map((o) => Object.assign({}, o, { label: tr(o.label), on: !!orders[lordIdx] && STANCE_WORD[orders[lordIdx].mode] === o.mode })).concat(nbrs)
           : []
       });
     }
@@ -1226,16 +1233,16 @@
          * withholding a thing the sim publishes. */
         terms.push({
           idx: pi, name: seatName(pi), tint: tint(pi), n: holds,
-          holds: holds + (holds === 1 ? ' city' : ' cities'),
+          holds: holds === 1 ? tr('{n} city', { n: holds }) : tr('{n} cities', { n: holds }),
           state: mine2 && his ? 'sealed' : his ? 'asked' : mine2 ? 'offered' : 'war',
-          say: mine2 && his ? '⚑ at terms — tap to break'
-             : his ? 'asks for terms — tap to accept'
-             : mine2 ? 'your offer stands — tap to withdraw' : 'at war — tap to offer',
+          say: mine2 && his ? tr('⚑ at terms — tap to break')
+             : his ? tr('asks for terms — tap to accept')
+             : mine2 ? tr('your offer stands — tap to withdraw') : tr('at war — tap to offer'),
           /* THE SAME THING AS A BUTTON. The roster is one list now and terms are a button under
            * a court, so the state needs a label in the imperative — "tap to offer" reads as an
            * instruction on a row and as a stutter on a button that is already tappable. */
-          act: mine2 && his ? '⚑ BREAK TERMS' : his ? '⚑ ACCEPT TERMS'
-             : mine2 ? '⚑ WITHDRAW OFFER' : '⚑ OFFER TERMS'
+          act: mine2 && his ? tr('⚑ BREAK TERMS') : his ? tr('⚑ ACCEPT TERMS')
+             : mine2 ? tr('⚑ WITHDRAW OFFER') : tr('⚑ OFFER TERMS')
         });
       }
     }
@@ -1293,7 +1300,7 @@
        * you tapped is whichever one you tapped, so it has to be able to offer terms from any of
        * them. One field, two readers, and no second copy of "what are we to each other". */
       c.terms = g.t ? { idx: g.realm, name: g.t.name, state: g.t.state, act: g.t.act,
-                        holds: g.n + (g.n === 1 ? ' city' : ' cities') } : null;
+                        holds: g.n === 1 ? tr('{n} city', { n: g.n }) : tr('{n} cities', { n: g.n }) } : null;
       c.termsHere = k === 0 && !!g.t;
       cities.push(c);
     }
@@ -1308,7 +1315,7 @@
     const land = { w: view.nav.W * view.nav.cw, h: view.nav.H * view.nav.cw };
     const marks = view.cities.map((c, ci) => ({
       idx: ci, x: c.x, y: c.y, r: c.reach || 0,
-      name: view.map.sites[c.site].name || 'a Seat of Power',
+      name: I18N.site(view.map.sites[c.site].name) || tr('a Seat of Power'),
       tint: c.owner < 0 ? hex(C.NEUTRAL_TINT) : tint(c.owner),
       mine: ours(c.owner), hand: c.owner === hand(),
       razed: !!c.razed, yielded: c.owner >= 0 ? 0 : 1
@@ -1356,7 +1363,7 @@
       if (sSeat === game.viewer) {
         game.watching = true;
         game.targeting = false; game.placing = null; game.span = null; Render.span = null; game.armedFlag = null;
-        UI.banner('👁 You are out of the fight — you watch now, with the veil lifted', 'warn');
+        UI.banner(tr('👁 You are out of the fight — you watch now, with the veil lifted'), 'warn');
       }
     }
     if (hs.length && lostN === hs.length) endAllLost();
@@ -1574,8 +1581,10 @@
         const mine = ours(ev.pi);
         const at = ev.e === 'walk' ? 0 : C.PATTERN_ALERTS[ev.idx].at;
         const msg = ev.e === 'walk' ? ' has set foot upon the Pattern!' : C.PATTERN_ALERTS[ev.idx].msg;
-        if (mine) UI.banner('You' + msg.replace(' has ', ' have '), 'alert');
-        else UI.knell(at ? Math.round(at) + '%' : '⟡', game.names[ev.pi] + msg);
+        /* WHOLE SENTENCES for the dictionary: the alert table holds the tail of one, and a
+         * tongue that does not put the subject first cannot be handed a tail */
+        if (mine) UI.banner(tr('You' + msg.replace(' has ', ' have ')), 'alert');
+        else UI.knell(at ? Math.round(at) + '%' : '⟡', tr('{name}' + msg, { name: String(game.names[ev.pi]) }));
       }
       /* ---- TERMS, AGAINST THE THREE TESTS ----
        * OFFERING IS SILENT: it is an echo of the tap the player has just made, and the tray's
@@ -1595,15 +1604,15 @@
        * seat index called your own vassal's conquest an enemy's and cried about the wrong
        * throne. `ours` is the same question the city sheet and the minimap ask. */
       else if (ev.e === 'yield') UI.banner(ours(ev.pi)
-        ? seatName(ev.pi) + '’s Seat has yielded — its court is open to anyone who can hold it'
-        : seatName(ev.pi) + '’s Seat yields — take the court and it is yours', ours(ev.pi) ? 'warn' : 'alert');
+        ? tr('{who}’s Seat has yielded — its court is open to anyone who can hold it', { who: seatName(ev.pi) })
+        : tr('{who}’s Seat yields — take the court and it is yours', { who: seatName(ev.pi) }), ours(ev.pi) ? 'warn' : 'alert');
       else if (ev.e === 'taken') UI.banner(ours(ev.pi)
-        ? (ev.lord != null && !ours0(ev.lord) ? seatName(ev.lord) + ' swears to you — his city, his purse and his men are yours'
-                                              : 'The city is YOURS')
-        : seatName(ev.pi) + ' takes the city', ours(ev.pi) ? 'alert' : 'warn');
+        ? (ev.lord != null && !ours0(ev.lord) ? tr('{who} swears to you — his city, his purse and his men are yours', { who: seatName(ev.lord) })
+                                              : tr('The city is YOURS'))
+        : tr('{who} takes the city', { who: seatName(ev.pi) }), ours(ev.pi) ? 'alert' : 'warn');
       else if (ev.e === 'razed') UI.banner(ours(ev.pi)
-        ? 'You throw the city down — it will be nobody’s now'
-        : seatName(ev.pi) + ' throws the city down', ours(ev.pi) ? '' : 'warn');
+        ? tr('You throw the city down — it will be nobody’s now')
+        : tr('{who} throws the city down', { who: seatName(ev.pi) }), ours(ev.pi) ? '' : 'warn');
       /* ---- TERMS SPEAK ONLY WHEN THEY ARE YOURS ----
        * A duel has one rival, so "somebody came to terms" could only ever be about you. A war
        * seats sixteen and they treat with each other constantly: reported from play with a
@@ -1618,15 +1627,15 @@
        * Both events, because both were open: `offer` is emitted whenever an offer fails to seal,
        * including between two lords who have never heard of you. */
       else if (ev.e === 'offer' && !ours(ev.pi) && ours(ev.p))
-        UI.banner(seatName(ev.pi) + ' asks for terms', 'alert');
+        UI.banner(tr('{who} asks for terms', { who: seatName(ev.pi) }), 'alert');
       else if (ev.e === 'pact' && !ours(ev.pi) && ours(ev.p)) {
-        if (ev.on) UI.banner(seatName(ev.pi) + ' agrees to terms', 'alert');
-        else UI.banner(seatName(ev.pi) + ' BREAKS the truce!', 'warn');
+        if (ev.on) UI.banner(tr('{who} agrees to terms', { who: seatName(ev.pi) }), 'alert');
+        else UI.banner(tr('{who} BREAKS the truce!', { who: seatName(ev.pi) }), 'warn');
       }
-      else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner('Chaos tears open a rift in the black road', 'chaos'); }
-      else if (ev.e === 'surge') UI.banner('The black road surges — Chaos redoubles!', 'chaos');
-      else if (ev.e === 'storm' && !ours(ev.pi)) UI.banner(game.names[ev.pi] + ' calls down the storm!', 'warn');
-      else if (ev.e === 'trump' && !ours(ev.pi)) UI.banner(game.names[ev.pi] + ' draws a Trump!', 'warn');
+      else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner(tr('Chaos tears open a rift in the black road'), 'chaos'); }
+      else if (ev.e === 'surge') UI.banner(tr('The black road surges — Chaos redoubles!'), 'chaos');
+      else if (ev.e === 'storm' && !ours(ev.pi)) UI.banner(tr('{who} calls down the storm!', { who: String(game.names[ev.pi]) }), 'warn');
+      else if (ev.e === 'trump' && !ours(ev.pi)) UI.banner(tr('{who} draws a Trump!', { who: String(game.names[ev.pi]) }), 'warn');
       /* NO BANNER FOR THE MUSTER VALVE EITHER. It is a STATE, and a state has a readout: the
        * essence rate carries ⏸ for as long as the realm is quiet, and a company's own chip
        * goes `quiet` for as long as that standard is. A banner says it once, for 3.4 seconds,
@@ -1641,7 +1650,7 @@
        * It was worse than redundant: the Recall clears EVERY company's rally, so a four-company
        * realm emitted four of these, and the corner stack holds three — the useful line was
        * shoved out by the echoes of its own order. */
-      else if (ev.e === 'raze') UI.banner(ours(ev.pi) ? 'Your ' + (C.BUILDINGS[ev.bt] ? C.BUILDINGS[ev.bt].name : 'building') + ' has been RAZED!' : 'You raze the rival’s works', ours(ev.pi) ? 'warn' : '');
+      else if (ev.e === 'raze') UI.banner(ours(ev.pi) ? tr('Your {work} has been RAZED!', { work: C.BUILDINGS[ev.bt] ? tr(C.BUILDINGS[ev.bt].name) : tr('building') }) : tr('You raze the rival’s works'), ours(ev.pi) ? 'warn' : '');
       /* a demolition is SILENT — you ordered it — and it is no flashpoint (see routeEvents' reader in render3d) */
       else if (ev.e === 'demolish') { /* the chronicle has it */ }
       /* SAY WHO IS AT THE GATE. One banner covered both, so a rift gnawing an outlying Gate
@@ -1659,17 +1668,17 @@
         /* the court that is actually being scratched — his, which in a war may be a vassal's */
         const c = view.map.sites[view.map.cities[ev.pi]];
         const home = c && ev.x != null && Math.hypot(ev.x - c.x, ev.y - c.y) < C.CITY.r;
-        const what = (C.BUILDINGS[ev.bt] || {}).name || 'works';
-        const who = ev.by === C.CHAOS_ID ? 'Chaos'
-                  : ev.by != null && ev.by !== game.viewer ? (game.names[ev.by] || 'The enemy') : null;
+        const what = tr((C.BUILDINGS[ev.bt] || {}).name || 'works');
+        const who = ev.by === C.CHAOS_ID ? tr('Chaos')
+                  : ev.by != null && ev.by !== game.viewer ? (game.names[ev.by] || tr('The enemy')) : null;
         const cls = ev.by === C.CHAOS_ID ? 'chaos' : 'warn';
-        if (home) UI.banner(who ? who + ' is inside your city!' : 'Your works are under attack!', cls);
-        else UI.banner(who ? who + ' is at your ' + what + '!' : 'Your ' + what + ' is under attack!', cls);
+        if (home) UI.banner(who ? tr('{who} is inside your city!', { who }) : tr('Your works are under attack!'), cls);
+        else UI.banner(who ? tr('{who} is at your {what}!', { who, what }) : tr('Your {what} is under attack!', { what }), cls);
       }
       /* the Shrine falling is the single biggest thing an assault can do — say what it cost */
       else if (ev.e === 'shrinefell') UI.banner(ours(ev.pi)
-        ? '✴ Your Shrine is thrown down — the Pattern lets go of you (' + Math.round(ev.pattern) + '%)'
-        : '✴ ' + game.names[ev.pi] + ' is torn off the Pattern — ' + Math.round(ev.pattern) + '% left',
+        ? tr('✴ Your Shrine is thrown down — the Pattern lets go of you ({n}%)', { n: Math.round(ev.pattern) })
+        : tr('✴ {who} is torn off the Pattern — {n}% left', { who: String(game.names[ev.pi]), n: Math.round(ev.pattern) }),
         ours(ev.pi) ? 'warn' : 'alert')
       else if (ev.e === 'fall' && Render.seatFall) Render.seatFall(ev.pi);
       else if (ev.e === 'win') endMatch(ev.winner, ev.reason);
@@ -1868,7 +1877,7 @@
         game.watching = !!view.allSeen;
         if (game.watching) {
           game.targeting = false; game.placing = null; game.span = null; Render.span = null; game.armedFlag = null;
-          UI.banner('👁 You are out of the fight — you watch now, with the veil lifted', 'warn');
+          UI.banner(tr('👁 You are out of the fight — you watch now, with the veil lifted'), 'warn');
         }
       }
       UI.spectate(game.watching, watchLine());
@@ -1878,15 +1887,17 @@
   function watchLine() {
     if (!game.watching) return null;
     const v = game.world || snapCur;
-    if (!v || !v.players) return '👁 You are out of the fight — watching';
+    if (!v || !v.players) return tr('👁 You are out of the fight — watching');
     const left = [];
     for (let pi = 0; pi < v.players.length; pi++) {
       if (pi === game.viewer || v.players[pi].out) continue;
       if (game.mode !== 'guest' && !humanSeats().includes(pi)) continue;   // the host names the humans
       if (game.mode !== 'guest' && World.lost(v, pi)) continue;
-      left.push(game.names[pi] || ('seat ' + pi));
+      left.push(game.names[pi] || tr('seat {i}', { i: pi }));
     }
-    return '👁 You are out of the fight — watching' + (game.mode !== 'guest' && left.length ? ': ' + left.join(', ') + ' still fight' : '');
+    return game.mode !== 'guest' && left.length
+      ? tr('👁 You are out of the fight — watching: {who} still fight', { who: left.join(', ') })
+      : tr('👁 You are out of the fight — watching');
   }
 
   /* ---------------- input: drag pans, pinch zooms, tap acts ---------------- */
@@ -1995,8 +2006,8 @@
          * does. A guest holds no world; the host validates, and its preview does not judge. */
         const reach = game.world ? World.wallReach(game.world, hand()) : 0;
         Render.span = { x: w.x, y: w.y, from: Render.pointer, reach };
-        UI.banner(reach ? 'Now tap where the wall should END — the masons reach ' + Math.round(reach)
-                        : 'Now tap where the wall should END', 'alert');
+        UI.banner(reach ? tr('Now tap where the wall should END — the masons reach {n}', { n: Math.round(reach) })
+                        : tr('Now tap where the wall should END'), 'alert');
         return;
       }
       const r = issue({ c: 'build', x: w.x, y: w.y, bt: game.placing.bt, co: game.placing.co });
@@ -2022,7 +2033,7 @@
     if (game.targeting) {
       game.targeting = false;
       const w = Render.toWorld(x, y, game.viewer);
-      if (!view.see(w.x, w.y)) { UI.banner('You cannot storm what you cannot see', 'warn'); return; }
+      if (!view.see(w.x, w.y)) { UI.banner(tr('You cannot storm what you cannot see'), 'warn'); return; }
       issue({ c: 'power', k: 'storm', x: w.x, y: w.y });
       return;
     }
@@ -2105,13 +2116,13 @@
     const man = Render.hitAnyUnit ? Render.hitAnyUnit(x, y) : null;
     if (man && man.owner !== hand()) {
       let text, swatch = null;
-      if (man.owner < 0) text = 'Fiends of Chaos — a foe of everyone';
+      if (man.owner < 0) text = tr('Fiends of Chaos — a foe of everyone');
       else {
         const court = game.war && view.cities && view.cities[man.owner]
-          ? view.map.sites[view.cities[man.owner].site].name : seatName(man.owner);
-        const rel = World.realmOf(view, man.owner) === World.realmOf(view, game.viewer) ? 'your own banner'
-          : World.pactOn(view, man.owner, game.viewer) ? 'at terms with you' : 'a rival banner';
-        text = 'Men of ' + court + ' — ' + rel;
+          ? I18N.site(view.map.sites[view.cities[man.owner].site].name) : seatName(man.owner);
+        const rel = World.realmOf(view, man.owner) === World.realmOf(view, game.viewer) ? tr('your own banner')
+          : World.pactOn(view, man.owner, game.viewer) ? tr('at terms with you') : tr('a rival banner');
+        text = tr('Men of {court} — {rel}', { court: String(court), rel });
         const lv = C.liveryOf(man.owner);
         swatch = { tint: Render.tintOf(man.owner, game.viewer), colour: lv.colour, p: lv.p };
       }
@@ -2145,8 +2156,8 @@
           steward: (game.realm && game.realm.helm && game.realm.helm.orders &&
                     game.realm.helm.orders[lord]) || null,
           nbrs: ((view.map.gen.nbrs && view.map.gen.nbrs[ci]) || []).map((i) => ({
-            idx: i, name: view.map.sites[view.cities[i].site].name, owner: view.cities[i].owner })),
-          own: view.cities.map((c2, i) => ({ idx: i, name: view.map.sites[c2.site].name, owner: c2.owner }))
+            idx: i, name: I18N.site(view.map.sites[view.cities[i].site].name), owner: view.cities[i].owner })),
+          own: view.cities.map((c2, i) => ({ idx: i, name: I18N.site(view.map.sites[c2.site].name), owner: c2.owner }))
             .filter((e) => ours(view.cities[e.idx]) && e.idx !== ci)
         };
       }
@@ -2230,8 +2241,8 @@
      * nobody reads. */
     const android = /android/i.test(navigator.userAgent || '');
     $('lan-help-os').textContent = android
-      ? 'Android: Settings → Connections → Mobile Hotspot. The other phone joins it like any Wi-Fi.'
-      : 'iPhone: Settings → Personal Hotspot → Allow Others to Join. The other phone joins it like any Wi-Fi.';
+      ? tr('Android: Settings → Connections → Mobile Hotspot. The other phone joins it like any Wi-Fi.')
+      : tr('iPhone: Settings → Personal Hotspot → Allow Others to Join. The other phone joins it like any Wi-Fi.');
     $('lan-hotspot').classList.toggle('hidden', !android);
     $('lan-hotspot').addEventListener('click', () => {
       /* Android's Chrome will launch an activity from an intent: URL. If the OEM has moved the
@@ -2266,11 +2277,11 @@
     };
     Net.onFail = () => {
       const [title, why] = ADVICE[Net.advice()] || ADVICE.unknown;
-      $('lan-help-title').innerHTML = title;
-      $('lan-help-why').innerHTML = why;
+      $('lan-help-title').innerHTML = tr(title);
+      $('lan-help-why').innerHTML = tr(why);
       $('lan-panel').classList.remove('hidden');
       $('lan-help').classList.remove('hidden');
-      say('the link could not be made — see below');
+      say(tr('the link could not be made — see below'));
       paintDiag();
     };
     /* AND SAY IT BEFORE THEY START, where the platform will tell us. Chrome on Android reports
@@ -2278,9 +2289,9 @@
     const paintNet = () => {
       const el = $('lan-net'), k = Net.netKind({});
       if (k.told === 'cellular') {
-        el.textContent = '⚠ This phone is on mobile data — join a Wi-Fi network, or make it a hotspot';
+        el.textContent = tr('⚠ This phone is on mobile data — join a Wi-Fi network, or make it a hotspot');
         el.className = 'warn';
-      } else if (k.told === 'wifi') { el.textContent = '✓ This phone is on Wi-Fi'; el.className = ''; }
+      } else if (k.told === 'wifi') { el.textContent = tr('✓ This phone is on Wi-Fi'); el.className = ''; }
       else { el.classList.add('hidden'); return; }
       el.classList.remove('hidden');
     };
@@ -2317,16 +2328,16 @@
         box.appendChild(r);
       };
       if (has) {
-        side('own', 'THE WAR IN YOUR POCKET', 'its sides are set — the heirs at the table take its seats in join order', null);
+        side('own', tr('THE WAR IN YOUR POCKET'), tr('its sides are set — the heirs at the table take its seats in join order'), null);
         return;
       }
       /* the shape of the war: two sides, or every heir for himself */
       {
-        const b = el('button', 'mbtn small', lanTeam.ffa ? 'TWO SIDES' : 'FREE FOR ALL');
+        const b = el('button', 'mbtn small', lanTeam.ffa ? tr('TWO SIDES') : tr('FREE FOR ALL'));
         b.id = 'lan-ffa';
         b.addEventListener('click', () => { lanTeam.ffa = !lanTeam.ffa; paintSides(n, has); });
-        side(lanTeam.ffa ? 'foe' : 'own', lanTeam.ffa ? 'EVERY HEIR FOR HIMSELF' : 'TWO SIDES',
-             lanTeam.ffa ? 'each human his own banner; tap for two sides' : 'humans and bots in two banners; tap for a free-for-all', b);
+        side(lanTeam.ffa ? 'foe' : 'own', lanTeam.ffa ? tr('EVERY HEIR FOR HIMSELF') : tr('TWO SIDES'),
+             lanTeam.ffa ? tr('each human his own banner; tap for two sides') : tr('humans and bots in two banners; tap for a free-for-all'), b);
       }
       const step = (key, lo, roomFn) => {
         const d = el('div', 'ws-step');
@@ -2341,9 +2352,9 @@
         const roomF = () => 4 - Math.min(n, 4) - (lanTeam.botsB | 0);
         while (roomF() < 0) lanTeam.botsB--;
         const lo = n < 2 ? 1 : 0;
-        side('foe', 'BOT HEIRS', n < 2 ? 'at least one — a war needs an enemy' : 'each his own banner, played by the host', step('botsB', lo, roomF));
+        side('foe', tr('BOT HEIRS'), n < 2 ? tr('at least one — a war needs an enemy') : tr('each his own banner, played by the host'), step('botsB', lo, roomF));
         const s = lanSides(n);
-        box.appendChild(el('div', 'ws-sum', s.length + ' banners — ' + s.length + ' contenders, every one for himself'));
+        box.appendChild(el('div', 'ws-sum', tr('{n} banners — {n} contenders, every one for himself', { n: s.length })));
         return;
       }
       /* two columns: who stands where, and how many bots each side gets */
@@ -2357,29 +2368,29 @@
         c.dataset.side = kind;
         c.appendChild(el('div', 'ws-col-title', title));
         /* the humans of this side; a tap moves one across. The host is fixed to his own. */
-        if (kind === 'own') { const me = el('div', 'ws-chip me', 'You'); c.appendChild(me); }
+        if (kind === 'own') { const me = el('div', 'ws-chip me', tr('You')); c.appendChild(me); }
         for (let i = 1; i < n && i < 4; i++) {
           if ((kind === 'own') !== !!lanTeam.with[i]) continue;
-          const chip = el('button', 'ws-chip', (C.SEAT_NAMES[i] || ('heir ' + i)) + ' ⇄');
+          const chip = el('button', 'ws-chip', (C.SEAT_NAMES[i] || tr('heir {i}', { i })) + ' ⇄');
           chip.dataset.seat = i;
-          chip.title = 'tap to move to the other side';
+          chip.title = tr('tap to move to the other side');
           chip.addEventListener('click', () => { lanTeam.with[i] = !lanTeam.with[i]; paintSides(n, has); });
           c.appendChild(chip);
         }
         const bots = kind === 'own' ? (lanTeam.botsA | 0) : Math.max(humansB ? 0 : 1, lanTeam.botsB | 0);
-        for (let k = 0; k < bots; k++) c.appendChild(el('div', 'ws-chip bot', 'a bot heir'));
+        for (let k = 0; k < bots; k++) c.appendChild(el('div', 'ws-chip bot', tr('a bot heir')));
         const ctl = el('div', 'ws-col-bots');
-        ctl.appendChild(el('span', 'ws-who', 'bots'));
+        ctl.appendChild(el('span', 'ws-who', tr('bots')));
         ctl.appendChild(step(kind === 'own' ? 'botsA' : 'botsB', kind === 'own' ? 0 : (humansB ? 0 : 1), room));
         c.appendChild(ctl);
         c.appendChild(el('div', 'ws-who', who));
         return c;
       };
-      cols.appendChild(column('own', 'YOUR SIDE', 'one banner, one victory'));
-      cols.appendChild(column('foe', 'AGAINST YOU', 'the enemy banner'));
+      cols.appendChild(column('own', tr('YOUR SIDE'), tr('one banner, one victory')));
+      cols.appendChild(column('foe', tr('AGAINST YOU'), tr('the enemy banner')));
       box.appendChild(cols);
       const s = lanSides(n);
-      box.appendChild(el('div', 'ws-sum', s[0].length + ' v ' + s[1].length + ' — ' + (s[0].length + s[1].length) + ' contenders'));
+      box.appendChild(el('div', 'ws-sum', tr('{a} v {b} — {n} contenders', { a: s[0].length, b: s[1].length, n: s[0].length + s[1].length })));
     };
     const paintTable = () => {
       const n = Net.seated();
@@ -2398,25 +2409,25 @@
       for (const id of ['lan-start', 'lan-start-war']) $(id).classList.toggle('hidden', !lobby);
       $('lan-sides').classList.toggle('hidden', !lobby);
       if (lobby) {
-        twoLine($('lan-start'), 'BEGIN — ' + n + ' HEIRS', 'a skirmish: one fresh board, first Seat to fall');
+        twoLine($('lan-start'), tr('BEGIN — {n} HEIRS', { n }), tr('a skirmish: one fresh board, first Seat to fall'));
         /* `REALM.saved()` and not `REALM.load()`: load REGROWS the whole country from its seed,
          * which is seconds of work on a phone, and this runs every time the screen is opened.
          * The label is the only question here; the war itself is not wanted until the tap. */
         const has = !!(REALM && REALM.saved && REALM.saved());
         twoLine($('lan-start-war'),
-                (has ? 'YOUR WAR — ' : 'A NEW WAR — ') + n + ' HEIRS',
-                has ? 'the reach war in your pocket, dealt to this table'
-                    : 'the reach war: a new country, sixteen thrones, one Pattern');
-        $('qr-host').textContent = Net.canAdd() ? 'ADD ANOTHER HEIR' : 'FOUR IS THE LIMIT';
+                has ? tr('YOUR WAR — {n} HEIRS', { n }) : tr('A NEW WAR — {n} HEIRS', { n }),
+                has ? tr('the reach war in your pocket, dealt to this table')
+                    : tr('the reach war: a new country, sixteen thrones, one Pattern'));
+        $('qr-host').textContent = Net.canAdd() ? tr('ADD ANOTHER HEIR') : tr('FOUR IS THE LIMIT');
         $('qr-host').disabled = !Net.canAdd();
         $('qr-host').classList.remove('hidden');
-        say(n + ' of ' + C.MAX_PLAYERS + ' seated — add another, or begin');
+        say(tr('{n} of {max} seated — add another, or begin', { n, max: C.MAX_PLAYERS }));
         paintSides(n, has);
       } else if (!Net.active && !Net._pairing) {
         /* nothing in flight and nobody linked: the opening line, not whatever was true once */
-        $('qr-host').textContent = 'HOST THE TABLE';
+        $('qr-host').textContent = tr('HOST THE TABLE');
         $('qr-host').disabled = false;
-        say('same Wi-Fi · no server · pair by QR · two to four heirs');
+        say(tr('same Wi-Fi · no server · pair by QR · two to four heirs'));
       }
     };
     /* ---- AND THE TABLE LEAVES THE GLASS WHEN THE MATCH BEGINS ----
@@ -2464,22 +2475,22 @@
       return global.LanLink.qr.scan(
         { video: $('scan-video'), cancel: $('scan-cancel'), hint: $('scan-hint') },
         { open: () => overlay.classList.remove('hidden'), close: () => overlay.classList.add('hidden'),
-          words: { aim: 'Point at your rival’s Trump', reading: (have, need) => 'reading the Trump… ' + have + '/' + need },
+          words: { aim: tr('Point at your rival’s Trump'), reading: (have, need) => tr('reading the Trump… {have}/{need}', { have, need }) },
           onProgress: (have, need) => { lanNote = 'scanned ' + have + '/' + need + ' frames'; } });
     }
 
     $('qr-host').addEventListener('click', async () => {
       Net.diagReset();
       $('lan-help').classList.add('hidden');
-      say('drawing your Trump…');
+      say(tr('drawing your Trump…'));
       try {
-          say('finding a route to this phone…');
+          say(tr('finding a route to this phone…'));
         const offer = await Net.host();
-        if (!startPairStream(offer)) { say('could not draw the QR'); return; }
+        if (!startPairStream(offer)) { say(tr('could not draw the QR')); return; }
         qrJoin.classList.add('hidden');
         qrScanReply.classList.remove('hidden');
-        say(`1) ${C.SEAT_NAMES[Net.peers.length]} scans this  2) tap SCAN REPLY`);
-      } catch (e) { say('failed: ' + (e.message || e)); }
+        say(tr('1) {who} scans this  2) tap SCAN REPLY', { who: String(C.SEAT_NAMES[Net.peers.length]) }));
+      } catch (e) { say(tr('failed: {err}', { err: tr(String(e.message || e)) })); }
     });
     /* PAIRING IS WHERE THE PLAYER IS BLIND. The camera covers the screen, and whatever the
      * answer turns out to be — linked, refused, unreadable — the only place it is ever said is
@@ -2492,7 +2503,7 @@
         const answer = await scanQR();
         backToLan();
         lanNote = 'read a reply of ' + answer.length + ' chars'; paintDiag();
-        say('the Trumps touch…');
+        say(tr('the Trumps touch…'));
         await Net.acceptAnswer(answer);
         paintDiag();
         /* A LINK THAT NEVER OPENS SAYS NOTHING ON ITS OWN. Everything above this point can
@@ -2501,11 +2512,11 @@
          * the two things that actually cause it. */
         setTimeout(() => {
           if (Net.active) return;
-          say('no link after 20s — tap HOST THE TABLE to draw a fresh Trump and try again');
-          UI.banner('No link — tap HOST THE TABLE to try again', 'warn');
+          say(tr('no link after 20s — tap HOST THE TABLE to draw a fresh Trump and try again'));
+          UI.banner(tr('No link — tap HOST THE TABLE to try again'), 'warn');
           paintDiag();
         }, 20000);
-      } catch (e) { backToLan(); say(e.message); UI.banner('Pairing failed — ' + e.message, 'warn'); }
+      } catch (e) { backToLan(); say(tr(e.message)); UI.banner(tr('Pairing failed — {err}', { err: errText(e) }), 'warn'); }
     });
     qrJoin.addEventListener('click', async () => {
       Net.diagReset();
@@ -2514,11 +2525,11 @@
         const offer = await scanQR();
         backToLan();
         lanNote = 'read an offer of ' + offer.length + ' chars'; paintDiag();
-        say('finding a route to this phone…');
+        say(tr('finding a route to this phone…'));
         const answer = await Net.join(offer);
-        if (!startPairStream(answer)) { say('could not draw the reply QR'); return; }
-        say('show this reply to Corwin — linking…');
-      } catch (e) { backToLan(); say(e.message); UI.banner('Pairing failed — ' + e.message, 'warn'); }
+        if (!startPairStream(answer)) { say(tr('could not draw the reply QR')); return; }
+        say(tr('show this reply to Corwin — linking…'));
+      } catch (e) { backToLan(); say(tr(e.message)); UI.banner(tr('Pairing failed — {err}', { err: errText(e) }), 'warn'); }
     });
 
     Net.onOpen = () => {
@@ -2528,7 +2539,7 @@
        * table looks like is `paintTable`'s answer and nobody else's — this event only says
        * that something CHANGED. */
       if (Net.isHost) paintTable();
-      else say('LINKED — awaiting the host…');
+      else say(tr('LINKED — awaiting the host…'));
     };
     /* ---- DEALING THE TABLE ----
      * `inWar` picks the mode, and it is the BUTTON that picks it rather than a save nobody can
@@ -2553,10 +2564,10 @@
        * at is not worth eight thousand units of land, and growing one would overwrite the war
        * in the host's pocket to play it with himself */
       const open = Net.peers.filter((p) => p.dc && p.dc.readyState === 'open');
-      if (!open.length) { say('no seat could be dealt to — pair again'); paintTable(); return; }
+      if (!open.length) { say(tr('no seat could be dealt to — pair again')); paintTable(); return; }
       let saved = inWar ? REALM.load() : null;
       if (inWar && !(saved && !saved.done)) {
-        say('growing the country — a moment…');
+        say(tr('growing the country — a moment…'));
         /* a NEW war for the table takes the sides the lobby drew — humans on seats 0..n-1 by
          * join order, bots on the seats after — and remembers them */
         const sides = lanSides(seats);
@@ -2570,7 +2581,7 @@
         try { Net.send({ t: 'start', seed, seats, idx: p.idx, war }, p.idx); dealt++; }
         catch (e) { lanNote = 'seat ' + p.idx + ' would not take the deal: ' + e.message; paintDiag(); }
       }
-      if (!dealt) { say('no seat could be dealt to — pair again'); paintTable(); return; }
+      if (!dealt) { say(tr('no seat could be dealt to — pair again')); paintTable(); return; }
       /* THE BUTTONS ARE NOT PUT AWAY BY THE TAP — they are put away by the match. They used
        * to hide themselves here, before `startMP` had done anything, so any throw past this
        * line left a table that said "2 of 4 seated — add another, or begin" with nothing on
@@ -2579,7 +2590,7 @@
        * and says what went wrong. */
       try { startMP(seed, seats, 0, war, war ? saved : null); }
       catch (e) {
-        say('the table could not be dealt: ' + (e.message || e));
+        say(tr('the table could not be dealt: {err}', { err: tr(String(e.message || e)) }));
         lanNote = 'deal failed: ' + (e.message || e); paintDiag(); paintTable(); return;
       }
       leaveTable();
@@ -2604,7 +2615,7 @@
     Net.onNoMore = () => {
       if (game.mode !== 'guest' || !game.over) return;
       game.noMore = true;
-      UI.banner('An heir has left the table — pair again from the menu', 'warn');
+      UI.banner(tr('An heir has left the table — pair again from the menu'), 'warn');
       endScreen();
     };
     /* A HEIR SAYING GOODBYE. From the HOST it is the end of the table: there is no world
@@ -2613,7 +2624,7 @@
     Net.onBye = (from) => {
       if (game.mode !== 'guest' || from !== 0) return;
       linkLost = 'bye';
-      endTable(seatName(0) + ' has left the table — the match is ended');
+      endTable(tr('{who} has left the table — the match is ended', { who: seatName(0) }));
     };
     Net.onSnap = (s) => {
       const now = performance.now();
@@ -2626,7 +2637,7 @@
        * snapshot follows it, and `linkLost === 'bye'` says the table is over on purpose. */
       if (leaving && linkLost !== 'bye') {
         clearTimeout(leaving); leaving = 0;
-        UI.banner('The link is back', 'alert');
+        UI.banner(tr('The link is back'), 'alert');
       }
       if (linkLost !== 'bye') { linkLost = null; quietSaid = false; }
       snapPrev = snapCur; snapCur = s; snapAt = now;
@@ -2640,7 +2651,7 @@
     Net.onClose = (seat) => {
       if (game.mode === 'guest') {
         /* a goodbye has already said it better — do not talk over it */
-        if (linkLost !== 'bye') endTable('The link to the host is severed — the match is ended');
+        if (linkLost !== 'bye') endTable(tr('The link to the host is severed — the match is ended'));
       } else if (game.mode === 'host') {
         /* AN ABANDONED SEAT IS PLAYED BY SOMEBODY. The host plays on, and the seat that left
          * used to simply STAND there: its cities kept earning, its men held whatever ground
@@ -2649,7 +2660,7 @@
          * same driver an unclaimed seat gets when the table is dealt, which is the plainest
          * true answer to "who is playing that heir now" — and it says so in ONE line, because
          * "the link is severed" and "a shadow fights on" are one piece of news, not two. */
-        if (!adoptSeat(seat)) UI.banner('The Trump link is severed', 'warn');
+        if (!adoptSeat(seat)) UI.banner(tr('The Trump link is severed'), 'warn');
         /* on the end screen the link IS the offer of a rematch. Losing it there is not fatal
          * — nobody is mid-match — but the button must stop promising a game that can no
          * longer be dealt, so redraw the screen with what is actually left. */
@@ -2659,7 +2670,7 @@
          * channels, so it speaks last — at a table of four, one phone leaving is 'link lost'
          * overwritten by the two that are still seated, which is the truth; at a table of two
          * there is nothing left to say and the loss stands. */
-        say('link lost');
+        say(tr('link lost'));
         paintTable();
       }
     };
@@ -2682,9 +2693,9 @@
     /* No WebGL, no game — and say so, instead of failing into a black screen */
     if (!Render) {
       const m = $('menu');
-      if (m) m.innerHTML = '<h1 style="font-size:34px;letter-spacing:6px">AMBER</h1>' +
-        '<p class="lore">This device has no working WebGL, which Amber needs to draw the world.' +
-        '<br>Try another browser, or turn on hardware acceleration.</p>';
+      if (m) m.innerHTML = '<h1 style="font-size:34px;letter-spacing:6px">' + tr('AMBER') + '</h1>' +
+        '<p class="lore">' + tr('This device has no working WebGL, which Amber needs to draw the world.' +
+        '<br>Try another browser, or turn on hardware acceleration.') + '</p>';
       return;
     }
     await Render.init($('game'));
@@ -2722,7 +2733,7 @@
         /* A NEW WAR IS SET UP FIRST: the sides. The screen offers every shape two sides of two
          * to four contenders can take — you alone against three heirs (the default), one ally
          * against two, two against two — and remembers the last one chosen. */
-        if (REALM.lost) UI.banner('The old war is lost to a new age — a new one begins', 'warn');
+        if (REALM.lost) UI.banner(tr('The old war is lost to a new age — a new one begins'), 'warn');
         UI.warSetup(warSides(), (sides) => {
           rememberSides(sides);
           startRealm(REALM.create((Math.random() * 0xffffffff) >>> 0, sides));
@@ -2775,8 +2786,8 @@
         game.span = null; Render.span = null;
         UI.armBuild(true);
         const d = C.BUILDINGS[bt];
-        UI.banner(d.span ? '🔨 ' + d.name + ' — tap where the run should START'
-                         : '🔨 ' + d.name + ' — tap where it should stand', 'alert');
+        UI.banner(d.span ? tr('🔨 {name} — tap where the run should START', { name: tr(d.name) })
+                         : tr('🔨 {name} — tap where it should stand', { name: tr(d.name) }), 'alert');
       },
       onUp: (id, br) => issue({ c: 'up', id, br }),
       onWalk: (on) => issue({ c: 'walk', on }),
@@ -2807,13 +2818,13 @@
         if (!w || !game.war || !w.cities) return;
         const c = w.cities[cityIdx];
         if (!c || c.owner < 0 || World.realmOf(w, c.owner) !== World.realmOf(w, game.viewer)) {
-          UI.banner(REFUSAL.held, 'warn'); return;
+          UI.banner(tr(REFUSAL.held), 'warn'); return;
         }
         helm().hand = c.owner;
         game.armedFlag = null; clearPlacing();
         if (game.realm) REALM.save(game.realm);
         if (Render.lookAt) Render.lookAt(c.x, c.y);
-        UI.banner('You command from ' + w.map.sites[c.site].name + ' — its purse is your purse',
+        UI.banner(tr('You command from {court} — its purse is your purse', { court: String(I18N.site(w.map.sites[c.site].name)) }),
                   'alert');
       },
       /* a lord's standing order, or its dismissal (mode null). Not a sim command — an order
@@ -2849,8 +2860,10 @@
         }
         game.armsQuiet = null;
         REALM.save(game.realm);
-        UI.banner(n ? 'TO ARMS — ' + n + (n === 1 ? ' lord marches' : ' lords march') + ' to ' + (w.map.sites[tc.site].name || 'your court')
-                    : 'No lord of your banner can reach your court', n ? 'alert' : 'warn');
+        const toC = I18N.site(w.map.sites[tc.site].name) || tr('your court');
+        UI.banner(n ? (n === 1 ? tr('TO ARMS — {n} lord marches to {court}', { n, court: toC })
+                               : tr('TO ARMS — {n} lords march to {court}', { n, court: toC }))
+                    : tr('No lord of your banner can reach your court'), n ? 'alert' : 'warn');
       },
       /* ⚑ the door to the council, and the four things it can do from a row */
       onCouncil: () => {
@@ -2890,7 +2903,7 @@
         if (!view) return;
         const me = view.players[game.viewer];
         if (me.powers[k] > 0) return;
-        if (me.essence < C.POWERS[k].cost) { UI.banner('Not enough Essence', 'warn'); return; }
+        if (me.essence < C.POWERS[k].cost) { UI.banner(tr('Not enough Essence'), 'warn'); return; }
         clearPlacing();   // aiming a power is not placing a work either
         if (k === 'storm') { game.armedFlag = null; game.targeting = !game.targeting; }
         else issue({ c: 'power', k: 'trump' });

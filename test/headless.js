@@ -7,7 +7,7 @@
 'use strict';
 const path = require('path');
 const R = (f) => require(path.join(__dirname, '..', 'js', f));
-R('rng.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('vendor/lanlink.js'); R('net.js');
+R('rng.js'); R('i18n.js'); R('fr.js'); R('const.js'); R('worldgen.js'); R('nav.js'); R('world.js'); R('ai.js'); R('vendor/lanlink.js'); R('net.js');
 R('record.js'); R('campaign.js'); R('realm.js');
 const { CONST: C, World, NAV, AI, Net, LanLink, Rec, WorldGen: WG, CAMPAIGN, REALM, RNG } = globalThis;
 const { suite, ok, eq, near, report, wallRig } = require('./lib.js');
@@ -142,6 +142,57 @@ suite('every script keeps to the floor');
     const found = offenders(src);
     eq(f + ' keeps to ES2017', found.slice(0, 4).join('; ') + (found.length > 4 ? ' … ' + found.length : ''), '');
   }
+}
+
+/* ---------------- the tongues ----------------
+ * THE ENGLISH IS THE KEY (js/i18n.js): a string handed to tr() is looked up in the French and
+ * falls back to the English, so a word nobody translated is English rather than blank — which
+ * is also why nothing else would ever notice it. This suite reads the shipped sources as TEXT,
+ * collects every literal handed to tr(), and asks the French for each; and it holds every
+ * placeholder in a key to its translation, since a `{n}` lost in French prints nothing. The
+ * table words (CONST names and blurbs) are handed over as values, so they are walked too. */
+suite('every word has its French');
+{
+  const fs = require('fs'), root = path.join(__dirname, '..');
+  const I = globalThis.I18N, FR = I.FR;
+  eq('English is the default off a browser', I.lang, 'en');
+  eq('in English a key is its own answer', tr('{n} men', { n: 3 }), '3 men');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const shipped = [...html.matchAll(/<script src="(js\/[^"?]+)/g)].map((m) => m[1]).filter((f) => !/vendor|fr\.js|i18n\.js/.test(f));
+  const keys = {};
+  const RE = /\btr\(\s*('(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\$]|\\.)*`)\s*[,)]/g;
+  for (const f of shipped) {
+    const src = fs.readFileSync(path.join(root, f), 'utf8');
+    for (const m of src.matchAll(RE)) {
+      let k; try { k = Function('return ' + m[1])(); } catch (e) { continue; }
+      if (k.trim()) (keys[k] = keys[k] || []).push(f);
+    }
+  }
+  const all = Object.keys(keys);
+  ok('the sources hand tr() their words', all.length > 300, String(all.length));
+  const missing = all.filter((k) => FR[k] == null);
+  eq('every literal handed to tr() has its French', missing.length, 0,
+     missing.slice(0, 8).map((k) => JSON.stringify(k) + ' (' + keys[k][0] + ')').join('; '));
+  /* the tables: what the UI wraps as a value */
+  const tableWords = [];
+  const C = globalThis.CONST;
+  const take = (o) => { for (const f of ['name', 'blurb', 'forkHint']) if (typeof o[f] === 'string' && /[a-z]/i.test(o[f])) tableWords.push(o[f]); };
+  for (const t of [C.UNITS, C.BUILDINGS, C.DIFFICULTY, C.POWERS]) for (const k in (t || {})) take(t[k]);
+  const tMiss = tableWords.filter((w) => FR[w] == null);
+  eq('every name and blurb in the tables has its French', tMiss.length, 0, tMiss.slice(0, 6).join(' | '));
+  /* the French may ask for MORE than the English shows (the chronicle names a work by its code
+   * in English and by its name in French, both handed over), never for less */
+  const ph = (s) => String(s).match(/\{\w+\}/g) || [];
+  const bad = Object.keys(FR).filter((k) => ph(k).some((p) => ph(FR[k]).indexOf(p) < 0));
+  eq('every placeholder survives the translation', bad.length, 0, bad.slice(0, 6).map((k) => JSON.stringify(k) + ' → ' + JSON.stringify(FR[k])).join('; '));
+  const tags = (s) => (String(s).match(/<\/?[a-z]+/gi) || []).sort().join(',');
+  const badT = Object.keys(FR).filter((k) => tags(k) !== tags(FR[k]));
+  eq('every tag survives the translation', badT.length, 0, badT.slice(0, 6).map((k) => JSON.stringify(k)).join('; '));
+  /* and French, once asked for, answers in French */
+  I.lang = 'fr';
+  const anyKey = all.find((k) => !/\{/.test(k) && FR[k] !== k);
+  ok('French answers in French', anyKey && tr(anyKey) === FR[anyKey], String(anyKey));
+  I.lang = 'en';
 }
 
 /* ---------------- the world ---------------- */
