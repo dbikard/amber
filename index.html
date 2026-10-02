@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Amber — The Succession</title>
-<script>window.GAME_VERSION = '0.10.67';</script>
+<script>window.GAME_VERSION = '0.10.68';</script>
 <!-- THE BOOT SAYS WHAT KILLED IT. The menu is plain HTML and shows on any browser, so a script
      the engine cannot parse, or a boot that throws, looks like a menu whose buttons do nothing —
      which is exactly what an iPad on an old Safari showed, and a photograph of that says nothing
@@ -38,10 +38,10 @@ window.BootErr = (function () {
   return { off: function () { on = false; }, lines: lines };
 })();
 </script>
-<link rel="manifest" href="manifest.json?v=0.10.67">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.10.67">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.10.67">
-<link rel="stylesheet" href="styles.css?v=0.10.67">
+<link rel="manifest" href="manifest.json?v=0.10.68">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=0.10.68">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=0.10.68">
+<link rel="stylesheet" href="styles.css?v=0.10.68">
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -172,6 +172,30 @@ window.BootErr = (function () {
     <button id="menu-record" class="mlink hidden">📜 Chronicle of the last match</button>
   </div>
   <div id="version"></div>
+  <!-- THE SKY OVER KOLVIR: the menu is a place, not a black page. Dusk over the mountain, the
+       castle on its crown with its windows lit, the Pattern turning slowly behind everything,
+       mist drifting and embers rising (ui.js `sky`). Behind the content (z-index -1 inside the
+       menu's own stacking context), touched by no finger, and still under reduced motion. -->
+  <div id="menu-sky" aria-hidden="true">
+    <div class="sky-glow"></div>
+    <div class="sky-pattern"><div class="sky-pattern-in"></div></div>
+    <div class="sky-mist m1"></div>
+    <div class="sky-mist m2"></div>
+    <canvas class="sky-embers"></canvas>
+    <svg class="sky-land" viewBox="0 0 400 130" preserveAspectRatio="xMaxYMax slice">
+      <path class="ridge-far" d="M0,130V84C30,78 52,70 78,74S120,62 146,66 190,52 214,58 262,50 290,60 342,56 368,64 392,66 400,68V130Z"/>
+      <path class="ridge" d="M0,130V96C40,92 80,90 120,90S190,84 222,76L262,52 278,44 290,40 302,44 314,52 340,70C360,82 380,88 400,92V130Z"/>
+      <g class="castle" transform="translate(90,4)">
+        <path d="M181,46V34h3v-3h2v3h2V28h-1l2.5-5 2.5,5h-1v6h3V24h-1l3-8 3,8h-1v10h3v-6h-1l2.5-5 2.5,5h-1v6h2v-3h2v3h3v12Z"/>
+        <path d="M199.5,16l0.5-6 0.5,6z"/>
+      </g>
+      <g class="windows" transform="translate(90,4)">
+        <rect x="199.3" y="27" width="1.4" height="2.2"/><rect x="189.3" y="31" width="1.2" height="1.8"/>
+        <rect x="209.5" y="31" width="1.2" height="1.8"/><rect x="194.5" y="38" width="1.1" height="1.6"/>
+        <rect x="204.4" y="38" width="1.1" height="1.6"/><rect x="185" y="40" width="1" height="1.5"/>
+      </g>
+    </svg>
+  </div>
 </div>
 
 <!-- CHOOSE YOUR RIVAL: the five heirs, weakest first, each saying how he plays. This was five
@@ -292,25 +316,25 @@ window.BootErr = (function () {
      spread at parse time and the whole game was a menu that did nothing. The headless suite
      holds the line ('every script keeps to the floor'); the CSS keeps its own (styles.css, at
      the end). -->
-<script src="js/vendor/three.min.js?v=0.10.67"></script>
-<script src="js/rng.js?v=0.10.67"></script>
-<script src="js/i18n.js?v=0.10.67"></script>
-<script src="js/fr.js?v=0.10.67"></script>
-<script src="js/const.js?v=0.10.67"></script>
-<script src="js/worldgen.js?v=0.10.67"></script>
-<script src="js/nav.js?v=0.10.67"></script>
-<script src="js/world.js?v=0.10.67"></script>
-<script src="js/ai.js?v=0.10.67"></script>
-<script src="js/terrain.js?v=0.10.67"></script>
-<script src="js/render3d.js?v=0.10.67"></script>
-<script src="js/render_select.js?v=0.10.67"></script>
-<script src="js/vendor/lanlink.js?v=0.10.67"></script>
-<script src="js/vendor/lanlink-qr.js?v=0.10.67"></script>
-<script src="js/net.js?v=0.10.67"></script>
-<script src="js/record.js?v=0.10.67"></script>
-<script src="js/campaign.js?v=0.10.67"></script>
-<script src="js/realm.js?v=0.10.67"></script>
-<script src="js/ui.js?v=0.10.67"></script>
-<script src="js/game.js?v=0.10.67"></script>
+<script src="js/vendor/three.min.js?v=0.10.68"></script>
+<script src="js/rng.js?v=0.10.68"></script>
+<script src="js/i18n.js?v=0.10.68"></script>
+<script src="js/fr.js?v=0.10.68"></script>
+<script src="js/const.js?v=0.10.68"></script>
+<script src="js/worldgen.js?v=0.10.68"></script>
+<script src="js/nav.js?v=0.10.68"></script>
+<script src="js/world.js?v=0.10.68"></script>
+<script src="js/ai.js?v=0.10.68"></script>
+<script src="js/terrain.js?v=0.10.68"></script>
+<script src="js/render3d.js?v=0.10.68"></script>
+<script src="js/render_select.js?v=0.10.68"></script>
+<script src="js/vendor/lanlink.js?v=0.10.68"></script>
+<script src="js/vendor/lanlink-qr.js?v=0.10.68"></script>
+<script src="js/net.js?v=0.10.68"></script>
+<script src="js/record.js?v=0.10.68"></script>
+<script src="js/campaign.js?v=0.10.68"></script>
+<script src="js/realm.js?v=0.10.68"></script>
+<script src="js/ui.js?v=0.10.68"></script>
+<script src="js/game.js?v=0.10.68"></script>
 </body>
 </html>

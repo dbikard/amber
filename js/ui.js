@@ -9,6 +9,119 @@
   const UI = {};
   let H = {};   // handlers from game.js
 
+  /* the flags of the tongues, 3:2, drawn rather than emoji */
+  const FLAG_SVG = {
+    en: '<svg viewBox="0 0 60 40"><clipPath id="fl-uk"><path d="M30,20h30v20zv20h-30zh-30v-20zv-20h30z"/></clipPath>' +
+        '<rect width="60" height="40" fill="#012169"/>' +
+        '<path d="M0,0L60,40M60,0L0,40" stroke="#fff" stroke-width="8"/>' +
+        '<path d="M0,0L60,40M60,0L0,40" clip-path="url(#fl-uk)" stroke="#c8102e" stroke-width="5"/>' +
+        '<path d="M30,0v40M0,20h60" stroke="#fff" stroke-width="12"/>' +
+        '<path d="M30,0v40M0,20h60" stroke="#c8102e" stroke-width="7"/></svg>',
+    fr: '<svg viewBox="0 0 3 2"><rect width="1" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#fff"/>' +
+        '<rect x="2" width="1" height="2" fill="#ed2939"/></svg>'
+  };
+
+
+  /* ---------------- the sky over Kolvir ----------------
+   * The menu's backdrop (index.html #menu-sky): the Pattern is drawn once, here, as a labyrinth
+   * of broken rings — a fixed seed, so it is the same Pattern on every visit — and the embers
+   * are a small canvas whose loop runs ONLY while the menu is on screen and the page is visible:
+   * a match must not pay a frame for a sky nobody is looking at. Reduced motion draws the
+   * Pattern and no embers. */
+  const sky = (function () {
+    let cv = null, g = null, motes = [], raf = 0, last = 0, W = 0, H = 0, dpr = 1;
+    const still = () => !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    function pattern() {
+      let seed = 1337;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      const P = (r, a) => (r * Math.cos(a)).toFixed(2) + ',' + (r * Math.sin(a)).toFixed(2);
+      let d = '';
+      const rings = [];
+      for (let r = 14; r <= 94; r += 8) rings.push(r);
+      for (const r of rings) {
+        /* every ring broken in two or three places: a labyrinth, not a target */
+        const gaps = 2 + Math.floor(rnd() * 2), off = rnd() * Math.PI * 2, seg = Math.PI * 2 / gaps;
+        for (let k = 0; k < gaps; k++) {
+          const a0 = off + k * seg + 0.16, a1 = off + (k + 1) * seg - 0.16;
+          d += 'M' + P(r, a0) + 'A' + r + ',' + r + ' 0 ' + (a1 - a0 > Math.PI ? 1 : 0) + ' 1 ' + P(r, a1);
+          /* and a turning from this ring to the next, where the walker is sent back on himself */
+          if (r < rings[rings.length - 1]) {
+            const a = a1 - 0.04 - rnd() * 0.3;
+            d += 'M' + P(r, a) + 'L' + P(r + 8, a);
+          }
+        }
+      }
+      for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; d += 'M' + P(4, a) + 'L' + P(10, a); }
+      return '<svg viewBox="-100 -100 200 200"><g fill="none" stroke="#d8ecff" stroke-linecap="round">' +
+             '<path d="' + d + '" stroke-width="2.6" opacity="0.18"/>' +
+             '<path d="' + d + '" stroke-width="0.7" opacity="0.9"/>' +
+             '<circle r="2.4" fill="#eaf4ff" stroke="none"/></g></svg>';
+    }
+    function size() {
+      if (!cv) return;
+      dpr = Math.min(2, global.devicePixelRatio || 1);
+      W = cv.clientWidth; H = cv.clientHeight;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    }
+    function mote(fresh) {
+      const blue = Math.random() < 0.2;
+      return { x: Math.random() * W, y: fresh ? Math.random() * H : H + 10, r: 0.6 + Math.random() * 1.8,
+               vy: 8 + Math.random() * 22, sway: Math.random() * 6.28, sw: 0.4 + Math.random() * 0.8,
+               life: 0, max: 6 + Math.random() * 10, c: blue ? '200,225,255' : '255,' + (190 + (Math.random() * 40 | 0)) + ',120' };
+    }
+    function frame(t) {
+      raf = 0;
+      const menu = $('menu');
+      if (!menu || menu.classList.contains('hidden') || document.hidden) return;
+      const dt = Math.min(0.05, last ? (t - last) / 1000 : 0.016);
+      last = t;
+      if (cv.clientWidth !== W || cv.clientHeight !== H) size();
+      const want = Math.min(70, Math.round(W * H / 9000));
+      while (motes.length < want) motes.push(mote(true));
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < motes.length; i++) {
+        const m = motes[i];
+        m.life += dt; m.y -= m.vy * dt; m.sway += m.sw * dt;
+        const x = m.x + Math.sin(m.sway) * 14;
+        const fade = Math.min(1, m.life / 1.5) * Math.max(0, Math.min(1, (m.max - m.life) / 2)) * Math.min(1, m.y / (H * 0.25));
+        if (m.life > m.max || m.y < -10) { motes[i] = mote(false); continue; }
+        const a = (0.35 + 0.35 * Math.sin(m.life * 3 + m.sway)) * fade;
+        g.fillStyle = 'rgba(' + m.c + ',' + (a * 0.25).toFixed(3) + ')';
+        g.beginPath(); g.arc(x, m.y, m.r * 3.2, 0, 6.283); g.fill();
+        g.fillStyle = 'rgba(' + m.c + ',' + a.toFixed(3) + ')';
+        g.beginPath(); g.arc(x, m.y, m.r, 0, 6.283); g.fill();
+      }
+      g.globalCompositeOperation = 'source-over';
+      raf = requestAnimationFrame(frame);
+    }
+    function wake() {
+      if (raf || !g || still()) return;
+      last = 0;
+      raf = requestAnimationFrame(frame);
+    }
+    return {
+      init() {
+        const host = $('menu-sky');
+        if (!host) return;
+        const pin = host.querySelector('.sky-pattern-in');
+        if (pin) pin.innerHTML = pattern();
+        cv = host.querySelector('.sky-embers');
+        g = cv && cv.getContext ? cv.getContext('2d') : null;
+        if (!g) return;
+        size();
+        /* the menu is shown and hidden by class, from several places: watch the class rather
+         * than trusting every caller to say so */
+        if (global.MutationObserver) new MutationObserver(wake).observe($('menu'), { attributes: true, attributeFilter: ['class'] });
+        document.addEventListener('visibilitychange', wake);
+        wake();
+      },
+      get running() { return !!raf; }
+    };
+  })();
+  UI.sky = sky;
+
   UI.init = function (handlers) {
     H = handlers;
     /* the static page is said once, in the page's tongue, before anything is written into it */
@@ -108,23 +221,28 @@
 
     UI.paintFooting();
 
-    /* THE TONGUE is a setting like the footing. Chosen once per page: a new choice reloads,
-     * so nothing already drawn has to be said again (see js/i18n.js). */
-    const langRow = document.createElement('div');
-    langRow.className = 'diff-row lang-row';
+    /* THE TONGUE IS A FLAG IN THE CORNER. It is a setting nobody changes twice, so it does not
+     * earn a row in the menu's column; the flags are drawn, not emoji, because a flag emoji is
+     * two letters on Windows. Chosen once per page: a new choice reloads, so nothing already
+     * drawn has to be said again (see js/i18n.js). */
+    const flags = document.createElement('div');
+    flags.id = 'lang-flags';
     for (const k of global.I18N.langs) {
       const b = document.createElement('button');
-      b.className = 'mbtn small lang' + (k === global.I18N.lang ? ' on' : '');
+      b.className = 'flag' + (k === global.I18N.lang ? ' on' : '');
       b.dataset.lang = k;
-      b.textContent = global.I18N.names[k];
+      b.title = global.I18N.names[k];
+      b.setAttribute('aria-label', global.I18N.names[k]);
+      b.innerHTML = FLAG_SVG[k] || '';
       b.addEventListener('click', () => {
         if (k === global.I18N.lang) return;
         global.I18N.set(k);
         try { global.location.reload(); } catch (e) { /* nowhere to reload */ }
       });
-      langRow.appendChild(b);
+      flags.appendChild(b);
     }
-    foot.appendChild(langRow);
+    $('menu').appendChild(flags);
+    sky.init();
   };
   /* remembered across sessions; an unknown or missing value falls back to the default */
   UI.difficulty = function () {

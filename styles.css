@@ -342,6 +342,41 @@ body {
 }
 #menu .sub { font-size: 16px; letter-spacing: 5px; color: #c9a44f; margin-top: -6px; }
 #menu .lore { font-size: 13px; font-style: italic; color: #b8a878; line-height: 1.6; margin: 8px 0 14px; }
+
+/* ---- THE MENU, LOOKED AT AS A PAGE (2026-10-02) ----
+   A column centred with justify-content: center loses its TOP when it is taller than the screen —
+   the overflow on the start side cannot be scrolled to — so on a short phone the title was gone.
+   The column packs from the top and the auto margins on its first and last items centre it when
+   it fits. The lore is held to the column's width (it ran the width of a desktop), and a gold
+   rule under it closes the title block before the ways to play begin. */
+#menu { justify-content: flex-start; padding-top: 46px; padding-top: calc(env(safe-area-inset-top, 0px) + 46px); }
+/* the lore's line break was set for one width and orphaned a word at every other */
+#menu .lore br { display: none; }
+#menu > h1 { margin-top: auto; }
+#menu > .mfoot { margin-bottom: auto; }
+#menu h1 { margin-bottom: 0; line-height: 1.05; }
+#menu .sub { margin-top: 2px; }
+#menu .lore { max-width: 340px; position: relative; padding-bottom: 16px; }
+#menu .lore::after {
+  content: '◆'; position: absolute; left: 0; right: 0; bottom: -6px; font-size: 8px; font-style: normal;
+  color: #c9a44f; letter-spacing: 0; line-height: 12px;
+  background: linear-gradient(90deg, transparent, #c9a44f66 30%, transparent 46%, transparent 54%, #c9a44f66 70%, transparent)
+              center / 100% 1px no-repeat;
+}
+/* the flags of the tongues: a corner, out of the column, and the chosen one lit */
+#lang-flags {
+  position: absolute; top: 12px; top: calc(env(safe-area-inset-top, 0px) + 12px); right: 12px;
+  display: flex; gap: 8px;
+}
+#lang-flags .flag {
+  width: 30px; height: 20px; padding: 0; border: 1px solid #5a4c30; border-radius: 3px;
+  background: none; overflow: hidden; cursor: pointer; opacity: 0.45;
+  filter: saturate(0.4); box-shadow: 0 1px 4px #000a;
+  transition: opacity 0.2s, filter 0.2s, box-shadow 0.2s;
+}
+#lang-flags .flag svg { display: block; width: 100%; height: 100%; }
+#lang-flags .flag.on { opacity: 1; filter: none; border-color: #c9a44f; box-shadow: 0 0 10px rgba(255, 220, 150, 0.35), 0 1px 4px #000a; }
+#lang-flags .flag:active { opacity: 0.85; }
 /* what the boot reporter in index.html writes when a script fails to load, parse or run */
 #boot-err { font-size: 11px; line-height: 1.5; color: #ff9a9f; max-width: 78vw; word-break: break-word; margin: -6px 0 8px; }
 .mbtn {
@@ -372,8 +407,23 @@ body {
   color: #ffe9a8; background: linear-gradient(#2a2138, #171020);
   border: 1px solid #c9a44f88; border-radius: 8px; box-shadow: 0 2px 12px #0009;
 }
+.mcard { position: relative; padding-right: 30px; transition: border-color 0.2s, background 0.2s; }
+/* a card is a door, and says so: a chevron at its edge and a thin light along its top */
+.mcard::after {
+  content: '›'; position: absolute; right: 12px; top: 50%; margin-top: -12px;
+  font-size: 22px; line-height: 22px; color: #c9a44f88;
+}
+.mcard::before {
+  content: ''; position: absolute; left: 10%; right: 10%; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, #ffe9a855, transparent);
+}
+@media (hover: hover) {
+  .mcard:hover { border-color: #c9a44f; background: linear-gradient(#33284a, #1c1428); }
+  .mcard:hover::after { color: #ffe9a8; }
+}
 .mcard:active { background: #3a2e4e; }
-.mcard.primary { border-color: #c9a44f; box-shadow: 0 2px 16px #000b, 0 0 18px rgba(255, 220, 150, 0.16); }
+.mcard.primary { border-color: #c9a44f; box-shadow: 0 2px 16px #000b, 0 0 18px rgba(255, 220, 150, 0.16);
+                 background: radial-gradient(ellipse at 100% 0%, rgba(255, 220, 150, 0.10), transparent 60%), linear-gradient(#2e2340, #171020); }
 .mc-kicker { font-size: 9px; letter-spacing: 2px; color: #8a7ca8; text-transform: uppercase; }
 .mc-name { font-size: 17px; letter-spacing: 3px; }
 .mcard.primary .mc-name { font-size: 21px; }
@@ -385,15 +435,19 @@ body {
 .mcard > span { display: block; }
 /* the two other ways to play are each other's equals, so they share a row and a width */
 .mrow { display: flex; gap: 8px; justify-content: center; width: min(78vw, 340px); }
-.mrow .mcard { width: 100%; }
+.mrow .mcard { width: 100%; flex: 1 1 0; min-width: 0; padding-right: 13px; }
+/* a half card is narrow enough that the chevron costs a word its line: it rides the top corner */
+.mrow .mcard::after { right: 9px; top: 10px; margin-top: 0; font-size: 18px; }
+/* a half-width card's name must fit a long French word (ESCARMOUCHE) at phone width */
+.mrow .mc-name { font-size: 14px; letter-spacing: 1px; padding-right: 10px; }
 /* A SETTING, LABELLED. Three unlabelled pills between the title and the modes read as three
    more ways to play, which is half of what made the menu unreadable. */
 #footing-row {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
-  width: min(78vw, 340px); margin: 4px 0 2px; padding: 9px 10px 7px;
-  border: 1px solid #c9a44f33; border-radius: 8px;
+  width: min(78vw, 340px); margin: 6px 0 2px; padding: 10px 10px 8px;
+  border: 1px solid #c9a44f33; border-radius: 8px; background: rgba(23, 16, 32, 0.55);
 }
-.set-label { font-size: 9px; letter-spacing: 2px; color: #8a7ca8; text-transform: uppercase; }
+.set-label { font-size: 9px; letter-spacing: 1.5px; color: #8a7ca8; text-transform: uppercase; }
 /* .diff-note carries flex-basis:100% for the ROW it was written for; in a column that is a
    claim on the whole height, which opened a hand's width of nothing down the middle of the menu */
 #footing-row .diff-note { flex-basis: auto; margin: 0; }
@@ -413,8 +467,8 @@ body {
 .card.rival .c-rate { font-size: 9px; letter-spacing: 1px; color: #8a7ca8; text-transform: uppercase; }
 .card.rival .c-blurb { grid-column: 1 / 3; }
 .diff-row { display: flex; gap: 6px; justify-content: center; flex-basis: 100%; }
-.mbtn.diff, .mbtn.lang { border-color: #5a4c30; color: #b8a878; }
-.mbtn.diff.on, .mbtn.lang.on { border-color: #c9a44f; color: #ffe9a8; box-shadow: 0 0 12px rgba(255, 220, 150, 0.3); }
+.mbtn.diff { border-color: #5a4c30; color: #b8a878; }
+.mbtn.diff.on { border-color: #c9a44f; color: #ffe9a8; box-shadow: 0 0 12px rgba(255, 220, 150, 0.3); }
 .diff-note { flex-basis: 100%; text-align: center; font-size: 11px; font-style: italic; color: #b8a878; margin: -2px 0 4px; }
 #lan-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #lan-status { font-size: 12px; font-style: italic; color: #b8a878; }
@@ -817,8 +871,9 @@ body {
 .c-rate.up { color: #b0e8a0; }
 .c-rate.dn { color: #ff9a9f; }
 
-/* a wide card on the menu: the long war is its own kind of thing and gets its own row */
-.mcard.wide { width: 100%; }
+/* a wide card on the menu: the long war is its own kind of thing and gets its own row — at the
+   column's width, like every other card (100% of the menu ran it past the others' edges) */
+.mcard.wide { width: min(78vw, 340px); }
 
 /* 👁 a seat that has lost watches: the hand's controls go, the map and the readouts stay */
 #hud.watching #hud-bottom, #hud.watching #war-chip, #hud.watching #terms, #hud.watching #sheet { display: none !important; }
@@ -858,7 +913,8 @@ button.ws-chip { cursor: pointer; }
  * not a use — nothing above relies on `inset` any more. A modern browser never enters this block,
  * and the rig that checks it serves the stylesheet with the modern declarations struck out. */
 @supports not (inset: 0) {
-  .mbtn, .mcard, .mrow, #footing-row { width: 78vw; max-width: 340px; }
+  .mbtn, .mcard, .mrow, #footing-row, .mcard.wide { width: 78vw; max-width: 340px; }
+  #lang-flags > * + * { margin-left: 8px; }
   .mbtn.small, .mrow .mcard, #chapters-body .mbtn { max-width: none; }
   #sheet { width: 94vw; max-width: 430px; }
   #objective { max-width: 300px; }
@@ -883,3 +939,84 @@ button.ws-chip { cursor: pointer; }
   .lan-row > *, .cp-acts > * { margin: 3px; }
   .stat-key > * { margin: 5px; }
 }
+
+/* ---------------- THE SKY OVER KOLVIR (the menu's backdrop) ----------------
+   Every moving part is a transform or an opacity — compositor work, no repaint — bar the embers,
+   one small canvas whose loop runs only while the menu is on screen (ui.js `sky`). Reduced
+   motion keeps the picture and stills it. Fixed, so the menu's column scrolls over a sky that
+   stays put. */
+#menu { background: #0b0916; }
+#menu-sky {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: -1;
+  overflow: hidden; pointer-events: none;
+  background: linear-gradient(180deg, #07060f 0%, #120d24 38%, #2a1830 66%, #4a2a2a 82%, #6b3f25 100%);
+}
+/* the last of the sun behind the mountain, breathing */
+#menu-sky .sky-glow {
+  position: absolute; left: -20%; right: -20%; bottom: -10%; height: 60%;
+  background: radial-gradient(ellipse at 50% 100%, rgba(255, 190, 110, 0.38), rgba(255, 150, 90, 0.10) 45%, transparent 70%);
+  animation: sky-breathe 9s ease-in-out infinite;
+}
+@keyframes sky-breathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+/* the Pattern, blue-white, turning once in five minutes behind everything */
+#menu-sky .sky-pattern {
+  position: absolute; left: 50%; top: 42%; width: 900px; height: 900px; margin: -450px 0 0 -450px;
+  animation: sky-turn 300s linear infinite; will-change: transform;
+}
+#menu-sky .sky-pattern-in { width: 100%; height: 100%; animation: sky-pulse 7s ease-in-out infinite; }
+#menu-sky .sky-pattern svg { display: block; width: 100%; height: 100%; }
+@keyframes sky-turn { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes sky-pulse { 0%, 100% { opacity: 0.09; } 50% { opacity: 0.19; } }
+@media (max-width: 600px) {
+  #menu-sky .sky-pattern { width: 640px; height: 640px; margin: -320px 0 0 -320px; }
+}
+/* mist off the slopes of Kolvir, drifting */
+#menu-sky .sky-mist {
+  position: absolute; left: -50%; width: 200%; height: 34%; will-change: transform;
+  background: radial-gradient(ellipse at 30% 50%, rgba(160, 140, 190, 0.10), transparent 40%),
+              radial-gradient(ellipse at 72% 60%, rgba(190, 150, 160, 0.08), transparent 38%);
+}
+#menu-sky .m1 { bottom: 10%; animation: sky-drift 70s ease-in-out infinite alternate; }
+#menu-sky .m2 { bottom: 26%; opacity: 0.7; animation: sky-drift 95s ease-in-out infinite alternate-reverse; }
+@keyframes sky-drift { from { transform: translateX(-12%); } to { transform: translateX(12%); } }
+#menu-sky .sky-embers { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+/* the land: a far ridge in the haze, Kolvir, and Amber on its crown */
+#menu-sky .sky-land { position: absolute; left: 0; bottom: 0; width: 100%; height: 34%; height: max(34%, 32.5vw); min-height: 170px; }
+#menu-sky .ridge-far { fill: #24172a; }
+#menu-sky .ridge, #menu-sky .castle path { fill: #0c0912; }
+#menu-sky .windows rect { fill: #ffd27a; animation: sky-window 4.2s ease-in-out infinite; }
+#menu-sky .windows rect:nth-child(2n) { animation-duration: 5.7s; animation-delay: -2s; }
+#menu-sky .windows rect:nth-child(3n) { animation-duration: 3.1s; animation-delay: -1s; }
+@keyframes sky-window { 0%, 100% { opacity: 0.95; } 40% { opacity: 0.55; } 60% { opacity: 1; } }
+/* the cards float over the sky: a little of it shows through */
+#menu .mcard { background: linear-gradient(rgba(42, 33, 56, 0.86), rgba(23, 16, 32, 0.90)); }
+#menu .mcard.primary {
+  background: radial-gradient(ellipse at 100% 0%, rgba(255, 220, 150, 0.12), transparent 60%),
+              linear-gradient(rgba(46, 35, 64, 0.9), rgba(23, 16, 32, 0.92));
+}
+#menu #footing-row { background: rgba(18, 12, 26, 0.72); }
+/* the title's glow breathes with the sun */
+#menu h1 { animation: title-glow 9s ease-in-out infinite; }
+@keyframes title-glow {
+  0%, 100% { text-shadow: 0 0 24px rgba(255, 220, 150, 0.40), 0 2px 4px #000; }
+  50% { text-shadow: 0 0 40px rgba(255, 220, 150, 0.70), 0 0 80px rgba(255, 180, 100, 0.25), 0 2px 4px #000; }
+}
+/* the menu arrives rather than appears */
+#menu:not(.hidden) > h1, #menu:not(.hidden) > .sub, #menu:not(.hidden) > .lore,
+#menu:not(.hidden) > .mcard, #menu:not(.hidden) > .mrow, #menu:not(.hidden) > #footing-row,
+#menu:not(.hidden) > .mfoot { animation-name: menu-rise; animation-duration: 0.9s; animation-fill-mode: both;
+                               animation-timing-function: cubic-bezier(.2, .7, .2, 1); }
+#menu:not(.hidden) > h1 { animation: menu-rise 0.9s cubic-bezier(.2, .7, .2, 1) both, title-glow 9s ease-in-out 0.9s infinite; }
+#menu > .sub { animation-delay: 0.08s; }
+#menu > .lore { animation-delay: 0.16s; }
+#menu > .mcard.primary { animation-delay: 0.24s; }
+#menu > .mrow { animation-delay: 0.30s; }
+#menu > .mcard.wide { animation-delay: 0.36s; }
+#menu > #footing-row { animation-delay: 0.42s; }
+#menu > .mfoot { animation-delay: 0.48s; }
+@keyframes menu-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #menu-sky *, #menu h1, #menu > * { animation: none !important; }
+}
+@media (hover: hover) { #menu .mcard:hover { background: linear-gradient(rgba(51, 40, 74, 0.92), rgba(28, 20, 40, 0.94)); } }
+#menu .mcard:active { background: #3a2e4e; }

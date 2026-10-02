@@ -186,11 +186,11 @@ async function match(browser, base, renderer) {
     const head = await pg.evaluate(() => ({
       lang: window.I18N.lang, h1: document.querySelector('#menu h1').textContent,
       sk: document.querySelector('#btn-skirmish .mc-name').textContent, html: document.documentElement.lang,
-      picker: [...document.querySelectorAll('.lang-row button')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : ''))
+      picker: [...document.querySelectorAll('#lang-flags .flag')].map((b) => b.title + (b.classList.contains('on') ? '*' : '') + (b.querySelector('svg') ? '' : '(no flag)'))
     }));
     eq('?lang=fr is a French page', head.lang + ' ' + head.html, 'fr fr');
     eq('the static menu is said in French', head.h1 + ' / ' + head.sk, 'AMBRE / ESCARMOUCHE');
-    eq('the picker offers both tongues, French chosen', head.picker.join(' '), 'English Français*');
+    eq('the flags offer both tongues, drawn, French chosen', head.picker.join(' '), 'English Français*');
     for (const [open, close] of [['#btn-skirmish', '#rivals-close'], ['#btn-campaign', '#chapters-close'],
                                  ['#btn-roll', '#roll-close'], ['#btn-lan', '#lan-close'], ['#btn-realm', '#war-setup-close']]) {
       await pg.click(open); await pg.waitForTimeout(150);
@@ -213,10 +213,10 @@ async function match(browser, base, renderer) {
     await ready(p2);
     const say = () => p2.evaluate(() => window.I18N.lang + ' ' + document.querySelector('#menu h1').textContent);
     const was = await say();
-    await Promise.all([p2.waitForNavigation(), p2.click('.lang-row button[data-lang="fr"]')]);
+    await Promise.all([p2.waitForNavigation(), p2.click('#lang-flags .flag[data-lang="fr"]')]);
     await ready(p2);
     const chose = await say();
-    await Promise.all([p2.waitForNavigation(), p2.click('.lang-row button[data-lang="en"]')]);
+    await Promise.all([p2.waitForNavigation(), p2.click('#lang-flags .flag[data-lang="en"]')]);
     await ready(p2);
     eq('the picker is remembered across a reload, both ways', [was, chose, await say()].join(' / '), 'en AMBER / fr AMBRE / en AMBER');
     await p2.close();
