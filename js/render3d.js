@@ -185,7 +185,8 @@
     geo = geo.toNonIndexed();
     if (ry) geo.rotateY(ry);
     geo.translate(x, y, z);
-    geo.userData.cloth = cloth ? 1 : 0;
+    /* on a man it is his livery (1); on a WORK it is the surface (`KIND`): 1 stone, 2 a light */
+    geo.userData.cloth = cloth ? (+cloth || 1) : 0;
     return colorize(geo, hex);
   }
   function merge(parts) {
@@ -198,7 +199,7 @@
       pos.set(g.attributes.position.array, o * 3);
       nor.set(g.attributes.normal.array, o * 3);
       col.set(g.attributes.color.array, o * 3);
-      if (g.userData.cloth) clo.fill(1, o, o + g.attributes.position.count);
+      if (g.userData.cloth) clo.fill(g.userData.cloth, o, o + g.attributes.position.count);
       o += g.attributes.position.count;
     }
     const geo = new THREE.BufferGeometry();
@@ -211,12 +212,27 @@
   /* MAT is the world's; MATU is the ARMY'S — the same Lambert with the `livery` arm of the
    * veil patch on it, so a man's cloth part is two-toned by his court. Only `makeIM` uses it:
    * trees, rocks and works carry no livery and pay for no varyings. */
-  let MAT = null, MATB = null, MATU = null;
+  let MAT = null, MATB = null, MATU = null, MATW = null;
   const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const cyl = (rt, rb, h, seg) => new THREE.CylinderGeometry(rt, rb, h, seg || 7);
   const cone = (r2, h, seg) => new THREE.ConeGeometry(r2, h, seg || 7);
   const sph = (r2) => new THREE.SphereGeometry(r2, 7, 5);
   function meshOf(parts) { return new THREE.Mesh(merge(parts), MAT); }
+  /* ---- THE WORKS' OWN SURFACE ----
+   * Works are drawn on MATW, the world's Lambert with the `works` arm of the veil patch: the
+   * per-vertex `cloth` channel says what a face IS (KIND.stone gets coursed masonry, KIND.lit
+   * glows as a window or a light), and the foot of every work sits in its own occlusion. All
+   * of it in the shader and gated by the atmosphere, so a work is still ONE draw call and the
+   * plain look is untouched. `worksPart` marks stone by colour, so a model names its palette
+   * once rather than tagging every block. */
+  const KIND = { stone: 1, lit: 2 };
+  function meshOfW(parts) { return new THREE.Mesh(merge(parts), MATW || MAT); }
+  const worksPart = (stoneHexes) => (geo, hex, x, y, z, ry, kind) =>
+    part(geo, hex, x, y, z, ry, kind != null ? kind : (stoneHexes.indexOf(hex) >= 0 ? KIND.stone : 0));
+  const mixHex = (a, b, t) => {
+    const ch = (s2) => Math.round(((a >> s2) & 255) * (1 - t) + ((b >> s2) & 255) * t);
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+  };
 
   /* A POOL IS NOT A CIRCLE. Three perfect concentric discs is the one thing that made a
    * spring read as machinery: nothing in a landscape is that round. The outline is a fan
@@ -370,23 +386,70 @@
   function towerModel(tint, livery) {
     const wall = shade(tint, 0.72), light = shade(tint, 0.9),
       dark = shade(tint, 0.42), roof = shade(tint, 0.54);
+    /* THE KEEP OF A COURT, NOT A CHIMNEY. A footing of stone with the banner's cast in it,
+     * three drum towers round the plinth, buttresses up the shaft, a machicolated crown, a
+     * two-tier roof, and windows lit up the stair. The SHAFT and the roofs keep the banner's
+     * own colour, so whose Seat it is still reads from across the board; the stone around
+     * them is stone. Heights are the old ones (the bar, the flag and the collapse key on them). */
+    const stone = mixHex(0x8d8296, wall, 0.40), stoneD = mixHex(0x4a4258, dark, 0.40),
+      stoneL = mixHex(0xcfc6d8, light, 0.35);
+    const part = worksPart([stone, stoneD, stoneL, wall, light, dark]);
+    const LIT = 0xffc46a, lit = (g, x, y, z, ry) => p.push(part(g, LIT, x, y, z, ry, KIND.lit));
     const p = [];
-    p.push(part(cyl(30, 38, 26, 9), dark, 0, 13, 0));            // plinth
-    p.push(part(cyl(22, 27, 96, 9), wall, 0, 74, 0));            // the great shaft
-    p.push(part(cyl(26, 22, 10, 9), light, 0, 126, 0));          // corbelled crown
-    for (let i = 0; i < 8; i++) {
-      const a = i / 8 * Math.PI * 2;
-      p.push(part(box(7, 9, 7), dark, Math.cos(a) * 24, 136, Math.sin(a) * 24));
+    p.push(part(cyl(37, 42, 10, 14), stoneD, 0, 5, 0));               // the battered footing
+    p.push(part(cyl(31, 36, 18, 14), stone, 0, 19, 0));                // the plinth
+    p.push(part(cyl(36.5, 36.5, 2.4, 14), stoneL, 0, 28, 0));          // its coping
+    /* three drum towers round the plinth, clear of the gate on +z */
+    for (let k = 0; k < 3; k++) {
+      const a = Math.PI / 2 + Math.PI / 3 + k * Math.PI * 2 / 3, x = Math.cos(a) * 33, z = Math.sin(a) * 33;
+      p.push(part(cyl(8, 9.5, 42, 9), stone, x, 21, z));
+      p.push(part(cyl(9.8, 9.8, 3, 9), stoneL, x, 43, z));
+      for (let m = 0; m < 4; m++) {
+        const b2 = m / 4 * Math.PI * 2 + a;
+        p.push(part(box(3.2, 4, 3.2), stoneD, x + Math.cos(b2) * 8.4, 46, z + Math.sin(b2) * 8.4));
+      }
+      p.push(part(cone(9, 15, 9), roof, x, 56, z));
+      lit(box(2.2, 4.5, 1.2), x + Math.cos(a) * 9.2, 30, z + Math.sin(a) * 9.2, -a + Math.PI / 2);
     }
-    p.push(part(cyl(12, 16, 26, 8), wall, 0, 148, 0));           // watch turret
-    p.push(part(cone(15, 24, 8), roof, 0, 172, 0));
-    const lit = shade(tint, 1.0);                                 // the lights are the tint itself
-    for (const a of [0.4, 2.1, 3.8, 5.5])                         // arrow lights
-      p.push(part(box(3, 8, 1.6), lit, Math.cos(a) * 25.5, 90, Math.sin(a) * 25.5, a));
-    p.push(part(box(16, 22, 5), dark, 0, 11, 34));               // the tower gate
-    p.push(part(cyl(0.9, 0.9, 26, 5), light, 0, 196, 0));   // the pole
+    p.push(part(cyl(22, 26, 96, 14), wall, 0, 74, 0));                // the great shaft
+    p.push(part(cyl(26.8, 26.8, 3, 14), stoneL, 0, 52, 0));           // string courses
+    p.push(part(cyl(24.6, 24.6, 3, 14), stoneL, 0, 98, 0));
+    for (let k = 0; k < 4; k++) {                                      // buttresses, off the gate
+      const a = Math.PI / 4 + k * Math.PI / 2;
+      p.push(part(box(7, 44, 9), stoneD, Math.cos(a) * 26, 48, Math.sin(a) * 26, -a));
+      p.push(part(box(7, 8, 6), stoneD, Math.cos(a) * 25, 74, Math.sin(a) * 25, -a));
+    }
+    for (let k = 0; k < 18; k++) {                                     // machicolation corbels
+      const a = k / 18 * Math.PI * 2;
+      p.push(part(box(3, 5, 4), stoneD, Math.cos(a) * 24.5, 119, Math.sin(a) * 24.5, -a));
+    }
+    p.push(part(cyl(28, 25, 10, 14), light, 0, 126, 0));              // the crown
+    for (let i = 0; i < 12; i++) {                                     // its merlons
+      const a = i / 12 * Math.PI * 2;
+      p.push(part(box(6, 8, 5), stoneD, Math.cos(a) * 25.5, 135, Math.sin(a) * 25.5, -a));
+    }
+    p.push(part(cyl(13, 15, 30, 12), wall, 0, 146, 0));               // the watch turret
+    p.push(part(cyl(16, 16, 2.4, 12), stoneL, 0, 160, 0));
+    p.push(part(cone(18, 13, 12), roof, 0, 167, 0));                  // the roof, in two tiers
+    p.push(part(cone(11, 22, 12), shade(tint, 0.62), 0, 182, 0));
+    /* the lit stair: windows climbing round the shaft, and the turret's watch-lights */
+    for (let k = 0; k < 7; k++) {
+      const a = 0.9 + k * 0.95, y = 38 + k * 11, r = 26 - (y - 26) / 96 * 4 + 0.5;
+      lit(box(3.4, 7, 1.4), Math.cos(a) * r, y, Math.sin(a) * r, -a + Math.PI / 2);
+    }
+    for (const a of [0.5, 2.6, 4.7]) lit(box(3, 6, 1.2), Math.cos(a) * 14.4, 148, Math.sin(a) * 14.4, -a + Math.PI / 2);
+    /* the gate: an arch of dressed stone, a dark door, two torches */
+    p.push(part(box(20, 26, 7), stoneL, 0, 13, 34));
+    p.push(part(box(13, 19, 2), 0x241c2c, 0, 9.5, 37.6));
+    p.push(part(box(11, 2, 1.2), 0x6a6476, 0, 14, 38.8));             // the portcullis bars
+    p.push(part(box(11, 2, 1.2), 0x6a6476, 0, 8, 38.8));
+    for (const sx of [-12, 12]) {
+      p.push(part(box(2, 6, 2), 0x3a3040, sx, 18, 38.4));
+      lit(box(2.6, 3.4, 2.6), sx, 22.5, 38.6);
+    }
+    p.push(part(cyl(0.9, 0.9, 26, 5), light, 0, 196, 0));             // the pole
     const grp = new THREE.Group();
-    grp.add(meshOf(p));
+    grp.add(meshOfW(p));
     const lv = livery || C.liveryOf(-1);
     const tex = new THREE.CanvasTexture(liveryCanvas(96, 64, tint, lv.colour, lv.p));
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -434,6 +497,9 @@
     const cut = head.indexOf(':'), bt = cut < 0 ? head : head.slice(0, cut), br = cut < 0 ? '' : head.slice(cut + 1);
     const st = 0x8d8296, stD = 0x4a4258, stL = 0xcfc6d8, woodR = 0x6e4434;
     const gild = lv > 2 ? 0xe6c877 : 0xc9bfa0;   // the banding a raised work earns
+    const part = worksPart([st, stD, stL]);
+    const LIT = 0xffc46a;
+    const lit = (g, x, y, z, ry, hex) => p.push(part(g, hex || LIT, x, y, z, ry, KIND.lit));
     const p = [];
     if (bt === 'gate') {
       /* a deeper draw is a taller arch, hung with more of the Shadow it is pulling up */
@@ -441,6 +507,10 @@
       p.push(part(cyl(5, 6.5, h, 6), st, -16, h / 2, 0));
       p.push(part(cyl(5, 6.5, h, 6), st, 16, h / 2, 0));
       p.push(part(box(44, 8, 9), stL, 0, h + 4, 0));
+      p.push(part(box(8, 10, 10), st, 0, h + 5, 0));                       // the keystone
+      /* the Shadow it draws, hanging in the arch: a dim violet veil, faint enough to read as
+       * depth in the doorway rather than as a lamp (the orb was a lamp, and was taken away) */
+      lit(box(26, h - 6, 1), 0, (h - 6) / 2 + 1, 0, 0, 0x3a2c66);
       if (lv > 1) p.push(part(box(48, 4, 13), gild, 0, h + 10, 0));       // a lintel course
       if (lv > 2) {
         p.push(part(cyl(3, 3.6, 20, 5), st, -26, 10, 0));                 // outer piers
@@ -455,6 +525,13 @@
       p.push(part(box(48, 22 + (lv - 1) * 5, 34), st, 0, 11 + (lv - 1) * 2.5, 0));
       p.push(part(cyl(0.1, 26, 18, 4), woodR, 0, 31 + (lv - 1) * 5, 0, Math.PI / 4));
       p.push(part(box(10, 14, 2), stD, 0, 7, 17));
+      /* lit windows either side of the door and down the flank, a chimney, and the eaves'
+       * timber — a hall men live in, not a crate */
+      for (const wx of [-15, 15]) lit(box(5, 6, 1), wx, 12, 17.3);
+      for (const wz of [-8, 8]) lit(box(1, 6, 5), 24.3, 12, wz);
+      p.push(part(box(50, 2.2, 36), woodR, 0, 22 + (lv - 1) * 5, 0));
+      p.push(part(box(6, 16, 6), st, -14, 34 + (lv - 1) * 5, -8));
+      p.push(part(box(7, 2, 7), stD, -14, 42 + (lv - 1) * 5, -8));
       p.push(part(cyl(0.7, 0.7, 26, 5), stL, 20, 30 + (lv - 1) * 5, 12));
       p.push(part(box(10, 6, 0.6), 0xffe9a8, 25, 38 + (lv - 1) * 5, 12));
       if (lv > 1) {
@@ -494,6 +571,9 @@
       const sh = 44 + (lv - 1) * 9;
       p.push(part(cyl(10, 13, sh, 8), st, 0, sh / 2, 0));
       p.push(part(cyl(13, 11, 6, 8), stL, 0, sh + 3, 0));
+      p.push(part(cyl(12.6, 12.6, 2, 8), stL, 0, sh * 0.42, 0));         // a string course
+      for (const a of [0.6, 2.7, 4.8]) lit(box(2, 5, 1), Math.cos(a) * 11.6, sh * 0.62, Math.sin(a) * 11.6, -a + Math.PI / 2);
+      lit(box(5, 7, 1), 0, 6, 13.2);                                      // the lit door
       for (let i = 0; i < 6; i++) {
         const a = i / 6 * Math.PI * 2;
         p.push(part(box(4, 5, 4), stD, Math.cos(a) * 11, sh + 9, Math.sin(a) * 11));
@@ -569,11 +649,11 @@
        * against the sky more than any other work */
       const h = 58 + (lv - 1) * 12;
       p.push(part(cyl(4, 9, h, 7), 0x6a5a8a, 0, h / 2, 0));
-      p.push(part(sph(5 + (lv - 1) * 1.6), 0xc48eff, 0, h + 4, 0));
+      p.push(part(sph(5 + (lv - 1) * 1.6), 0xc48eff, 0, h + 4, 0, 0, KIND.lit));
       if (lv > 1) p.push(part(cyl(7, 7, 3, 7), gild, 0, h - 12, 0));      // a ring of workings
       if (lv > 2) {
         p.push(part(cyl(2.4, 3.4, 26, 6), 0x6a5a8a, 10, 13, 0));          // a lesser spire
-        p.push(part(sph(3), 0xc48eff, 10, 28, 0));
+        p.push(part(sph(3), 0xc48eff, 10, 28, 0, 0, KIND.lit));
       }
       /* WHICH ART THE SPIRE TURNED TO. The Warden's is pale and open — a ring of standing
        * lights around the foot; the Binding is hooked and dark, a cage of arms over a hollow.
@@ -583,7 +663,7 @@
         for (let i = 0; i < 5; i++) {
           const a = i / 5 * Math.PI * 2;
           p.push(part(cyl(1.4, 1.8, 16, 5), 0xd8d4e0, Math.cos(a) * 22, 8, Math.sin(a) * 22));
-          p.push(part(sph(2.6), 0xa8f0c0, Math.cos(a) * 22, 18, Math.sin(a) * 22));
+          p.push(part(sph(2.6), 0xa8f0c0, Math.cos(a) * 22, 18, Math.sin(a) * 22, 0, KIND.lit));
         }
         p.push(part(cyl(26, 26, 1.4, 12), 0xdcf0e0, 0, 1, 0));            // a pale floor-ring
       } else if (br === 'binder') {
@@ -598,12 +678,13 @@
     } else if (bt === 'shrine') {
       p.push(part(cyl(24, 27, 6, 10), stD, 0, 3, 0));
       p.push(part(cyl(20, 22, 4, 10), st, 0, 8, 0));
+      p.push(part(cyl(15, 15, 0.8, 18), 0x6a8cd8, 0, 10.3, 0, 0, KIND.lit));   // the Pattern's light
     }
     /* a hurt work is scorched and shedding stone, and more of both as it goes — the fallen
      * courses lie at its foot, which is a change to the SILHOUETTE and so survives the zoom
      * this game is actually played at, where paint alone does not */
     if (hurt) rubble(p, hurt, bt === 'barracks' || bt === 'siege' ? 30 : 21);
-    const m = meshOf(p);
+    const m = meshOfW(p);
     if (hurt) soot(m.geometry, hurt > 1 ? 0.44 : 0.2);
     return m;
   }
@@ -626,6 +707,7 @@
     const th = C.WALL.thick * (1.6 + (lv - 1) * 0.34);
     const base = groundH(b.x, b.y);
     const st = 0x877c90, stD = 0x4a4258, stL = 0xc6bdd0;
+    const part = worksPart([st, stD, stL]);
     const seg = len / n + 2;
     const wh = 26 + (lv - 1) * 3;
     /* the ground each course actually STANDS ON — not the point under its middle. A course is
@@ -705,7 +787,7 @@
       p.push(part(cyl(th * 0.62, th * 0.75, top - foot, 7), st, ex - b.x, (top + foot) / 2, ez - b.y));
       p.push(part(cyl(th * 0.75, th * 0.62, 5, 7), stL, ex - b.x, top + 2, ez - b.y));
     }
-    const m = meshOf(p);
+    const m = meshOfW(p);
     if (hurt) soot(m.geometry, hurt > 1 ? 0.4 : 0.18);
     return m;
   }
@@ -1066,6 +1148,47 @@
      * it dark — the fog, the lights, or the palette?" has to be able to switch each off and
      * measure, and every other answer to that question is a guess. */
     R.debugScene = () => ({ scene, hemi, sun, renderer });
+    FOGU.uDetail.value = detailTex();
+    /* ACES FOR THE LIGHTS, NOT FOR THE DARK. The filmic curve rolls a lit wall's highlights off
+     * beautifully and crushes everything under ~0.02 linear to a third of itself — and this is
+     * a dark game: the sea past the edge, the deep shadow, a remembered field. Measured: the
+     * skirt fell from the plain look's luma 14+ to 9. So the curve is ACES, floored by the
+     * plain look's own value where the plain look is dark; above the toe ACES is already the
+     * brighter of the two and has the say. Three's CustomToneMapping is a named stub for this. */
+    if (THREE.ShaderChunk.tonemapping_pars_fragment.indexOf('vec3 CustomToneMapping( vec3 color ) { return color; }') >= 0)
+      THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
+        'vec3 CustomToneMapping( vec3 color ) { return color; }',
+        `vec3 CustomToneMapping( vec3 color ) {
+          vec3 t = ACESFilmicToneMapping( color );
+          return max( t, color * ( 1.0 - smoothstep( 0.03, 0.09, color ) ) );
+        }`);
+    /* THE ATMOSPHERE, ONE SWITCH. The plain look is kept exactly — every constant it had — so
+     * a suite measuring brightness can measure either, and the comparison is the same frame. */
+    const plain = { hemiS: hemi.color.getHex(), hemiG: hemi.groundColor.getHex(), hemiI: hemi.intensity,
+                    sunC: sun.color.getHex(), sunI: sun.intensity, sunP: sun.position.clone(),
+                    fog: scene.fog.color.getHex(), bg: scene.background.getHex() };
+    R.setAtmos = function (on) {
+      R.atmos = !!on;
+      FOGU.uAtmos.value = on ? 1 : 0;
+      if (on) {
+        /* evening over Shadow: a low gold sun with long light, a violet sky-fill, and the
+         * cool shadow side the warm key needs to read as warm at all */
+        hemi.color.setHex(0x9a90e0); hemi.groundColor.setHex(0x4a3526); hemi.intensity = 2.0;
+        sun.color.setHex(0xffd29e); sun.intensity = 3.6; sun.position.set(-620, 520, 260);
+        scene.fog.color.setHex(0x1c1430); scene.background.setHex(0x120d1f);
+        renderer.toneMapping = THREE.CustomToneMapping; renderer.toneMappingExposure = 1.75;
+      } else {
+        hemi.color.setHex(plain.hemiS); hemi.groundColor.setHex(plain.hemiG); hemi.intensity = plain.hemiI;
+        sun.color.setHex(plain.sunC); sun.intensity = plain.sunI; sun.position.copy(plain.sunP);
+        scene.fog.color.setHex(plain.fog); scene.background.setHex(plain.bg);
+        renderer.toneMapping = THREE.NoToneMapping; renderer.toneMappingExposure = 1;
+      }
+      const vg = document.getElementById('vignette');
+      if (vg) vg.classList.toggle('hidden', !on);
+      /* tone mapping is compiled into every program: they must be rebuilt once */
+      scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
+    };
+    R.setAtmos(R.atmos !== false);
     /* far plane has to clear the whole board from the furthest zoom, or the world clips
      * to black at the edges when you pull out */
     cam = new THREE.PerspectiveCamera(55, 1, 10, 9000);
@@ -1082,6 +1205,7 @@
     MAT = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }));
     MATB = fogPatch(new THREE.MeshBasicMaterial({ vertexColors: true }));
     MATU = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }), 'livery');
+    MATW = fogPatch(new THREE.MeshLambertMaterial({ vertexColors: true }), 'works');
     overlay = document.getElementById('overlay');
     octx = overlay.getContext('2d');
     stormState = [];
@@ -1516,7 +1640,11 @@
     uFogDbg: { value: 0 },
     /* the clock the water ripples on. One uniform, shared, advanced with T in the frame loop
      * — a pool that animates by rebuilding geometry would cost a draw call per ring. */
-    uTime: { value: 0 } };
+    uTime: { value: 0 },
+    /* THE ATMOSPHERE (R.atmos): 1 = the richer look, 0 = the plain one. The detail map is one
+     * small tiling texture made once at boot (`detailTex`), so the land gets grain and relief
+     * for two texture reads a pixel and no noise arithmetic at all. */
+    uAtmos: { value: 1 }, uDetail: { value: null } };
   let fogTex = null, fogPix = null, fogL = null, fogM = null, fogT = null;
   function fogUpload(gw, gh, cell, liveA, memA, win) {
     const n = gw * gh;
@@ -1586,6 +1714,46 @@
    * shadow, keeping a quarter of the land's colour so a crag in a wood is not the same slate
    * as a crag on the meadow. `slope` is the geometry's own normal, so it costs one varying
    * and applies exactly where the stretch is. Only the ground asks for it. */
+  /* ---- THE DETAIL MAP: made once, 256 square, tiling ----
+   * R: a fine relief (two octaves of wrapped value noise) LIT as if by the sun, so the shading
+   *    is baked rather than computed per pixel; G: broad soft patches. Seamless because the
+   *    lattice wraps. CPU cost once at boot, a few milliseconds; GPU cost two reads a pixel. */
+  function detailTex() {
+    const N = 256, cv = document.createElement('canvas');
+    cv.width = cv.height = N;
+    const g = cv.getContext('2d'), img = g.createImageData(N, N);
+    let seed = 1337;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const lattice = (cells) => { const a = new Float32Array(cells * cells); for (let i = 0; i < a.length; i++) a[i] = rnd(); return a; };
+    const sample = (lat, cells, x, y) => {
+      const fx = x / N * cells, fy = y / N * cells, x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const tx = fx - x0, ty = fy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+      const at = (i, j) => lat[((j % cells + cells) % cells) * cells + ((i % cells + cells) % cells)];
+      const a = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx, b = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
+      return a * (1 - sy) + b * sy;
+    };
+    const L1 = lattice(16), L2 = lattice(48), L3 = lattice(4), L4 = lattice(9);
+    const h = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++)
+      h[y * N + x] = sample(L1, 16, x, y) * 0.62 + sample(L2, 48, x, y) * 0.38;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      /* the relief's slope toward the sun (from the west-north-west, as `sun` stands) */
+      const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x + N - 1) % N)];
+      const dy = h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x];
+      const lit = 0.5 + (-dx * 0.85 + dy * 0.35) * 2.6 + (h[i] - 0.5) * 0.35;
+      const broad = sample(L3, 4, x, y) * 0.6 + sample(L4, 9, x, y) * 0.4;
+      img.data[i * 4] = Math.max(0, Math.min(255, lit * 255));
+      img.data[i * 4 + 1] = Math.max(0, Math.min(255, broad * 255));
+      img.data[i * 4 + 2] = 128; img.data[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = THREE.NoColorSpace;   // data, not colour
+    return t;
+  }
+
   function fogPatch(mat, mode) {
     if (!mat || mat._fogPatched) return mat;
     mat._fogPatched = true;
@@ -1595,15 +1763,18 @@
       sh.uniforms.uFogOn = FOGU.uFogOn;
       sh.uniforms.uFogDbg = FOGU.uFogDbg;
       sh.uniforms.uTime = FOGU.uTime;
-      sh.vertexShader = 'varying vec2 vFogXZ;\n' + sh.vertexShader.replace(
+      sh.uniforms.uAtmos = FOGU.uAtmos;
+      sh.uniforms.uDetail = FOGU.uDetail;
+      sh.vertexShader = 'varying vec2 vFogXZ;\nvarying vec3 vFogW;\n' + sh.vertexShader.replace(
         '#include <project_vertex>',
         `#include <project_vertex>
         vec4 fogW = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           fogW = instanceMatrix * fogW;
         #endif
-        vFogXZ = (modelMatrix * fogW).xz;`);
-      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nuniform float uFogDbg;\nuniform float uTime;\nvarying vec2 vFogXZ;\n'
+        vFogW = (modelMatrix * fogW).xyz;
+        vFogXZ = vFogW.xz;`);
+      sh.fragmentShader = 'uniform sampler2D uFogTex;\nuniform vec2 uFogSpan;\nuniform float uFogOn;\nuniform float uFogDbg;\nuniform float uTime;\nuniform float uAtmos;\nuniform sampler2D uDetail;\nvarying vec2 vFogXZ;\nvarying vec3 vFogW;\n'
         + sh.fragmentShader.replace('#include <dithering_fragment>',
         `#include <dithering_fragment>
         if (uFogOn > 0.5) {
@@ -1628,7 +1799,20 @@
              neither, and that seam was visible as a border between them. Chained, the three
              states are one ramp: there is nothing left to draw an edge ON. The warm iso-band
              that used to mark the edge of sight is gone with it — an edge is an edge. */
-          vec3 o = mix(mix(vec3(0.021, 0.015, 0.043), fogC, mem), c, lit);
+          /* THE SHROUD IS SHADOW, NOT A HOLE: with the atmosphere on, a slow indigo mist
+             drifts in it — one read of the detail map's broad channel, far apart and moving */
+          vec3 shroudC = vec3(0.021, 0.015, 0.043);
+          if (uAtmos > 0.5) {
+            /* ON A FLAT LAYER, NOT ON THE LAND: the mist is read where the view ray crosses a
+               plane above the highest ground, so it runs unbroken across a ridge's silhouette.
+               Read on the surface itself it drew every unseen crag's outline — the shroud's
+               whole job is to say nothing about the ground under it. */
+            vec3 ray = vFogW - cameraPosition;
+            vec2 mxz = cameraPosition.xz + ray.xz * ((cameraPosition.y - 160.0) / max(1.0, -ray.y));
+            float mist = texture2D(uDetail, mxz / 1100.0 + vec2(uTime * 0.0035, uTime * 0.0021)).g;
+            shroudC = mix(vec3(0.022, 0.015, 0.045), vec3(0.105, 0.070, 0.180), smoothstep(0.35, 0.80, mist));
+          }
+          vec3 o = mix(mix(shroudC, fogC, mem), c, lit);
           gl_FragColor.rgb = (uFogDbg > 0.5) ? vec3(1.0 - mem, mem - lit, lit) : o;
         }`);
       /* AFTER the fog block is written, and therefore BEFORE it in the shader — both anchor on
@@ -1679,6 +1863,21 @@
         sh.fragmentShader = 'varying float vUpness;\nvarying float vWorldY;\n' + sh.fragmentShader.replace(
           '#include <dithering_fragment>',
           `#include <dithering_fragment>
+          if (uAtmos > 0.5) {
+            /* GRAIN AND RELIEF. The bake is a picture of the land at map scale and reads as felt
+               up close; the detail map adds the scale it cannot hold — a tuft-sized relief, lit
+               from the sun's own side when it was made (R), and broad drier/damper patches (G)
+               that break the bake's evenness. Two reads, mipmapped, so it never shimmers. */
+            vec4 dA = texture2D(uDetail, vFogXZ / 23.0);
+            vec4 dB = texture2D(uDetail, vFogXZ / 330.0 + 0.37);
+            float flat_ = smoothstep(0.55, 0.85, vUpness);
+            /* the fine relief, plus the broad map's own relief read at the patch scale: two
+               sizes of lump, from the same two reads */
+            gl_FragColor.rgb *= 1.0 + ((dA.r - 0.5) * 0.46 + (dB.r - 0.5) * 0.22) * flat_;
+            float pv = clamp((dB.g - 0.5) * 2.6, -1.0, 1.0);
+            /* dry ground goes ochre, damp ground goes moss: the bake's single olive split in two */
+            gl_FragColor.rgb *= mix(vec3(1.0), pv > 0.0 ? vec3(1.16, 1.02, 0.78) : vec3(0.84, 1.04, 0.86), abs(pv) * 0.75 * flat_);
+          }
           {
             float steep = smoothstep(0.30, 0.78, clamp(1.0 - vUpness, 0.0, 1.0));
             /* STRATA, or the face is still a smooth curtain — darker, but a curtain. A
@@ -1726,6 +1925,45 @@
           }`);
         mat.userData.livFrag = sh.fragmentShader.indexOf('vLivP > 0.5') >= 0 &&
                                sh.vertexShader.indexOf('vLocal = position') >= 0;
+      }
+      /* THE WORKS: coursed stone, a lit window, and shadow at the foot (see MATW). */
+      if (mode === 'works') {
+        sh.vertexShader = 'attribute float cloth;\nvarying float vKind;\nvarying vec3 vWN;\nvarying vec3 vLoc;\n'
+          + sh.vertexShader.replace(
+          '#include <project_vertex>',
+          `#include <project_vertex>
+          vKind = cloth; vLoc = position;
+          vWN = normalize(mat3(modelMatrix) * objectNormal);`);
+        sh.fragmentShader = 'varying float vKind;\nvarying vec3 vWN;\nvarying vec3 vLoc;\n'
+          + sh.fragmentShader.replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          if (uAtmos > 0.5) {
+            /* the foot of a work is in its own shadow, the crown in the open sky */
+            diffuseColor.rgb *= 0.66 + 0.34 * smoothstep(0.0, 24.0, vLoc.y);
+            if (vKind > 0.5 && vKind < 1.5) {
+              /* COURSED ASHLAR: rows a little over four high, each row's joints offset by half
+                 a block, a mortar line, every block its own shade, and the detail map's grain
+                 over it all. The face's own axis decides which way the courses run. */
+              vec3 n = normalize(vWN);
+              vec2 q = abs(n.y) > 0.6 ? vLoc.xz / vec2(9.0, 6.0)
+                     : vec2((abs(n.x) > abs(n.z) ? vLoc.z : vLoc.x) / 8.5, vLoc.y / 4.4);
+              q.x += 0.5 * mod(floor(q.y), 2.0);
+              vec2 f = fract(q);
+              float mortar = max(1.0 - smoothstep(0.0, 0.10, f.y), 1.0 - smoothstep(0.0, 0.07, f.x));
+              float hb = fract(sin(dot(floor(q), vec2(12.9898, 78.233))) * 43758.5453);
+              float grain = texture2D(uDetail, vLoc.xz / 19.0 + vLoc.y / 27.0).r;
+              diffuseColor.rgb *= (0.88 + 0.22 * hb) * (1.0 - 0.36 * mortar) * (0.86 + 0.28 * grain);
+            }
+          }`);
+        sh.fragmentShader = sh.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          `#include <dithering_fragment>
+          /* A LIGHT IS ITS OWN COLOUR, unlit by the sun: a window at dusk. Written before the
+             veil (see the order note above), so a rival's lit window in the fog is drained
+             like everything else and an unseen one is shroud. */
+          if (uAtmos > 0.5 && vKind > 1.5) gl_FragColor.rgb = mix(gl_FragColor.rgb, sqrt(vColor.rgb) * 1.18, 0.9);`);
+        mat.userData.worksFrag = sh.fragmentShader.indexOf('vKind > 1.5') >= 0;
       }
       /* PROVE THE INJECTION LANDED. A `.replace` whose needle is absent returns the string
        * unchanged and throws nothing — the patch then silently does nothing and the render

@@ -1028,3 +1028,8 @@ button.ws-chip { cursor: pointer; }
 }
 @media (hover: hover) { #menu .mcard:hover { background: linear-gradient(rgba(51, 40, 74, 0.92), rgba(28, 20, 40, 0.94)); } }
 #menu .mcard:active { background: #3a2e4e; }
+
+/* THE ATMOSPHERE's frame: a dusk vignette over the land, under every HUD element — a
+ * compositor layer, not a render pass, so it costs the GPU nothing per frame */
+#vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse 75% 70% at 50% 46%, rgba(0,0,0,0) 58%, rgba(14,6,24,0.42) 86%, rgba(8,3,14,0.70) 100%); }
