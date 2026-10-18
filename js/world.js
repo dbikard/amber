@@ -1986,6 +1986,7 @@
     const def = C.BUILDINGS[bt];
     if (!def) return 'type';
     const pl = world.players[pi];
+    if (!allowed(world, bt)) return 'locked';
     if (def.unique && pl.buildings.some((b) => b.bt === bt)) return 'unique';
     /* THERE IS ONE PATTERN IN THE WHOLE WORLD. In a single match every board carries its own —
      * which is right, because the board IS the world. In a WAR the Pattern lies in one city of
@@ -2538,6 +2539,7 @@
       const def = C.BUILDINGS[cmd.bt];
       let x = +cmd.x, y = +cmd.y;
       if (!def || !isFinite(x) || !isFinite(y)) return { ok: false, err: 'type' };
+      if (!allowed(world, cmd.bt)) return { ok: false, err: 'locked' };   // a wall skips placementError
       /* a wall carries a second end, and is stored by its MIDPOINT so every other part of the
        * sim — vision, fog, the renderer, the minimap — can go on treating a work as a place */
       let x2 = null, y2 = null, crews = 1, units = 1;
@@ -2634,6 +2636,7 @@
       if (tb && s.level + 1 === forkAt(s.bt)) {
         br = cmd.br;
         if (!tb[br]) return { ok: false, err: 'branch' };
+        if (!allowed(world, s.bt + ':' + br)) return { ok: false, err: 'locked' };
       }
       /* AN UPGRADE TAKES A CREW, TIME, AND SILENCE. The crew was taken OFF this once, because
        * against one mason per three Gates it taxed whoever expanded hardest out of the game.
@@ -2920,6 +2923,7 @@
     power(world, pi, pl, cmd) {
       const def = C.POWERS[cmd.k];
       if (!def) return { ok: false, err: 'power' };
+      if (!allowed(world, cmd.k)) return { ok: false, err: 'locked' };
       if (pl.powers[cmd.k] > 0) return { ok: false, err: 'cd' };
       if (pl.essence < def.cost) return { ok: false, err: 'essence' };
       if (cmd.k === 'storm') {
@@ -5057,6 +5061,67 @@
    * That is this: guarded, so a chapter cannot overrule a Seat that has already fallen, and
    * emitting the same event every other ending emits so the end screen, the chronicle and the
    * renderer's collapse all behave exactly as they always did. */
+  /* ---------------- WHAT THIS MATCH LETS ANYONE RAISE ----------------
+   * `rules.allow` is a chapter's tech lock: null (every other mode) is everything; a list names
+   * buildings by code, branches as 'bt:br', and powers by key. Asked at every door a work, a
+   * fork or a power comes through — and by the heirs before they want one — so the rival is
+   * held to the chapter exactly as the player is. */
+  function allowed(world, key) {
+    const a = world && world.rules && world.rules.allow;
+    if (!a) return true;
+    if (!world._allowSet || world._allowSet.src !== a) {
+      world._allowSet = new Set(a); world._allowSet.src = a;
+    }
+    return world._allowSet.has(key);
+  }
+  /* the branches of a forking work this match allows, in the table's own order */
+  function allowedBranches(world, bt) {
+    const d = C.BUILDINGS[bt];
+    return d && d.branchUI ? d.branchUI.filter((k) => allowed(world, bt + ':' + k)) : [];
+  }
+
+  /* ---------------- A CHAPTER'S CHAMPION ----------------
+   * A boss is an ordinary man of an ordinary kind, made larger: `hp`/`dmg` multiply his stats,
+   * `big` how he is drawn, `name` what he is called. He fights for `owner` under a standard of
+   * his own (a company marked `boss`, so the tray can say what it is), and the heir's doctrine
+   * moves him with the rest of the army like any company. Called from OUTSIDE the sim — the
+   * campaign's setup in game.js, at the hour the chapter names — never from `update`. */
+  function spawnBoss(world, spec) {
+    const owner = spec.owner != null ? spec.owner : 1;
+    const pl = owner === C.CHAOS_ID ? null : world.players[owner];
+    if (owner !== C.CHAOS_ID && !pl) return 0;
+    let co;
+    if (pl) {
+      const bco = { id: pl.nextCo++, rally: null, boss: true };
+      pl.companies.push(bco);
+      co = bco.id;
+    }
+    let at = spec.x != null ? spec : null;
+    /* the black road's own comes out of a RIFT, at the high place furthest from every court —
+     * chosen by arithmetic, not the world's RNG, so a chapter's champion cannot reshuffle the
+     * rest of the match's dice */
+    if (!at && owner === C.CHAOS_ID) {
+      let bd = -1;
+      for (const s2 of world.map.sites) {
+        if (s2.kind === 'city') continue;
+        let near = Infinity;
+        for (const ci of world.map.cities) near = Math.min(near, d2(s2.x, s2.y, world.map.sites[ci].x, world.map.sites[ci].y));
+        if (near > bd) { bd = near; at = s2; }
+      }
+      if (at) emit(world, { e: 'rift', x: at.x, y: at.y });
+    }
+    const id = spawnUnit(world, owner, spec.kind || 'champion', at ? at.x : undefined, at ? at.y : undefined,
+                         undefined, co, 0, spec.tier || 1);
+    const u = id && world.units.find((q) => q.id === id);
+    if (!u) return 0;
+    u.hp *= spec.hp || 1; u.maxHp *= spec.hp || 1; u.dmg *= spec.dmg || 1;
+    u.big = spec.big || 1.6; u.boss = spec.name || C.UNITS[u.kind].name;
+    /* no x/y: the arrival is NEWS for every seat (a banner), and where he stands is the veil's
+     * business like any other man's */
+    emit(world, { e: 'boss', id, owner, name: u.boss });
+    return id;
+  }
+
   function declare(world, winner, reason) {
     if (!world || world.winner !== null) return false;
     win(world, winner, reason);
@@ -5071,6 +5136,7 @@
    * test can flip it between two plays of the SAME seeded country and compare man for man. */
   global.World = { slowWorks: false,
                    createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf, declare,
+                   allowed, allowedBranches, spawnBoss,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    /* noteWalls is out here for ONE caller: the realm's restore, which lays
                     * saved runs back onto a fresh board and must rebuild the standing set —

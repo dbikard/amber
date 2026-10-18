@@ -2962,7 +2962,8 @@
           dum.position.set(u.x, groundH(u.x, u.y) + Math.abs(Math.sin(T * 8 + u.id)) * bob, u.y);
           dum.rotation.set(0, f.a, 0);
         }
-        const s2 = (u.kind === 'champion' ? 1.35 : 1) * (1 + (rankOf(u) - 1) * 0.06);
+        /* `big` is a chapter's champion (World.spawnBoss): the same man, drawn imposing */
+        const s2 = (u.kind === 'champion' ? 1.35 : 1) * (1 + (rankOf(u) - 1) * 0.06) * (u.big || 1);
         dum.scale.set(s2, s2, s2);
         dum.updateMatrix();
         im.setMatrixAt(i, dum.matrix);

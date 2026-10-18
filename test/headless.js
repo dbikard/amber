@@ -6817,8 +6817,9 @@ suite('the campaign: chapters and their objectives');
   let built = 0, bad = [];
   for (const c2 of CAM.CHAPTERS) {
     try {
-      const w = World.createWorld(c2.seed >>> 0, 2, c2.spec);
-      if (w && w.map && w.players.length === 2) built++; else bad.push(c2.key);
+      const n = (c2.opts && c2.opts.players) || 2;
+      const w = World.createWorld(c2.seed >>> 0, n, c2.spec);
+      if (w && w.map && w.players.length === n) built++; else bad.push(c2.key);
     } catch (e) { bad.push(c2.key + ':' + e.message); }
   }
   eq('every chapter builds its board', built, CAM.CHAPTERS.length);
@@ -6997,6 +6998,124 @@ suite('the campaign: chapters and their objectives');
     ok('...and the second is not, until the first is done', !CAM.open(CAM.CHAPTERS[1].key));
     ok('the menu offers the first chapter', CAM.next() && CAM.next().key === CAM.CHAPTERS[0].key,
        CAM.next() ? CAM.next().key : 'none');
+  }
+}
+
+/* ---------------- the campaign hands things back: tech locks, champions, new objectives ----------------
+ * `rules.allow` is held at the SIM's door for every seat, so the rival is held to it too; the
+ * heirs ask it before they want anything, or they save forever for a work the sim refuses. */
+suite('the campaign hands things back, one chapter at a time');
+{
+  const CAM = CAMPAIGN;
+  /* the bookkeeping: cumulative, valid, and nothing held back by the end */
+  const keyOk = (k) => { const cut = k.indexOf(':');
+    if (cut > 0) { const d = C.BUILDINGS[k.slice(0, cut)]; return !!(d && d.branches && d.branches[k.slice(cut + 1)]); }
+    return !!(C.BUILDINGS[k] || C.POWERS[k]); };
+  const badKeys = CAM.CHAPTERS.flatMap((c2) => (c2.unlock || []).filter((k) => !keyOk(k)));
+  eq('every unlock names something the game has', badKeys.length, 0, badKeys.join(','));
+  const first = CAM.allowFor(CAM.CHAPTERS[0]);
+  ok('the first chapter holds things back', Array.isArray(first) && first.indexOf('gate') >= 0 && first.indexOf('tower') < 0,
+     JSON.stringify(first));
+  eq('...and the last holds nothing back', CAM.allowFor(CAM.CHAPTERS[CAM.CHAPTERS.length - 1]), null);
+  let grows = true;
+  for (let i = 1; i < CAM.CHAPTERS.length; i++) {
+    const a = CAM.allowFor(CAM.CHAPTERS[i - 1]), b = CAM.allowFor(CAM.CHAPTERS[i]);
+    if (a && b && !a.every((k) => b.indexOf(k) >= 0)) grows = false;
+    if (!a && b) grows = false;
+  }
+  ok('...and what a chapter allows only ever grows', grows);
+  /* every work a chapter's OBJECTIVE or HINTS lean on must already be unlocked there */
+  const need = { curtain: 'wall', watch: 'tower', pattern: 'shrine', spire: 'spire', works: 'siege', throne: 'siege' };
+  const short = Object.keys(need).filter((k) => { const a = CAM.allowFor(CAM.byKey(k)); return a && a.indexOf(need[k]) < 0; });
+  eq('a chapter is never about something it has not given you', short.length, 0, short.join(','));
+  ok('there are a dozen chapters', CAM.CHAPTERS.length >= 12, String(CAM.CHAPTERS.length));
+  ok('some chapter seats more than one rival', CAM.CHAPTERS.some((c2) => c2.rivals && c2.opts.players === 1 + 1 + c2.rivals.length));
+  ok('...and every rival it seats is an heir the game has',
+     CAM.CHAPTERS.every((c2) => (c2.rivals || []).every((k) => !!AI.HEIRS[k])));
+
+  /* THE SIM'S DOOR: a locked work, fork and power are refused for anyone, and say why */
+  const w = World.createWorld(4242, 2, null, { allow: ['gate', 'barracks', 'barracks:raid'] });
+  const c0 = World.cityOf(w, 0);
+  w.players[0].essence = 1e5; w.players[1].essence = 1e5;
+  const r1 = World.applyCommand(w, 0, { c: 'build', x: c0.x + 150, y: c0.y, bt: 'tower' });
+  eq('a locked work is refused', r1.err, 'locked');
+  eq('...for the rival too', World.applyCommand(w, 1, { c: 'build', x: c0.x, y: c0.y, bt: 'spire' }).err, 'locked');
+  eq('...a locked wall too, though a run skips placementError',
+     World.applyCommand(w, 0, { c: 'build', x: c0.x + 300, y: c0.y, x2: c0.x + 400, y2: c0.y, bt: 'wall' }).err, 'locked');
+  eq('a locked power is refused', World.applyCommand(w, 0, { c: 'power', k: 'trump' }).err, 'locked');
+  const hall = w.players[0].buildings.find((b) => b.bt === 'barracks');
+  hall.raise = 0; hall.work = 0;
+  eq('a locked branch is refused at the fork', World.applyCommand(w, 0, { c: 'up', id: hall.id, br: 'archer' }).err, 'locked');
+  ok('...and an open one is not', World.applyCommand(w, 0, { c: 'up', id: hall.id, br: 'raid' }).ok);
+  /* the control: the same refusals do not happen with no lock at all */
+  const w0 = World.createWorld(4242, 2);
+  w0.players[0].essence = 1e5;
+  ok('with no lock the power is not refused as locked', World.applyCommand(w0, 0, { c: 'power', k: 'trump' }).err !== 'locked');
+  eq('...and allowed() says everything', World.allowed(w0, 'siege:ram'), true);
+
+  /* THE HEIR OBEYS IT. Played for five minutes rich, under chapter I's lock: he must BUILD (the
+   * rig is alive) and must never ask for what is sealed. */
+  {
+    const allow = CAM.allowFor(CAM.CHAPTERS[0]);
+    const w2 = World.createWorld(5150, 2, null, { allow });
+    w2.chaosNext = 1e9;
+    const bot = AI.make('benedict', {}), asked = [];
+    for (let k = 0; k < 30 * 300; k++) {
+      w2.players[1].essence = Math.max(w2.players[1].essence, 600);
+      bot.step(w2, 1, (cm) => { asked.push(cm); return World.applyCommand(w2, 1, cm); }, C.SIM_DT);
+      World.update(w2, C.SIM_DT); w2.events.length = 0;
+      if (w2.winner !== null) break;
+    }
+    const builds = asked.filter((cm) => cm.c === 'build');
+    ok('the rig is alive: the heir builds under the lock', builds.length > 0, builds.length + ' builds');
+    const sealed = asked.filter((cm) => (cm.c === 'build' && allow.indexOf(cm.bt) < 0) ||
+                                        (cm.c === 'power' && allow.indexOf(cm.k) < 0) ||
+                                        (cm.c === 'up' && cm.br && allow.indexOf(w2.players[1].buildings.find((b) => b.id === cm.id)?.bt + ':' + cm.br) < 0));
+    eq('...and never asks for anything sealed', sealed.length, 0, JSON.stringify(sealed.slice(0, 3)));
+  }
+
+  /* A CHAMPION: bigger, harder, his own standard, and the news told without his position */
+  {
+    const w3 = World.createWorld(77, 2);
+    const id = World.spawnBoss(w3, { name: 'Brand the Unmaker', owner: 1, kind: 'champion', hp: 9, dmg: 2, big: 1.9 });
+    const u = w3.units.find((q) => q.id === id);
+    ok('a champion takes the field', !!u && u.owner === 1 && u.boss === 'Brand the Unmaker' && u.big === 1.9);
+    eq('...nine times the man', Math.round(u.maxHp), Math.round(C.UNITS.champion.hp * 9));
+    ok('...under a standard of his own', w3.players[1].companies.some((c2) => c2.id === u.co && c2.boss));
+    const ev = w3.events.find((e) => e.e === 'boss');
+    ok('...and it is news, but not where he stands', ev && ev.x == null && ev.name === 'Brand the Unmaker', JSON.stringify(ev));
+    const cid = World.spawnBoss(w3, { name: 'The Hound of Chaos', owner: C.CHAOS_ID, kind: 'fiend', hp: 10 });
+    ok('the black road may send one of its own', w3.units.some((q) => q.id === cid && q.owner === C.CHAOS_ID && q.boss));
+    /* the objective: not before he comes, won when he goes */
+    const o = CAM.OBJ.slay('Brand the Unmaker'), st = {};
+    const w4 = World.createWorld(78, 2);
+    eq('slay: he has not come, which is no victory', o.check(w4, 0, st), null);
+    ok('...and says so', /not yet/.test(o.line(w4, 0, st)), o.line(w4, 0, st));
+    const bid = World.spawnBoss(w4, { name: 'Brand the Unmaker', owner: 1, kind: 'champion', hp: 2 });
+    eq('slay: he stands', o.check(w4, 0, st), null);
+    ok('...and the readout is his strength', /100%/.test(o.line(w4, 0, st)), o.line(w4, 0, st));
+    w4.units = w4.units.filter((q) => q.id !== bid);
+    eq('slay: and now he does not', o.check(w4, 0, st), 'won');
+  }
+  /* WRECK: a tally of works that stood and are gone, or breached */
+  {
+    const w5 = World.createWorld(4243, 2), en = w5.players[1];
+    const o = CAM.OBJ.wreck(2), st = {};
+    eq('wreck: nothing thrown down yet', o.check(w5, 0, st), null);
+    en.buildings.shift();
+    eq('wreck: one', o.check(w5, 0, st), null);
+    ok('...counted', /1 so far/.test(o.line(w5, 0, st)), o.line(w5, 0, st));
+    en.buildings[0].breach = 1;
+    eq('wreck: a breach counts as the second', o.check(w5, 0, st), 'won');
+  }
+  /* A CLEARED CHAPTER STAYS OPEN, even with a new one inserted before it (the menu reads this) */
+  {
+    const store = {};
+    globalThis.localStorage = { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v; }, removeItem: (k) => { delete store[k]; } };
+    CAM.clear('blackroad');
+    ok('a chapter cleared before the ones before it were written is open', CAM.open('blackroad'));
+    ok('...while its new predecessor, never played, is not', !CAM.open('watch'));
+    delete globalThis.localStorage;
   }
 }
 

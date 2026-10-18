@@ -727,7 +727,25 @@ alone), so a scripted chapter is a single-player concern by construction.
 so it can count down), and `hint` fires the tutorial one lesson at a time, **in order**, each
 waiting for the BOARD to be true rather than for the clock to reach a number.
 
-Adding a chapter is a table entry: `{key, title, heir, seed, opts, brief, obj, won, hints}`.
+**A CHAPTER HANDS THINGS BACK, AND THE RIVAL IS HELD TO THE SAME LOCK** (the designer,
+2026-10-18). `unlock` on each chapter is cumulative down the table; `CAMPAIGN.allowFor(ch)`
+turns it into `rules.allow` (null once nothing is held back), and **`World.allowed` is asked at
+every door** — build (a wall too, which skips `placementError`), the fork's branch, the power —
+for EVERY seat, refusing with `locked`. The heirs ask `can(k)` before each want, or they save
+forever for a work the sim refuses (the Works want sets `saving` before it looks for ground);
+`branchFor` returns null when no branch is open and the work stays at its level. The sheet shows
+a sealed card (no `data-cost`, so the live-affordability pass cannot unlock it) from `UI.allow`,
+which game.js sets with every match. A cleared chapter stays open even when a new one is
+inserted before it. **A CHAPTER MAY SEAT MORE THAN ONE RIVAL** (`rivals`, `opts.players`): the
+board free-for-all the sim has played since LAN tables, driven through `game.bots`. **AND A
+CHAPTER MAY SEND A CHAMPION** (`bosses: [{name, owner, kind, hp, dmg, big, at}]`):
+`World.spawnBoss` — an ordinary man of an ordinary kind, multiplied, under a standard of his
+own, drawn `big` — called from game.js's loop at the hour named, never from `update`; his
+arrival is news to every seat with no position on it. `OBJ.slay(name)`, `OBJ.wreck(n)` (a
+tally by id-diff) and `OBJ.last(pattern)` are the objectives that came with them.
+
+Adding a chapter is a table entry: `{key, title, heir, seed, opts, brief, obj, won, hints}`,
+plus optionally `unlock`, `rivals` and `bosses`.
 `opts` merges OVER the player's chosen footing, so a chapter may hold a rival back (`hold`) or
 let him off the leash without taking the footing away. The chapter screen, the briefing, the
 lock, the progress and the end screen all follow from the table with no code.

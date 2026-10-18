@@ -220,6 +220,9 @@
                       u.in ? { in: u.in } : null,
                        /* rank changes what he LOOKS like, so it is not a secret worth keeping */
                        u.tier > 1 ? { tier: u.tier } : null,
+                       /* a chapter's champion is drawn larger — single-player only today, but
+                        * what he LOOKS like is never a secret */
+                       u.big ? { big: u.big, boss: u.boss } : null,
                        /* CHAINED, and until when. A binding slows him and makes every blow on
                         * him land harder — it changes what he DOES, not only what he looks
                         * like, so a guest that did not know would draw a column marching at a

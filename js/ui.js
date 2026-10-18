@@ -485,6 +485,22 @@
      * A briefing has no world. See `ask` in campaign.js. */
     ob.textContent = '❖ ' + (ch.obj.ask ? tr(ch.obj.ask) : '');
     body.appendChild(ob);
+    /* WHAT THIS CHAPTER HANDS YOU — the campaign is a road, and each step gives something
+     * back (`unlock` in the table). Said by name, never by code. */
+    const fresh = CAM.unlocksOf(ch);
+    if (fresh.length) {
+      const nw = document.createElement('div');
+      nw.className = 'brief-new';
+      nw.textContent = tr('New: {what}', { what: fresh.map((k) => CAM.unlockLabel(k)).join(' · ') });
+      body.appendChild(nw);
+    }
+    for (const bs of ch.bosses || []) {
+      const bw = document.createElement('div');
+      bw.className = 'brief-new boss';
+      bw.textContent = '☠ ' + tr('{who} takes the field', { who: tr(bs.name) }) +
+        (bs.at > 30 ? ' — ' + tr('at {t}', { t: Math.floor(bs.at / 60) + ':' + String(bs.at % 60).padStart(2, '0') }) : '');
+      body.appendChild(bw);
+    }
     const go = document.createElement('button');
     go.className = 'mbtn';
     go.id = 'chapter-begin';
@@ -1177,6 +1193,7 @@
     }
     for (const k of ['storm', 'trump']) {
       const btn = $('pw-' + k), cd = me.powers ? me.powers[k] : 99;
+      btn.classList.toggle('hidden', !UI.allows(k));   // a chapter that has not given you it
       const ready = cd <= 0;
       btn.disabled = !ready;
       btn.classList.toggle('armed', k === 'storm' && targeting);
@@ -1219,6 +1236,7 @@
     contested: tr('the enemy stands there'),
     busy: tr('your masons are all at work — every Shadow Gate you hold hires another crew'),
     unique: tr('you have one already'),
+    locked: tr('not yet yours — a later chapter opens it'),
     /* a work with a length has two refusals of its own — both about the RUN, not the spot */
     short: tr('too short a run to be a wall'),
     crews: tr('longer than your masons reach — hold more Gates, or draw a shorter run'),
@@ -1277,6 +1295,7 @@
   function buildCards(el, essence) {
     for (const bt of C.BUILD_ORDER_UI) {
       const d = C.BUILDINGS[bt];
+      if (!UI.allows(bt)) { sealedCard(el, d.icon, tr(d.name)); continue; }
       const bad = null;   // the ground answers when you put it down, not here
       const card = document.createElement('button');
       card.className = 'card' + (essence >= d.cost && !bad ? '' : ' locked');
@@ -1537,6 +1556,7 @@
       el.appendChild(hint);
       for (const key of d.branchUI) {
         const b2 = d.branches[key];
+        if (!UI.allows(s.bt + ':' + key)) { sealedCard(el, b2.icon, tr(b2.name)); continue; }
         const cost = global.World.upgradeCost(s.bt, s.level, key);
         costCard(el, { icon: b2.icon, name: tr(b2.name), cost, essence, blurb: tr(b2.blurb),
                        extra: branchStatLine(s.bt, key, fork) },
@@ -1804,6 +1824,22 @@
       else if (card._blurb != null) bl.innerHTML = card._blurb;
     }
     return want;
+  }
+  /* ---- WHAT A CHAPTER HAS NOT GIVEN YOU YET ----
+   * `UI.allow` is the match's `rules.allow` (game.js sets it with the match): null is
+   * everything. A sealed work is SHOWN, greyed and padlocked, rather than hidden — the
+   * campaign is a road and the next thing on it is part of the reason to walk it. It carries
+   * no `data-cost`, so the live affordability pass can never unlock it. */
+  UI.allow = null;
+  UI.allows = (key) => !UI.allow || UI.allow.indexOf(key) >= 0;
+  function sealedCard(el, icon, name) {
+    const b = document.createElement('button');
+    b.className = 'card locked sealed';
+    b.disabled = true;
+    b.innerHTML = `<span class="c-ico">${icon || ''}</span><span class="c-name">${name}</span>` +
+                  `<span class="c-cost">🔒</span><span class="c-blurb"><i>${tr('not yet yours — a later chapter opens it')}</i></span>`;
+    el.appendChild(b);
+    return b;
   }
   /* live affordability: called every frame with the viewer's current essence —
    * a card locked when the sheet opened unlocks the moment the war chest reaches its cost */

@@ -327,10 +327,11 @@ async function match(browser, base, renderer) {
       window.Game.startChapter(last.key);
       await new Promise((res) => setTimeout(res, 500));
       const g = window.Game.game;
+      const bot = g.bot || (g.bots && g.bots[1]);   // a chapter of three or four seats a roster
       return { listShown, eco: g.world.players[1].eco,
                wantEco: (last.opts && last.opts.eco != null) ? last.opts.eco : 1,
-               hold: g.bot.hold, wantHold: (last.opts && last.opts.hold != null) ? last.opts.hold : C.DIFFICULTY.prince.hold,
-               lapses: g.bot.lapses, wantLapses: C.DIFFICULTY.prince.lapses,
+               hold: bot.hold, wantHold: (last.opts && last.opts.hold != null) ? last.opts.hold : C.DIFFICULTY.prince.hold,
+               lapses: bot.lapses, wantLapses: C.DIFFICULTY.prince.lapses,
                rival: g.names[1], wantRival: last.heir, campaign: g.campaign,
                chapter: g.chapter && g.chapter.key, wantChapter: last.key };
     });
@@ -342,6 +343,29 @@ async function match(browser, base, renderer) {
     ok('...against the rival that chapter names',
        new RegExp(camp.wantRival, 'i').test(camp.rival) && camp.chapter === camp.wantChapter,
        `${camp.rival} / ${camp.chapter}, wanted ${camp.wantRival} / ${camp.wantChapter}`);
+
+    /* A CHAPTER SEALS WHAT IT HAS NOT GIVEN, AND A SKIRMISH SEALS NOTHING. The first chapter
+     * hands over a Gate and a hall; its build sheet must show the Watchtower padlocked and the
+     * Jewel's button gone, and an ordinary skirmish straight after must show neither. */
+    const seal = await pg.evaluate(async () => {
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      const look = async () => {
+        document.getElementById('btn-build').click(); await wait(450);
+        const cards = [...document.querySelectorAll('#sheet .card')];
+        const r = { sealed: cards.filter((c) => c.classList.contains('sealed')).map((c) => c.textContent.trim().slice(0, 14)),
+                    gate: cards.some((c) => c.dataset.bt === 'gate'),
+                    storm: !document.getElementById('pw-storm').classList.contains('hidden') };
+        window.UI.closeSheet(); return r;
+      };
+      window.Game.startChapter(window.CAMPAIGN.CHAPTERS[0].key); await wait(500);
+      const ch = await look();
+      window.Game.startSP('julian', { seed: 3 }); await wait(500);
+      const sk = await look();
+      return { ch, sk };
+    });
+    ok('a chapter seals the works it has not given, and keeps the ones it has',
+       seal.ch.sealed.some((t) => /Watchtower/.test(t)) && seal.ch.gate && !seal.ch.storm, JSON.stringify(seal.ch));
+    ok('...and a skirmish seals nothing', seal.sk.sealed.length === 0 && seal.sk.gate && seal.sk.storm, JSON.stringify(seal.sk));
 
     /* THE MENU NAMES THE CHAPTER, NOT THE HEIR — a rung had nothing to say about itself except
      * whom you would face, and the whole point of the change is that those are two questions. */

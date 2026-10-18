@@ -115,7 +115,11 @@
     const ch = global.CAMPAIGN && global.CAMPAIGN.byKey(key);
     if (!ch) return false;
     const foot = C.DIFFICULTY[UI.difficulty()] || {};
-    startSP(ch.heir, Object.assign({}, foot, ch.opts, { seed: ch.seed, spec: ch.spec }), ch);
+    /* THE CHAPTER'S TECH LOCK rides in the rules, beside any the chapter changes itself, so the
+     * sim holds every seat to it (`World.allowed`) — the rival included */
+    const allow = global.CAMPAIGN.allowFor(ch);
+    const rules = Object.assign({}, ch.opts && ch.opts.rules, allow ? { allow } : null);
+    startSP(ch.heir, Object.assign({}, foot, ch.opts, { seed: ch.seed, spec: ch.spec, rules }), ch);
     return true;
   }
   /* THE WAR IS ONE WORLD, entered whole. No map screen, no regions, no marches between
@@ -124,6 +128,7 @@
    * lords, one bot apiece, exactly as the ?reach rig seats them. */
   function startRealm(realm) {
     game.realm = realm;
+    UI.allow = null; game.bossQ = null;   // a war locks nothing and summons nobody
     /* THE HELM: the player's government of the war. `orders[lord]` is the standing
      * instruction each sworn lord runs under, and `hand` is which of his courts the player is
      * driving himself. Neither is sim state — an order only makes a lord issue the ordinary
@@ -355,6 +360,10 @@
      * of the state and the heir's own doctrine may withdraw his half whenever it likes. That is
      * what makes a scripted betrayal the RIVAL's doing rather than a trigger in the campaign:
      * `CAMPAIGN.run` never writes to the world, and this does not change that. */
+    UI.allow = game.world.rules.allow || null;   // the build sheet seals what the match has not given
+    /* A CHAPTER'S CHAMPIONS, each due at the hour it names — set up from outside the sim, like
+     * the terms above, by `World.spawnBoss` in the loop below */
+    game.bossQ = game.chapter && game.chapter.bosses ? game.chapter.bosses.map((b) => Object.assign({}, b)) : null;
     for (const p of (opts && opts.pact) || []) {
       if (p === 0 || !game.world.players[p]) continue;
       game.world.players[0].offers[p] = 1;
@@ -374,19 +383,28 @@
        * marchers it was given before heirs could speak in a war at all. */
       game.bots = game.world.players.map((_, i) => warBot(game.world, i));
       game.bot = null;
+    } else if (game.chapter && game.chapter.rivals && game.world.players.length > 2) {
+      /* A CHAPTER MAY SEAT MORE THAN ONE RIVAL — a free-for-all on a board, which the sim has
+       * played since LAN tables of four. Each seat past yours gets its own heir; the roster is
+       * `game.bots`, which the loop already steps (seat 0 is the player and has no driver). */
+      const ks = [kind].concat(game.chapter.rivals);
+      game.bots = game.world.players.map((_, i) => (i === 0 ? null : AI.make(ks[i - 1] || kind, opts)));
+      game.bot = null;
     } else game.bot = AI.make(kind, opts);
+    const country = !!(opts && opts.country && game.world.players.length > 2);
     /* A CHAPTER MAY STILL STARVE ITS RIVAL. `opts.eco` is a SCRIPTING seam and not a footing:
      * a footing never touches a purse any more (CONST.DIFFICULTY), but a scripted story may
      * want a feeble tutorial rival, exactly as it may pin its ground or shut the Pattern road.
      * A country's seats are dealt no purse at all — everyone earns by the same economy. */
-    if (!game.bots) game.world.players[1].eco = (opts && opts.eco) || 1;
+    if (!country) for (let i = 1; i < game.world.players.length; i++) game.world.players[i].eco = (opts && opts.eco) || 1;
     /* a kind may be an heir or a baseline (the reach rig runs marchers) — both carry a title */
     const kindTitle = tr((AI.HEIRS[kind] && AI.HEIRS[kind].title) ||
                       (AI.BASELINES && AI.BASELINES[kind] && AI.BASELINES[kind].title) || 'a lord');
     /* at a country's table every seat is named by ITS CITY — ten seats sharing one heir's
      * name would make every banner a riddle */
-    game.names = game.bots
+    game.names = country
       ? game.world.players.map((_, i) => warName(game.world, i))
+      : game.bots ? game.bots.map((b, i) => (i === 0 ? 'Corwin' : tr(AI.HEIRS[b.kind] ? AI.HEIRS[b.kind].title : 'a lord')))
       : ['Corwin', kindTitle];
     UI.names = game.names;   // the HUD's chips and walkers wear the same names
     game.targeting = false; game.placing = null; game.span = null; Render.span = null;
@@ -410,7 +428,7 @@
     Rec.begin({ version: global.GAME_VERSION, seed: game.world.seed, viewer: 0, names: game.names,
                 mode: game.chapter ? tr('campaign · {key}', { key: game.chapter.key }) : isCampaign ? tr('campaign') : tr('skirmish'),
                 footing: footName() });
-    UI.startMatch(game.bots ? tr('the Reach War') : kindTitle);
+    UI.startMatch(country ? tr('the Reach War') : kindTitle);
   }
   /* `seats` is how many are playing (2..4) and `mySeat` which one you got — the host hands
    * both out with the start message, so a guest never has to guess its own index. */
@@ -424,6 +442,7 @@
   function startMP(seed, seats, mySeat, war, savedRealm) {
     const n = Math.max(2, Math.min(C.MAX_PLAYERS, seats || 2));
     game.seats = n;
+    UI.allow = null; game.bossQ = null;   // a LAN table is never a chapter
     game.mode = Net.isHost ? 'host' : 'guest';
     game.viewer = Net.isHost ? 0 : (mySeat != null ? mySeat : Net.localIdx);
     Net.localIdx = game.viewer;
@@ -1032,6 +1051,7 @@
     nowall: 'Only a curtain has a sheltered side to turn about',
     cd: 'That power is not ready',
     alive: 'Your champion already walks the board',
+    locked: 'Not yet yours — a later chapter of the campaign opens it',
     /* the orders a player cannot phrase wrongly by tapping — reached by a stale tap on a match
      * that has just ended, or by a guest whose snapshot is a moment behind */
     over: 'The match is decided',
@@ -1635,6 +1655,7 @@
       else if (ev.e === 'rift' && view.t - game.lastRiftBanner > 30) { game.lastRiftBanner = view.t; UI.banner(tr('Chaos tears open a rift in the black road'), 'chaos'); }
       else if (ev.e === 'surge') UI.banner(tr('The black road surges — Chaos redoubles!'), 'chaos');
       else if (ev.e === 'storm' && !ours(ev.pi)) UI.banner(tr('{who} calls down the storm!', { who: String(game.names[ev.pi]) }), 'warn');
+      else if (ev.e === 'boss') UI.banner(tr('{who} takes the field!', { who: tr(ev.name) }), 'warn');
       else if (ev.e === 'trump' && !ours(ev.pi)) UI.banner(tr('{who} draws a Trump!', { who: String(game.names[ev.pi]) }), 'warn');
       /* NO BANNER FOR THE MUSTER VALVE EITHER. It is a STATE, and a state has a readout: the
        * essence rate carries ⏸ for as long as the realm is quiet, and a company's own chip
@@ -1742,6 +1763,11 @@
             game.bot.step(game.world, 1, (cmd) => World.applyCommand(game.world, 1, cmd), C.SIM_DT);
           }
           World.update(game.world, C.SIM_DT);
+          if (game.bossQ) for (const b of game.bossQ) {
+            if (b.done || game.world.t < (b.at || 0)) continue;
+            b.done = true;
+            World.spawnBoss(game.world, b);
+          }
           spectatorTick();
           /* ---- THE CHAPTER'S OWN CONDITION ----
            * Polled here, over the world this loop already holds, and NOT grown into `update`:

@@ -707,7 +707,11 @@
   function branchFor(P, bt, v) {
     const d = C.BUILDINGS[bt];
     const pick = P.branch && P.branch[bt] ? P.branch[bt](v) : null;
-    return pick && d.branches[pick] ? pick : d.branchUI[0];
+    /* a chapter's lock: his doctrine's pick if it is open, else the first open branch, else
+     * none — null, and the scan leaves the work where it stands */
+    const open = global.World.allowedBranches(v.world, bt);
+    if (pick && d.branches[pick] && open.indexOf(pick) >= 0) return pick;
+    return open.length ? open[0] : null;
   }
   /* is there a work standing at the rung below its fork, and the essence to take it? Only
    * asked to let the fork jump the saving queue — see the note at the upgrade scan. */
@@ -716,7 +720,8 @@
       const d = C.BUILDINGS[b.bt];
       if (!d.branches || b.br || b.raise > 0 || b.work > 0) return false;
       if (b.level + 1 !== (d.fork || 0)) return false;
-      return v.essence >= Math.min.apply(null, d.branchUI.map((k) => d.branches[k].cost));
+      const open = global.World.allowedBranches(v.world, b.bt);
+      return open.length > 0 && v.essence >= Math.min.apply(null, open.map((k) => d.branches[k].cost));
     });
   }
 
@@ -1411,6 +1416,11 @@
       warSt.v = v;   // the view this think is decided on, for warOrders' default (see there)
       if (P.custom) { P.custom(v, issue, rng, order); return; }
       if (noise > 0 && rng.chance(noise)) return;
+      /* A CHAPTER'S TECH LOCK (`rules.allow`) HOLDS THE HEIR TOO. The sim refuses a locked work
+       * at its door, but a doctrine that keeps WANTING one saves for it forever (the Works want
+       * sets `saving` before it asks for ground) — so every want asks first. Always true off a
+       * chapter, so no other mode reads a byte differently. */
+      const can = (k) => global.World.allowed(world, k);
       /* FIRST, before any clause can BUILD: the set diff of the springs his Gates stand on.
        * It sat lower once, and the city's own 'spring under his feet' want re-gated a razed
        * spring EARLIER in the same think — so the diff never saw a Gate missing, `gateLost`
@@ -1488,7 +1498,7 @@
        * champion (measured: 166 'essence' and 24 'alive' refusals in one eleven-minute match,
        * every one a no-op the referee had to log; a refused order changes nothing, so this
        * cannot move the sim, it only stops asking questions whose answer is known) */
-      if (v.powers.storm <= 0 && v.essence >= C.POWERS.storm.cost) {
+      if (v.powers.storm <= 0 && v.essence >= C.POWERS.storm.cost && can('storm')) {
         /* ---- THE JEWEL ANSWERS A RAID AT HIS OWN WORKS ----
          * Every doctrine's own pick first; when it has none, a cluster of RIVALS standing at
          * any finished work of his draws the storm. The doctrines' picks all read `v.threats`
@@ -1510,7 +1520,7 @@
         })());
         if (p) issue({ c: 'power', k: 'storm', x: p.x, y: p.y });
       }
-      if (v.powers.trump <= 0 && v.essence >= C.POWERS.trump.cost && !v.champion && P.trump(v))
+      if (v.powers.trump <= 0 && v.essence >= C.POWERS.trump.cost && !v.champion && can('trump') && P.trump(v))
         issue({ c: 'power', k: 'trump' });
 
       /* the walk */
@@ -1582,13 +1592,13 @@
        * fights exactly as hard — it is the scenario saying which of the two roads this chapter
        * is about, which is the whole point of a chapter having a win condition of its own. */
       const walkWish = !v.walking && !noWalk && !raced && (P.walk(v) || (late && v.have.shrine));
-      if (walkWish && (canFinish || late) && (fortified || late)) {
+      if (walkWish && (canFinish || late) && (fortified || late || !can('tower'))) {
         issue({ c: 'walk', on: true });
       }
       /* the towers the walk is waiting on: wanted before any errand, while the wish stands — on
        * the vantages near home first, and failing those beside the throne and the home spring,
        * so a court with no high ground of its own can still fortify and still walk */
-      const fortify = walkWish && !fortified && !late ? [{ bt: 'tower', pick: (v2) =>
+      const fortify = walkWish && !fortified && !late && can('tower') ? [{ bt: 'tower', pick: (v2) =>
         wantWatch(WALK_TOWERS).pick(v2) ||
         [v2.myCity].concat(v2.nodes.own.slice(0, 1)).filter((s2) => s2 && !worksNear(v2, s2.x, s2.y, 'tower', 130))[0] || null }] : [];
 
@@ -1639,7 +1649,7 @@
        * only a spring his own troops are standing on, unheld and uncontested — ground he was
        * walking over on his way somewhere else. Expansion pays (DESIGN_PRINCIPLES §4); it was
        * simply never being attempted. */
-      if (!lazyGates && v.free > 0 && v.essence >= C.BUILDINGS.gate.cost) {
+      if (!lazyGates && v.free > 0 && v.essence >= C.BUILDINGS.gate.cost && can('gate')) {
         const spring = spotFor(v, 'gate');
         if (spring) { issue({ c: 'build', x: spring.x, y: spring.y, bt: 'gate' }); handled = true; }
       }
@@ -1689,7 +1699,7 @@
        * the tripwire read 30-35% against HEAD's 55 on the first cut, the consolidation
        * lesson again. An heir under pressure keeps mustering; a raided-but-solvent one lays
        * the stone the raids argue for. */
-      if (!handled && !idle && !NO_CURTAIN && gateLost && v.free > 0 &&
+      if (!handled && !idle && !NO_CURTAIN && gateLost && v.free > 0 && can('wall') &&
           v.essence >= C.BUILDINGS.wall.cost * 3 &&
           !worksNear(v, v.myCity.x, v.myCity.y, 'wall', 340)) {
         const at = spotFor(v, 'wall');
@@ -1711,7 +1721,7 @@
       const thirsty = v.income - walkDrain > musterCap + T.SPARE;
       const oneMore = (v.have.barracks || 0) < T.HALL_CAP &&
                       (v.enemyArmy >= v.army + T.OUTNUMBER || thirsty);
-      if (!handled && oneMore && !idle) {
+      if (!handled && oneMore && !idle && can('barracks')) {
         handled = true;
         if (v.free > 0) {
           if (v.essence < C.BUILDINGS.barracks.cost) saving = true;
@@ -1744,7 +1754,7 @@
        * the designer saw the defect. */
       const foeStone = Object.values(v.pl.ghosts || {}).some((g) =>
         g.bt === 'wall' && global.World.foe(world, me, g.owner));
-      if (!handled && !idle && v.army >= 5 && (v.have.siege || 0) < 2 &&
+      if (!handled && !idle && v.army >= 5 && (v.have.siege || 0) < 2 && can('siege') &&
           (v.breakers < T.BREAKERS || (foeStone && v.siegers < T.BREAKERS))) {
         handled = true;
         if (v.free > 0) {
@@ -1777,6 +1787,7 @@
         if ((v.have[bt] || 0) >= seenW[bt]) continue;
         if (lazyGates && C.BUILDINGS[bt].claim) continue;   // the `gates` lapse: he overlooks it this think
         if (noWalk && bt === 'shrine') continue;   // a Shrine is fuel for a walk he will never take
+        if (!can(bt)) continue;                    // a chapter has not given anyone this yet
         if (v.free <= 0) break;                                           // no crew: nothing to raise
         if (v.essence < C.BUILDINGS[bt].cost) { saving = true; break; }   // a purse problem: save for it
         const at = spotFor(v, bt);
@@ -1913,7 +1924,7 @@
            * unraided julian's expansion to a third (income 17 against 66 over the same eight
            * minutes) — the stone is bought once somebody has shown they will raid, which is
            * the moment a Gate of his first dies (`gateLost`, read off his own count dropping). */
-          const fwd = done && gateLost && mission.bt === 'gate' && s &&
+          const fwd = done && gateLost && mission.bt === 'gate' && s && can('tower') &&
                       d2(s.x, s.y, v.myCity.x, v.myCity.y) > C.CLAIM.seat * C.CLAIM.seat &&
                       !worksNear(v, s.x, s.y, 'tower', 150);
           mission = fwd ? { site: mission.site, bt: 'tower', since: v.t } : null;
@@ -2103,6 +2114,7 @@
          * goes where he is sent, which is what makes the order worth giving him */
         const own = lazyGates ? P.missions(v).filter((w) => !C.BUILDINGS[w.bt].claim) : P.missions(v);
         for (const w of fortify.concat(led ? led.concat(own) : own)) {
+          if (!can(w.bt)) continue;
           const site = w.pick(v);
           if (site && heldGround(v, site.x, site.y)) continue;   // the hold covers the writ, see heldGround
           if (site) { mission = { site: site.id, bt: w.bt, since: v.t }; break; }
@@ -2538,6 +2550,7 @@
              * work asks the same question — a heir that has already forked a hall re-sends the
              * branch it holds so the PRICE comes off the branch table rather than the base one. */
             const br = C.BUILDINGS[bt].branches ? (b.br || branchFor(P, bt, v)) : undefined;
+            if (br === null) continue;   // a chapter has opened no branch of this work: it stays at its level
             /* the war chest a LEVEL is bought over and above. A fork keeps a thinner one: it is
              * the cheapest lasting decision on the board and every match spent putting it off is
              * a match fought with somebody else's army. */

@@ -295,9 +295,14 @@
    *              own rising against a walker (ai.js: a walker's city outranks every other
    *              neighbour) — or a walk begun three reaches away is a win nobody can touch,
    *              reported from play in exactly those words. 1 is a board's walk, untouched.
+   *   allow      null, or the list of what may be raised and called at all — a building's
+   *              code ('tower'), a branch as 'bt:br' ('tower:cannon') and a power ('storm').
+   *              A CHAPTER's tech lock (campaign.js `allowFor`), held at the sim's door
+   *              (`World.allowed`) for EVERY seat, so the rival is held to it as well. null
+   *              is everything, which is every other mode.
    * Everything here is off or today's behaviour, so every existing mode is untouched. */
   CONST.RULES = { endOnSeat: 1, occupy: 0, truce: 0, hush: 1, onePattern: 0, reach: 0,
-                  walkMul: 1 };
+                  walkMul: 1, allow: null };
   /* Seat colours. You are ALWAYS gold — a player should never have to remember which of four
    * colours is theirs — so these are read by seat index for everyone else, skipping gold. */
   CONST.SEAT_TINT = [0xffd98a, 0xff8a96, 0xc48eff, 0x64d8d8];

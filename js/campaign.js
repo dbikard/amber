@@ -166,6 +166,62 @@
     check: () => null
   });
 
+  /* BRING HIM DOWN. A chapter's champion (`bosses` in the table, raised by `World.spawnBoss`)
+   * is known by name; the objective is won the tick he is gone, and not before he has come —
+   * he may arrive at an hour of the chapter's choosing, and an empty board is no victory. */
+  const bossesOf = (w, me, name) => w.units.filter((u) => u.boss === name && u.hp > 0 && u.owner !== me);
+  OBJ.slay = (name) => ({
+    get ask() { return tr('Bring down {who}', { who: tr(name) }); },
+    line: (w, me, st) => {
+      const b = bossesOf(w, me, name)[0];
+      if (!b) return st.seen ? tr('{who} has fallen', { who: tr(name) })
+                             : tr('{who} has not yet taken the field', { who: tr(name) });
+      return tr('Bring down {who} — {p}% of his strength remains', { who: tr(name), p: Math.ceil(100 * b.hp / b.maxHp) });
+    },
+    check: (w, me, st) => {
+      if (bossesOf(w, me, name).length) { st.seen = true; return null; }
+      return st.seen ? 'won' : null;
+    }
+  });
+
+  /* WRECK n OF HIS WORKS, ANY OF THEM. A TALLY, not a census: every rival work that was
+   * standing and is now gone — or a run of his that now lies breached — counts once, wherever
+   * it stood. Read by diffing the ids each tick, so nothing in the sim keeps score for it. */
+  OBJ.wreck = (n) => {
+    const standing = (w, me) => {
+      const m = new Map();
+      for (const i of rivals(w, me))
+        for (const b of w.players[i].buildings) if (!b.raise && !b.breach) m.set(b.id, b);
+      return m;
+    };
+    return {
+      get ask() { return tr('Throw down {n} of his works — any of them, anywhere', { n }); },
+      line: (w, me, st) => tr('Throw down {n} of his works — {k} so far', { n, k: Math.min(n, st.wrecked || 0) }),
+      check: (w, me, st) => {
+        const now = standing(w, me);
+        if (st.prev) for (const id of st.prev.keys()) if (!now.has(id)) st.wrecked = (st.wrecked || 0) + 1;
+        st.prev = now;
+        return (st.wrecked || 0) >= n ? 'won' : null;
+      }
+    };
+  };
+
+  /* THE LAST HEIR STANDING — the sim's own ending on a table of three or four (a toppled heir
+   * is out, the last Seat standing wins), here so the chapter can say how far along you are.
+   * `pattern` names the other road as well, for a chapter where the rivals may walk it too. */
+  OBJ.last = (pattern) => ({
+    get ask() {
+      return pattern ? tr('Win the succession — be the last heir standing, or walk the Pattern')
+                     : tr('Be the last heir standing');
+    },
+    line: (w, me) => {
+      const up = rivals(w, me).filter((i) => !w.players[i].out).length;
+      return up === 1 ? tr('Be the last heir standing — one rival still stands')
+                      : tr('Be the last heir standing — {k} rivals still stand', { k: up });
+    },
+    check: () => null
+  });
+
   CAMPAIGN.OBJ = OBJ;
 
   /* ---------------- an extra way to lose ----------------
@@ -194,6 +250,10 @@
   CAMPAIGN.CHAPTERS = [
     {
       key: 'road', title: 'I · The Shadow Road', heir: 'julian', seed: 0x5ade01,
+      /* WHAT A CHAPTER HANDS YOU (`unlock`), cumulative down the table: everything the chapters
+       * before it gave, and this. Building codes, branches as 'bt:br', powers by key — the same
+       * words `rules.allow` takes (see `allowFor`). The opening Gate and hall are every heir's. */
+      unlock: ['gate', 'barracks'],
       /* THE FIRST CHAPTER TAKES THINGS AWAY. The rival is rich enough to be alive and will not
        * march on your Seat inside the hour, so the board is quiet and the only question is the
        * one the game is actually about: the essence is out there, and you have to go and stand
@@ -216,6 +276,7 @@
     },
     {
       key: 'muster', title: 'II · The Muster', heir: 'bleys', seed: 0x5ade02,
+      unlock: ['barracks:raid'],
       opts: { eco: 0.75, hold: 420, noWalk: 1 },
       brief: 'Bleys of the Flame is taking Shadow while you count your wells. He raises his '
            + 'Gates in the open and trusts his host to keep them.\n\n'
@@ -229,11 +290,14 @@
         { when: (w, me) => (w.players[me].companies || []).length >= 2,
           text: '⚐ Two standards — one may take ground while the other fights' },
         { when: (w, me) => w.units.filter((u) => u.owner === me).length >= 12,
-          text: '⚔ His Gates stand on springs. Find them, and plant a standard on one' }
+          text: '⚔ His Gates stand on springs. Find them, and plant a standard on one' },
+        { when: (w, me) => w.players[me].buildings.some((b) => b.bt === 'barracks' && !b.raise && b.level === 1) && w.players[me].essence >= 140,
+          text: '⚔ A Barracks at level 2 may become Outriders — quick, cheap, made for burning Gates' }
       ]
     },
     {
       key: 'curtain', title: 'III · The Curtain', heir: 'benedict', seed: 0x5ade03,
+      unlock: ['wall', 'barracks:archer'],
       /* the Master of Arms, off the leash early: this chapter is the assault */
       opts: { eco: 1.0, hold: 90, noWalk: 1 },
       brief: 'Benedict is coming, and he is coming soon. You will not out-muster the Master of '
@@ -247,12 +311,45 @@
       hints: [
         { when: (w) => w.t > 5, text: '🔨 BUILD → Curtain Wall. Tap where the run starts, then where it ends' },
         { when: (w, me) => w.players[me].buildings.some((b) => b.bt === 'wall' && !b.raise),
-          text: '⚐ Send a company to the wall — archers climb it, the rest hold its foot' }
+          text: '⚐ Send a company to the wall — archers climb it, the rest hold its foot' },
+        { when: (w) => w.t > 40, text: '🏹 Archers: upgrade a Barracks to level 2 and choose the Butts' }
       ]
     },
     {
-      key: 'blackroad', title: 'IV · The Black Road', heir: 'brand', seed: 0x5ade04,
+      /* ---- IV · THE WATCH ----
+       * Towers, taught by being raided. Brand at the footing's own pace, but his doctrine RAIDS
+       * — he goes for outlying Gates — so a Gate with nothing standing over it is a Gate he
+       * takes. The objective counts springs held for a long while, so every Gate lost resets
+       * the clock: the lesson is that forward wealth is bought with stone and a garrison. */
+      key: 'watch', title: 'IV · The Watch', heir: 'brand', seed: 0x5ade08,
+      unlock: ['tower', 'tower:bolt', 'tower:cannon', 'barracks:line'],
+      opts: { eco: 0.85, hold: 240, noWalk: 1 },
+      brief: 'Brand the Unmaker does not want your throne yet. He wants your WELLS — he sends '
+           + 'small, fast companies at whatever Gate stands farthest from your guns, burns it, '
+           + 'and is gone before your host arrives.\n\n'
+           + 'A Watchtower sees far over Shadow and shoots what comes into reach. Archers and '
+           + 'sorcerers sent to one go INSIDE it, where nothing can touch them until the stone '
+           + 'falls. At level 2 it is rebuilt for good: a ballista for one great foe, a cannon '
+           + 'for a column.\n\n'
+           + 'Hold three springs, and keep all three for four minutes together.',
+      obj: OBJ.hold(3, 240),
+      won: 'Your wells stand under stone, and the Unmaker\'s raiders learned to count towers.',
+      hints: [
+        { when: (w) => w.t > 6, text: '♜ BUILD → Watchtower. Raise one beside a Gate out in Shadow' },
+        { when: (w, me) => w.players[me].buildings.some((b) => b.bt === 'tower' && !b.raise),
+          text: '⚐ Plant a company\'s standard on the tower — its archers climb inside' },
+        { when: (w, me) => w.players[me].buildings.some((b) => b.bt === 'barracks' && !b.raise && b.level === 1) && w.t > 120,
+          text: '🛡 A Shieldwall Barracks raises fewer men who survive the blow that kills a soldier' }
+      ]
+    },
+    {
+      key: 'blackroad', title: 'V · The Black Road', heir: 'brand', seed: 0x5ade04,
+      unlock: ['storm'],
       opts: { eco: 0.9, hold: 300, noWalk: 1 },
+      /* THE ROAD SENDS ITS OWN. A fiend grown huge comes out of the black road at four minutes
+       * and walks at the nearest city like any fiend — Chaos's, so it hates Brand exactly as
+       * much as it hates you, and where it walks is the whole question. */
+      bosses: [{ name: 'The Hound of Chaos', owner: C.CHAOS_ID, kind: 'fiend', hp: 40, dmg: 5, big: 2.6, at: 240 }],
       brief: 'The black road is open and Chaos is spilling through it. Brand the Unmaker is '
            + 'content to let it come — every fiend that gnaws your Gates is one he need not '
            + 'pay for.\n\n'
@@ -265,11 +362,40 @@
       hints: [
         { when: (w) => w.t > 6, text: '🌀 A company left standing on a spring is what keeps its Gate' },
         { when: (w) => (w.storms || []).length > 0 || w.t > 150,
-          text: '⚡ The Jewel calls down a storm — it is worth more on a rival than on the weather' }
+          text: '⚡ The Jewel calls down a storm — it is worth more on a rival than on the weather' },
+        { when: (w) => w.t > 236, text: '☠ Something enormous is coming up the black road. Do not meet it alone' }
       ]
     },
     {
-      key: 'pattern', title: 'V · The Pattern', heir: 'bleys', seed: 0x5ade05,
+      /* ---- VI · THE SPIRE ----
+       * Sorcery, and a boss to spend it on. Brand himself takes the field at three minutes —
+       * one man, but a man the size of a tower who mows down soldiers. Sorcerers are made for
+       * men (he IS one, so they can hit him); a Binder's chains slow him and make every blow on
+       * him land harder; a Warden keeps the line in front of him standing. The chapter is won
+       * the moment he falls, so it is a fight, not a siege. */
+      key: 'spire', title: 'VI · The Spire', heir: 'brand', seed: 0x5ade09,
+      unlock: ['spire', 'spire:warden', 'spire:binder'],
+      opts: { eco: 0.9, hold: 200, noWalk: 1 },
+      bosses: [{ name: 'Brand the Unmaker', owner: 1, kind: 'champion', hp: 9, dmg: 2.2, big: 1.9, at: 180 }],
+      brief: 'Brand has tired of sending others. He is coming himself — and the Unmaker in '
+           + 'his wrath is worth an army: no line of soldiers has stood against him for long.\n\n'
+           + 'But he is a MAN, and men can be undone. A Sorcery Spire sends Sorcerers, fragile '
+           + 'and deadly at range against anything of flesh. At level 2 it turns to one art: '
+           + 'WARDENS mend the men beside them, and BINDERS chain a foe so he walks slower and '
+           + 'every blow on him lands harder.\n\n'
+           + 'Bring down Brand the Unmaker.',
+      obj: OBJ.slay('Brand the Unmaker'),
+      won: 'The Unmaker is unmade, at least for today. Sorcery has its uses.',
+      hints: [
+        { when: (w) => w.t > 6, text: '🜏 BUILD → Sorcery Spire. Its sorcerers shred men, and are useless against stone' },
+        { when: (w, me) => w.players[me].buildings.some((b) => b.bt === 'spire' && !b.raise),
+          text: '🌘 Upgrade the Spire: Binders chain him, Wardens keep your line alive' },
+        { when: (w) => w.units.some((u) => u.boss === 'Brand the Unmaker'),
+          text: '☠ Brand takes the field. Hold him with men in front and sorcery behind' }
+      ]
+    },
+    {
+      key: 'pattern', title: 'VII · The Pattern', heir: 'bleys', seed: 0x5ade05,
       /* HE DOES NOT WALK, AND THE CHAPTER SAYS SO. Written the other way round first — the
        * rival already on the lines, you told to walk it before he did — and it was unwinnable
        * by its own stated route, because every heir walks at one rate and a walk cannot be
@@ -281,6 +407,7 @@
        * heavier handicap than any footing in this file. Measured on this board with a heir
        * standing in for the player: he steps on at 3.6m and is 85% along when his Seat falls at
        * 8.0m. A near miss for a bot who does not think to garrison his own Shrine. */
+      unlock: ['shrine'],
       opts: { eco: 0.75, hold: 420, noWalk: 1 },
       brief: 'Bleys of the Flame again, with the same realm behind him as the day you burned '
            + 'his forward wells. Nothing about him has changed — and he has no patience for the '
@@ -317,7 +444,8 @@
        * exactly as it would be in a skirmish.
        * The objective is springs and not a Seat, deliberately: what the truce buys is TIME, and
        * the chapter has to be won by having spent it on something. */
-      key: 'truce', title: 'VI · The Truce', heir: 'bleys', seed: 0x5ade07,
+      key: 'truce', title: 'VIII · The Truce', heir: 'bleys', seed: 0x5ade07,
+      unlock: ['trump'],
       opts: { eco: 0.9, hold: 200, rules: { truce: 1 }, pact: [1] },
       brief: 'Bleys again, and this time he sends a herald before he sends a column. Terms: '
            + 'neither of you lifts a hand against the other. They are already sworn — you will '
@@ -340,13 +468,61 @@
         { when: (w, me) => w.players[me].buildings.filter((b) => b.bt === 'gate' && !b.raise).length >= 2,
           text: '◆ Peace is time. Spend it on the ground, not on halls you do not yet need' },
         { when: (w, me) => !World().pactOn(w, me, 1),
-          text: '⚔ The truce is over — he has been mustering the whole time you were digging' }
+          text: '⚔ The truce is over — he has been mustering the whole time you were digging' },
+        { when: (w) => w.t > 30, text: '🃏 The Trump of Benedict calls the family champion to your Seat — one at a time' }
       ]
     },
     {
-      key: 'throne', title: 'VII · The Throne', heir: 'benedict', seed: 0x5ade06,
-      /* no leash at all: the heir the other heirs face */
+      /* ---- IX · THE WORKS ----
+       * Stone, and what breaks it. Julian builds: towers on his vantages, stone at his court,
+       * and every Gate he loses brings a tower after it. Archers and sorcerers cannot scratch
+       * any of it (`menOnly`) — the chapter is the lesson the throne will ask for in earnest,
+       * given early and with a tally rather than a Seat. */
+      key: 'works', title: 'IX · The Works', heir: 'julian', seed: 0x5ade0a,
+      unlock: ['siege', 'siege:ram', 'siege:bombard'],
+      opts: { eco: 1.0, hold: 300, noWalk: 1 },
+      brief: 'Julian, Warden of Arden, does not come out to fight. He builds — Gates under '
+           + 'towers, towers on every rise, stone wherever you have hurt him.\n\n'
+           + 'Your archers and sorcerers can do nothing to any of it: a shooter has no target '
+           + 'among works at all. A Siege Works builds Engines, slow and made for stone; at '
+           + 'level 2 the yard is re-tooled for RAMS, which must reach the wall to swing, or '
+           + 'BOMBARDS, guns on carts that must be escorted under the towers\' reach.\n\n'
+           + 'Throw down six of his works, any of them, anywhere.',
+      obj: OBJ.wreck(6),
+      won: 'Arden\'s stone lies in the grass. Nothing Julian raises will stand for long now.',
+      hints: [
+        { when: (w) => w.t > 6, text: '⚒ BUILD → Siege Works. Its Engines are what stone fears' },
+        { when: (w, me) => w.units.some((u) => u.owner === me && (u.kind === 'engine' || u.kind === 'ram' || u.kind === 'bombard')),
+          text: '⚔ Send the engines WITH a company — alone they die before they swing' }
+      ]
+    },
+    {
+      /* ---- X · THE THREE ----
+       * The first table of more than two: Bleys and Brand both, each the other's enemy as
+       * much as yours. Nobody walks, so it is settled by Seats — and a rival who breaks the
+       * other first comes out of it richer, so who you let fight whom is the chapter. */
+      key: 'three', title: 'X · The Three', heir: 'bleys', rivals: ['brand'], seed: 0x5ade0b,
+      opts: { players: 3, eco: 1.0, hold: 240, noWalk: 1 },
+      brief: 'The family does not wait its turn. Bleys and Brand have both taken the field, '
+           + 'and each would rather see the other broken than you — for now.\n\n'
+           + 'Three heirs, three Seats, and every man is everyone\'s enemy. A Seat that falls '
+           + 'puts its heir out of the succession for good. Let them bleed each other if you '
+           + 'can; strike the weaker when you must.\n\n'
+           + 'Be the last heir standing.',
+      obj: OBJ.last(false),
+      won: 'Two brothers broken, and the third road is yours. The family will remember it.',
+      hints: [
+        { when: (w) => w.t > 8, text: '⚐ Two rivals: they fight each other as gladly as they fight you' },
+        { when: (w, me) => w.players.some((q, i) => i !== me && q.out),
+          text: '⚔ One rival is out. The other has his ground now — strike before he holds it' }
+      ]
+    },
+    {
+      key: 'throne', title: 'XI · The Throne', heir: 'benedict', seed: 0x5ade06,
+      /* no leash at all: the heir the other heirs face — and at seven minutes, the Master of
+       * Arms himself, at the head of his host */
       opts: { eco: 1.0, hold: 60 },
+      bosses: [{ name: 'Benedict, Master of Arms', owner: 1, kind: 'champion', hp: 11, dmg: 2.8, big: 2.0, at: 420 }],
       brief: 'Nothing is held back now. Benedict, Master of Arms, with a realm behind him and '
            + 'no reason to wait.\n\n'
            + 'A Seat is two and a half thousand hit points behind whatever he has raised around '
@@ -356,7 +532,33 @@
       obj: OBJ.seat(),
       won: 'Amber is yours. The Pattern holds, and the black road answers to a name again.',
       hints: [
-        { when: (w) => w.t > 10, text: '⚒ A Siege Works raises Rams and Bombards — they are what stone fears' }
+        { when: (w) => w.t > 10, text: '⚒ A Siege Works raises Rams and Bombards — they are what stone fears' },
+        { when: (w) => w.t > 412, text: '☠ Benedict rides out himself. Chain him, storm him — do not trade swords with him' }
+      ]
+    },
+    {
+      /* ---- XII · THE SUCCESSION ----
+       * Everything, at once: three heirs, every road open to everyone, and the black road's
+       * own champion late in the day. Nothing here is new machinery — it is the whole game,
+       * asked for in earnest. */
+      key: 'succession', title: 'XII · The Succession', heir: 'benedict', rivals: ['bleys', 'brand'],
+      seed: 0x5ade0c,
+      opts: { players: 4, eco: 1.0, hold: 120 },
+      bosses: [{ name: 'The Serpent of Chaos', owner: C.CHAOS_ID, kind: 'fiend', hp: 70, dmg: 7, big: 3.2, at: 600 }],
+      brief: 'Benedict, Bleys and Brand. Every heir who still lives has come to the board, '
+           + 'and nothing is held back from any of them: the halls, the stone, the engines, '
+           + 'the Jewel — and the Pattern, which any of them may walk the moment he dares.\n\n'
+           + 'Watch the board as much as the field. A rival on the lines burns on every map, '
+           + 'and the others will turn on him; so will you, or he will be king. And late in '
+           + 'the day the black road sends the Serpent, which serves nobody.\n\n'
+           + 'Win the succession.',
+      obj: OBJ.last(true),
+      won: 'The last of them is broken. Amber has a king again, and the Pattern knows his name.',
+      hints: [
+        { when: (w) => w.t > 8, text: '✴ Every heir may walk the Pattern here — watch the board, top right' },
+        { when: (w) => w.players.some((q) => q.walking),
+          text: '⚔ Somebody is on the lines. Whoever is walking is everybody\'s enemy' },
+        { when: (w) => w.t > 596, text: '☠ The Serpent of Chaos is loose. It serves nobody — let it find your rivals first' }
       ]
     }
   ];
@@ -387,15 +589,52 @@
   };
   /* A CHAPTER IS OPEN IF THE ONE BEFORE IT IS DONE. The first is always open, and a cleared
    * chapter stays open — a level you liked is a level you may play again. */
+  /* ...AND A CLEARED CHAPTER IS OPEN WHATEVER WAS INSERTED BEFORE IT. Chapters were added
+   * between old ones (2026-10): a player who had cleared the old fourth keeps it open even
+   * though the new fourth, before it now, is not done. */
   CAMPAIGN.open = function (k) {
     const i = CAMPAIGN.indexOf(k);
     if (i <= 0) return true;
-    return CAMPAIGN.cleared(CAMPAIGN.CHAPTERS[i - 1].key);
+    return CAMPAIGN.cleared(k) || CAMPAIGN.cleared(CAMPAIGN.CHAPTERS[i - 1].key);
   };
   /* the first chapter not yet cleared — what the menu button offers */
   CAMPAIGN.next = function () {
     return CAMPAIGN.CHAPTERS.find((c2) => !CAMPAIGN.cleared(c2.key)) || null;
   };
+  /* ---------------- what each chapter hands you ----------------
+   * `unlock` is cumulative down the table: a chapter allows everything every chapter before it
+   * unlocked, and its own. `allowFor` is that list as `rules.allow` takes it, or null once
+   * nothing is held back any more — so the last chapters play the whole game by the same door
+   * a skirmish does. */
+  const everything = () => {
+    const all = [];
+    for (const bt of C.BUILD_ORDER_UI) {
+      all.push(bt);
+      for (const br of C.BUILDINGS[bt].branchUI || []) all.push(bt + ':' + br);
+    }
+    for (const k of Object.keys(C.POWERS)) all.push(k);
+    return all;
+  };
+  CAMPAIGN.allowFor = function (chapter) {
+    const i = CAMPAIGN.CHAPTERS.indexOf(chapter);
+    const got = new Set();
+    for (let k = 0; k <= (i < 0 ? CAMPAIGN.CHAPTERS.length - 1 : i); k++)
+      for (const u of CAMPAIGN.CHAPTERS[k].unlock || []) got.add(u);
+    const all = everything();
+    return all.every((u) => got.has(u)) ? null : all.filter((u) => got.has(u));
+  };
+  CAMPAIGN.unlocksOf = (chapter) => (chapter.unlock || []).slice();
+  /* the name a player reads for an unlock key: the work, the branch's own name, or the power */
+  CAMPAIGN.unlockLabel = function (key) {
+    const cut = key.indexOf(':');
+    if (cut > 0) {
+      const b2 = C.BUILDINGS[key.slice(0, cut)].branches[key.slice(cut + 1)];
+      return b2.icon + ' ' + tr(b2.short || b2.name);
+    }
+    const d = C.BUILDINGS[key] || C.POWERS[key];
+    return d ? d.icon + ' ' + tr(d.name) : key;
+  };
+
   CAMPAIGN.reset = function () {
     try { global.localStorage.removeItem(KEY); } catch (e) {}
   };
