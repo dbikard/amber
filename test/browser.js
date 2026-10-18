@@ -25,8 +25,12 @@ track(path.join(ROOT, 'index.html'));
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
+/* where Playwright may live: a plain require, the box's stable tools dir (~/tools/pw — Node 18
+ * pins playwright@1.55.1, see LEDGER), and the old /opt path. `AMBER_PLAYWRIGHT` outranks all. */
 function loadPlaywright() {
-  for (const p of ['playwright', '/opt/node22/lib/node_modules/playwright']) {
+  const home = process.env.HOME || '';
+  for (const p of [process.env.AMBER_PLAYWRIGHT, 'playwright', path.join(home, 'tools/pw/node_modules/playwright'),
+                   '/opt/node22/lib/node_modules/playwright'].filter(Boolean)) {
     try { return require(p); } catch (e) { /* keep looking */ }
   }
   return null;

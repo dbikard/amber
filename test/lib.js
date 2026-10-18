@@ -156,4 +156,4 @@ function wallRig(World, C, { seed = 20260810, crews = 8, runs = 1, len = 200, pl
   return { w, pl, city: c, start, built, finish, walls: pl.buildings.filter((b) => b.bt === 'wall') };
 }
 
-module.exports = { suite, ok, eq, near, report, results, record, track, wallRig };
+module.exports = { suite, ok, eq, near, report, results, record, track, wallRig, timing };

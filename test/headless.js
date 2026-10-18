@@ -13,8 +13,9 @@ const { CONST: C, World, NAV, AI, Net, LanLink, Rec, WorldGen: WG, CAMPAIGN, REA
 const { suite, ok, eq, near, report, wallRig } = require('./lib.js');
 
 /* ---- --quick: a partial pass for the edit loop ----
- * The full run is ~6 minutes and its own timing line names where they go — the solo ladder
- * alone is ~170s of bot-vs-bot matches. --quick skips exactly the sim-heavy suites marked
+ * The full run is ~16 minutes on one core (test/run.js deals it into shares — see
+ * test/shard.js) and its own timing line names where they go — the solo ladder alone is
+ * ~150s of bot-vs-bot matches. --quick skips exactly the sim-heavy suites marked
  * with QUICK() below and says so LOUDLY beside the tally, on its own lines, so the
  * "headless: N/N passing" line that other tools grep is untouched.
  * THE FULL SUITE (no flag) STAYS THE GATE BEFORE ANY PUSH — a skipped suite vouches for

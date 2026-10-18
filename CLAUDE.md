@@ -301,6 +301,15 @@ progress. AI reads only what a human could see (see `AI.view()`).
   `chromium_headless_shell-<rev>`, so a "no Chromium" skip on a box with one reported green by
   reporting nothing); and **`process.exit` truncates a piped stdout**: set `process.exitCode`
   and let the process end. (→ LEDGER: `node test/run.js` runs the two suites AT ONCE)
+  **AND THE HEADLESS HALF RUNS IN SHARES** (`test/shard.js`, 2026-10-18): one process was ~990s
+  of suites on one core. A share keeps the preamble, the tail and every top-level declaration,
+  and BLANKS (never deletes — line numbers hold) the chunks it does not own; chunks are dealt
+  longest-first from `test/suite-times.json`, which a full run rewrites. The printed
+  `headless: X/Y passing` is the SUM, and it must equal what `node test/headless.js` alone
+  counts — a short total is a chunk that ran nowhere. A helper written between suites must be
+  a top-level `const`/`function` statement, or a share that skips its chunk loses it.
+  **Playwright lives in `~/tools/pw`** on the designer's box (Node 18 pins playwright@1.55.1);
+  `browser.js` looks there, and `AMBER_PLAYWRIGHT` outranks every path.
 - **THE FLOOR IS ES2017, AND THE BOOT SAYS WHAT KILLED IT** (2026-09-05, from a photograph of
   an iPad: the menu crammed into a corner, every card as wide as the screen, no footing row, and
   no button doing anything). Two failures, one cause: an engine that does not know a thing DROPS
