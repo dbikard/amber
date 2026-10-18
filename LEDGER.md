@@ -452,6 +452,24 @@ catch-up steps a frame with no time limit: on a device where a step costs 60ms t
 spiral, so stepping now stops after SIM_BUDGET (24ms) of a frame and drops the banked time.
 Renderer JS in the same war: ~4-5ms a frame, atmosphere on or off (the GPU half cannot be
 measured under swiftshader — hence `?atmos=0`).
+
+**The second pass, same day (play allowed to change).** A/B on the same war, both trees in one
+session (this box's run-to-run noise is ±25%): mean tick 9.2 → 6.8ms, p95 18.9 → 15.5, worst
+80-120 → ~60. Per phase after it: unit loop 3.2ms, crowd 1.5, vision 1.0, manning 0.6, muster
+0.5. What moved it: (1) a man with NOBODY in reach searched every tick — "nothing" was never
+cached — and 95% of the unit loop was such men (580 marching at 5.3us, 160 standing at 4us);
+he now asks on a QUIET (6-tick) stagger and at once when struck: the one PLAY change (a fifth
+of a second to notice a foe walking into reach) — and gated on `rules.reach`, because it
+moved the referee's quick run both ways at n=6 and a duel's few hundred men never needed it. Exact, hash-held: jostle fetches neighbour
+cells once per cell; `seatOf` memoised on an ownership version; a field remembers each cell's
+descent (`f.dc`); the memory OR walks the cast box; ghosts are rewritten only when they
+change. Tried and REVERTED: casting vision once per 2x2 block with a widened radius (vision
+0.97 → 0.85ms only — the wider casts ate the saving — and the fog moved enough to change the
+AI's war); a column re-planning its heading at 15 Hz (no gain, play changed). Render side: a
+detail tile bakes in 20-50ms at 1.1 px/unit on this desktop (12-25 at 0.45-0.6), so a frozen
+frame per tile on a phone while panning — the bake now times itself and steps its resolution
+down past 30ms (`TILE_PX`); and on a touch device the canvas's pixel ratio steps down (2 →
+1.5 → 1.25 → 1) while frames run under ~25 a second.
 ### AND THE STONE NEAR A MAN IS BINNED TOO
 
 `stand` (via `project`) and `steerClear` each walked every building of every player, per man,

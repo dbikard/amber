@@ -415,8 +415,17 @@
     if (!f) return null;
     /* the descent direction OF one cell: centre toward its best neighbour's centre */
     const at = NAV.fieldAt;
+    /* A CELL'S DESCENT IS ASKED ONCE PER FIELD, NOT ONCE PER MAN PER TICK (2026-10-18). A field
+     * never changes after it is built, so the best neighbour of a cell is a fact about the field:
+     * it is worked out the first time anyone asks and kept on the field (`f.dc`, one byte a
+     * window cell: 0-7 the neighbour in the scan order below, 8 none, 255 not yet asked). The
+     * scan and its strict `<` are unchanged, so the first-best neighbour is the same one. */
+    const dc = f.dc || (f.dc = new Uint8Array(f.w * f.h).fill(255));
     const dirOf = (ci) => {
       const cx = ci % W, cy = (ci - cx) / W;
+      const lx = cx - f.x0, ly = cy - f.y0;
+      const li = (lx >= 0 && ly >= 0 && lx < f.w && ly < f.h) ? ly * f.w + lx : -1;
+      if (li >= 0 && dc[li] !== 255) return dc[li] === 8 ? null : DIRS[dc[li]];
       let bd = at(f, ci), bi = -1;
       for (let dy = -1; dy <= 1; dy++) {
         const ny = cy + dy;
@@ -429,17 +438,18 @@
           if (fv < bd) { bd = fv; bi = ni; }
         }
       }
-      if (bi < 0) return null;
+      if (bi < 0) { if (li >= 0) dc[li] = 8; return null; }
       const bx = bi % W, by = (bi - bx) / W;
-      const dx = bx - cx, dy = by - cy, L = Math.sqrt(dx * dx + dy * dy) || 1;
-      return { x: dx / L, y: dy / L };
+      const k = DIRK[(by - cy + 1) * 3 + (bx - cx + 1)];
+      if (li >= 0) dc[li] = k;
+      return DIRS[k];
     };
     /* the contract first: standing where the field has no downhill — the goal cell, or a
      * pocket the goal cannot be reached from — is still null, and a man on unreachable
      * ground still gets the single-cell answer that walks him out */
     const own = dirOf(here);
     if (!own) return null;
-    if (at(f, here) === Infinity) return own;
+    if (at(f, here) === Infinity) return { x: own.x, y: own.y };
     /* blend the four samples around him, skipping cells the field never reached */
     const fx = x / cw - 0.5, fy = y / cw - 0.5;
     const cx0 = Math.floor(fx), cy0 = Math.floor(fy);
@@ -459,9 +469,18 @@
     const L = Math.sqrt(vx * vx + vy * vy);
     /* opposing samples cancelling (a ridge in the field) is not a heading — take the old
      * single-cell answer rather than a near-zero vector amplified to full stride */
-    if (wsum < 1e-6 || L < 0.25 * wsum) return own;
+    if (wsum < 1e-6 || L < 0.25 * wsum) return { x: own.x, y: own.y };
     return { x: vx / L, y: vy / L };
   };
+  /* the eight unit steps in dirOf's scan order (dy -1..1, dx -1..1, the centre skipped), and
+   * the code of each, (dy+1)*3+(dx+1) — the same arithmetic the per-call version did */
+  const DIRS = [], DIRK = new Int8Array(9).fill(-1);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const L = Math.sqrt(dx * dx + dy * dy) || 1;
+    DIRK[(dy + 1) * 3 + (dx + 1)] = DIRS.length;
+    DIRS.push(Object.freeze({ x: dx / L, y: dy / L }));
+  }
 
   /* every site must be standable and reachable from the Seat — asserted at world creation */
   NAV.audit = function (nav, map) {

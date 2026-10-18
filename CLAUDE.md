@@ -1121,7 +1121,13 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   **AND THE FRAME LOOP GIVES THE SIM A SLICE, NOT THE FRAME** (game.js `SIM_BUDGET`, 24ms): six
   untimed catch-up steps on a phone were the death spiral; past the budget the banked time is
   dropped and a weak device plays slower than the clock instead of freezing. `?atmos=0|1`
-  switches the look from the address bar, remembered. (→ LEDGER: A COUNTRY PAYS FOR ITS OWN PATHFINDING)
+  switches the look from the address bar, remembered. **A MAN WHO FOUND NOBODY ASKS AGAIN ON A
+  STAGGER** — in a COUNTRY only (`QUIET`, 6 ticks, `rules.reach`; `hurt` clears it; a duel is
+  untouched, so the referee is): "nothing in reach" was never cached, and such
+  men were 95% of a country's unit loop. **A FIELD REMEMBERS EACH CELL'S DESCENT** (`f.dc`).
+  **THE RENDERER FITS THE DEVICE**: a detail tile's bake resolution steps down when bakes run
+  past 30ms (`TILE_PX`), and on a touch device the canvas pixel ratio steps down while frames
+  run under ~25/s (`dynRes`). (→ LEDGER: A COUNTRY PAYS FOR ITS OWN PATHFINDING)
 - **AND THE STONE NEAR A MAN IS BINNED TOO.** `rebin` binned only the MEN while `stand` (via
   `project`) and `steerClear` walked every building of every player **per man, per tick** —
   the reported lag on a country. `world.wbins` is rebuilt once a tick in `rebin` (O(works), so

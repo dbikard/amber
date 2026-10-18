@@ -404,8 +404,18 @@
      * Which of his sworn lords the player is hand-playing is a choice, but it is his client's
      * (see `game.hand`), not the world's: it changes who issues an order, never who owns
      * what, so it has no business crossing the wire or ending up in a snapshot. */
-    return world.cities.find((c) => c.owner === pi) || world.cities[pi] || null;
+    /* MEMOISED, because it is asked twice per man per tick by the march alone and walked the
+     * cities each time. The memo is keyed on the cities' OWNERSHIP, stamped by `ownersChanged`
+     * at every place an owner is written — so it can never answer for a court as it was. */
+    let memo = world._seatMemo;
+    if (!memo || memo.v !== (world._ownV || 0) || memo.cities !== world.cities)
+      memo = world._seatMemo = { v: world._ownV || 0, cities: world.cities, at: [] };
+    const hit = memo.at[pi + 1];
+    if (hit !== undefined) return hit;
+    return (memo.at[pi + 1] = world.cities.find((c) => c.owner === pi) || world.cities[pi] || null);
   };
+  /* every write to a city's `owner` calls this, or seatOf's memo answers for the old map */
+  const ownersChanged = (world) => { world._ownV = (world._ownV || 0) + 1; };
   const citiesOf = (world, pi) => (world.cities || []).filter((c) => c.owner === pi);
   /* ---- A COURT THAT HAS FALLEN IS OUT OF THE FIGHT UNTIL IT SWEARS ----
    * Reported from play: a Seat yields, the claimant stands his twenty seconds in the court, and
@@ -1638,13 +1648,18 @@
       }
     };
     for (const cell of grid.values()) for (const u of cell) { u._cx = 0; u._cy = 0; u._cn = 0; u._pr = 0; }
+    /* the four neighbour cells fetched ONCE per cell, not once per man in it — the same pairs
+     * in the same order, so the same pushes to the digit */
+    const nbr = [null, null, null, null];
     for (const [k, cell] of grid) {
+      for (let q = 0; q < 4; q++) nbr[q] = grid.get(k + NB[q][1] * 100003 + NB[q][0]) || null;
       for (let i = 0; i < cell.length; i++) {
-        for (let j = i + 1; j < cell.length; j++) part(cell[i], cell[j]);
-        for (const [dx, dy] of NB) {
-          const other = grid.get(k + dy * 100003 + dx);
+        const a = cell[i];
+        for (let j = i + 1; j < cell.length; j++) part(a, cell[j]);
+        for (let q = 0; q < 4; q++) {
+          const other = nbr[q];
           if (!other) continue;
-          for (let j = 0; j < other.length; j++) part(cell[i], other[j]);
+          for (let j = 0; j < other.length; j++) part(a, other[j]);
         }
       }
     }
@@ -2115,6 +2130,12 @@
     if (src && src.g) {
       const g = mask.g, m = src.g;
       if (src.gw === mask.gw && src.gh === mask.gh) {
+        if (src.x0 != null) {   // a live mask knows the box its casts could reach
+          const W = src.gw;
+          for (let y = src.y0; y <= src.y1; y++)
+            for (let i = y * W + src.x0, e = y * W + src.x1; i <= e; i++) if (m[i] && !g[i]) { g[i] = 1; mask.v++; }
+          return mask;
+        }
         for (let i = 0; i < m.length; i++) if (m[i] && !g[i]) { g[i] = 1; mask.v++; }
         return mask;
       }
@@ -2350,9 +2371,17 @@
     if (!m || m.length !== n) m = bufs[pi] = new Uint8Array(n);
     else m.fill(0);
     const ded = new Map();
+    /* THE BOX THE CASTS COULD HAVE TOUCHED, so the memory's OR (markSeen) walks that and not a
+     * whole country grid sixteen times over, five times a second */
+    let bx0 = s.gw, by0 = s.gh, bx1 = -1, by1 = -1;
+    const grow = (cx, cy, rc) => {
+      const r = Math.ceil(rc) + 1;
+      if (cx - r < bx0) bx0 = cx - r; if (cy - r < by0) by0 = cy - r;
+      if (cx + r > bx1) bx1 = cx + r; if (cy + r > by1) by1 = cy + r;
+    };
     for (let i = 0; i < src.length; i++) {
       const q = src[i];
-      if (q[3]) { fillDisc(s, m, q[0], q[1], q[2]); continue; }   // A WALK IS PUBLIC
+      if (q[3]) { fillDisc(s, m, q[0], q[1], q[2]); grow((q[0] / cw) | 0, (q[1] / cw) | 0, q[2] / cw); continue; }   // A WALK IS PUBLIC
       let gx = (q[0] / cw) | 0, gy = (q[1] / cw) | 0;
       gx = gx < 0 ? 0 : gx >= s.gw ? s.gw - 1 : gx;
       gy = gy < 0 ? 0 : gy >= s.gh ? s.gh - 1 : gy;
@@ -2360,9 +2389,14 @@
       const held = ded.get(key);
       if (held === undefined || held < B) ded.set(key, B);
     }
-    for (const [key, B] of ded) castFrom(s, m, key % s.gw, (key / s.gw) | 0, B);
-    /* the same {g,gw,gh,cell} shape as pl.seen — the renderer's veil reads both */
-    return { g: m, gw: s.gw, gh: s.gh, cell: cw };
+    for (const [key, B] of ded) {
+      const cx = key % s.gw, cy = (key / s.gw) | 0;
+      castFrom(s, m, cx, cy, B);
+      grow(cx, cy, B);
+    }
+    /* the same {g,gw,gh,cell} shape as pl.seen — the renderer's veil reads both — plus the box */
+    return { g: m, gw: s.gw, gh: s.gh, cell: cw,
+             x0: Math.max(0, bx0), y0: Math.max(0, by0), x1: Math.min(s.gw - 1, bx1), y1: Math.min(s.gh - 1, by1) };
   }
   const maskAt = (v, x, y) => {
     const gx = (x / v.cell) | 0, gy = (y / v.cell) | 0;
@@ -2425,13 +2459,22 @@
      * as a ghost — last seen, where it stood — once you cannot. No more veiled-slot bookkeeping. */
     for (let o = 0; o < world.players.length; o++) {
       for (const b of world.players[o].buildings) {
+        if (o !== pi) {
+          const e = b.x2 != null ? wallEnds(b) : null;
+          if (!(see1(b.x, b.y) || (e && (see1(e[0], e[1]) || see1(e[2], e[3]))))) continue;
+        }
+        /* REWRITTEN ONLY WHEN IT CHANGED: every realm re-made a fresh ghost for every work of
+         * every player five times a second — thousands of objects a refresh on a country, for
+         * a memory whose content had not moved. Same fields, same memory. */
+        const was = pl.ghosts[b.id];
+        if (was && was.bt === b.bt && was.level === b.level && was.x === b.x && was.y === b.y &&
+            was.owner === o && was.x2 === (b.x2 != null ? b.x2 : undefined) &&
+            was.y2 === (b.y2 != null ? b.y2 : undefined)) continue;
         /* a wall is remembered as the LINE it was, ends and all — a curtain recalled as a
          * dot on the map is no use to the heir deciding where to break through */
         const g = { bt: b.bt, level: b.level, x: b.x, y: b.y, owner: o };
         if (b.x2 != null) { g.x2 = b.x2; g.y2 = b.y2; }
-        if (o === pi) { pl.ghosts[b.id] = g; continue; }
-        const e = b.x2 != null ? wallEnds(b) : null;
-        if (see1(b.x, b.y) || (e && (see1(e[0], e[1]) || see1(e[2], e[3])))) pl.ghosts[b.id] = g;
+        pl.ghosts[b.id] = g;
       }
     }
   }
@@ -3469,6 +3512,7 @@
      * pact partner on their own; this is what makes a MISSED one a no-op rather than an arrow.
      * `byOwner` may be Chaos, which is a foe of everyone and so passes. */
     if (byOwner != null && !foe(world, byOwner, victim.owner)) return;
+    victim._q = 0;   // struck: he looks for whoever did it on the next tick, not his stagger
     /* THE TOWER IS THE SHIELD. A garrison used to stand on the crown and be shot like a man on
      * a parapet, which made filling a tower a way to lose archers slightly further from home:
      * a bombard's burst took the lot, and a tower's whole worth is that it is a ROOM. Inside,
@@ -3570,6 +3614,7 @@
    * same tick. Only UNIT targets are cached: works and Seats are found by a walk of a short
    * list, they are chosen by rules that read the whole field, and they are not the hot path. */
   const RETARGET = 15;
+  const QUIET = 6;   // ticks between searches for a man who found nobody — see acquire
   function cached(world, u, radius) {
     const v = u._t;
     /* re-validated as a FOE and not merely as somebody else's: a pact sealed while two men are
@@ -3617,6 +3662,16 @@
     if ((world.tick + u.id) % RETARGET !== 0) {
       const held = cached(world, u, radius);
       if (held) return held;
+      /* ---- NOTHING IN REACH IS REMEMBERED TOO ----
+       * A man with a target re-searched twice a second; a man with NONE searched every tick,
+       * because "nothing" was never kept — and in a war most of a thousand men are marching or
+       * standing with nobody near (measured: the target search was the largest share of a
+       * country's tick). He asks again on his own stagger, QUIET ticks apart, and at once when
+       * he is struck (`hurt` clears it). Reacting a fifth of a second later to a foe walking
+       * into reach is the whole price. */
+      /* A COUNTRY'S RULE ONLY: a duel's few hundred men never needed it, and its balance is
+       * refereed (sim.js) — off the reach law the search runs every tick exactly as it did */
+      if (u._q && world.rules.reach && (world.tick + u.id) % QUIET !== 0) return null;
     }
     /* a fallen heir has nothing left to attack — and their Seat is a ruin, not a target */
     let best = null, bestD = radius, kind = null, bx = 0, by = 0;
@@ -3736,6 +3791,7 @@
       consider(d, { pi: ci, id }, 'work', ax, ay);
     }
     u._t = kind === 'unit' ? best : null;
+    u._q = best ? 0 : 1;
     return best ? { t: best, kind, d: bestD, x: bx, y: by } : null;
   }
 
@@ -4921,7 +4977,7 @@
     /* WHO IT FELL FROM, kept: the take (holdCities) comes long after the yield — by then
      * `owner` says nobody — and a chronicle of a war wants to know whose court this was */
     city.fell = pi;
-    city.owner = -1;
+    city.owner = -1; ownersChanged(world);
     city.hp = 0;
     city.yield = world.t;
     city.hold = null;                 // {pi, since} — who is standing in the court, and since when
@@ -4988,7 +5044,7 @@
         world.players[lord].out = false;
         refound(world, lord);
       }
-      city.owner = lord;
+      city.owner = lord; ownersChanged(world);
       city.hp = Math.max(1, city.maxHp * C.CITY.back);
       city.level = 1;
       city.cd = 0;
@@ -5141,7 +5197,7 @@
    * test can flip it between two plays of the SAME seeded country and compare man for man. */
   global.World = { slowWorks: false,
                    createWorld, applyCommand, update, upgradeCost, towerStats, canSee, cityOf, declare,
-                   allowed, allowedBranches, spawnBoss,
+                   allowed, allowedBranches, spawnBoss, ownersChanged,
                    visionSources, workSeen, ghostsFor, walkers, placementError, inClaim, nodeAt, nodeHolder, bldOf, crosses,
                    /* noteWalls is out here for ONE caller: the realm's restore, which lays
                     * saved runs back onto a fresh board and must rebuild the standing set —

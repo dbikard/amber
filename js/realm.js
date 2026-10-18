@@ -270,6 +270,7 @@
     for (let i = 0; i < world.cities.length && i < rec.cities.length; i++) {
       const c = world.cities[i], r = rec.cities[i];
       c.owner = r[0]; c.hp = r[1]; c.level = r[2];
+      if (World().ownersChanged) World().ownersChanged(world);   // seatOf's memo must not outlive it
       if (r[3]) c.razed = 1;
       if (r[4] >= 0) c.fell = r[4];
       c.hold = null; c.cd = 0;

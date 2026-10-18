@@ -16,7 +16,8 @@
  * each to the share with the least work so far. The 150-second ladder gets a share to itself.
  *
  * THE CONTROL: the shares' tallies must add up to the whole file's — run.js prints the sum and
- * the count of shares, and a chunk that silently ran nowhere would show as a short total. */
+ * the count of shares, and a chunk that silently ran nowhere would show as a short total.
+ * `AMBER_ONLY='muster ground' node test/shard.js 0 1` runs just the matching suites. */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -44,6 +45,13 @@ function chunksOf(lines) {
 }
 
 function plan(chunks, n) {
+  /* AMBER_ONLY=<regex>: run only the chunks whose suite names match, all in share 0 — the way
+   * to re-run one failing suite in seconds instead of the whole file */
+  if (process.env.AMBER_ONLY) {
+    const re = new RegExp(process.env.AMBER_ONLY, 'i'), owner = new Map();
+    chunks.forEach((c, i) => owner.set(i, c.names.some((nm) => re.test(nm)) ? 0 : -1));
+    return owner;
+  }
   let times = {};
   try { times = JSON.parse(fs.readFileSync(TIMES, 'utf8')); } catch (e) { times = {}; }
   const load = new Array(n).fill(0), owner = new Map();

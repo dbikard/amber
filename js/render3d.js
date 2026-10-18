@@ -1223,7 +1223,7 @@
   R.resize = function () {
     if (!renderer) return;
     W = window.innerWidth; H = window.innerHeight;
-    renderer.setSize(W, H);
+    renderer.setSize(W, H);   // keeps whatever pixel ratio dynRes settled on
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     overlay.width = W * dpr; overlay.height = H * dpr;
     overlay.style.width = W + 'px'; overlay.style.height = H + 'px';
@@ -2980,9 +2980,39 @@
   };
 
   /* ---------------- per-frame ---------------- */
+  /* ---- DYNAMIC RESOLUTION, ON A PHONE (2026-10-18, a war lagging on Android) ----
+   * The 3D canvas drew at up to twice the CSS pixels — near full-HD of veiled, lit, textured
+   * ground on most phones. On a TOUCH device whose frames run slower than ~25 a second for a
+   * few seconds the pixel ratio steps down (2 → 1.5 → 1.25 → 1), and back up after a long run
+   * of headroom. The overlay, the HUD and every input path are in CSS pixels and do not care.
+   * Off on a desktop by construction, so the pixel-measuring suites never see it move. */
+  const DYN = { steps: [2, 1.5, 1.25, 1], slow: 0.040, fast: 0.022, ema: null, since: 0 };
+  let dynOn = null, dynIdx = 0;
+  function dynRes(dt) {
+    if (dynOn === null) {
+      dynOn = typeof window !== 'undefined' && (navigator.maxTouchPoints || 0) > 0 &&
+              !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+      const top = Math.min(window.devicePixelRatio || 1, 2);
+      dynIdx = Math.max(0, DYN.steps.findIndex((r2) => r2 <= top));
+    }
+    if (!dynOn || !(dt > 0) || dt > 0.25) return;      // a stall (tab switch, GC) is not a trend
+    DYN.ema = DYN.ema == null ? dt : DYN.ema * 0.95 + dt * 0.05;
+    DYN.since += dt;
+    let want = dynIdx;
+    if (DYN.ema > DYN.slow && DYN.since > 3 && dynIdx < DYN.steps.length - 1) want = dynIdx + 1;
+    else if (DYN.ema < DYN.fast && DYN.since > 8 && dynIdx > 0 &&
+             DYN.steps[dynIdx - 1] <= Math.min(window.devicePixelRatio || 1, 2)) want = dynIdx - 1;
+    if (want !== dynIdx) {
+      dynIdx = want; DYN.since = 0; DYN.ema = null;
+      renderer.setPixelRatio(DYN.steps[dynIdx]);
+      renderer.setSize(W, H);
+    }
+  }
+  R.debugPixelRatio = () => renderer ? renderer.getPixelRatio() : null;
   R.frame = function (view, viewer, dt) {
     if (!R.ready) return;
     T += dt; lastDt = dt;
+    dynRes(dt);
     curViewer = viewer; curView = view;
     if (mapKey(view, viewer) !== lastKey) buildWorld(view, viewer);
 
@@ -3255,6 +3285,9 @@
    * relief, and the stalest off-view tile is retired past twelve resident. Every mesh hangs
    * in worldG, so a new match's sweep disposes them wholesale — the manager only has to
    * forget its handles (buildWorld resets tileMap). */
+  const TILE_PX = [1.1, 0.8, 0.6, 0.45], TILE_SLOW = 30, TILE_FAST = 8;
+  let tilePx = 1.1, tileCost = null;
+  R.debugTilePx = () => tilePx;   // test handle: the resolution the device has settled on
   function updateTiles(view, viewer) {
     if (!tiled || !tileMap) return;
     const cx = R.camX + viewW / 2, cy = R.camY + viewH * 0.5;
@@ -3299,7 +3332,18 @@
       const ix = +key.split(':')[0], iy = +key.split(':')[1];
       const rect = { x0: ix * TILE, y0: iy * TILE,
                      x1: Math.min(mapW, (ix + 1) * TILE), y1: Math.min(mapH, (iy + 1) * TILE) };
-      const bk = global.Terrain.bake(view, viewer, { props: false, labels: false, rect, px: 1.1 });
+      const bakeT0 = performance.now();
+      const bk = global.Terrain.bake(view, viewer, { props: false, labels: false, rect, px: tilePx });
+      /* ---- THE TILE'S DETAIL IS THE DEVICE'S TO AFFORD (2026-10-18, a war on a phone) ----
+       * A tile bakes in 20-50ms on a desktop at 1.1 px/unit, so several times that on a phone —
+       * a frozen frame every time the thumb drags onto new ground. The bake times itself; past
+       * TILE_SLOW ms (smoothed) the next tiles bake a step coarser, under TILE_FAST a step
+       * finer, never outside TILE_PX. The shader's own grain (the atmosphere's detail map)
+       * carries the close-up texture a coarser bake gives up. A desktop stays at 1.1. */
+      tileCost = tileCost == null ? performance.now() - bakeT0 : tileCost * 0.6 + (performance.now() - bakeT0) * 0.4;
+      const pi = TILE_PX.indexOf(tilePx);
+      if (tileCost > TILE_SLOW && pi < TILE_PX.length - 1) { tilePx = TILE_PX[pi + 1]; tileCost = null; }
+      else if (tileCost < TILE_FAST && pi > 0) { tilePx = TILE_PX[pi - 1]; tileCost = null; }
       const w = rect.x1 - rect.x0, h = rect.y1 - rect.y0;
       const geo = new THREE.PlaneGeometry(w, h,
         Math.min(96, Math.round(w / 25)), Math.min(96, Math.round(h / 25)));

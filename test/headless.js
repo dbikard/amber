@@ -1846,6 +1846,11 @@ suite('the muster ground')
 {
   const w = World.createWorld(1000), pl = w.players[0], c = World.cityOf(w, 0);
   pl.essence = 99000;
+  /* NO CHAOS: the claim is where an army FORMS UP. With the black road open a man chasing a
+   * fiend out of the court is three hundred out at whatever instant the fiends happen to come —
+   * measured on the old code as well as the new (297 at 291s, 298 at 341s, back to 183 at
+   * rest), so the rim assertion below read the dice rather than the muster (2026-10-18). */
+  w.chaosNext = 1e9;
   let built = 0;
   for (let a = 0; a < 40 && built < 3; a++) {
     const th = a / 40 * Math.PI * 2, x = c.x + Math.cos(th) * 200, y = c.y + Math.sin(th) * 200;
