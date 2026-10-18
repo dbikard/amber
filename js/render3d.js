@@ -1188,6 +1188,13 @@
       /* tone mapping is compiled into every program: they must be rebuilt once */
       scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
     };
+    /* `?atmos=0` / `?atmos=1` switches it from the address bar and is remembered — the one way
+     * to ask a phone whether the look is what costs it frames, without a build */
+    try {
+      const q = /[?&]atmos=([01])/.exec(window.location.search || '');
+      if (q) localStorage.setItem('amber_atmos', q[1]);
+      if (localStorage.getItem('amber_atmos') === '0') R.atmos = false;
+    } catch (e) { /* no storage: the default */ }
     R.setAtmos(R.atmos !== false);
     /* far plane has to clear the whole board from the furthest zoom, or the world clips
      * to black at the edges when you pull out */

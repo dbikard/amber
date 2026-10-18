@@ -308,7 +308,7 @@ progress. AI reads only what a human could see (see `AI.view()`).
   `headless: X/Y passing` is the SUM, and it must equal what `node test/headless.js` alone
   counts — a short total is a chunk that ran nowhere. A helper written between suites must be
   a top-level `const`/`function` statement, or a share that skips its chunk loses it.
-  **Playwright lives in `~/tools/pw`** on the designer's box (Node 18 pins playwright@1.55.1);
+  **Playwright lives in `~/tools/pw`** on the designer's box (playwright@1.55.1; Node 24 LTS in `~/.local/node` — the apt Node 18 cannot run the link codec);
   `browser.js` looks there, and `AMBER_PLAYWRIGHT` outranks every path.
 - **THE FLOOR IS ES2017, AND THE BOOT SAYS WHAT KILLED IT** (2026-09-05, from a photograph of
   an iPad: the menu crammed into a corner, every card as wide as the screen, no footing row, and
@@ -1116,7 +1116,12 @@ is no `CLAIM.sworn` skirt any more, because there is no absentee landlord to rat
   cost is the Dijkstra, per distinct GOAL — essentially one per ordered company — so the lever
   is fewer distinct goals (one doorway per wall run), never fewer readers. **What IS wasted is
   size**: a bounded field is fenced to a disc but allocates the whole grid; sparse-to-the-bound
-  is written down rather than done. (→ LEDGER: A COUNTRY PAYS FOR ITS OWN PATHFINDING)
+  is written down rather than done (now done: `windowOf`). **The Dijkstra skips stale heap
+  pops and computes window coordinates directly** — 12.5 → 5ms a field, every value identical.
+  **AND THE FRAME LOOP GIVES THE SIM A SLICE, NOT THE FRAME** (game.js `SIM_BUDGET`, 24ms): six
+  untimed catch-up steps on a phone were the death spiral; past the budget the banked time is
+  dropped and a weak device plays slower than the clock instead of freezing. `?atmos=0|1`
+  switches the look from the address bar, remembered. (→ LEDGER: A COUNTRY PAYS FOR ITS OWN PATHFINDING)
 - **AND THE STONE NEAR A MAN IS BINNED TOO.** `rebin` binned only the MEN while `stand` (via
   `project`) and `steerClear` walked every building of every player **per man, per tick** —
   the reported lag on a country. `world.wbins` is rebuilt once a tick in `rebin` (O(works), so

@@ -438,6 +438,20 @@ bounded field is fenced to a city's disc but allocates the whole grid — 750KB,
 is 21%. Sparse-to-the-bound is a 4.7x memory cut with no behaviour change, written down rather
 than done.
 
+
+**2026-10-18, a war lagging on an Android phone.** Node, seed 12345, 16 heirs' bots, ticks
+after minute 2 (~930 men): an ordinary tick median 11.6ms (p95 24.5); a tick that built one
+field 36ms (p95 63), two or more 99ms (p95 154, worst 282); 106 fields a minute; the 5 Hz vision
+tick was NOT slower (10.8ms). The bots cost under 1ms a tick. A field over its ~41,000-cell
+window cost 12.5ms; the Dijkstra was re-expanding stale heap entries (lazy deletion) and mapping
+every neighbour through a closure with a `%` and a `/`. Skipping stale pops and computing window
+coordinates directly: 4.9-5.2ms a field, every value identical (sha256 over 111 fields of the
+country, before and after); field ticks then 22ms median, 56 for two or more, worst 118 — the
+same war to the man (identical unit and field counts). And the frame loop ran up to six
+catch-up steps a frame with no time limit: on a device where a step costs 60ms that is the death
+spiral, so stepping now stops after SIM_BUDGET (24ms) of a frame and drops the banked time.
+Renderer JS in the same war: ~4-5ms a frame, atmosphere on or off (the GPU half cannot be
+measured under swiftshader — hence `?atmos=0`).
 ### AND THE STONE NEAR A MAN IS BINNED TOO
 
 `stand` (via `project`) and `steerClear` each walked every building of every player, per man,

@@ -268,17 +268,36 @@
       }
       return top;
     };
+    /* THE HOT LOOP, KEPT LEAN (2026-10-18; a war on a phone hitched on every field). Two
+     * things it used to do that change nothing about the answer: a STALE heap entry (lazy
+     * deletion leaves a cell in the heap once per improvement) was expanded again, re-scanning
+     * eight neighbours that cannot improve — it is skipped now by its own key against the
+     * settled distance; and every neighbour went through `wi`, a closure with a division and a
+     * modulo, when its window coordinates are the current cell's plus (dx, dy). The cells are
+     * visited in the same order and written with the same numbers — held by a suite that
+     * hashes every value of a country's fields before and after. Measured: see LEDGER. */
+    const slope = C.NAV.slope, fh = win.h;
+    let popD = 0;
+    const pop2 = () => { popD = hd[1]; return pop(); };
     dist[gw] = 0; push(goal, 0);
     while (hn > 0) {
-      const cur = pop(), cd = dist[wi(cur)];
+      const cur = pop2();
       const cx = cur % W, cy = (cur - cx) / W;
+      const lcx = cx - fx0, lcy = cy - fy0;
+      const cd = dist[lcy * fw + lcx];
+      if (popD > cd) continue;                                    // stale: already settled lower
+      const ec = elev[cur];
       for (let dy = -1; dy <= 1; dy++) {
         const ny = cy + dy;
         if (ny < 0 || ny >= H) continue;
+        const lny = lcy + dy;
+        if (lny < 0 || lny >= fh) continue;                       // outside the window: Infinity
         for (let dx = -1; dx <= 1; dx++) {
           if (!dx && !dy) continue;
           const nx = cx + dx;
           if (nx < 0 || nx >= W) continue;
+          const lnx = lcx + dx;
+          if (lnx < 0 || lnx >= fw) continue;
           const ni = ny * W + nx, cc = cost[ni];
           if (cc === 0 || mask[ni]) continue;                       // rock, or a wall not yours
           if (bound) {                                              // THE REACH, at cell centres
@@ -288,10 +307,10 @@
           if (dx && dy) {                                           // no cutting a blocked corner
             if (cost[cy * W + nx] === 0 || cost[ny * W + cx] === 0) continue;
           }
-          const climb = Math.max(0, elev[ni] - elev[cur]) * C.NAV.slope;
+          const climb = Math.max(0, elev[ni] - ec) * slope;
           const nd = cd + (cc + climb) * (dx && dy ? SQ2 : 1);
-          const wn = wi(ni);
-          if (wn >= 0 && nd < dist[wn]) { dist[wn] = nd; push(ni, nd); }
+          const wn = lny * fw + lnx;
+          if (nd < dist[wn]) { dist[wn] = nd; push(ni, nd); }
         }
       }
     }

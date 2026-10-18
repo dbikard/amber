@@ -3641,11 +3641,16 @@
         if (!cell || !foe(world, u.owner, oi - 1)) continue;
         for (const v of cell) {
           if (v.hp <= 0) continue;
-          const d = Math.sqrt(d2(u.x, u.y, v.x, v.y));
           /* a man inside a tower is not a target — the stone is. `hurt` refuses the blow anyway,
            * but a swordsman who aimed at him would stand at the foot of the tower swinging at
            * somebody he can never reach instead of going for the tower or moving on. */
           if (v.in) continue;
+          /* squared first: most of the men in nine bins are nowhere near the best so far. The
+           * margin leaves every close call to the old rooted test below, so a float rounding at
+           * the edge cannot decide a choice (or a tie) the root would have decided otherwise */
+          const dd = d2(u.x, u.y, v.x, v.y);
+          if (dd > bestD * bestD * 1.000001) continue;
+          const d = Math.sqrt(dd);
           if (d < bestD && seen(v.x, v.y, v.owner)) consider(d, v, 'unit', v.x, v.y);
         }
       }

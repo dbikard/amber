@@ -57,6 +57,7 @@
     spect: new Set(), watching: false
   };
   let acc = 0, lastFrame = 0;
+  const SIM_BUDGET = 24;   // ms of sim stepping per frame, at most — see the frame loop
   let guestCmdQueue = [], pendingGuestEvents = [], snapTimer = 0;
   /* one event queue PER GUEST, and whose turn it is to be sent to. Both belong to the stagger
    * below: with a single shared queue the first guest served would splice away the events the
@@ -1738,7 +1739,18 @@
         }
       if (game.world.paused) acc = 0; else acc += dtReal;
       let steps = 0;
+      /* ---- THE SIM GETS A SLICE OF THE FRAME, NOT ALL OF IT ----
+       * Reported from an Android phone: the Reach War lagged. A country tick with a thousand
+       * men measured 12ms on a desktop and several times that on a phone, and a tick that builds
+       * a flow field more again — so six catch-up steps could take a third of a second, the next
+       * frame came late, banked more time, ran six more: the death spiral, seen as the screen
+       * freezing in fits. Past SIM_BUDGET ms of stepping in one frame the banked time is
+       * dropped: a slow device plays the war a little slower than the clock instead of not at
+       * all, and the frame still draws and still takes taps. Every step is the same step, so
+       * the world is the world; only how many a second a weak device can afford changes. */
+      const stepUntil = performance.now() + SIM_BUDGET;
       while (acc >= C.SIM_DT && steps++ < 6) {
+        if (steps > 1 && performance.now() > stepUntil) { acc = Math.min(acc, C.SIM_DT); break; }
         acc -= C.SIM_DT;
         if (!game.over) {
           /* ---- EVERY LORD RUNS HIS OWN CITY, INCLUDING THE ONES SWORN TO YOU ----
