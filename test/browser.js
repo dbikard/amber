@@ -226,6 +226,43 @@ async function match(browser, base, renderer) {
     await p2.close();
   }
 
+  /* ---------------- a screen taller than the phone starts at its top ----------------
+   * Reported from an Android phone (2026-10-18): the campaign's first chapters were above the
+   * screen and could not be scrolled to. A flex column centred with justify-content: center
+   * loses the overflow on its START side for good; the main menu had been fixed for it and the
+   * other screens of the same shape had not. On a short phone each screen is opened and asked:
+   * is its first thing on screen at scroll zero, and does scrolling reach its last thing? The
+   * control is that the screen really IS taller than the phone, or the question asks nothing. */
+  {
+    suite('a screen taller than the phone starts at its top');
+    const pg = await browser.newPage({ viewport: { width: 360, height: 560 } });
+    await pg.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await ready(pg);
+    /* the chapter list FAILS on the old stylesheet (its first chapter sat 140 above the screen
+     * at 360x560); the Roll is here as a guard — it is the other screen tall enough to ask */
+    for (const [open, id] of [['#btn-campaign', 'chapters'], ['#btn-roll', 'roll']]) {
+      await pg.click(open);
+      await pg.waitForFunction((i) => !document.getElementById(i).classList.contains('hidden'), id,
+                               { timeout: 2500, polling: 40 }).catch(() => {});
+      const r = await pg.evaluate((i) => {
+        const el = document.getElementById(i);
+        el.scrollTop = 0;
+        const kids = [...el.querySelectorAll('h2, .card, .mbtn, .roll-hall, .rival')].filter((k) => k.offsetParent);
+        const first = kids[0].getBoundingClientRect().top;
+        el.scrollTop = el.scrollHeight;
+        const last = kids[kids.length - 1].getBoundingClientRect().bottom;
+        return { tall: el.scrollHeight > el.clientHeight + 40, first, last, h: el.clientHeight };
+      }, id);
+      ok(`#${id}: the rig is alive — it is taller than the phone`, r.tall, JSON.stringify(r));
+      ok(`#${id}: its first thing is on screen at the top`, r.first >= 0, JSON.stringify(r));
+      ok(`#${id}: and scrolling reaches its last`, r.last <= r.h + 1, JSON.stringify(r));
+      await pg.click(`#${id}-close`);   // each screen's own way out, scrolled to by the click
+      await pg.waitForFunction((i) => document.getElementById(i).classList.contains('hidden'), id,
+                               { timeout: 2500, polling: 40 }).catch(() => {});
+    }
+    await pg.close();
+  }
+
   /* ---------------- menus, before any match ---------------- */
   {
     suite('menu');

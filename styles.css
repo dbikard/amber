@@ -358,6 +358,20 @@ body {
    it fits. The lore is held to the column's width (it ran the width of a desktop), and a gold
    rule under it closes the title block before the ways to play begin. */
 #menu { justify-content: flex-start; padding-top: 46px; padding-top: calc(env(safe-area-inset-top, 0px) + 46px); }
+/* ...AND EVERY OTHER SCREEN OF THE SAME SHAPE (2026-10-18, reported from an Android phone: the
+   campaign's first chapters were cut off above the screen and could not be scrolled to, the day
+   the list grew to twelve). Packed from the top, with two flexible spacers that centre the
+   column when it fits and collapse to nothing when it does not — so the top is always where the
+   scroll starts. Pseudo-elements rather than margins on the first and last child, because the
+   first child of some of these screens is sometimes hidden. */
+#end, #roll, #chapters, #rivals, #lan-screen, #war-setup {
+  justify-content: flex-start;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+}
+#end::before, #end::after, #roll::before, #roll::after, #chapters::before, #chapters::after,
+#rivals::before, #rivals::after, #lan-screen::before, #lan-screen::after,
+#war-setup::before, #war-setup::after { content: ''; flex: 1 0 0; }
 /* the lore's line break was set for one width and orphaned a word at every other */
 #menu .lore br { display: none; }
 #menu > h1 { margin-top: auto; }
